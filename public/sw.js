@@ -21,6 +21,8 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
 
   if (url.origin !== self.location.origin) return;
+  // La version concurrente (sous /cc/) a son propre fonctionnement : on n'y touche pas
+  if (url.pathname.includes('/cc/')) return;
 
   // Pages : réseau d'abord (pour recevoir les mises à jour), cache en secours
   if (req.mode === 'navigate') {
