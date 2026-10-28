@@ -22,9 +22,13 @@ export function Carnet() {
   const s = useStore();
   const t = today();
   const kids = activeContracts(t);
-  const [cid, setCid] = useState<string | undefined>(kids[0]?.id);
+  // Enfants présents en ce moment (arrivés, pas encore partis) : pour noter à tous d'un coup
+  const present = kids.filter((k) => (dayInfo(ctxFor(k), t).rec?.pres ?? []).some((p) => p.a && !p.d));
+  const [cid, setCid] = useState<string | undefined>(present.length > 1 ? 'tous' : kids[0]?.id);
   const [kind, setKind] = useState<(typeof KINDS)[number] | null>(null);
-  const c = kids.find((k) => k.id === cid) ?? kids[0];
+  const all = cid === 'tous' && present.length > 1;
+  const c = all ? undefined : kids.find((k) => k.id === cid) ?? kids[0];
+  const targets: Contract[] = all ? present : c ? [c] : [];
   const entries = c ? s.journal.filter((j) => j.cid === c.id && j.date === t).sort((a, b) => a.time.localeCompare(b.time)) : [];
 
   async function sendSummary(c: Contract) {
@@ -46,12 +50,30 @@ export function Carnet() {
         )}
         {kids.length > 1 && (
           <div class="chips" role="group" aria-label="Enfant">
+            {present.length > 1 && (
+              <button class="chip" aria-pressed={all} onClick={() => setCid('tous')}>
+                Tous les présents ({present.length})
+              </button>
+            )}
             {kids.map((k) => (
-              <button class="chip" aria-pressed={k.id === c?.id} onClick={() => setCid(k.id)}>
+              <button class="chip" aria-pressed={!all && k.id === c?.id} onClick={() => setCid(k.id)}>
                 <Gommette name={k.child} color={k.color} size="sm" />{k.child}
               </button>
             ))}
           </div>
+        )}
+        {all && (
+          <>
+            <section aria-label="Ajouter au carnet de tous les enfants présents" class="quick">
+              {KINDS.map((k) => (
+                <button onClick={() => setKind(k)}>
+                  <span class="q-ico"><Icon name={k.icon} /></span>
+                  {k.l}
+                </button>
+              ))}
+            </section>
+            <p class="muted">La note s’ajoute au carnet de {present.map((k) => k.child).join(', ')}. Pour voir ou envoyer la journée d’un enfant, touche son prénom.</p>
+          </>
         )}
         {c && (
           <>
@@ -90,23 +112,28 @@ export function Carnet() {
           </>
         )}
       </main>
-      {kind && c && <EntrySheet c={c} kind={kind} onClose={() => setKind(null)} />}
+      {kind && targets.length > 0 && <EntrySheet cs={targets} kind={kind} onClose={() => setKind(null)} />}
     </>
   );
 }
 
-function EntrySheet({ c, kind, onClose }: { c: Contract; kind: (typeof KINDS)[number]; onClose: () => void }) {
+function EntrySheet({ cs, kind, onClose }: { cs: Contract[]; kind: (typeof KINDS)[number]; onClose: () => void }) {
   const [text, setText] = useState('');
   const [time, setTime] = useState(nowHHMM());
   async function add(detail: string) {
-    const j: Journal = { id: uid(), cid: c.id, date: today(), time, kind: kind.k, detail };
-    const undo = await addJournal(j);
-    logUsage('carnet_' + kind.k, 'carnet');
+    const undos: Array<() => Promise<void>> = [];
+    for (const c of cs) {
+      const j: Journal = { id: uid(), cid: c.id, date: today(), time, kind: kind.k, detail };
+      undos.push(await addJournal(j));
+    }
+    logUsage('carnet_' + kind.k + (cs.length > 1 ? '_tous' : ''), 'carnet');
     onClose();
-    toast(`${KIND_LABEL[kind.k]} noté à ${time.replace(':', 'h')}`, undo);
+    const who = cs.length > 1 ? ` pour ${cs.length} enfants` : '';
+    toast(`${KIND_LABEL[kind.k]} noté à ${time.replace(':', 'h')}${who}`, async () => { for (const u of undos) await u(); });
   }
+  const names = cs.map((c) => c.child).join(', ');
   return (
-    <Sheet title={`${kind.l}, ${c.child}`} onClose={onClose}>
+    <Sheet title={`${kind.l}, ${names}`} onClose={onClose}>
       <div class="spread">
         <label for="jr-time" class="label">Heure</label>
         <input id="jr-time" class="input num" style={{ width: '140px' }} type="time" value={time} onInput={(e) => setTime((e.target as HTMLInputElement).value)} />

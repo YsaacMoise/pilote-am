@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { activeContracts, ctxFor, logUsage, putLeave, state, toast, uid, updateDay, useStore } from '../store';
+import { activeContracts, ctxFor, logUsage, putLeave, saveSettings, state, toast, uid, updateDay, useStore } from '../store';
 import { addDays, dayLabel, minutes, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NOMS, daysBetween } from '../engine/dates';
 import { dayInfo, type DayInfo } from '../engine/payroll';
 import { AM_ABS_LABEL, CHILD_ABS_LABEL, type AmAbs, type ChildAbs, type Contract, type DayRec, type Presence } from '../engine/model';
@@ -69,7 +69,19 @@ export function Today() {
           </div>
         )}
 
-        {kids.map((c) => <KidCard c={c} day={day} onEdit={() => setEdit(c)} />)}
+        {kids.length > 1 && (
+          <div class="seg view-switch" role="radiogroup" aria-label="Affichage des enfants">
+            <button role="radio" aria-checked={!s.settings.compact} onClick={() => { saveSettings({ compact: false }); logUsage('vue_cartes', 'aujourdhui'); }}>Cartes</button>
+            <button role="radio" aria-checked={!!s.settings.compact} onClick={() => { saveSettings({ compact: true }); logUsage('vue_liste', 'aujourdhui'); }}>Liste</button>
+          </div>
+        )}
+        {s.settings.compact && kids.length > 1 ? (
+          <div class="kid-list">
+            {kids.map((c) => <KidCard c={c} day={day} compact onEdit={() => setEdit(c)} />)}
+          </div>
+        ) : (
+          kids.map((c) => <KidCard c={c} day={day} onEdit={() => setEdit(c)} />)
+        )}
         {day === t && forgotten.length > 0 && (
           <Banner tone="warn">
             <strong>{forgotten.length === 1 ? 'Un départ n’a pas été pointé' : `${forgotten.length} départs n’ont pas été pointés`}</strong>
@@ -114,7 +126,7 @@ function nextAction(di: DayInfo, rec: DayRec | undefined): { idx: number; kind: 
   return null;
 }
 
-function KidCard({ c, day, onEdit }: { c: Contract; day: string; onEdit: () => void }) {
+function KidCard({ c, day, onEdit, compact }: { c: Contract; day: string; onEdit: () => void; compact?: boolean }) {
   const t = today();
   const di = dayInfo(ctxFor(c), day);
   const rec = di.rec;
@@ -164,6 +176,27 @@ function KidCard({ c, day, onEdit }: { c: Contract; day: string; onEdit: () => v
         },
       };
     }
+  }
+
+  if (compact) {
+    // Une ligne par enfant : pastille, prénom, l'état le plus utile, et le bouton du moment
+    const status = tags.length ? tags[tags.length - 1].text : planText(di);
+    return (
+      <article class="kid-row" style={{ '--g': color } as any} aria-label={c.child}>
+        <button class="kid-row-main" onClick={onEdit} aria-label={`${c.child} : ${planText(di)}${tags.length ? ', ' + tags.map((x) => x.text).join(', ') : ''}. Modifier la journée`}>
+          <Gommette name={c.child} color={c.color} size="sm" />
+          <span class="kid-row-text">
+            <span class="kid-row-name">{c.child}</span>
+            <span class="kid-row-status">{status}</span>
+          </span>
+        </button>
+        {action && (
+          <button class={action.quiet ? 'btn btn-outline' : 'btn btn-primary'} onClick={action.run} aria-label={`${action.label} de ${c.child}`}>
+            <Icon name={action.icon} />{action.label}
+          </button>
+        )}
+      </article>
+    );
   }
 
   return (

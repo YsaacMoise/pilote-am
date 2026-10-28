@@ -103,6 +103,8 @@ export interface Settings {
   lastExport?: Month;
   persisted?: boolean;
   onboarded?: boolean;
+  /** Écran Aujourd'hui en liste compacte (tous les enfants visibles d'un coup) */
+  compact?: boolean;
 }
 
 export interface Bulletin {
