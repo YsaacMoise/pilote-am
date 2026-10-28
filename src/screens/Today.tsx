@@ -229,7 +229,7 @@ function KidCard({ c, day, onEdit, compact }: { c: Contract; day: string; onEdit
 
 const CHILD_ABS_OPTIONS: { v: ChildAbs | 'none'; l: string; sub?: string }[] = [
   { v: 'none', l: 'Présent', sub: 'Accueilli normalement' },
-  { v: 'malade_certif', l: CHILD_ABS_LABEL.malade_certif, sub: 'Retenu sur le salaire dans la limite de 5 jours par an (ou 14 jours d’affilée)' },
+  { v: 'malade_certif', l: CHILD_ABS_LABEL.malade_certif, sub: 'Retenu dans la limite de 5 jours par an, plus une absence de 14 jours d’affilée' },
   { v: 'malade', l: CHILD_ABS_LABEL.malade, sub: 'Payé' },
   { v: 'parents', l: CHILD_ABS_LABEL.parents, sub: 'Payé' },
   { v: 'sans_solde_enfant', l: CHILD_ABS_LABEL.sans_solde_enfant, sub: 'Retenu sur le salaire' },

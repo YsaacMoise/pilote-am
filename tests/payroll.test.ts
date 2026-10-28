@@ -266,8 +266,11 @@ describe('fin de contrat (art. 120, 121, 124)', () => {
     expect(f.indemniteRupture).toBeGreaterThan(0);
     const f2 = finDeContrat(makeCtx(contract({ start: '2026-05-04', trackedFrom: '2026-05-04' }), [], [], '2026-12-31'), '2026-10-30', 'retrait');
     expect(f2.indemniteRupture).toBe(0);
+    // Décès de l'enfant : 9 mois d'ancienneté exigés aussi (art. 119.4.2, fiche DREETS)
     const f3 = finDeContrat(makeCtx(contract({ start: '2026-05-04', trackedFrom: '2026-05-04' }), [], [], '2026-12-31'), '2026-10-30', 'deces');
-    expect(f3.indemniteRupture).toBeGreaterThan(0);
+    expect(f3.indemniteRupture).toBe(0);
+    const f4 = finDeContrat(makeCtx(contract({ start: '2026-01-05', trackedFrom: '2026-01-05' }), [], [], '2026-12-31'), '2026-10-30', 'deces');
+    expect(f4.indemniteRupture).toBeGreaterThan(0);
   });
   it('historique incomplet signalé', () => {
     const c = contract({ start: '2025-09-01', trackedFrom: '2026-09-01', history: [{ month: '2025-09', net: 50000, source: 'manuel' }] });
@@ -425,5 +428,41 @@ describe('corrections après audit de paie (28/10/2026)', () => {
     const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', planning: week('08:00', '17:30'), rateNet: 360 });
     const ind = indemnite(makeCtx(c, [], [], '2026-07-01'), 2025);
     expect(ind.maintien).toBe(85950);
+  });
+});
+
+describe('règles tranchées le 28/10/2026 (texte et fiches officielles)', () => {
+  it('rupture : 9 mois appréciés à l’envoi de la lettre, pas à la fin du préavis', () => {
+    // Début 15/01/2026, lettre le 14/10 : 8 mois à l’envoi, 9 à la fin du préavis → pas d’indemnité
+    const c = contract({ start: '2026-01-15', trackedFrom: '2026-01-15' });
+    const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-14', 'retrait');
+    expect(f.indemniteRupture).toBe(0);
+  });
+  it('enfant malade : 5 jours courts et une longue absence se cumulent', () => {
+    // 1 jour court, puis absence du 9 au 20 mars (10 jours prévus) : 1 + 10 retenus
+    const days = ['2026-02-02', ...['09', '10', '11', '12', '13', '16', '17', '18', '19', '20'].map((d) => `2026-03-${d}`)]
+      .map((d) => rec(d, { abs: 'malade_certif' }));
+    expect(sickDeductible(makeCtx(contract(), days, [], '2026-04-01')).size).toBe(11);
+  });
+  it('enfant malade : après la longue absence, les absences courtes restent retenues', () => {
+    const days = [...['09', '10', '11', '12', '13', '16', '17', '18'].map((d) => `2026-03-${d}`), '2026-04-14']
+      .map((d) => rec(d, { abs: 'malade_certif' }));
+    expect(sickDeductible(makeCtx(contract(), days, [], '2026-05-01')).size).toBe(9);
+  });
+  it('férié chômé non payé si l’AM est absente (maladie) le jour prévu juste avant', () => {
+    // Lundi de Pâques 06/04/2026 ; AM malade le vendredi 03/04
+    const leaves: AmLeave[] = [{ id: 'l', type: 'am_malade', from: '2026-04-03', to: '2026-04-03' }];
+    const ctx = makeCtx(contract(), [], leaves, '2026-05-01');
+    expect(dayInfo(ctx, '2026-04-06').deducted).toBe(true);
+    expect(monthBase(ctx, '2026-04').alerts.join(' ')).toMatch(/Férié du 06\/04 non payé/);
+  });
+  it('férié chômé payé si l’AM était en congés payés la veille (absence autorisée)', () => {
+    const leaves: AmLeave[] = [{ id: 'l', type: 'cp', from: '2026-03-30', to: '2026-04-03' }];
+    expect(dayInfo(makeCtx(contract(), [], leaves, '2026-05-01'), '2026-04-06').deducted).toBe(false);
+  });
+  it('1er mai chômé toujours payé', () => {
+    // Vendredi 1er mai 2026, AM malade le jeudi 30 avril
+    const leaves: AmLeave[] = [{ id: 'l', type: 'am_malade', from: '2026-04-30', to: '2026-04-30' }];
+    expect(dayInfo(makeCtx(contract(), [], leaves, '2026-06-01'), '2026-05-01').deducted).toBe(false);
   });
 });

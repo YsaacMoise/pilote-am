@@ -76,22 +76,25 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     alertes.push(`Historique incomplet : ${manquants.length} mois sans bulletin. Ajoute les bulletins manquants dans l’historique pour un calcul juste.`);
   }
 
-  // Indemnité de rupture
-  const ancFin = fullMonthsBetween(c.start, dernierJour);
+  // Indemnité de rupture. Ancienneté appréciée à la date d'envoi de la lettre (ou au décès), comme pour le préavis.
   let indemniteRupture = 0;
   let ruptureExplication = '';
   if (motif === 'deces') {
-    indemniteRupture = Math.round(totalBrut / 80);
-    ruptureExplication = 'Décès de l’enfant : 1/80e des salaires bruts, sans condition d’ancienneté.';
+    if (anc >= 9) {
+      indemniteRupture = Math.round(totalBrut / 80);
+      ruptureExplication = 'Décès de l’enfant : 1/80e des salaires bruts (9 mois d’ancienneté atteints).';
+    } else {
+      ruptureExplication = `Décès de l’enfant : pas d’indemnité de rupture, moins de 9 mois d’ancienneté (${anc} mois).`;
+    }
   } else if (motif === 'inaptitude_pro') {
     indemniteRupture = Math.round((totalBrut * 2) / 80);
     ruptureExplication = 'Inaptitude d’origine professionnelle : 2/80e des salaires bruts.';
   } else if (motif === 'retrait') {
-    if (ancFin >= 9) {
+    if (anc >= 9) {
       indemniteRupture = Math.round(totalBrut / 80);
-      ruptureExplication = '1/80e des salaires bruts perçus depuis le début du contrat (9 mois d’ancienneté atteints).';
+      ruptureExplication = '1/80e des salaires bruts perçus depuis le début du contrat (9 mois d’ancienneté atteints à l’envoi de la lettre).';
     } else {
-      ruptureExplication = `Pas d’indemnité : moins de 9 mois d’ancienneté (${ancFin} mois).`;
+      ruptureExplication = `Pas d’indemnité : moins de 9 mois d’ancienneté à l’envoi de la lettre (${anc} mois).`;
     }
   } else if (motif === 'demission') {
     ruptureExplication = 'Pas d’indemnité de rupture en cas de démission.';

@@ -116,6 +116,8 @@ export interface DayInfo {
   deducted: boolean;
   /** Ce jour compte dans le diviseur (jour qui aurait été travaillé) */
   inDivisor: boolean;
+  /** Férié chômé non payé (absence de l'AM la veille ou le lendemain, art. 47) */
+  ferieNonPaye?: boolean;
 }
 
 export function dayInfo(ctx: Ctx, d: ISODate): DayInfo {
@@ -152,6 +154,9 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
 
   if (ferie && plannedMin > 0 && !rec?.ferieTravaille && !rec?.pres?.some((p) => p.a)) {
     info.kind = 'ferie';
+    // Art. 47 : payé si l'AM a travaillé le dernier jour prévu avant et le premier jour prévu après,
+    // sauf absence autorisée au préalable (congés, événement familial, absence voulue par les parents).
+    if (!d.endsWith('-05-01') && ferieNonPaye(ctx, d)) { info.inDivisor = true; info.deducted = true; info.ferieNonPaye = true; }
     return info;
   }
 
@@ -203,8 +208,31 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
   return info;
 }
 
-/** Jours d'enfant malade avec certificat retenus (art. 105) : 5 jours par année de contrat,
- *  ou une seule absence continue jusqu'à 14 jours calendaires. Au-delà : rémunérés. */
+const ABSENCES_NON_AUTORISEES: AmAbs[] = ['am_malade', 'am_enfant_malade'];
+
+function jourPrevuVoisin(ctx: Ctx, d: ISODate, sens: 1 | -1): ISODate | undefined {
+  const { c } = ctx;
+  for (let i = 1, x = addDays(d, sens); i <= 14; i++, x = addDays(x, sens)) {
+    if (!inContract(c, x)) return undefined;
+    if (plannedPlages(c, x).length === 0) continue;
+    if (holidayName(x) && !ctx.days.get(x)?.ferieTravaille) continue;
+    return x;
+  }
+  return undefined;
+}
+
+/** Férié chômé non payé : absence non autorisée de l'AM le jour prévu juste avant ou juste après */
+export function ferieNonPaye(ctx: Ctx, d: ISODate): boolean {
+  for (const sens of [-1, 1] as const) {
+    const x = jourPrevuVoisin(ctx, d, sens);
+    const abs = x ? amLeaveOn(ctx.leaves, x) : undefined;
+    if (abs && ABSENCES_NON_AUTORISEES.includes(abs)) return true;
+  }
+  return false;
+}
+
+/** Jours d'enfant malade avec certificat retenus (art. 105) : par période de 12 mois depuis le début du contrat,
+ *  5 jours consécutifs ou non, et une absence de 14 jours calendaires consécutifs. Au-delà : rémunérés. */
 export function sickDeductible(ctx: Ctx): Set<ISODate> {
   return memo(ctx, 'sick', () => {
     const { c } = ctx;
@@ -238,16 +266,16 @@ export function sickDeductible(ctx: Ctx): Set<ISODate> {
         st = { left: 5 - used, longUsed: false };
         yearState.set(y, st);
       }
-      if (st.longUsed) continue;
+      // Les deux limites se cumulent : 5 jours d'absences courtes « et » une absence de 14 jours calendaires consécutifs
+      // Absence courte : 5 jours prévus au plus. Absence longue : au-delà, une fois par période.
       if (ep.length <= st.left) {
         ep.forEach((d) => out.add(d));
         st.left -= ep.length;
-      } else if (st.left === 5) {
-        // Une seule longue absence : retenue sur 14 jours calendaires consécutifs au plus.
+      } else if (ep.length > 5 && !st.longUsed) {
+        // L'absence longue : retenue sur 14 jours calendaires consécutifs au plus, sans entamer les 5 jours.
         const limit = addDays(ep[0], 13);
         ep.filter((d) => d <= limit).forEach((d) => out.add(d));
         st.longUsed = true;
-        st.left = 0;
       } else {
         ep.slice(0, st.left).forEach((d) => out.add(d));
         st.left = 0;
@@ -387,6 +415,7 @@ function computeMonthBase(ctx: Ctx, m: Month): MonthBase {
     if (di.inDivisor) { cDays++; cMin += di.plannedMin; }
     if (di.deducted) { dedDays++; dedMin += di.plannedMin; }
     if (di.departOublie) forgotten.push(d);
+    if (di.ferieNonPaye) r.alerts.push(`Férié du ${d.slice(8, 10)}/${d.slice(5, 7)} non payé : tu étais absente le jour prévu juste avant ou juste après (article 47 de la convention).`);
     if (di.rec?.abs === 'malade_certif' && !di.deducted && di.plannedMin > 0) r.sickPaidNotice = true;
     if (di.kind === 'present' || di.kind === 'prevu') {
       if (di.presentMin > 0) {
