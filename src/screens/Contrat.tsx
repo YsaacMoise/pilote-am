@@ -76,7 +76,7 @@ export function Contrat({ id }: { id?: string }) {
             <TextInput label="Nom de la famille" hint="Le parent qui t’emploie et déclare sur Pajemploi" value={c.family} onChange={(v) => set({ family: v })} />
             <div class="field">
               <span class="label" id="col-l">Sa couleur</span>
-              <div class="chips" role="radiogroup" aria-labelledby="col-l">
+              <div class="chips" style={{ flexWrap: 'wrap' }} role="radiogroup" aria-labelledby="col-l">
                 {CHILD_COLORS.map((_, i) => (
                   <button class="chip" role="radio" aria-checked={c.color === i} onClick={() => set({ color: i })} aria-label={COLOR_NAMES[i]}>
                     <Gommette name={c.child || '?'} color={i} size="sm" />
