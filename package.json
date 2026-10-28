@@ -1,0 +1,29 @@
+{
+  "name": "cc-pilote-am",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Pilote AM — l'app de l'assistante maternelle (version Claude Code)",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --base /pilote-am/cc/ --port 4173",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@fontsource-variable/bricolage-grotesque": "5.3.0",
+    "@fontsource/atkinson-hyperlegible-next": "5.3.0",
+    "pdfjs-dist": "4.10.38",
+    "preact": "10.29.8"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "2.10.6",
+    "typescript": "5.9.3",
+    "vite": "6.4.5",
+    "vitest": "3.2.7"
+  }
+}
