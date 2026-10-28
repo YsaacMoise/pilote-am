@@ -22,7 +22,15 @@ import { Installer, Welcome } from './screens/Welcome';
 function useHash(): string {
   const [h, setH] = useState(location.hash || '#/');
   useEffect(() => {
-    const f = () => { setH(location.hash || '#/'); window.scrollTo(0, 0); };
+    const f = () => {
+      setH(location.hash || '#/');
+      window.scrollTo(0, 0);
+      // Annonce le nouvel écran aux lecteurs d'écran : le focus va sur le titre.
+      requestAnimationFrame(() => {
+        const h1 = document.querySelector<HTMLElement>('.topbar h1, .welcome h1');
+        if (h1) { h1.tabIndex = -1; h1.focus({ preventScroll: true }); }
+      });
+    };
     window.addEventListener('hashchange', f);
     return () => window.removeEventListener('hashchange', f);
   }, []);
@@ -43,7 +51,11 @@ export function App() {
   const p = parts[0] ?? '';
   useEffect(() => { if (s.ready) logUsage('ecran', p || 'aujourdhui'); }, [p, s.ready]);
   useEffect(() => {
-    const title = { '': 'Aujourd’hui', carnet: 'Carnet', mois: 'Mois', plus: 'Plus' }[p] ?? 'Pilote AM';
+    const title = ({
+      '': 'Aujourd’hui', carnet: 'Carnet', mois: 'Mois', plus: 'Plus', contrat: 'Contrat', historique: 'Historique',
+      controle: 'Contrôle du bulletin', conges: 'Congés', fin: 'Fin de contrat', fiscal: 'Impôts', sauvegarde: 'Sauvegarde',
+      pilote: 'Données du pilote', reglages: 'Réglages', regles: 'Comment l’app calcule', installer: 'Installer',
+    } as Record<string, string>)[p] ?? 'Pilote AM';
     document.title = `${title} · Pilote AM`;
   }, [p]);
 

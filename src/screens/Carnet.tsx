@@ -106,7 +106,11 @@ function EntrySheet({ c, kind, onClose }: { c: Contract; kind: (typeof KINDS)[nu
     toast(`${KIND_LABEL[kind.k]} noté à ${time.replace(':', 'h')}`, undo);
   }
   return (
-    <Sheet title={`${kind.l} · ${c.child}`} onClose={onClose}>
+    <Sheet title={`${kind.l}, ${c.child}`} onClose={onClose}>
+      <div class="spread">
+        <label for="jr-time" class="label">Heure</label>
+        <input id="jr-time" class="input num" style={{ width: '140px' }} type="time" value={time} onInput={(e) => setTime((e.target as HTMLInputElement).value)} />
+      </div>
       {kind.options.length > 0 && (
         <div class="choices">
           {kind.options.map((o) => <button class="choice" onClick={() => add(o)}>{o}</button>)}
@@ -116,10 +120,6 @@ function EntrySheet({ c, kind, onClose }: { c: Contract; kind: (typeof KINDS)[nu
         <label for="jr-text">{kind.options.length ? 'Ou écris un détail' : 'Ta note'}</label>
         <textarea id="jr-text" class="input" value={text} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} placeholder="Ex. : a fait ses premiers pas !" />
         <span class="hint"><span class="kbd-ico"><Icon name="mic" size={18} /></span> Touche le micro du clavier pour dicter.</span>
-      </div>
-      <div class="field">
-        <label for="jr-time">Heure</label>
-        <input id="jr-time" class="input num" type="time" value={time} onInput={(e) => setTime((e.target as HTMLInputElement).value)} />
       </div>
       <button class="btn btn-primary btn-block btn-lg" disabled={!text.trim()} onClick={() => add(text.trim())}>Ajouter la note</button>
     </Sheet>

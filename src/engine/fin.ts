@@ -49,13 +49,13 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
       preavisLabel = 'Pas de préavis travaillé en cas d’inaptitude';
     } else if (anc < 3) {
       preavisLabel = '8 jours calendaires';
-      preavisFin = addDays(notif, 8);
+      preavisFin = addDays(notif, 7);
     } else if (anc < 12) {
       preavisLabel = '15 jours calendaires';
-      preavisFin = addDays(notif, 15);
+      preavisFin = addDays(notif, 14);
     } else {
       preavisLabel = '1 mois';
-      preavisFin = addMonthsToDate(notif, 1);
+      preavisFin = addDays(addMonthsToDate(notif, 1), -1);
     }
   }
   const dernierJour = preavisFin;
@@ -113,7 +113,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   for (const m of monthsBetween(monthOf(regStart), monthOf(dernierJour))) {
     const b = monthBase(endCtx, m);
     if (!b.active || b.fromHistory) continue;
-    if (m === monthOf(regStart) && regStart.slice(8) !== '01') {
+    if (m === monthOf(regStart) && regStart > c.start && regStart.slice(8) !== '01') {
       // mois entamé : seule la part postérieure au début de la régularisation compte
       const part = eachDay(regStart, lastDay(m)).reduce((s, d) => s + (dayInfo(endCtx, d).inDivisor ? dayInfo(endCtx, d).plannedMin : 0), 0);
       const tot = b.divisorMin || 1;
@@ -139,15 +139,21 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   const indCur = indemnite(endCtx, y, enfants);
   const joursCur = acq.joursADate;
   const curMontant = Math.max(Math.round(indCur.dixieme), maintien(endCtx, joursCur));
-  // Période précédente : jours restants
+  // Période précédente : jours restants, moins ce qui a déjà été versé.
   let precMontant = 0;
   if (restantsPrec > 0) {
-    if (c.yearType === 'incomplete' && c.cpMode === 'juin' && dernierJour >= `${y}-06-30`) {
-      precMontant = 0; // déjà payée en juin
+    if (c.yearType === 'complete') {
+      // Les jours pris ont été payés dans le salaire, le complément du dixième en juin : reste le maintien.
+      precMontant = maintien(endCtx, restantsPrec);
     } else {
       const indPrev = y - 1 >= cpPeriodStartYear(c.trackedFrom) ? indemnite(endCtx, y - 1, enfants) : null;
-      precMontant = indPrev && indPrev.jours ? Math.round((indPrev.montant * restantsPrec) / indPrev.jours) : maintien(endCtx, restantsPrec);
-      if (c.yearType === 'incomplete' && c.cpMode === 'juin') precMontant = 0;
+      if (indPrev && indPrev.jours) {
+        let deja = 0;
+        for (const m of monthsBetween(`${y}-06`, monthOf(dernierJour))) deja += cpForMonth(endCtx, m, enfants).indemnite;
+        precMontant = Math.max(0, indPrev.montant - deja);
+      } else {
+        precMontant = maintien(endCtx, restantsPrec);
+      }
     }
   }
   cpIndemnite = curMontant + precMontant;

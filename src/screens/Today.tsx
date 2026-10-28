@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import { activeContracts, ctxFor, logUsage, putLeave, state, toast, uid, updateDay, useStore } from '../store';
-import { addDays, dayLabel, minutes, nowHHMM, today, weekday, JOUR_NOMS, daysBetween } from '../engine/dates';
+import { addDays, dayLabel, minutes, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NOMS, daysBetween } from '../engine/dates';
 import { dayInfo, type DayInfo } from '../engine/payroll';
 import { AM_ABS_LABEL, CHILD_ABS_LABEL, type AmAbs, type ChildAbs, type Contract, type DayRec, type Presence } from '../engine/model';
 import { hoursLabel } from '../engine/money';
@@ -21,7 +21,7 @@ export function Today() {
   const [edit, setEdit] = useState<Contract | null>(null);
   const [amSheet, setAmSheet] = useState(false);
   const kids = s.contracts.filter((c) => c.start <= day && (!c.end || c.end >= day));
-  const base = day < addDays(t, -5) ? day : t;
+  const base = day < addDays(t, -5) ? addDays(day, 5) : t;
   const days = Array.from({ length: 7 }, (_, i) => addDays(base, i - 5));
 
   // Départs oubliés sur les 14 derniers jours
@@ -40,23 +40,36 @@ export function Today() {
     <>
       <Topbar title={day === t ? 'Aujourd’hui' : dayLabel(day).replace(/^./, (x) => x.toUpperCase())} sub={day === t ? dayLabel(day) : day < t ? `il y a ${daysBetween(day, t)} jour${daysBetween(day, t) > 1 ? 's' : ''}` : 'à venir'} screen="aujourdhui" />
       <main>
-        <nav aria-label="Choisir le jour" class="row" style={{ gap: '4px' }}>
-          <button class="icon-btn" aria-label="Semaine précédente" onClick={() => setDay(addDays(day, -7))}><Icon name="left" /></button>
-          <div class="daystrip" style={{ flex: 1 }}>
-            {days.map((d) => {
-              const flag = s.contracts.some((c) => dayInfo(ctxFor(c), d).departOublie);
-              return (
-                <button aria-pressed={d === day} onClick={() => setDay(d)} aria-label={`${dayLabel(d)}${d === t ? ' (aujourd’hui)' : ''}${flag ? ', départ non pointé' : ''}`}>
-                  <span class="d-name" aria-hidden="true">{d === t ? 'auj.' : JOUR_NOMS[weekday(d) - 1].slice(0, 3)}</span>
-                  <span class="d-num" aria-hidden="true">{Number(d.slice(8))}</span>
-                  <span class={`d-dot ${flag ? 'on' : ''}`} aria-hidden="true" />
-                </button>
-              );
-            })}
-          </div>
-          <button class="icon-btn" aria-label="Semaine suivante" disabled={addDays(day, 7) > addDays(t, 60)} onClick={() => setDay(addDays(day, 7) > t ? t : addDays(day, 7))}><Icon name="right" /></button>
+        <nav aria-label="Choisir le jour" class="daystrip">
+          {days.map((d) => {
+            const flag = s.contracts.some((c) => dayInfo(ctxFor(c), d).departOublie);
+            return (
+              <button aria-pressed={d === day} onClick={() => setDay(d)}>
+                <span class="d-name">{d === t ? 'auj.' : JOUR_NOMS[weekday(d) - 1].slice(0, 3)}</span>{' '}
+                <span class="d-num">{Number(d.slice(8))}</span>
+                <span class="sr-only"> {MOIS_NOMS[Number(d.slice(5, 7)) - 1]}{flag ? ', départ non pointé' : ''}</span>
+                <span class={`d-dot ${flag ? 'on' : ''}`} aria-hidden="true" />
+              </button>
+            );
+          })}
         </nav>
 
+        {amToday && (
+          <Banner tone="info" icon="sun">
+            <strong>{AM_ABS_LABEL[amToday.type]}</strong>
+            <span>Du {dayLabel(amToday.from)} au {dayLabel(amToday.to)}, pour tous les enfants.</span>
+          </Banner>
+        )}
+
+        {kids.length === 0 && (
+          <div class="card empty">
+            <h2>{s.contracts.length ? 'Aucun contrat ce jour-là' : 'Ajoute ton premier enfant'}</h2>
+            <p class="muted">Le planning du contrat remplit les journées tout seul. Tu n’auras qu’à noter ce qui change.</p>
+            {!s.contracts.length && <a class="btn btn-primary btn-lg" href="#/contrat/nouveau"><Icon name="plus" />Ajouter un enfant</a>}
+          </div>
+        )}
+
+        {kids.map((c) => <KidCard c={c} day={day} onEdit={() => setEdit(c)} />)}
         {day === t && forgotten.length > 0 && (
           <Banner tone="warn">
             <strong>{forgotten.length === 1 ? 'Un départ n’a pas été pointé' : `${forgotten.length} départs n’ont pas été pointés`}</strong>
@@ -77,22 +90,6 @@ export function Today() {
           </Banner>
         )}
 
-        {amToday && (
-          <Banner tone="info" icon="sun">
-            <strong>{AM_ABS_LABEL[amToday.type]}</strong>
-            <span>Du {dayLabel(amToday.from)} au {dayLabel(amToday.to)}, pour tous les enfants.</span>
-          </Banner>
-        )}
-
-        {kids.length === 0 && (
-          <div class="card empty">
-            <h2>{s.contracts.length ? 'Aucun contrat ce jour-là' : 'Ajoute ton premier enfant'}</h2>
-            <p class="muted">Le planning du contrat remplit les journées tout seul. Tu n’auras qu’à noter ce qui change.</p>
-            {!s.contracts.length && <a class="btn btn-primary btn-lg" href="#/contrat/nouveau"><Icon name="plus" />Ajouter un enfant</a>}
-          </div>
-        )}
-
-        {kids.map((c) => <KidCard c={c} day={day} onEdit={() => setEdit(c)} />)}
 
         {s.contracts.length > 0 && (
           <button class="btn btn-outline btn-block" onClick={() => setAmSheet(true)}>
@@ -146,7 +143,7 @@ function KidCard({ c, day, onEdit }: { c: Contract; day: string; onEdit: () => v
     if (na) {
       const isArr = na.kind === 'a';
       action = {
-        label: isArr ? (di.planned.length || pres.length ? 'Arrivée' : 'Accueil imprévu') : 'Départ',
+        label: isArr ? (di.planned.length || pres.length ? 'Arrivée' : 'Imprévu') : 'Départ',
         quiet: !di.planned.length && !pres.length,
         icon: isArr ? 'in' : 'out',
         run: async () => {
@@ -185,12 +182,12 @@ function KidCard({ c, day, onEdit }: { c: Contract; day: string; onEdit: () => v
       )}
       <div class="kid-actions" style={!action ? { gridTemplateColumns: '1fr' } : undefined}>
         {action && (
-          <button class={action.quiet ? 'btn btn-outline' : 'btn btn-primary btn-lg'} onClick={action.run}>
+          <button class={action.quiet ? 'btn btn-outline' : 'btn btn-primary btn-lg'} onClick={action.run} aria-label={action.quiet ? `Accueil imprévu : arrivée de ${c.child}` : undefined}>
             <Icon name={action.icon} />{action.label}
           </button>
         )}
-        <button class={`btn ${action && !action.quiet ? 'btn-secondary btn-lg' : 'btn-secondary'}`} onClick={onEdit} aria-label={`Modifier la journée de ${c.child}`}>
-          <Icon name="edit" />{action ? '' : day > t ? 'Prévoir une absence' : 'Modifier la journée'}
+        <button class={`btn btn-edit ${action && !action.quiet ? 'btn-secondary btn-lg' : 'btn-secondary'}`} onClick={onEdit} aria-label={`${action ? 'Modifier' : day > t ? 'Prévoir une absence' : 'Modifier la journée'} (${c.child})`}>
+          <Icon name="edit" />{action ? 'Modifier' : day > t ? 'Prévoir une absence' : 'Modifier la journée'}
         </button>
       </div>
     </article>

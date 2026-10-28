@@ -31,7 +31,7 @@ export function Topbar({ title, sub, back, screen, end }: { title: string; sub?:
       </h1>
       {end}
       <button class="pill" onClick={() => setOpen(true)} aria-haspopup="dialog">
-        <Icon name="message" size={20} />
+        <Icon name="message" size={18} />
         Ça coince
       </button>
       {open && <CoinceSheet screen={screen} onClose={() => setOpen(false)} />}
@@ -44,7 +44,7 @@ function CoinceSheet({ screen, onClose }: { screen: string; onClose: () => void 
   const id = useId();
   return (
     <Sheet title="Ça coince ?" onClose={onClose}>
-      <p>Dis en quelques mots ce qui te gêne sur cet écran. C’est noté sur ton téléphone et partira (sans prénom) dans l’export du pilote.</p>
+      <p>Dis en quelques mots ce qui te gêne sur cet écran. C’est noté sur ton téléphone. Ta remarque fera partie du bilan anonyme du mois, sans aucun prénom.</p>
       <div class="field">
         <label for={id}>Ce qui coince</label>
         <textarea id={id} class="input" value={text} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} placeholder="Ex. : je ne trouve pas comment corriger une heure d’arrivée" />
@@ -102,7 +102,7 @@ export function Toaster() {
     const off = onToast((m) => {
       setT(m);
       clearTimeout(timer);
-      if (m) timer = setTimeout(() => setT((cur) => (cur?.id === m.id ? null : cur)), m.action ? 30000 : m.undo ? 6000 : 3500);
+      if (m) timer = setTimeout(() => setT((cur) => (cur?.id === m.id ? null : cur)), m.action ? 30000 : m.undo ? 10000 : 4000);
     });
     return () => { off(); clearTimeout(timer); };
   }, []);

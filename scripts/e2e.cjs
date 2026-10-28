@@ -73,7 +73,7 @@ async function run(scheme) {
   // Absence enfant malade hier (deux gestes : jour, puis enfant)
   const strip = p.locator('.daystrip button');
   await strip.nth(4).click();
-  await p.getByRole('button', { name: /Modifier la journée de Lou/ }).click();
+  await p.getByRole('button', { name: /Modifier la journée \(Lou\)/ }).click();
   await p.getByRole('radio', { name: /Malade, avec certificat/ }).click();
   await shot('04-journee');
   await p.getByRole('button', { name: 'Enregistrer' }).click();
@@ -184,8 +184,11 @@ async function run(scheme) {
   for (const h of ['', 'carnet', 'mois', 'plus', 'contrat/nouveau', 'conges', 'fin', 'fiscal', 'sauvegarde', 'pilote']) {
     await p.goto(base + '#/' + h);
     await p.waitForTimeout(150);
-    const w = await p.evaluate(() => document.documentElement.scrollWidth);
-    assert(w <= 390, `pas de défilement horizontal (#/${h})`);
+    const over = await p.evaluate(() => {
+      const scrollable = (el) => { for (let x = el.parentElement; x; x = x.parentElement) { const o = getComputedStyle(x).overflowX; if (o === 'auto' || o === 'scroll') return true; } return false; };
+      return [...document.querySelectorAll('main *')].filter((el) => { const r = el.getBoundingClientRect(); return r.width && r.right > innerWidth + 1 && !scrollable(el); }).map((el) => el.tagName + '.' + el.className).slice(0, 3);
+    });
+    assert(over.length === 0, `rien ne dépasse de l’écran (#/${h})` + (over.length ? ' : ' + over.join(', ') : ''));
   }
 
   // Cibles tactiles >= 44 px

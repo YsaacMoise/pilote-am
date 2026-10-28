@@ -145,7 +145,7 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
     return info;
   }
 
-  if (ferie && plannedMin > 0 && !rec?.ferieTravaille) {
+  if (ferie && plannedMin > 0 && !rec?.ferieTravaille && !rec?.pres?.some((p) => p.a)) {
     info.kind = 'ferie';
     return info;
   }
@@ -167,26 +167,23 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
     info.kind = 'present';
     let total = 0;
     let extra = 0;
-    pres.forEach((p, i) => {
-      const plage = planned[i];
+    // Les heures en plus = temps de présence hors des plages prévues (sans associer présence et plage par rang).
+    for (const p of pres) {
+      const a = minutes(p.a!);
       let dep = p.d;
       if (!dep) {
-        if (d < ctx.today) {
-          info.departOublie = true;
-          dep = plage ? plage.end : p.a;
-        } else {
-          info.enCours = true;
-          dep = plage ? plage.end : p.a; // provisoire
-        }
+        const plage = planned.find((x) => minutes(x.end) > a);
+        if (d < ctx.today) info.departOublie = true;
+        else info.enCours = true;
+        dep = plage ? plage.end : p.a;
       }
-      const a = minutes(p.a!), b = minutes(dep!);
-      if (b > a) total += b - a;
-      if (plage) {
-        extra += Math.max(0, minutes(plage.start) - a) + Math.max(0, b - minutes(plage.end));
-      } else if (b > a) {
-        extra += b - a;
-      }
-    });
+      const b = minutes(dep!);
+      if (b <= a) continue;
+      total += b - a;
+      let overlap = 0;
+      for (const x of planned) overlap += Math.max(0, Math.min(b, minutes(x.end)) - Math.max(a, minutes(x.start)));
+      extra += b - a - overlap;
+    }
     info.presentMin = total;
     info.extraMin = extra;
     return info;
@@ -207,7 +204,8 @@ export function sickDeductible(ctx: Ctx): Set<ISODate> {
   return memo(ctx, 'sick', () => {
     const { c } = ctx;
     const certDays = [...ctx.days.values()]
-      .filter((r) => r.abs === 'malade_certif' && plannedPlages(c, r.date).length > 0)
+      .filter((r) => r.abs === 'malade_certif' && plannedPlages(c, r.date).length > 0 && !amLeaveOn(ctx.leaves, r.date)
+        && !(holidayName(r.date) && !r.ferieTravaille))
       .map((r) => r.date)
       .sort();
     const out = new Set<ISODate>();
@@ -264,7 +262,9 @@ export function contractYearIndex(c: Contract, d: ISODate): number {
 export function weekOvertime(ctx: Ctx, monday: ISODate): Map<ISODate, { compl: number; maj: number }> {
   return memo(ctx, 'wk' + monday, () => {
     const out = new Map<ISODate, { compl: number; maj: number }>();
-    let cum = weeklyMinutes(ctx.c.planning);
+    // Base de la semaine : heures prévues dans le contrat cette semaine-là (hors semaines sans accueil, hors contrat).
+    let cum = 0;
+    for (let i = 0; i < 7; i++) cum += plannedPlages(ctx.c, addDays(monday, i)).reduce((s, p) => s + plageMin(p), 0);
     for (let i = 0; i < 7; i++) {
       const d = addDays(monday, i);
       const di = dayInfo(ctx, d);
@@ -388,7 +388,7 @@ function computeMonthBase(ctx: Ctx, m: Month): MonthBase {
         const nbRepas = di.rec?.repas ?? c.repasParJour;
         r.repas += nbRepas * c.repasPrix;
       }
-      if (di.ferie && di.ferieTravaille && di.presentMin > 0) {
+      if (di.ferie && (di.ferieTravaille || di.kind === 'present') && di.presentMin > 0) {
         const pct = isMayDay(d) ? 100 : 10;
         r.ferieAmount += Math.round((di.presentMin * c.rateNet * pct) / 100 / 60);
         r.ferieDays.push(d);

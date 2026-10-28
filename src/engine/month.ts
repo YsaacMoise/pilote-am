@@ -36,7 +36,7 @@ export interface DeclLine { label: string; value: string; hint?: string }
 export function declarationLines(ctx: Ctx, r: MonthResult): DeclLine[] {
   const complete = ctx.c.yearType === 'complete';
   return [
-    { label: 'Heures normales', value: `${r.heuresNormales} h`, hint: 'Heures mensualisées, arrondies à l’heure' },
+    { label: 'Heures normales', value: `${r.heuresNormales} h`, hint: 'Les heures payées chaque mois, arrondies à l’heure' },
     { label: 'Jours d’activité', value: `${r.joursActivite}` },
     {
       label: 'Jours de congés payés',
@@ -51,7 +51,7 @@ export function declarationLines(ctx: Ctx, r: MonthResult): DeclLine[] {
     {
       label: 'Heures majorées',
       value: hoursLabel(r.majMin),
-      hint: `Au-delà de 45 h dans la semaine, +${ctx.c.majoration} %`,
+      hint: `Au-delà de 45 h dans la semaine, +${ctx.c.majoration}\u00a0%`,
     },
     { label: 'Salaire net', value: euros(r.netTotal) },
     { label: 'Indemnités d’entretien', value: euros(r.entretien), hint: `${r.presenceDays} jour${r.presenceDays > 1 ? 's' : ''} d’accueil` },

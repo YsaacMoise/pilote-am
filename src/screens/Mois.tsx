@@ -73,7 +73,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
       <section class="card stack" aria-labelledby="tot">
         <span class="muted" id="tot">À verser par la famille {c.family ? `(${c.family})` : ''}</span>
         <span class="total">{euros(totalVerse)}</span>
-        <span class="muted small">dont salaire net {euros(r.netTotal)} · brut estimé {euros(r.brutEstime)}</span>
+        <span class="muted small">dont salaire net {euros(r.netTotal)}, soit environ {euros(r.brutEstime)} brut</span>
         {current && <span class="tag info" style={{ alignSelf: 'flex-start' }}>Provisoire jusqu’à la fin du mois</span>}
       </section>
 
@@ -111,7 +111,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
         <summary>Comment c’est calculé</summary>
         <div class="more-body">
           <dl class="kv">
-            <dt>Salaire mensualisé</dt><dd>{euros(r.salaireMens)}</dd>
+            <dt>Salaire de base (le même chaque mois)</dt><dd>{euros(r.salaireMens)}</dd>
             <dt>{c.yearType === 'complete' ? 'Heures prévues ce mois' : 'Jours prévus ce mois'}</dt>
             <dd>{c.yearType === 'complete' ? hoursLabel(r.divisorMin) : r.divisorDays}</dd>
             {r.retenue > 0 && (<><dt>Retenue ({c.yearType === 'complete' ? hoursLabel(r.deductedMin) : `${r.deductedDays} j`} non payés)</dt><dd>−{euros(r.retenue)}</dd></>)}
@@ -133,6 +133,11 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
         </div>
       </details>
 
+      <div class="row">
+        <label for="other-day" class="label" style={{ flex: 1 }}>Corriger un autre jour</label>
+        <input id="other-day" class="input" style={{ width: 'auto' }} type="date" min={firstDay(month)} max={lastDay(month) < today() ? lastDay(month) : today()}
+          onChange={(e) => { const v = (e.target as HTMLInputElement).value; if (v) onEdit(v); (e.target as HTMLInputElement).value = ''; }} />
+      </div>
       <section class="stack-sm" aria-labelledby="exc-t">
         <h2 id="exc-t" class="section-title">Ce qui a changé ce mois-ci</h2>
         {exceptions.length === 0 ? (
@@ -143,7 +148,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
               let sub = '';
               if (di.kind === 'am' && di.amLeave) sub = AM_ABS_LABEL[di.amLeave];
               else if (di.kind === 'ferie') sub = `Férié : ${di.ferie}`;
-              else if (di.rec?.abs) sub = CHILD_ABS_LABEL[di.rec.abs] + (di.deducted ? ' · retenu' : ' · payé');
+              else if (di.rec?.abs) sub = CHILD_ABS_LABEL[di.rec.abs] + (di.deducted ? ', retenu' : ', payé');
               else if (di.departOublie) sub = 'Départ non pointé';
               else if (di.extraMin) sub = `+${hoursLabel(di.extraMin)} en plus`;
               else if (di.rec?.pres?.length) sub = 'Horaires pointés';

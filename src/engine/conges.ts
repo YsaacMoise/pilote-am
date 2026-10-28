@@ -120,7 +120,7 @@ export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; m
       if (!b.active) continue;
       if (b.missing) manquants.push(m);
       base += b.net;
-      if (!b.fromHistory) base += cpForMonth(ctx, m, enfants).indemnite;
+      if (!b.fromHistory) { const cp = cpForMonth(ctx, m, enfants); base += cp.indemnite + cp.complement; }
     }
     return { base, manquants };
   });

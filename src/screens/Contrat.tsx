@@ -78,7 +78,7 @@ export function Contrat({ id }: { id?: string }) {
               <span class="label" id="col-l">Sa couleur</span>
               <div class="chips" role="radiogroup" aria-labelledby="col-l">
                 {CHILD_COLORS.map((_, i) => (
-                  <button class="chip" role="radio" aria-checked={c.color === i} aria-pressed={c.color === i} onClick={() => set({ color: i })} aria-label={COLOR_NAMES[i]}>
+                  <button class="chip" role="radio" aria-checked={c.color === i} onClick={() => set({ color: i })} aria-label={COLOR_NAMES[i]}>
                     <Gommette name={c.child || '?'} color={i} size="sm" />
                     <span style={{ fontSize: '15px' }}>{COLOR_NAMES[i]}</span>
                   </button>

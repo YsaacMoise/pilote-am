@@ -339,3 +339,51 @@ describe('montants', () => {
     expect(euros(123456)).toBe('1 234,56 €');
   });
 });
+
+describe('régressions (relecture indépendante)', () => {
+  const deuxPlages: Planning = {};
+  for (const d of [1, 2, 3, 4, 5]) deuxPlages[d] = [{ start: '08:00', end: '12:00' }, { start: '14:00', end: '18:00' }];
+  it('deux plages : une présence continue 8 h–18 h = 2 h en plus (la pause)', () => {
+    const ctx = makeCtx(contract({ planning: deuxPlages }), [rec('2026-10-05', { pres: [{ a: '08:00', d: '18:00' }] })], [], '2026-11-01');
+    expect(dayInfo(ctx, '2026-10-05').extraMin).toBe(120);
+  });
+  it('deux plages : présence l’après-midi seulement = rien en plus', () => {
+    const ctx = makeCtx(contract({ planning: deuxPlages }), [rec('2026-10-05', { pres: [{ a: '14:00', d: '18:00' }] })], [], '2026-11-01');
+    expect(dayInfo(ctx, '2026-10-05').extraMin).toBe(0);
+  });
+  it('année incomplète : accueil pendant une semaine sans accueil = heures complémentaires', () => {
+    const c = contract({ yearType: 'incomplete', weeks: 40, weeksOff: ['2026-10-05'] });
+    const ctx = makeCtx(c, [rec('2026-10-06', { pres: [{ a: '08:00', d: '17:00' }] })], [], '2026-11-01');
+    const b = monthBase(ctx, '2026-10');
+    expect(b.complMin).toBe(540);
+    expect(b.majMin).toBe(0);
+  });
+  it('fin : congés déjà versés à la prise principale non payés deux fois', () => {
+    const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', yearType: 'incomplete', weeks: 46, cpMode: 'principale' });
+    const leaves: AmLeave[] = [{ id: 'l', type: 'cp', from: '2026-08-03', to: '2026-08-14' }];
+    const ctx = makeCtx(c, [], leaves, '2027-01-10');
+    expect(cpForMonth(ctx, '2026-08').indemnite).toBe(76125);
+    const f = finDeContrat(ctx, '2027-01-04', 'demission');
+    const seul = finDeContrat(makeCtx({ ...c, cpMode: 'principale' }, [], leaves, '2027-01-10'), '2027-01-04', 'demission');
+    // Rien de plus que la période en cours : la période précédente est soldée.
+    expect(f.cpIndemnite).toBe(seul.cpIndemnite);
+    const cur = indemnite(makeCtx({ ...c, end: f.dernierJour }, [], leaves, '2027-01-10'), 2026);
+    expect(f.cpIndemnite).toBeLessThanOrEqual(Math.max(cur.dixieme, cur.maintien) + 1);
+  });
+  it('fin : régularisation d’une embauche en cours de mois sans double prorata', () => {
+    const p: Planning = { 1: [{ start: '08:00', end: '17:00' }], 2: [{ start: '08:00', end: '17:00' }] };
+    const c = contract({ start: '2026-03-16', trackedFrom: '2026-03-16', yearType: 'incomplete', weeks: 46, planning: p });
+    const f = finDeContrat(makeCtx(c, [], [], '2026-04-30'), '2026-03-23', 'retrait');
+    // Préavis jusqu’au 30 : 5 jours prévus sur 10 en mars → 69 h × 5/10 = 34,5 h payées ; dues : 16, 17, 23, 24, 30 = 45 h → 10,5 h
+    expect(f.dernierJour).toBe('2026-03-30');
+    expect(Math.round(f.regulMinutes / 6) / 10).toBeCloseTo((5 * 9) - 18 * 46 / 12 * 5 / 10, 0);
+  });
+  it('préavis : 1 mois à partir de l’annonce, dernier jour la veille du quantième', () => {
+    const f = finDeContrat(makeCtx(contract({ start: '2024-01-08', trackedFrom: '2024-01-08' }), [], [], '2026-05-01'), '2026-03-15', 'retrait');
+    expect(f.dernierJour).toBe('2026-04-14');
+  });
+  it('pointage un jour férié sans case cochée : compté comme travaillé', () => {
+    const ctx = makeCtx(contract(), [rec('2026-05-14', { pres: [{ a: '08:00', d: '17:00' }] })], [], '2026-06-01');
+    expect(monthBase(ctx, '2026-05').ferieAmount).toBe(315);
+  });
+});
