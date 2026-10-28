@@ -1,22 +1,16 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
     "jsx": "react-jsx",
+    "jsxImportSource": "preact",
     "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-    "noFallthroughCasesInSwitch": true,
-    "exactOptionalPropertyTypes": false,
-    "noEmit": true,
+    "noUnusedLocals": true,
     "skipLibCheck": true,
-    "isolatedModules": true,
-    "verbatimModuleSyntax": false,
-    "esModuleInterop": true,
-    "typeRoots": ["./types", "./node_modules/@types"],
-    "types": ["react", "react-dom"]
+    "noEmit": true,
+    "types": ["vite/client"]
   },
-  "include": ["src", "tests", "types"]
+  "include": ["src", "tests"]
 }

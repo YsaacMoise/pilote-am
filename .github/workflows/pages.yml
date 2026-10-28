@@ -1,10 +1,10 @@
 # Publication sur GitHub Pages.
-# - branche main : l'app de référence, à la racine du site
-# - branche version-claude-code : la version concurrente, sous /cc/ (si elle existe et se construit)
+# - branche main : la version de travail, à la racine du site
+# - branche base-claude-code-v1 : la base enregistrée (version Claude Code intacte), sous /cc/
 name: Publier le site
 on:
   push:
-    branches: [main, version-claude-code]
+    branches: [main, base-claude-code-v1]
   workflow_dispatch:
 permissions:
   contents: read
@@ -24,28 +24,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: oven-sh/setup-bun@v2
-      - name: App de référence (main)
+      - name: Version de travail (main)
         working-directory: main
         run: |
           npm ci
           npx tsc --noEmit -p .
-          bun test tests
-          node build.mjs
-      - name: Version concurrente présente ?
-        id: cc
-        working-directory: main
-        run: |
-          if git ls-remote --exit-code --heads origin version-claude-code >/dev/null; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
+          npm test
+          npm run build
       - uses: actions/checkout@v4
-        if: steps.cc.outputs.present == 'true'
         with:
-          ref: version-claude-code
-          path: cc
-      - name: Version concurrente (version-claude-code) sous /cc/
-        if: steps.cc.outputs.present == 'true'
+          ref: base-claude-code-v1
+          path: base
+      - name: Base enregistrée sous /cc/
         continue-on-error: true
-        working-directory: cc
+        working-directory: base
         run: |
           npm ci
           npm run build

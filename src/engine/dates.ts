@@ -1,193 +1,136 @@
-/**
- * Dates civiles sans fuseau horaire.
- *
- * Une date est une chaîne « AAAA-MM-JJ ». Les calculs passent par un numéro de jour
- * (jours depuis le 1970-01-01, en UTC) pour éviter tout décalage d'heure d'été.
- * Les heures de la journée sont des minutes depuis minuit (0 à 1440).
- */
+// Dates au format 'AAAA-MM-JJ', calculées en UTC pour éviter les pièges de l'heure d'été.
 
 export type ISODate = string;
-export type Minutes = number;
+export type Month = string; // 'AAAA-MM'
 
-/** Lundi = 0 … dimanche = 6 */
-export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
-
-const ISO_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
-
-export function isISODate(s: string): boolean {
-  const m = ISO_RE.exec(s);
-  if (!m) return false;
-  const y = Number(m[1]);
-  const mo = Number(m[2]);
-  const d = Number(m[3]);
-  return mo >= 1 && mo <= 12 && d >= 1 && d <= daysInMonth(y, mo);
+export function parse(d: ISODate): Date {
+  const [y, m, j] = d.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, j));
 }
 
-export function parts(date: ISODate): { y: number; m: number; d: number } {
-  const match = ISO_RE.exec(date);
-  if (!match) throw new Error(`Date invalide : ${date}`);
-  return { y: Number(match[1]), m: Number(match[2]), d: Number(match[3]) };
+export function fmt(dt: Date): ISODate {
+  return dt.toISOString().slice(0, 10);
 }
 
-export function make(y: number, m: number, d: number): ISODate {
-  return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+export function addDays(d: ISODate, n: number): ISODate {
+  const dt = parse(d);
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return fmt(dt);
 }
 
-export function dayNumber(date: ISODate): number {
-  const { y, m, d } = parts(date);
-  return Math.round(Date.UTC(y, m - 1, d) / 86_400_000);
+/** 1 = lundi … 7 = dimanche */
+export function weekday(d: ISODate): number {
+  const w = parse(d).getUTCDay();
+  return w === 0 ? 7 : w;
 }
 
-export function fromDayNumber(n: number): ISODate {
-  const dt = new Date(n * 86_400_000);
-  return make(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
+export function daysBetween(a: ISODate, b: ISODate): number {
+  return Math.round((parse(b).getTime() - parse(a).getTime()) / 86400000);
 }
 
-export function addDays(date: ISODate, days: number): ISODate {
-  return fromDayNumber(dayNumber(date) + days);
+export function monthOf(d: ISODate): Month {
+  return d.slice(0, 7);
 }
 
-export function diffDays(from: ISODate, to: ISODate): number {
-  return dayNumber(to) - dayNumber(from);
+export function firstDay(m: Month): ISODate {
+  return `${m}-01`;
 }
 
-export function weekday(date: ISODate): Weekday {
-  // 1970-01-01 était un jeudi (lundi = 0 → jeudi = 3)
-  const n = dayNumber(date);
-  return ((((n + 3) % 7) + 7) % 7) as Weekday;
+export function lastDay(m: Month): ISODate {
+  const [y, mo] = m.split('-').map(Number);
+  return fmt(new Date(Date.UTC(y, mo, 0)));
 }
 
-export function isLeapYear(y: number): boolean {
-  return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+export function addMonths(m: Month, n: number): Month {
+  const [y, mo] = m.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, mo - 1 + n, 1));
+  return dt.toISOString().slice(0, 7);
 }
 
-export function daysInMonth(y: number, m: number): number {
-  const table = [31, isLeapYear(y) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  const value = table[m - 1];
-  if (value === undefined) throw new Error(`Mois invalide : ${m}`);
-  return value;
-}
-
-/** Mois au format « AAAA-MM ». */
-export type YearMonth = string;
-
-export function yearMonth(date: ISODate): YearMonth {
-  return date.slice(0, 7);
-}
-
-export function monthStart(ym: YearMonth): ISODate {
-  return `${ym}-01`;
-}
-
-export function monthEnd(ym: YearMonth): ISODate {
-  const [y, m] = ym.split('-').map(Number) as [number, number];
-  return make(y, m, daysInMonth(y, m));
-}
-
-export function addMonthsYM(ym: YearMonth, n: number): YearMonth {
-  const [y, m] = ym.split('-').map(Number) as [number, number];
-  const idx = y * 12 + (m - 1) + n;
-  const ny = Math.floor(idx / 12);
-  const nm = (idx % 12) + 1;
-  return `${String(ny).padStart(4, '0')}-${String(nm).padStart(2, '0')}`;
-}
-
-/** Toutes les dates d'un mois, dans l'ordre. */
-export function datesOfMonth(ym: YearMonth): ISODate[] {
-  const start = monthStart(ym);
-  const end = monthEnd(ym);
-  return range(start, end);
-}
-
-/** Dates de from à to inclus. */
-export function range(from: ISODate, to: ISODate): ISODate[] {
+export function eachDay(from: ISODate, to: ISODate): ISODate[] {
   const out: ISODate[] = [];
-  const a = dayNumber(from);
-  const b = dayNumber(to);
-  for (let n = a; n <= b; n++) out.push(fromDayNumber(n));
+  for (let d = from; d <= to; d = addDays(d, 1)) out.push(d);
   return out;
 }
 
-/** Lundi de la semaine civile qui contient la date. */
-export function mondayOf(date: ISODate): ISODate {
-  return addDays(date, -weekday(date));
+export function monthsBetween(from: Month, to: Month): Month[] {
+  const out: Month[] = [];
+  for (let m = from; m <= to; m = addMonths(m, 1)) out.push(m);
+  return out;
 }
 
-export function compare(a: ISODate, b: ISODate): number {
-  return a < b ? -1 : a > b ? 1 : 0;
+/** Lundi de la semaine qui contient d */
+export function mondayOf(d: ISODate): ISODate {
+  return addDays(d, 1 - weekday(d));
 }
 
-export function minDate(a: ISODate, b: ISODate): ISODate {
-  return a <= b ? a : b;
+export function minutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
 }
 
-export function maxDate(a: ISODate, b: ISODate): ISODate {
-  return a >= b ? a : b;
-}
-
-/**
- * Ancienneté en mois révolus entre deux dates (la date de fin incluse dans le calcul
- * comme jour d'anniversaire) : du 15/01 au 14/10 → 8 mois, au 15/10 → 9 mois.
- */
-export function fullMonthsBetween(from: ISODate, to: ISODate): number {
-  const a = parts(from);
-  const b = parts(to);
-  let months = (b.y - a.y) * 12 + (b.m - a.m);
-  if (b.d < a.d) {
-    // Le jour anniversaire n'est pas encore atteint, sauf si le mois de fin est trop court
-    const lastDay = daysInMonth(b.y, b.m);
-    if (!(b.d === lastDay && a.d > lastDay)) months -= 1;
-  }
-  return Math.max(0, months);
-}
-
-/** « 7 h 52 » à partir de minutes depuis minuit. */
-export function formatTime(min: Minutes): string {
+export function hhmm(min: number): string {
   const h = Math.floor(min / 60);
-  const m = min % 60;
-  return m === 0 ? `${h} h` : `${h} h ${String(m).padStart(2, '0')}`;
+  const m = Math.round(min % 60);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-/** « 8 h 30 » ou « 8:30 » → minutes ; null si invalide. */
-export function parseTime(input: string): Minutes | null {
-  const m = /^\s*(\d{1,2})\s*(?:h|:)\s*(\d{0,2})\s*$/i.exec(input);
-  if (!m) return null;
-  const h = Number(m[1]);
-  const mi = m[2] ? Number(m[2]) : 0;
-  if (h > 24 || mi > 59 || (h === 24 && mi > 0)) return null;
-  return h * 60 + mi;
+/** Ajoute n mois calendaires à une date (fin de mois gérée) */
+export function addMonthsToDate(d: ISODate, n: number): ISODate {
+  const dt = parse(d);
+  const day = dt.getUTCDate();
+  const target = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + n, 1));
+  const last = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(day, last));
+  return fmt(target);
 }
 
-/** « 173,33 h » à partir de minutes. */
-export function formatHours(min: Minutes, decimals = 2): string {
-  const value = min / 60;
-  const fixed = value.toFixed(decimals);
-  const trimmed = decimals > 0 ? fixed.replace(/\.?0+$/, '') : fixed;
-  return `${trimmed.replace('.', ',')} h`;
+/** Ancienneté en mois révolus entre deux dates */
+export function fullMonthsBetween(a: ISODate, b: ISODate): number {
+  let n = 0;
+  while (addMonthsToDate(a, n + 1) <= b) n++;
+  return n;
 }
 
-const MONTHS_FR = [
-  'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
-  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
-];
-const WEEKDAYS_FR = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
-
-export function monthNameFR(m: number): string {
-  return MONTHS_FR[m - 1] ?? '';
+/** Période de référence des congés (1er juin – 31 mai) contenant d : renvoie l'année de début */
+export function cpPeriodStartYear(d: ISODate): number {
+  const y = Number(d.slice(0, 4));
+  return d.slice(5) >= '06-01' ? y : y - 1;
 }
 
-export function weekdayNameFR(w: Weekday): string {
-  return WEEKDAYS_FR[w] ?? '';
+export function cpPeriod(startYear: number): { from: ISODate; to: ISODate } {
+  return { from: `${startYear}-06-01`, to: `${startYear + 1}-05-31` };
 }
 
-/** « mercredi 28 octobre » */
-export function formatLongDate(date: ISODate): string {
-  const { m, d } = parts(date);
-  return `${weekdayNameFR(weekday(date))} ${d === 1 ? '1er' : d} ${monthNameFR(m)}`;
+const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+const JOURS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche'];
+
+export function monthLabel(m: Month): string {
+  const [y, mo] = m.split('-').map(Number);
+  return `${MOIS[mo - 1]} ${y}`;
 }
 
-/** « octobre 2026 » */
-export function formatYearMonth(ym: YearMonth): string {
-  const [y, m] = ym.split('-').map(Number) as [number, number];
-  return `${monthNameFR(m)} ${y}`;
+export function dayLabel(d: ISODate, withYear = false): string {
+  const dt = parse(d);
+  const s = `${JOURS[weekday(d) - 1]} ${dt.getUTCDate()} ${MOIS[dt.getUTCMonth()]}`;
+  return withYear ? `${s} ${dt.getUTCFullYear()}` : s;
+}
+
+export function shortDate(d: ISODate): string {
+  const [y, m, j] = d.split('-');
+  return `${j}/${m}/${y}`;
+}
+
+export const JOUR_NOMS = JOURS;
+export const MOIS_NOMS = MOIS;
+
+/** Date locale du téléphone (et non UTC) */
+export function today(): ISODate {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+}
+
+export function nowHHMM(): string {
+  const n = new Date();
+  return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
 }

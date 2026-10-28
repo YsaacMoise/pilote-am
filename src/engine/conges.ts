@@ -1,237 +1,228 @@
-import { addDays, daysInMonth, make, parts, range, weekday, type ISODate, type YearMonth } from './dates';
-import { holidayOn } from './holidays';
-import { mulMulDiv, roundDiv, type Cents } from './money';
-import { weeklyMinutes } from './schedule';
-import { MAJORATION_THRESHOLD } from './month';
-import type { Contract, DateRange } from './types';
+// Congés payés (art. 48 et 102) : acquisition, compteur, indemnité.
+import { addMonths, cpPeriod, cpPeriodStartYear, daysBetween, eachDay, monthOf, monthsBetween, weekday, type ISODate, type Month } from './dates';
+import { holidayName } from './holidays';
+import { monthBase, weeklyMinutes, weeksPerYear, type Ctx } from './payroll';
 
-/**
- * Congés payés (CCN art. 48.1 et 102).
- *
- * - Période de référence : du 1er juin au 31 mai (première année : de l'embauche au 31 mai).
- * - 2,5 jours ouvrables par mois de travail, arrondi à l'entier supérieur, 30 jours au plus.
- *   Un mois incomplet compte au prorata des jours de contrat.
- * - Mois entièrement couvert par un arrêt maladie de l'AM : 2 jours (Code du travail, art. L3141-5-1).
- * - Jours supplémentaires pour enfants à charge (art. 48.1.3.3) : 2 jours par enfant de moins de 15 ans
- *   au 30 avril (1 jour si les congés acquis ne dépassent pas 6 jours), total plafonné à 30 jours
- *   pour une salariée de 21 ans ou plus.
- * - Indemnité : la plus favorable entre le maintien de salaire et le dixième de la rémunération
- *   de la période (art. 48.1.1.5). Les calculs se font en net, comme la déclaration Pajemploi :
- *   le rapport entre les deux méthodes est le même en net et en brut.
- * - Année complète : les congés sont déjà dans le salaire mensualisé ; un complément est dû
- *   si le dixième est plus favorable. Il est versé en juin (date non fixée par la CCN).
- * - Année incomplète : l'indemnité s'ajoute au salaire, en juin, à la prise principale ou au
- *   fur et à mesure de la prise (toute autre modalité est proscrite).
- */
-
-export interface ReferencePeriod {
-  /** Premier jour de la période (1er juin, ou date d'embauche) */
-  start: ISODate;
-  /** Dernier jour (31 mai, ou fin du contrat) */
-  end: ISODate;
-  /** Année du 31 mai qui clôt la période */
-  closingYear: number;
+/** Jours ouvrables (lundi → samedi, hors fériés) d'un intervalle */
+export function joursOuvrables(from: ISODate, to: ISODate): ISODate[] {
+  return eachDay(from, to).filter((d) => weekday(d) <= 6 && !holidayName(d));
 }
 
-export function referencePeriodFor(date: ISODate): { start: ISODate; end: ISODate; closingYear: number } {
-  const { y, m } = parts(date);
-  const closingYear = m >= 6 ? y + 1 : y;
-  return { start: make(closingYear - 1, 6, 1), end: make(closingYear, 5, 31), closingYear };
-}
-
-export function contractPeriods(c: Contract, upTo: ISODate): ReferencePeriod[] {
-  const out: ReferencePeriod[] = [];
-  const last = c.endDate && c.endDate < upTo ? c.endDate : upTo;
-  let cursor = c.startDate;
-  while (cursor <= last) {
-    const p = referencePeriodFor(cursor);
-    const start = cursor > p.start ? cursor : p.start;
-    const end = c.endDate && c.endDate < p.end ? c.endDate : p.end;
-    out.push({ start, end, closingYear: p.closingYear });
-    cursor = addDays(p.end, 1);
-  }
-  return out;
-}
-
-export interface AcquisitionInput {
-  period: ReferencePeriod;
-  /** Dates d'arrêt maladie de l'AM (pour la règle des 2 jours par mois) */
-  amSickDates: ReadonlySet<ISODate>;
-  /** Dates de naissance des enfants à charge de l'AM */
-  amChildrenBirthDates: readonly ISODate[];
-  /** L'AM a 21 ans ou plus au 30 avril de l'année précédente */
-  amAtLeast21: boolean;
+function memo<T>(ctx: Ctx, key: string, f: () => T): T {
+  if (!ctx.cache) ctx.cache = new Map();
+  if (ctx.cache.has(key)) return ctx.cache.get(key) as T;
+  const v = f();
+  ctx.cache.set(key, v);
+  return v;
 }
 
 export interface Acquisition {
-  baseDays: number;
-  childrenDays: number;
-  totalDays: number;
+  startYear: number;
+  from: ISODate;
+  to: ISODate;
+  /** Jours acquis (arrondis au supérieur, 30 au plus, enfants à charge compris) */
+  jours: number;
+  /** Jours acquis à date (pour une période en cours) */
+  joursADate: number;
+  semaines: number;
+  enfantsBonus: number;
 }
 
-export function acquiredDays(input: AcquisitionInput): Acquisition {
-  const { period } = input;
-  let raw = 0;
-  const startParts = parts(period.start);
-  let y = startParts.y;
-  let m = startParts.m;
-  for (;;) {
-    const first = make(y, m, 1);
-    if (first > period.end) break;
-    const last = make(y, m, daysInMonth(y, m));
-    const from = first < period.start ? period.start : first;
-    const to = last > period.end ? period.end : last;
-    const covered = range(from, to).length;
-    const monthDays = daysInMonth(y, m);
-    const allSick = range(from, to).every((d) => input.amSickDates.has(d));
-    const rate = allSick ? 2 : 2.5;
-    raw += (rate * covered) / monthDays;
-    m += 1;
-    if (m > 12) {
-      m = 1;
-      y += 1;
+function weeksIn(ctx: Ctx, from: ISODate, to: ISODate): number {
+  const { c } = ctx;
+  const a = from < c.start ? c.start : from;
+  const b = c.end && c.end < to ? c.end : to;
+  if (b < a) return 0;
+  const cal = (daysBetween(a, b) + 1) / 7;
+  return c.yearType === 'complete' ? cal : (cal * weeksPerYear(c)) / 52;
+}
+
+function round(x: number): number {
+  return Math.min(30, Math.ceil(x - 1e-9));
+}
+
+/** Acquisition pour la période de référence commençant le 1er juin `y` */
+export function acquisition(ctx: Ctx, y: number, enfantsACharge = 0): Acquisition {
+  return memo(ctx, `acq${y}|${enfantsACharge}`, () => {
+    const { c } = ctx;
+    const p = cpPeriod(y);
+    const trackedY = cpPeriodStartYear(c.trackedFrom);
+    let raw: number, rawADate: number, semaines: number;
+    const upTo = ctx.today < p.to ? ctx.today : p.to;
+    if (y === trackedY && c.trackedFrom > c.start) {
+      semaines = weeksIn(ctx, c.trackedFrom, p.to);
+      raw = c.balances.cpEnCours + (semaines / 4) * 2.5;
+      rawADate = c.balances.cpEnCours + (weeksIn(ctx, c.trackedFrom, upTo) / 4) * 2.5;
+    } else {
+      semaines = weeksIn(ctx, p.from, p.to);
+      raw = (semaines / 4) * 2.5;
+      rawADate = (weeksIn(ctx, p.from, upTo) / 4) * 2.5;
     }
-  }
-  const baseDays = Math.min(30, Math.ceil(raw - 1e-9));
-  const april30 = make(period.closingYear, 4, 30);
-  const eligibleChildren = input.amChildrenBirthDates.filter((b) => b <= april30 && ageOn(b, april30) < 15).length;
-  const perChild = baseDays <= 6 ? 1 : 2;
-  let childrenDays = eligibleChildren * perChild;
-  if (input.amAtLeast21) childrenDays = Math.max(0, Math.min(childrenDays, 30 - baseDays));
-  return { baseDays, childrenDays, totalDays: baseDays + childrenDays };
+    const base = round(raw);
+    // Salarié de 21 ans et plus : 2 jours par enfant à charge, sans dépasser 30 jours au total.
+    const bonus = base > 0 ? Math.max(0, Math.min(30, base + 2 * enfantsACharge) - base) : 0;
+    return {
+      startYear: y, from: p.from, to: p.to, jours: base + bonus, joursADate: round(Math.max(0, rawADate)),
+      semaines, enfantsBonus: bonus,
+    };
+  });
 }
 
-function ageOn(birth: ISODate, date: ISODate): number {
-  const b = parts(birth);
-  const d = parts(date);
-  let age = d.y - b.y;
-  if (d.m < b.m || (d.m === b.m && d.d < b.d)) age -= 1;
-  return age;
-}
-
-/** Jours ouvrables (lundi à samedi, hors jours fériés) compris dans des plages de congés. */
-export function workingDaysTaken(leave: readonly DateRange[], from: ISODate, to: ISODate): ISODate[] {
+/** Jours de congés payés pris (jours ouvrables) pendant la période [from, to] pour ce contrat */
+export function cpPrisEntre(ctx: Ctx, from: ISODate, to: ISODate): ISODate[] {
   const out: ISODate[] = [];
-  for (const r of leave) {
-    const start = r.from > from ? r.from : from;
-    const end = r.to < to ? r.to : to;
-    if (start > end) continue;
-    for (const d of range(start, end)) {
-      if (weekday(d) <= 5 && !holidayOn(d)) out.push(d);
+  for (const l of ctx.leaves) {
+    if (l.type !== 'cp') continue;
+    const a = l.from > from ? l.from : from;
+    const b = l.to < to ? l.to : to;
+    if (b < a) continue;
+    for (const d of joursOuvrables(a, b)) {
+      if (d >= ctx.c.start && (!ctx.c.end || d <= ctx.c.end)) out.push(d);
     }
   }
   return [...new Set(out)].sort();
 }
 
-/** Salaire net d'une semaine de planning type (majoration au-delà de 45 h incluse). */
-export function weeklyNetCents(c: Contract): Cents {
-  const weekly = weeklyMinutes(c.pattern);
-  const normal = Math.min(weekly, MAJORATION_THRESHOLD);
-  const majored = Math.max(0, weekly - MAJORATION_THRESHOLD);
-  return roundDiv(
-    BigInt(c.hourlyNetMilli) * BigInt(normal) * 100n + BigInt(c.hourlyNetMilli) * BigInt(majored) * BigInt(100 + c.majorationPct),
-    600n * 100n,
-  );
+export interface Compteur {
+  /** Période en cours */
+  enCours: Acquisition;
+  /** Jours acquis la période précédente, à prendre avant le 31 mai */
+  aPrendre: number;
+  pris: number;
+  reste: number;
+  /** Prise au-delà des droits */
+  depassement: boolean;
 }
 
-export interface CpIndemnity {
-  period: ReferencePeriod;
-  acquired: Acquisition;
-  /** Somme des salaires nets de la période, congés payés compris, hors indemnités */
-  base: Cents;
-  /** Vrai si toutes les paies de la période sont connues */
-  baseComplete: boolean;
-  tenth: Cents;
-  maintain: Cents;
-  /** Méthode retenue */
-  method: 'dixieme' | 'maintien';
-  /** Année incomplète : indemnité totale ; année complète : complément au-delà du maintien */
-  dueCents: Cents;
+export function compteur(ctx: Ctx, at: ISODate, enfantsACharge = 0): Compteur {
+  const { c } = ctx;
+  const y = cpPeriodStartYear(at);
+  const trackedY = cpPeriodStartYear(c.trackedFrom);
+  const enCours = acquisition(ctx, y, enfantsACharge);
+  let aPrendre: number;
+  if (y === trackedY) aPrendre = c.balances.cpRestants;
+  else if (y > trackedY) aPrendre = acquisition(ctx, y - 1, enfantsACharge).jours;
+  else aPrendre = 0;
+  const p = cpPeriod(y);
+  const pris = cpPrisEntre(ctx, p.from, at < p.to ? at : p.to).length;
+  const reste = aPrendre - pris;
+  return { enCours, aPrendre, pris, reste, depassement: reste < 0 };
 }
 
-export function cpIndemnity(
-  c: Contract,
-  period: ReferencePeriod,
-  acquired: Acquisition,
-  netSalariesByMonth: ReadonlyMap<YearMonth, Cents>,
-): CpIndemnity {
-  let base = 0;
-  let complete = true;
-  const startParts = parts(period.start);
-  let y = startParts.y;
-  let m = startParts.m;
-  for (;;) {
-    const ym = `${y}-${String(m).padStart(2, '0')}`;
-    if (make(y, m, 1) > period.end) break;
-    const value = netSalariesByMonth.get(ym);
-    if (value === undefined) complete = false;
-    else base += value;
-    m += 1;
-    if (m > 12) {
-      m = 1;
-      y += 1;
+/** Base du dixième : salaires nets (hors frais) de la période, indemnités de congés versées incluses */
+export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; manquants: Month[] } {
+  return memo(ctx, `b10${y}|${enfants}`, () => {
+    const p = cpPeriod(y);
+    let base = 0;
+    const manquants: Month[] = [];
+    for (const m of monthsBetween(monthOf(p.from), monthOf(p.to))) {
+      const b = monthBase(ctx, m);
+      if (!b.active) continue;
+      if (b.missing) manquants.push(m);
+      base += b.net;
+      if (!b.fromHistory) { const cp = cpForMonth(ctx, m, enfants); base += cp.indemnite + cp.complement; }
     }
-  }
-  const tenth = roundDiv(BigInt(base), 10n);
-  const maintain = mulMulDiv(weeklyNetCents(c), acquired.totalDays, 1, 6);
-  const method = tenth > maintain ? 'dixieme' : 'maintien';
-  const best = Math.max(tenth, maintain);
-  const dueCents = c.yearType === 'complete' ? Math.max(0, tenth - maintain) : best;
-  return { period, acquired, base, baseComplete: complete, tenth, maintain, method, dueCents };
+    return { base, manquants };
+  });
 }
 
-/**
- * Répartition du paiement d'une indemnité d'année incomplète sur les mois qui suivent le 31 mai.
- * Retourne la somme à verser par mois.
- */
-export function scheduleIncompletePayment(
-  c: Contract,
-  indemnity: CpIndemnity,
-  leave: readonly DateRange[],
-  mainLeaveMonth?: YearMonth,
-): Map<YearMonth, Cents> {
-  const out = new Map<YearMonth, Cents>();
-  const june = `${indemnity.period.closingYear}-06`;
-  if (indemnity.dueCents <= 0) return out;
-  switch (c.cpPaymentMode) {
-    case 'juin':
-      out.set(june, indemnity.dueCents);
-      return out;
-    case 'prise_principale':
-      out.set(mainLeaveMonth ?? june, indemnity.dueCents);
-      return out;
-    case 'au_fur_et_a_mesure': {
-      const from = make(indemnity.period.closingYear, 6, 1);
-      const to = make(indemnity.period.closingYear + 1, 5, 31);
-      const taken = workingDaysTaken(leave, from, to).slice(0, indemnity.acquired.totalDays);
-      const total = indemnity.acquired.totalDays;
-      if (total === 0) return out;
-      let paid = 0;
-      taken.forEach((d, i) => {
-        const cumulative = mulMulDiv(indemnity.dueCents, i + 1, 1, total);
-        const amount = cumulative - paid;
-        paid = cumulative;
-        const ym = d.slice(0, 7);
-        out.set(ym, (out.get(ym) ?? 0) + amount);
-      });
-      return out;
-    }
-  }
+/** Maintien de salaire pour n jours ouvrables de congés */
+export function maintien(ctx: Ctx, jours: number): number {
+  const { c } = ctx;
+  return Math.round(((jours / 6) * weeklyMinutes(c.planning) * c.rateNet) / 60);
 }
 
-/** Mois de la plus longue plage de congés commençant après le 31 mai de la période. */
-export function mainLeaveMonth(leave: readonly DateRange[], closingYear: number): YearMonth | undefined {
-  const from = make(closingYear, 6, 1);
-  const to = make(closingYear + 1, 5, 31);
-  let best: DateRange | undefined;
-  let bestLen = -1;
-  for (const r of leave) {
-    if (r.from < from || r.from > to) continue;
-    const len = range(r.from, r.to).length;
-    if (len > bestLen) {
-      best = r;
-      bestLen = len;
+export interface IndemniteCP {
+  startYear: number;
+  jours: number;
+  dixieme: number;
+  maintien: number;
+  /** Indemnité retenue : la plus favorable */
+  montant: number;
+  methode: 'dixieme' | 'maintien';
+  manquants: Month[];
+}
+
+export function indemnite(ctx: Ctx, y: number, enfants = 0): IndemniteCP {
+  return memo(ctx, `ind${y}|${enfants}`, () => {
+    const acq = acquisition(ctx, y, enfants);
+    const { base, manquants } = baseDixieme(ctx, y, enfants);
+    const dix = Math.round(base / 10);
+    const mt = maintien(ctx, acq.jours);
+    return {
+      startYear: y, jours: acq.jours, dixieme: dix, maintien: mt, montant: Math.max(dix, mt),
+      methode: dix > mt ? 'dixieme' : 'maintien', manquants,
+    };
+  });
+}
+
+export interface CpMonth {
+  /** Jours de congés payés indiqués sur la déclaration (année incomplète) */
+  jours: number;
+  /** Indemnité de congés versée ce mois (année incomplète) */
+  indemnite: number;
+  /** Complément du dixième versé en juin (année complète) */
+  complement: number;
+  note?: string;
+}
+
+/** Ce qui est dû ce mois-ci au titre des congés payés */
+export function cpForMonth(ctx: Ctx, m: Month, enfants = 0): CpMonth {
+  return memo(ctx, `cpm${m}|${enfants}`, () => {
+    const { c } = ctx;
+    const out: CpMonth = { jours: 0, indemnite: 0, complement: 0 };
+    if (m < monthOf(c.trackedFrom)) return out;
+    const y = cpPeriodStartYear(`${m}-15`);
+    const prevY = y - 1;
+    // Seules les périodes suivies par l'app sont calculées.
+    if (prevY < cpPeriodStartYear(c.trackedFrom) || `${prevY + 1}-05-31` < c.start) return out;
+    const ind = indemnite(ctx, prevY, enfants);
+    if (ind.jours === 0) return out;
+    const juin = `${y}-06` as Month;
+    if (c.yearType === 'complete') {
+      if (m === juin) {
+        out.complement = Math.max(0, ind.dixieme - ind.maintien);
+        if (out.complement) out.note = 'Complément du dixième (année complète), versé en juin.';
+      }
+      return out;
     }
-  }
-  return best ? best.from.slice(0, 7) : undefined;
+    if (c.cpMode === 'juin') {
+      if (m === juin) {
+        out.jours = ind.jours;
+        out.indemnite = ind.montant;
+        out.note = 'Indemnité de congés payés versée en juin.';
+      }
+    } else if (c.cpMode === 'principale') {
+      const p = cpPeriod(y);
+      let best: { from: ISODate; n: number } | undefined;
+      for (const l of ctx.leaves) {
+        if (l.type !== 'cp' || l.to < p.from || l.from > p.to) continue;
+        const n = joursOuvrables(l.from, l.to).length;
+        if (!best || n > best.n) best = { from: l.from, n };
+      }
+      if (best && monthOf(best.from) === m) {
+        out.jours = ind.jours;
+        out.indemnite = ind.montant;
+        out.note = 'Indemnité de congés payés versée avec la prise principale.';
+      }
+    } else {
+      const p = cpPeriod(y);
+      const before = m === monthOf(p.from) ? 0 : cpPrisEntre(ctx, p.from, lastOf(addMonths(m, -1))).length;
+      const inMonth = cpPrisEntre(ctx, `${m}-01`, lastOf(m)).length;
+      const total = Math.min(ind.jours, before + inMonth);
+      const dejaPaye = Math.min(ind.jours, before);
+      const n = total - dejaPaye;
+      if (n > 0) {
+        out.jours = n;
+        out.indemnite = Math.round((ind.montant * total) / ind.jours) - Math.round((ind.montant * dejaPaye) / ind.jours);
+        out.note = 'Indemnité de congés payés versée au fur et à mesure de la prise.';
+      }
+    }
+    return out;
+  });
+}
+
+function lastOf(m: Month): ISODate {
+  const [y, mo] = m.split('-').map(Number);
+  return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
 }

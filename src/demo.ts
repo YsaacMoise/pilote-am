@@ -1,54 +1,73 @@
-/**
- * Données d'exemple pour l'aperçu : quatre enfants fictifs, datés autour d'aujourd'hui.
- * Elles ne servent qu'à découvrir l'app ; rien n'est envoyé nulle part.
- */
-import { addDays, addMonthsYM, weekday, yearMonth, type ISODate } from './engine/dates';
-import type { Contract, DayEntry } from './engine/types';
-import { emptyState, type AppState } from './state';
+// Enfants d'exemple pour découvrir l'app (base séparée « pam-demo »).
+import * as db from './db';
+import { addDays, addMonths, firstDay, monthOf, today, weekday } from './engine/dates';
+import type { AmLeave, Contract, DayRec, Journal, Planning } from './engine/model';
 
-function contract(id: string, childId: string, familyId: string, startDate: ISODate, days: number[], start: number, end: number, rate: number, extra: Partial<Contract> = {}): Contract {
-  return {
-    id, childId, familyId, startDate, yearType: 'complete', programmedWeeks: 52, nonAccueil: [],
-    pattern: Object.fromEntries(days.map((d) => [d, [{ start, end }]])), hourlyNetMilli: rate, majorationPct: 10,
-    complementaryPct: 0, entretien: { kind: 'minimum' }, mealCents: 0, kmMilli: 0, cpPaymentMode: 'juin', childMajoration: false,
-    ...extra,
-  };
+function week(days: number[], plages: { start: string; end: string }[]): Planning {
+  const p: Planning = {};
+  for (const d of days) p[d] = plages.map((x) => ({ ...x }));
+  return p;
 }
 
-export function demoState(today: ISODate, now: number): AppState {
-  const start = `${addMonthsYM(yearMonth(today), -1)}-01`;
-  // Un jour de semaine passé de ce mois pour l'absence maladie d'exemple
-  let sick = addDays(today, -1);
-  while (weekday(sick) > 3 && sick.slice(0, 7) === today.slice(0, 7)) sick = addDays(sick, -1);
-  const entries: DayEntry[] = [];
-  const wd = weekday(today);
-  if (wd <= 3 && now >= 7 * 60 + 52) entries.push({ contractId: 'c1', date: today, arrival: 7 * 60 + 52 });
-  if (wd <= 4 && now >= 8 * 60 + 30) entries.push({ contractId: 'c2', date: today, arrival: 8 * 60 + 30 });
-  if (wd >= 1 && wd <= 4) entries.push({ contractId: 'c4', date: today, absence: 'enfant_malade' });
-  if (sick.slice(0, 7) === today.slice(0, 7) && sick !== today) entries.push({ contractId: 'c1', date: sick, absence: 'enfant_malade', certificate: true });
-  return {
-    ...emptyState(),
-    profile: { firstName: 'Sandrine', hasProfessionalTitle: false, childrenBirthDates: [], atLeast21: true },
-    families: [
-      { id: 'f1', name: 'Moreau', parentNames: 'Julie et Marc' },
-      { id: 'f2', name: 'Bernard', parentNames: '' },
-      { id: 'f3', name: 'Petit', parentNames: '' },
-      { id: 'f4', name: 'Roux', parentNames: '' },
-    ],
-    children: [
-      { id: 'k1', familyId: 'f1', firstName: 'Lina', color: 'kid-1' },
-      { id: 'k2', familyId: 'f2', firstName: 'Maël', color: 'kid-2' },
-      { id: 'k3', familyId: 'f3', firstName: 'Noé', color: 'kid-3' },
-      { id: 'k4', familyId: 'f4', firstName: 'Inès', color: 'kid-4' },
-    ],
-    contracts: [
-      contract('c1', 'k1', 'f1', start, [0, 1, 2, 3], 450, 1050, 3800, { mealCents: 400 }),
-      contract('c2', 'k2', 'f2', start, [0, 1, 2, 3, 4], 510, 1050, 4000),
-      contract('c3', 'k3', 'f3', start, [0, 1, 2, 3, 4], 540, 1065, 3900),
-      contract('c4', 'k4', 'f4', start, [1, 2, 3, 4], 480, 1080, 4100),
-    ],
-    entries,
-    notes: wd <= 3 && now >= 500 ? [{ id: 'n1', childId: 'k1', date: today, time: 500, kind: 'humeur', text: 'Un peu fatiguée, a pleuré au départ de maman puis a joué' }] : [],
-    settings: { lastBackupAt: new Date().toISOString() },
+/** Jour ouvré le plus proche avant (ou égal à) d */
+function workday(d: string): string {
+  let x = d;
+  while (weekday(x) > 5) x = addDays(x, -1);
+  return x;
+}
+
+export async function seedDemo() {
+  const t = today();
+  const cur = monthOf(t);
+  const leo: Contract = {
+    id: 'demo-leo', child: 'Léo', family: 'Martin', color: 0, start: firstDay(addMonths(cur, -14)), yearType: 'complete', weeks: 52, weeksOff: [],
+    planning: week([1, 2, 3, 4, 5], [{ start: '08:00', end: '17:30' }]), rateNet: 360, majoration: 10, entretienJour: 400, repasPrix: 300,
+    repasParJour: 1, kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: firstDay(addMonths(cur, -3)),
+    balances: { cpRestants: 18, cpEnCours: 7.5, maladieDeduits: 1 }, history: [], createdAt: 1,
   };
+  // Historique : bulletins des mois passés (un mois laissé manquant pour montrer l'alerte)
+  for (let i = 14; i >= 4; i--) {
+    const m = addMonths(cur, -i);
+    if (i === 9) continue;
+    leo.history.push({ month: m, net: 74100, brut: 94878, heures: 206, jours: 22, entretien: 8800, source: i % 2 ? 'pdf' : 'manuel' });
+  }
+  const ines: Contract = {
+    id: 'demo-ines', child: 'Inès', family: 'Diallo', color: 1, start: firstDay(addMonths(cur, -7)), yearType: 'incomplete', weeks: 36, weeksOff: [],
+    planning: week([1, 2, 4, 5], [{ start: '07:30', end: '08:30' }, { start: '16:30', end: '18:30' }]), rateNet: 380, majoration: 10,
+    entretienJour: 0, repasPrix: 0, repasParJour: 0, kmTaux: 41, cpMode: 'juin', majoreFiscal: false, trackedFrom: firstDay(addMonths(cur, -7)),
+    balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 2,
+  };
+  const malo: Contract = {
+    id: 'demo-malo', child: 'Malo', family: 'Bernard', color: 2, start: firstDay(addMonths(cur, -1)), yearType: 'complete', weeks: 52, weeksOff: [],
+    planning: week([1, 2, 3, 4], [{ start: '08:30', end: '17:00' }]), rateNet: 340, majoration: 15, entretienJour: 0, repasPrix: 250, repasParJour: 1,
+    kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: firstDay(addMonths(cur, -1)),
+    balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 3,
+  };
+
+  const days: DayRec[] = [];
+  const rec = (c: Contract, date: string, r: Partial<DayRec>) => days.push({ key: `${c.id}|${date}`, cid: c.id, date, ...r });
+  const y1 = workday(addDays(t, -1));
+  const y2 = workday(addDays(y1, -1));
+  const y3 = workday(addDays(y2, -1));
+  const y6 = workday(addDays(t, -8));
+  rec(leo, y1, { pres: [{ a: '08:05', d: '18:10' }] });
+  rec(leo, y3, { abs: 'malade_certif' });
+  rec(leo, y6, { abs: 'parents' });
+  rec(malo, y2, { pres: [{ a: '08:30' }] }); // départ oublié
+  rec(ines, y1, { pres: [{ a: '07:30', d: '08:30' }, { a: '16:30', d: '19:00' }], km: 6 });
+  if (weekday(t) <= 5) rec(leo, t, { pres: [{ a: '07:58' }] });
+
+  const leaves: AmLeave[] = [
+    { id: 'demo-cp1', type: 'cp', from: addDays(firstDay(addMonths(cur, -2)), 9), to: addDays(firstDay(addMonths(cur, -2)), 14) },
+    { id: 'demo-ev', type: 'evenement', from: addDays(t, 16), to: addDays(t, 16) },
+  ];
+  const journal: Journal[] = weekday(t) <= 5 ? [
+    { id: 'demo-j1', cid: leo.id, date: t, time: '09:30', kind: 'humeur', detail: 'De bonne humeur' },
+    { id: 'demo-j2', cid: leo.id, date: t, time: '11:45', kind: 'repas', detail: 'A bien mangé' },
+    { id: 'demo-j3', cid: leo.id, date: t, time: '12:40', kind: 'sieste', detail: 'Endormissement' },
+  ] : [];
+  await db.replaceAll({
+    kv: [{ k: 'settings', v: { amName: 'Sonia', enfantsACharge: 1, onboarded: true, lastBackup: Date.now() - 9 * 86400000 } }],
+    contracts: [leo, ines, malo], days, leaves, bulletins: [], journal, feedback: [], usage: [],
+  });
 }
