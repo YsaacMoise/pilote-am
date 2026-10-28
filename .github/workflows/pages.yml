@@ -1,10 +1,9 @@
-# Publication sur GitHub Pages.
-# - branche main : la version de travail, à la racine du site
-# - branche base-claude-code-v1 : la base enregistrée (version Claude Code intacte), sous /cc/
+# Publication sur GitHub Pages : uniquement la version de travail (branche main).
+# Les versions archivées ne sont jamais publiées.
 name: Publier le site
 on:
   push:
-    branches: [main, base-claude-code-v1]
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
@@ -31,19 +30,6 @@ jobs:
           npx tsc --noEmit -p .
           npm test
           npm run build
-      - uses: actions/checkout@v4
-        with:
-          ref: base-claude-code-v1
-          path: base
-      - name: Base enregistrée sous /cc/
-        continue-on-error: true
-        working-directory: base
-        run: |
-          npm ci
-          npm run build
-          test -f dist/index.html
-          mkdir -p ../main/dist/cc
-          cp -r dist/. ../main/dist/cc/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: main/dist
