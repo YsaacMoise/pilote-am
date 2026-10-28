@@ -52,6 +52,11 @@ export function mensuelMinutes(c: Contract): number {
   return (weeklyMinutes(c.planning) * weeksPerYear(c)) / 12;
 }
 
+/** Part des heures mensualisées au-delà de 45 h par semaine (en minutes) : à déclarer en « heures majorées » (art. 96.4) */
+export function mensuelMajoreesMinutes(c: Contract): number {
+  return (Math.max(0, weeklyMinutes(c.planning) - H45) * weeksPerYear(c)) / 12;
+}
+
 export function weeksPerYear(c: Contract): number {
   return c.yearType === 'complete' ? 52 : Math.min(46, c.weeks);
 }
@@ -300,7 +305,10 @@ export interface MonthBase {
   heuresNormales: number;
   joursActivite: number;
   complMin: number;
+  /** Heures en plus occasionnelles au-delà de 45 h (payées en plus du salaire mensualisé) */
   majMin: number;
+  /** Heures du contrat au-delà de 45 h, mensualisées et proratisées (déjà dans le salaire de base) */
+  majContratMin: number;
   complAmount: number;
   majAmount: number;
   ferieAmount: number;
@@ -326,7 +334,7 @@ function emptyBase(m: Month): MonthBase {
   return {
     month: m, active: false, fromHistory: false, missing: false, salaireMens: 0, mensuelMin: 0, divisorDays: 0,
     divisorMin: 0, contractDays: 0, contractMin: 0, deductedDays: 0, deductedMin: 0, paidFraction: 0, base: 0,
-    retenue: 0, heuresNormales: 0, joursActivite: 0, complMin: 0, majMin: 0, complAmount: 0, majAmount: 0,
+    retenue: 0, heuresNormales: 0, joursActivite: 0, complMin: 0, majMin: 0, majContratMin: 0, complAmount: 0, majAmount: 0,
     ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, net: 0,
     alerts: [], forgotten: [], sickPaidNotice: false,
   };
@@ -416,7 +424,10 @@ function computeMonthBase(ctx: Ctx, m: Month): MonthBase {
     : smens;
   r.retenue = Math.max(0, prorataOnly - r.base);
 
-  r.heuresNormales = Math.round((r.mensuelMin * fraction) / 60);
+  // Pajemploi : les heures du contrat au-delà de 45 h/semaine vont en « heures majorées », pas en heures normales.
+  const majContrat = mensuelMajoreesMinutes(c);
+  r.heuresNormales = Math.round(((r.mensuelMin - majContrat) * fraction) / 60);
+  r.majContratMin = Math.round(majContrat * fraction);
   if (startsOrEndsInMonth) r.joursActivite = Math.max(0, cDays - dedDays) + r.extraDays;
   else r.joursActivite = Math.max(0, joursMensualises(c) - dedDays) + r.extraDays;
 

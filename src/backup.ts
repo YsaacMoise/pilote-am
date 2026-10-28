@@ -83,7 +83,7 @@ export function buildPilotExport(month: Month = addMonths(monthOf(today()), -1))
       bulletinsManuels: c.history.filter((h) => h.source === 'manuel').length,
       mois: r.active ? {
         heuresNormales: r.heuresNormales, joursActivite: r.joursActivite, minutesComplementaires: r.complMin,
-        minutesMajorees: r.majMin, joursRetenus: r.deductedDays, departsOublies: r.forgotten.length,
+        minutesMajorees: r.majContratMin + r.majMin, joursRetenus: r.deductedDays, departsOublies: r.forgotten.length,
         joursPointes: [...state.days.values()].filter((d) => d.cid === c.id && d.date.startsWith(month)).length,
         entreesCarnet: state.journal.filter((j) => j.cid === c.id && j.date.startsWith(month)).length,
       } : null,

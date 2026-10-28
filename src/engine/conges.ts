@@ -1,7 +1,7 @@
 // Congés payés (art. 48 et 102) : acquisition, compteur, indemnité.
 import { addMonths, cpPeriod, cpPeriodStartYear, daysBetween, eachDay, monthOf, monthsBetween, weekday, type ISODate, type Month } from './dates';
 import { holidayName } from './holidays';
-import { monthBase, weeklyMinutes, weeksPerYear, type Ctx } from './payroll';
+import { H45, monthBase, weeklyMinutes, weeksPerYear, type Ctx } from './payroll';
 
 /** Jours ouvrables (lundi → samedi, hors fériés) d'un intervalle */
 export function joursOuvrables(from: ISODate, to: ISODate): ISODate[] {
@@ -34,7 +34,11 @@ function weeksIn(ctx: Ctx, from: ISODate, to: ISODate): number {
   const b = c.end && c.end < to ? c.end : to;
   if (b < a) return 0;
   const cal = (daysBetween(a, b) + 1) / 7;
-  return c.yearType === 'complete' ? cal : (cal * weeksPerYear(c)) / 52;
+  if (c.yearType === 'complete') return cal;
+  // Année incomplète : semaines programmées au prorata de la période de référence (365 ou 366 jours)
+  const p = cpPeriod(cpPeriodStartYear(a));
+  const periodDays = daysBetween(p.from, p.to) + 1;
+  return (Math.min(daysBetween(a, b) + 1, periodDays) / periodDays) * weeksPerYear(c);
 }
 
 function round(x: number): number {
@@ -129,7 +133,10 @@ export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; m
 /** Maintien de salaire pour n jours ouvrables de congés */
 export function maintien(ctx: Ctx, jours: number): number {
   const { c } = ctx;
-  return Math.round(((jours / 6) * weeklyMinutes(c.planning) * c.rateNet) / 60);
+  // Salaire d'une semaine, heures au-delà de 45 h majorées comme dans le salaire mensualisé
+  const h = weeklyMinutes(c.planning);
+  const semaine = Math.min(h, H45) * c.rateNet + Math.max(0, h - H45) * c.rateNet * (1 + c.majoration / 100);
+  return Math.round(((jours / 6) * semaine) / 60);
 }
 
 export interface IndemniteCP {

@@ -290,14 +290,14 @@ describe('fiscal (CGI art. 80 sexies)', () => {
     const ctx = makeCtx(c, [], [], '2026-10-31');
     const f = fiscalYear(ctx, 2026);
     expect(f.jours).toBe(22);
-    expect(f.abattementBrut).toBe(22 * 3 * 1202);
+    expect(f.abattementBrut).toBe(22 * 3 * 1231);
     expect(f.abattement).toBe(Math.min(f.abattementBrut, f.recu));
     expect(f.imposable).toBe(f.recu - f.abattement);
   });
   it('prorata sous 8 h et majoration à 4 SMIC', () => {
     const c = contract({ start: '2026-10-01', trackedFrom: '2026-10-01', planning: week('08:00', '12:00'), majoreFiscal: true });
     const f = fiscalYear(makeCtx(c, [], [], '2026-10-31'), 2026);
-    expect(f.abattementBrut).toBe(Math.round(22 * 4 * 1202 * 0.5));
+    expect(f.abattementBrut).toBe(Math.round(22 * 4 * 1231 * 0.5));
     expect(f.joursCourts).toBe(22);
   });
 });
@@ -385,5 +385,45 @@ describe('régressions (relecture indépendante)', () => {
   it('pointage un jour férié sans case cochée : compté comme travaillé', () => {
     const ctx = makeCtx(contract(), [rec('2026-05-14', { pres: [{ a: '08:00', d: '17:00' }] })], [], '2026-06-01');
     expect(monthBase(ctx, '2026-05').ferieAmount).toBe(315);
+  });
+});
+
+describe('corrections après audit de paie (28/10/2026)', () => {
+  it('Pajemploi : heures du contrat au-delà de 45 h déclarées en heures majorées (art. 96.4)', () => {
+    // 47,5 h/semaine, 52 semaines : 195 h normales + 10,83 h majorées par mois
+    const c = contract({ planning: week('08:00', '17:30') });
+    const r = computeMonth(makeCtx(c, [], [], '2026-11-15'), '2026-10');
+    expect(r.heuresNormales).toBe(195);
+    expect(r.majContratMin).toBe(650); // 2,5 × 52 ÷ 12 = 10 h 50
+    expect(r.majMin).toBe(0);
+    const maj = declarationLines(makeCtx(c, [], [], '2026-11-15'), r).find((l) => l.label === 'Heures majorées');
+    expect(maj?.value).toMatch(/^10\s?h\s?50/);
+  });
+  it('Pajemploi : la retenue pour absence s’applique aux deux parts', () => {
+    const c = contract({ planning: week('08:00', '17:30') });
+    const leaves: AmLeave[] = [{ id: 'l1', type: 'am_malade', from: '2026-10-12', to: '2026-10-12' }];
+    const r = computeMonth(makeCtx(c, [], leaves, '2026-11-15'), '2026-10');
+    expect(r.paidFraction).toBeLessThan(1);
+    expect(r.heuresNormales).toBe(Math.round(195 * r.paidFraction));
+    expect(r.majContratMin).toBe(Math.round(650 * r.paidFraction));
+  });
+  it('abattement fiscal : SMIC en vigueur le jour de la garde (BOI-RSA-CHAMP-10-20-10 § 490)', () => {
+    // Mai 2026 (SMIC 12,02 €) puis juin 2026 (12,31 €), journées de 9 h
+    const c = contract({ start: '2026-05-01', trackedFrom: '2026-05-01' });
+    const f = fiscalYear(makeCtx(c, [], [], '2026-06-30'), 2026, 0, '2026-06');
+    const mai = 17, juin = 22; // 21 jours ouvrés en mai, moins 4 fériés (1er, 8, 14 et 25)
+    expect(f.abattementBrut).toBe(Math.round(3 * (mai * 1202 + juin * 1231)));
+    expect(f.smics).toEqual([1202, 1231]);
+  });
+  it('congés année incomplète : 40 semaines → 40 ÷ 4 × 2,5 = 25 jours, pas 26', () => {
+    const c = contract({ start: '2026-06-01', trackedFrom: '2026-06-01', yearType: 'incomplete', weeks: 40, planning: week('08:00', '16:00'), rateNet: 380 });
+    const ctx = makeCtx(c, [], [], '2027-06-15');
+    expect(acquisition(ctx, 2026).jours).toBe(25);
+  });
+  it('maintien : heures au-delà de 45 h majorées comme dans le salaire', () => {
+    // 47,5 h : 45 × 3,60 + 2,5 × 3,96 = 171,90 € par semaine ; 30 jours = 5 semaines = 859,50 €
+    const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', planning: week('08:00', '17:30'), rateNet: 360 });
+    const ind = indemnite(makeCtx(c, [], [], '2026-07-01'), 2025);
+    expect(ind.maintien).toBe(85950);
   });
 });

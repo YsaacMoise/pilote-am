@@ -36,7 +36,7 @@ export interface DeclLine { label: string; value: string; hint?: string }
 export function declarationLines(ctx: Ctx, r: MonthResult): DeclLine[] {
   const complete = ctx.c.yearType === 'complete';
   return [
-    { label: 'Heures normales', value: `${r.heuresNormales} h`, hint: 'Les heures payées chaque mois, arrondies à l’heure' },
+    { label: 'Heures normales', value: `${r.heuresNormales} h`, hint: 'Les heures payées chaque mois, jusqu’à 45 h par semaine, arrondies à l’heure' },
     { label: 'Jours d’activité', value: `${r.joursActivite}` },
     {
       label: 'Jours de congés payés',
@@ -50,8 +50,8 @@ export function declarationLines(ctx: Ctx, r: MonthResult): DeclLine[] {
     },
     {
       label: 'Heures majorées',
-      value: hoursLabel(r.majMin),
-      hint: `Au-delà de 45 h dans la semaine, +${ctx.c.majoration}\u00a0%`,
+      value: hoursLabel(r.majContratMin + r.majMin),
+      hint: `Au-delà de 45 h dans la semaine, prévues au contrat ou en plus, +${ctx.c.majoration}\u00a0%`,
     },
     { label: 'Salaire net', value: euros(r.netTotal) },
     { label: 'Indemnités d’entretien', value: euros(r.entretien), hint: `${r.presenceDays} jour${r.presenceDays > 1 ? 's' : ''} d’accueil` },
@@ -73,7 +73,7 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   out.push(`• Salaire mensualisé : ${euros(r.salaireMens)}`);
   if (r.retenue) out.push(`• Retenue pour absence : −${euros(r.retenue)}`);
   if (r.complAmount) out.push(`• Heures complémentaires : ${euros(r.complAmount)}`);
-  if (r.majAmount) out.push(`• Heures majorées : ${euros(r.majAmount)}`);
+  if (r.majAmount) out.push(`• Heures majorées en plus du contrat : ${euros(r.majAmount)}`);
   if (r.ferieAmount) out.push(`• Majoration jours fériés travaillés : ${euros(r.ferieAmount)}`);
   if (r.cpIndemnite) out.push(`• Indemnité de congés payés : ${euros(r.cpIndemnite)}`);
   if (r.cpComplement) out.push(`• Complément de congés payés : ${euros(r.cpComplement)}`);

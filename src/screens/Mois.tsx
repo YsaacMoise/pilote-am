@@ -116,7 +116,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
             <dd>{c.yearType === 'complete' ? hoursLabel(r.divisorMin) : r.divisorDays}</dd>
             {r.retenue > 0 && (<><dt>Retenue ({c.yearType === 'complete' ? hoursLabel(r.deductedMin) : `${r.deductedDays} j`} non payés)</dt><dd>−{euros(r.retenue)}</dd></>)}
             {r.complAmount > 0 && (<><dt>Heures complémentaires ({hoursLabel(r.complMin)})</dt><dd>{euros(r.complAmount)}</dd></>)}
-            {r.majAmount > 0 && (<><dt>Heures majorées ({hoursLabel(r.majMin)})</dt><dd>{euros(r.majAmount)}</dd></>)}
+            {r.majAmount > 0 && (<><dt>Heures majorées en plus ({hoursLabel(r.majMin)})</dt><dd>{euros(r.majAmount)}</dd></>)}
             {r.ferieAmount > 0 && (<><dt>Fériés travaillés</dt><dd>{euros(r.ferieAmount)}</dd></>)}
             {r.cpIndemnite > 0 && (<><dt>Congés payés</dt><dd>{euros(r.cpIndemnite)}</dd></>)}
             {r.cpComplement > 0 && (<><dt>Complément congés</dt><dd>{euros(r.cpComplement)}</dd></>)}

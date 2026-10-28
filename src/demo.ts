@@ -29,7 +29,7 @@ export async function seedDemo() {
   for (let i = 14; i >= 4; i--) {
     const m = addMonths(cur, -i);
     if (i === 9) continue;
-    leo.history.push({ month: m, net: 74100, brut: 94878, heures: 206, jours: 22, entretien: 8800, source: i % 2 ? 'pdf' : 'manuel' });
+    leo.history.push({ month: m, net: 74100, brut: 94878, heures: 195, jours: 22, entretien: 8800, source: i % 2 ? 'pdf' : 'manuel' });
   }
   const ines: Contract = {
     id: 'demo-ines', child: 'Inès', family: 'Diallo', color: 1, start: firstDay(addMonths(cur, -7)), yearType: 'incomplete', weeks: 36, weeksOff: [],

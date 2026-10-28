@@ -43,7 +43,7 @@ export function controle(b: Bulletin, r: MonthResult, rateNet: number): Check[] 
       out.push({ level: 'ok', title: 'Net et brut cohérents', detail: `Le net représente ${pct} % du brut (attendu : environ 78 %).` });
     }
     if (b.heures && b.heures > 0) {
-      const brutHoraire = Math.round((b.brut - r.cpIndemnite / 0.781 - r.cpComplement / 0.781) / (b.heures + r.complMin / 60 + r.majMin / 60));
+      const brutHoraire = Math.round((b.brut - r.cpIndemnite / 0.781 - r.cpComplement / 0.781) / (b.heures + r.complMin / 60 + (r.majContratMin + r.majMin) / 60));
       if (brutHoraire + 1 < rates.minConvBrut) {
         out.push({ level: 'warn', title: 'Brut horaire sous le minimum', detail: `Environ ${euros(brutHoraire)} brut de l’heure, le minimum conventionnel est ${euros(rates.minConvBrut)}.` });
       }

@@ -42,7 +42,7 @@ export function Fiscal() {
               <dt>Salaire net imposable estimé</dt><dd>{euros(f.netImposable)}</dd>
               <dt>Entretien et repas</dt><dd>{euros(f.entretienRepas)}</dd>
               <dt>Jours d’accueil</dt><dd>{f.jours}{f.joursCourts ? ` (dont ${f.joursCourts} de moins de 8 h)` : ''}</dd>
-              <dt>Abattement ({f.facteur} × SMIC {euros(f.smic)} par jour)</dt><dd>−{euros(f.abattement)}</dd>
+              <dt>Abattement ({f.facteur} × SMIC {f.smics.length > 1 ? f.smics.map(euros).join(' puis ') : euros(f.smic)} par jour)</dt><dd>−{euros(f.abattement)}</dd>
               <dt>Imposable</dt><dd>{euros(f.imposable)}</dd>
             </dl>
             {f.abattement < f.abattementBrut && <p class="hint">L’abattement est plafonné aux sommes reçues.</p>}
