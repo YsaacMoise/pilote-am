@@ -43,6 +43,10 @@ async function run(scheme) {
   await p.getByText('Reprise d’un contrat en cours').waitFor();
   await shot('01-contrat');
   await p.getByRole('button', { name: 'Enregistrer et reprendre l’historique' }).click();
+  await p.getByText('Indique qui fournit les repas de l’enfant.').waitFor();
+  assert(true, 'contrat : choix des repas obligatoire');
+  await p.getByRole('radio', { name: /^Les parents/ }).click();
+  await p.getByRole('button', { name: 'Enregistrer et reprendre l’historique' }).click();
   await p.getByText('1 mois sans bulletin').waitFor();
   assert(true, 'contrat créé, historique demandé');
 

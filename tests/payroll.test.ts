@@ -466,3 +466,14 @@ describe('règles tranchées le 28/10/2026 (texte et fiches officielles)', () =>
     expect(dayInfo(makeCtx(contract(), [], leaves, '2026-06-01'), '2026-05-01').deducted).toBe(false);
   });
 });
+
+describe('repas fournis par les parents (avantage en nature, impots.gouv)', () => {
+  it('chaque jour d’accueil ajoute 5,50 € aux sommes reçues en 2026', () => {
+    const base = contract({ start: '2026-10-01', trackedFrom: '2026-10-01' });
+    const sans = fiscalYear(makeCtx(base, [], [], '2026-10-31'), 2026);
+    const avec = fiscalYear(makeCtx({ ...base, repasParents: true }, [], [], '2026-10-31'), 2026);
+    expect(sans.repasParents).toBe(0);
+    expect(avec.repasParents).toBe(22 * 550);
+    expect(avec.recu - sans.recu).toBe(22 * 550);
+  });
+});

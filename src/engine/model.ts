@@ -54,6 +54,8 @@ export interface Contract {
   /** Prix d'un repas fourni (centimes) et nombre de repas par jour d'accueil */
   repasPrix: number;
   repasParJour: number;
+  /** Les parents fournissent les repas de l'enfant : avantage en nature imposable (impots.gouv). Non renseigné sur les anciens contrats. */
+  repasParents?: boolean;
   /** Indemnité kilométrique (centimes par km) */
   kmTaux: number;
   cpMode: CpPayMode;

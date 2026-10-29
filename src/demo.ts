@@ -22,7 +22,7 @@ export async function seedDemo() {
   const leo: Contract = {
     id: 'demo-leo', child: 'Léo', family: 'Martin', color: 0, start: firstDay(addMonths(cur, -14)), yearType: 'complete', weeks: 52, weeksOff: [],
     planning: week([1, 2, 3, 4, 5], [{ start: '08:00', end: '17:30' }]), rateNet: 360, majoration: 10, entretienJour: 400, repasPrix: 300,
-    repasParJour: 1, kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: firstDay(addMonths(cur, -3)),
+    repasParJour: 1, repasParents: false, kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: firstDay(addMonths(cur, -3)),
     balances: { cpRestants: 18, cpEnCours: 7.5, maladieDeduits: 1 }, history: [], createdAt: 1,
   };
   // Historique : bulletins des mois passés (un mois laissé manquant pour montrer l'alerte)
@@ -34,12 +34,12 @@ export async function seedDemo() {
   const ines: Contract = {
     id: 'demo-ines', child: 'Inès', family: 'Diallo', color: 1, start: firstDay(addMonths(cur, -7)), yearType: 'incomplete', weeks: 36, weeksOff: [],
     planning: week([1, 2, 4, 5], [{ start: '07:30', end: '08:30' }, { start: '16:30', end: '18:30' }]), rateNet: 380, majoration: 10,
-    entretienJour: 0, repasPrix: 0, repasParJour: 0, kmTaux: 41, cpMode: 'juin', majoreFiscal: false, trackedFrom: firstDay(addMonths(cur, -7)),
+    entretienJour: 0, repasPrix: 0, repasParJour: 0, repasParents: true, kmTaux: 41, cpMode: 'juin', majoreFiscal: false, trackedFrom: firstDay(addMonths(cur, -7)),
     balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 2,
   };
   const malo: Contract = {
     id: 'demo-malo', child: 'Malo', family: 'Bernard', color: 2, start: firstDay(addMonths(cur, -1)), yearType: 'complete', weeks: 52, weeksOff: [],
-    planning: week([1, 2, 3, 4], [{ start: '08:30', end: '17:00' }]), rateNet: 340, majoration: 15, entretienJour: 0, repasPrix: 250, repasParJour: 1,
+    planning: week([1, 2, 3, 4], [{ start: '08:30', end: '17:00' }]), rateNet: 340, majoration: 15, entretienJour: 0, repasPrix: 250, repasParJour: 1, repasParents: false,
     kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: firstDay(addMonths(cur, -1)),
     balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 3,
   };

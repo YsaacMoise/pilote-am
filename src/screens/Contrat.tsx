@@ -5,7 +5,7 @@ import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, weekl
 import { entretienPlancher, ratesAt } from '../engine/rates';
 import { euros, hoursLabel } from '../engine/money';
 import type { Contract, Plage, Planning } from '../engine/model';
-import { Banner, CHILD_COLORS, COLOR_NAMES, DateInput, EuroInput, Gommette, NumberInput, Seg, Switch, TextInput, Topbar } from '../ui/kit';
+import { Banner, CHILD_COLORS, Choices, COLOR_NAMES, DateInput, EuroInput, Gommette, NumberInput, Seg, Switch, TextInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 
 function blank(): Contract {
@@ -44,6 +44,7 @@ export function Contrat({ id }: { id?: string }) {
     for (let d = 1; d <= 7; d++) for (const p of c.planning[d] ?? []) if (p.end <= p.start) errs.push(`${JOUR_NOMS[d - 1]} : l’heure de fin doit être après le début.`);
     if (c.yearType === 'incomplete' && (c.weeks < 1 || c.weeks > 46)) errs.push('En année incomplète, le nombre de semaines va de 1 à 46.');
     if (c.end && c.end < c.start) errs.push('La date de fin est avant le début.');
+    if (c.repasParents === undefined) errs.push('Indique qui fournit les repas de l’enfant.');
     setErrors(errs);
     if (errs.length) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const toSave: Contract = {
@@ -125,10 +126,18 @@ export function Contrat({ id }: { id?: string }) {
             <EuroInput label="Taux horaire net" hint={`Minimum conventionnel : ${euros(rates.minConvNet)} net (${euros(rates.minConvBrut)} brut)`} cents={c.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
             {c.rateNet > 0 && c.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel. Vérifie le contrat.</Banner>}
             <EuroInput label="Indemnité d’entretien par jour" hint={`Si elle est plus basse, l’app applique le minimum légal (${euros(entretienPlancher(today(), 540))} pour 9 h)`} cents={c.entretienJour} onChange={(v) => set({ entretienJour: v ?? 0 })} />
-            <div class="grid2">
-              <EuroInput label="Prix d’un repas" hint="0 si les parents le fournissent" cents={c.repasPrix} onChange={(v) => set({ repasPrix: v ?? 0 })} />
-              <NumberInput label="Repas par jour" value={c.repasParJour} max={4} onChange={(v) => set({ repasParJour: v ?? 0 })} />
-            </div>
+            <Choices label="Qui fournit les repas de l’enfant ?" value={c.repasParents === undefined ? undefined : c.repasParents ? 'parents' : 'am'}
+              onChange={(v) => set(v === 'parents' ? { repasParents: true, repasPrix: 0, repasParJour: 0 } : { repasParents: false })}
+              options={[
+                { v: 'am', l: 'Moi', sub: 'Les parents me paient les repas' },
+                { v: 'parents', l: 'Les parents', sub: 'À ajouter à tes revenus pour les impôts (5,50 € par jour en 2026), l’app le compte' },
+              ]} />
+            {c.repasParents === false && (
+              <div class="grid2">
+                <EuroInput label="Prix d’un repas" cents={c.repasPrix} onChange={(v) => set({ repasPrix: v ?? 0 })} />
+                <NumberInput label="Repas par jour" value={c.repasParJour} max={4} onChange={(v) => set({ repasParJour: v ?? 0 })} />
+              </div>
+            )}
             <EuroInput label="Indemnité kilométrique (par km)" hint="0 si tu ne transportes pas l’enfant" cents={c.kmTaux} onChange={(v) => set({ kmTaux: v ?? 0 })} />
             <NumberInput label="Majoration après 45 h par semaine (%)" hint="10 % au minimum" value={c.majoration} min={10} max={100} onChange={(v) => set({ majoration: v ?? 10 })} />
             {c.yearType === 'incomplete' && (

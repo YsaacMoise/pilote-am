@@ -16,20 +16,22 @@ export interface Rates {
   entretienPlancherJour: number;
   /** Part du net dans le brut (cotisations salariales estimées), en pour-dix-mille */
   netSurBrut: number;
+  /** Valeur d'un repas fourni par les parents, avantage en nature imposable (barème Urssaf) */
+  repasAvantage: number;
   source: string;
 }
 
 export const RATES: Rates[] = [
   {
-    from: '2025-01-01', smic: 1188, mg: 422, minConvBrut: 364, minConvNet: 284, entretienPlancherJour: 265, netSurBrut: 7810,
+    from: '2025-01-01', smic: 1188, mg: 422, minConvBrut: 364, minConvNet: 284, entretienPlancherJour: 265, netSurBrut: 7810, repasAvantage: 545,
     source: 'Décret SMIC 1er nov. 2024 (11,88 €) ; MG 4,22 € ; minimum conventionnel 3,64 € brut',
   },
   {
-    from: '2026-01-01', smic: 1202, mg: 425, minConvBrut: 364, minConvNet: 284, entretienPlancherJour: 265, netSurBrut: 7810,
+    from: '2026-01-01', smic: 1202, mg: 425, minConvBrut: 364, minConvNet: 284, entretienPlancherJour: 265, netSurBrut: 7810, repasAvantage: 550,
     source: 'SMIC 12,02 € et MG 4,25 € au 1er janvier 2026',
   },
   {
-    from: '2026-06-01', smic: 1231, mg: 435, minConvBrut: 420, minConvNet: 328, entretienPlancherJour: 265, netSurBrut: 7810,
+    from: '2026-06-01', smic: 1231, mg: 435, minConvBrut: 420, minConvNet: 328, entretienPlancherJour: 265, netSurBrut: 7810, repasAvantage: 550,
     source: 'Arrêté du 22 mai 2026 : SMIC 12,31 €, MG 4,35 € ; minimum conventionnel AM 4,20 € brut / 3,28 € net (fiche DREETS du 12/06/2026)',
   },
 ];
