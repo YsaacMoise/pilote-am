@@ -1,7 +1,7 @@
 // Congés payés (art. 48 et 102) : acquisition, compteur, indemnité.
 import { addMonths, cpPeriod, cpPeriodStartYear, daysBetween, eachDay, monthOf, monthsBetween, weekday, type ISODate, type Month } from './dates';
 import { holidayName } from './holidays';
-import { H45, monthBase, weeklyMinutes, weeksPerYear, type Ctx } from './payroll';
+import { H45, monthBase, termsAt, weeklyMinutes, weeksPerYear, type Ctx } from './payroll';
 
 /** Jours ouvrables (lundi → samedi, hors fériés) d'un intervalle */
 export function joursOuvrables(from: ISODate, to: ISODate): ISODate[] {
@@ -131,8 +131,8 @@ export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; m
 }
 
 /** Maintien de salaire pour n jours ouvrables de congés */
-export function maintien(ctx: Ctx, jours: number): number {
-  const { c } = ctx;
+export function maintien(ctx: Ctx, jours: number, at: ISODate = ctx.today): number {
+  const c = termsAt(ctx.c, at);
   // Salaire d'une semaine, heures au-delà de 45 h majorées comme dans le salaire mensualisé
   const h = weeklyMinutes(c.planning);
   const semaine = Math.min(h, H45) * c.rateNet + Math.max(0, h - H45) * c.rateNet * (1 + c.majoration / 100);
@@ -155,7 +155,7 @@ export function indemnite(ctx: Ctx, y: number, enfants = 0): IndemniteCP {
     const acq = acquisition(ctx, y, enfants);
     const { base, manquants } = baseDixieme(ctx, y, enfants);
     const dix = Math.round(base / 10);
-    const mt = maintien(ctx, acq.jours);
+    const mt = maintien(ctx, acq.jours, `${y + 1}-06-01`);
     return {
       startYear: y, jours: acq.jours, dixieme: dix, maintien: mt, montant: Math.max(dix, mt),
       methode: dix > mt ? 'dixieme' : 'maintien', manquants,

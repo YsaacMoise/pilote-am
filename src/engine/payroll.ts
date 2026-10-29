@@ -15,6 +15,16 @@ export interface Ctx {
   cache?: Map<string, unknown>;
 }
 
+/** Contrat tel qu'il s'applique le jour d (avenants en vigueur compris) */
+export function termsAt(c: Contract, d: ISODate): Contract {
+  if (!c.avenants?.length) return c;
+  let out = c;
+  for (const a of [...c.avenants].sort((x, y) => (x.from < y.from ? -1 : 1))) {
+    if (a.from <= d) out = { ...out, ...a.changes };
+  }
+  return out;
+}
+
 export function makeCtx(c: Contract, recs: DayRec[], leaves: AmLeave[], today: ISODate): Ctx {
   const days = new Map<ISODate, DayRec>();
   for (const r of recs) if (r.cid === c.id) days.set(r.date, r);
@@ -85,7 +95,7 @@ export function amLeaveOn(leaves: AmLeave[], d: ISODate): AmAbs | undefined {
 export function plannedPlages(c: Contract, d: ISODate): Plage[] {
   if (!inContract(c, d)) return [];
   if (c.yearType === 'incomplete' && c.weeksOff.includes(mondayOf(d))) return [];
-  return (c.planning[weekday(d)] ?? []).filter((p) => plageMin(p) > 0);
+  return (termsAt(c, d).planning[weekday(d)] ?? []).filter((p) => plageMin(p) > 0);
 }
 
 export type DayKind =
@@ -369,7 +379,8 @@ function emptyBase(m: Month): MonthBase {
 }
 
 function computeMonthBase(ctx: Ctx, m: Month): MonthBase {
-  const { c } = ctx;
+  // Conditions du mois : les avenants prennent effet le 1er du mois.
+  const c = termsAt(ctx.c, firstDay(m));
   const r = emptyBase(m);
   const from = firstDay(m), to = lastDay(m);
   if (c.start > to || (c.end && c.end < from)) return r;

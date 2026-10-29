@@ -1,10 +1,13 @@
 # Pilote AM, version de travail
 
 > Cette branche `main` est la version de travail, en ligne sur https://ysaacmoise.github.io/pilote-am/ .
-> Elle part d'une copie de la version Claude Code du 28/10/2026. L'original reste intact :
-> branche `base-claude-code-v1` (base enregistrée, à ne jamais modifier), publiée sous /cc/.
-> L'ancienne version « Registre » est archivée dans la branche `archive-registre-v1`.
+> Elle part d'une copie de la version Claude Code du 28/10/2026. L'original (`base-claude-code-v1`, à ne jamais
+> modifier) et l'ancienne version « Registre » (`archive-registre-v1`) sont archivés dans le dépôt privé
+> `YsaacMoise/pilote-am-archives`, avec une copie de l'historique de `main` au 29/10/2026.
 > Stockage propre à cette version : bases IndexedDB `pam-donnees` et `pam-demo`, caches `pam-…`.
+>
+> Avenants : `Contract.avenants` (conditions datées au 1er d'un mois : taux, planning, entretien, repas, km, majoration).
+> `termsAt(contrat, date)` donne les conditions en vigueur ; le calcul de chaque mois et les jours prévus l'utilisent.
 
 ---
 

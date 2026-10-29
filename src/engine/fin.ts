@@ -5,7 +5,7 @@ import {
   type ISODate, type Month,
 } from './dates';
 import { acquisition, compteur, cpForMonth, indemnite, maintien } from './conges';
-import { dayInfo, monthBase, monthBrut, type Ctx } from './payroll';
+import { dayInfo, monthBase, monthBrut, termsAt, type Ctx } from './payroll';
 import { netToBrut } from './rates';
 
 export type Motif = 'retrait' | 'demission' | 'deces' | 'inaptitude_pro' | 'faute_grave' | 'essai';
@@ -126,7 +126,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     }
   }
   const regulMinutes = Math.max(0, Math.round(dues - payees));
-  const regularisation = c.yearType === 'incomplete' ? Math.round((regulMinutes * c.rateNet) / 60) : 0;
+  const regularisation = c.yearType === 'incomplete' ? Math.round((regulMinutes * termsAt(c, dernierJour).rateNet) / 60) : 0;
   if (c.yearType === 'complete' && regulMinutes > 60) {
     alertes.push('Année complète : la régularisation ne s’applique pas en principe, vérifie le planning du contrat.');
   }
@@ -141,13 +141,13 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // Période en cours : dixième de la base à date, ou maintien, le plus favorable
   const indCur = indemnite(endCtx, y, enfants);
   const joursCur = acq.joursADate;
-  const curMontant = Math.max(Math.round(indCur.dixieme), maintien(endCtx, joursCur));
+  const curMontant = Math.max(Math.round(indCur.dixieme), maintien(endCtx, joursCur, dernierJour));
   // Période précédente : jours restants, moins ce qui a déjà été versé.
   let precMontant = 0;
   if (restantsPrec > 0) {
     if (c.yearType === 'complete') {
       // Les jours pris ont été payés dans le salaire, le complément du dixième en juin : reste le maintien.
-      precMontant = maintien(endCtx, restantsPrec);
+      precMontant = maintien(endCtx, restantsPrec, dernierJour);
     } else {
       const indPrev = y - 1 >= cpPeriodStartYear(c.trackedFrom) ? indemnite(endCtx, y - 1, enfants) : null;
       if (indPrev && indPrev.jours) {
@@ -155,7 +155,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
         for (const m of monthsBetween(`${y}-06`, monthOf(dernierJour))) deja += cpForMonth(endCtx, m, enfants).indemnite;
         precMontant = Math.max(0, indPrev.montant - deja);
       } else {
-        precMontant = maintien(endCtx, restantsPrec);
+        precMontant = maintien(endCtx, restantsPrec, dernierJour);
       }
     }
   }

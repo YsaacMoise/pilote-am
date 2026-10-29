@@ -20,7 +20,7 @@ const axe = fs.readFileSync(process.env.AXE, 'utf8');
     await audit('accueil');
     await p.getByRole('button', { name: 'Voir avec des enfants d’exemple' }).click();
     await p.waitForTimeout(1000);
-    for (const s of ['', 'carnet', 'mois', 'plus', 'contrat/demo-leo', 'historique/demo-leo', 'controle', 'conges', 'fin/demo-leo', 'fiscal', 'sauvegarde', 'pilote', 'reglages', 'regles', 'installer']) {
+    for (const s of ['', 'carnet', 'mois', 'plus', 'contrat/demo-leo', 'avenant/demo-leo/nouveau', 'historique/demo-leo', 'controle', 'conges', 'fin/demo-leo', 'fiscal', 'sauvegarde', 'pilote', 'reglages', 'regles', 'installer']) {
       await p.evaluate((h) => { location.hash = '#/' + h; }, s);
       await p.waitForTimeout(350);
       await audit('#/' + s);

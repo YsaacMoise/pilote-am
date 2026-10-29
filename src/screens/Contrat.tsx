@@ -1,10 +1,10 @@
 import { useState } from 'preact/hooks';
 import { deleteContract, logUsage, putContract, state, toast, uid, useStore } from '../store';
-import { firstDay, mondayOf, monthOf, shortDate, today, JOUR_NOMS } from '../engine/dates';
-import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, weeklyMinutes } from '../engine/payroll';
+import { deMois, firstDay, mondayOf, monthOf, shortDate, today, JOUR_NOMS, type Month } from '../engine/dates';
+import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, termsAt, weeklyMinutes } from '../engine/payroll';
 import { entretienPlancher, ratesAt } from '../engine/rates';
 import { euros, hoursLabel } from '../engine/money';
-import type { Contract, Plage, Planning } from '../engine/model';
+import type { Avenant, Contract, Plage, Planning, Terms } from '../engine/model';
 import { Banner, CHILD_COLORS, Choices, COLOR_NAMES, DateInput, EuroInput, Gommette, NumberInput, Seg, Switch, TextInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 
@@ -123,6 +123,7 @@ export function Contrat({ id }: { id?: string }) {
         <section class="card">
           <fieldset>
             <legend>La rémunération</legend>
+            {!!c.avenants?.length && <p class="hint">Ce sont les conditions de départ. Les changements datés sont dans les avenants, plus bas.</p>}
             <EuroInput label="Taux horaire net" hint={`Minimum conventionnel : ${euros(rates.minConvNet)} net (${euros(rates.minConvBrut)} brut)`} cents={c.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
             {c.rateNet > 0 && c.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel. Vérifie le contrat.</Banner>}
             <EuroInput label="Indemnité d’entretien par jour" hint={`Si elle est plus basse, l’app applique le minimum légal (${euros(entretienPlancher(today(), 540))} pour 9 h)`} cents={c.entretienJour} onChange={(v) => set({ entretienJour: v ?? 0 })} />
@@ -161,6 +162,8 @@ export function Contrat({ id }: { id?: string }) {
           </section>
         )}
 
+        {!isNew && <AvenantsCard c={c} />}
+
         <button class="btn btn-primary btn-block btn-lg" onClick={save}>{isNew ? (reprise ? 'Enregistrer et reprendre l’historique' : 'Enregistrer le contrat') : 'Enregistrer'}</button>
         {!isNew && (
           <>
@@ -177,7 +180,7 @@ export function Contrat({ id }: { id?: string }) {
   );
 }
 
-function PlanDay({ d, plages, onChange, onCopy }: { d: number; plages: Plage[]; onChange: (p: Plage[]) => void; onCopy?: () => void }) {
+export function PlanDay({ d, plages, onChange, onCopy }: { d: number; plages: Plage[]; onChange: (p: Plage[]) => void; onCopy?: () => void }) {
   const on = plages.length > 0;
   const name = JOUR_NOMS[d - 1];
   return (
@@ -224,5 +227,39 @@ function WeeksOff({ c, onChange }: { c: Contract; onChange: (w: string[]) => voi
         <button class="btn btn-secondary" disabled={!d} onClick={() => { const m = mondayOf(d); if (!c.weeksOff.includes(m)) onChange([...c.weeksOff, m]); setD(''); }}>Ajouter</button>
       </div>
     </div>
+  );
+}
+
+/** Résumé lisible des changements d'un avenant */
+export function avenantSummary(before: Contract, ch: Partial<Terms>): string[] {
+  const out: string[] = [];
+  if (ch.rateNet != null && ch.rateNet !== before.rateNet) out.push(`Taux : ${euros(before.rateNet)} → ${euros(ch.rateNet)} net de l’heure`);
+  if (ch.planning) out.push(`Planning : ${hoursLabel(weeklyMinutes(before.planning))} → ${hoursLabel(weeklyMinutes(ch.planning))} par semaine`);
+  if (ch.entretienJour != null) out.push(`Entretien : ${euros(before.entretienJour)} → ${euros(ch.entretienJour)} par jour`);
+  if (ch.repasParents != null && ch.repasParents !== before.repasParents) out.push(ch.repasParents ? 'Repas : fournis par les parents' : 'Repas : fournis par toi');
+  if (ch.repasPrix != null && ch.repasPrix !== before.repasPrix) out.push(`Prix du repas : ${euros(before.repasPrix)} → ${euros(ch.repasPrix)}`);
+  if (ch.repasParJour != null && ch.repasParJour !== before.repasParJour) out.push(`Repas par jour : ${before.repasParJour} → ${ch.repasParJour}`);
+  if (ch.kmTaux != null) out.push(`Indemnité kilométrique : ${euros(before.kmTaux)} → ${euros(ch.kmTaux)} par km`);
+  if (ch.majoration != null) out.push(`Majoration après 45 h : ${before.majoration} % → ${ch.majoration} %`);
+  return out;
+}
+
+function AvenantsCard({ c }: { c: Contract }) {
+  const list: Avenant[] = [...(c.avenants ?? [])].sort((a, b) => (a.from < b.from ? -1 : 1));
+  return (
+    <section class="card stack" aria-label="Avenants">
+      <h2>Avenants</h2>
+      <p class="hint">Un avenant change le contrat à partir du 1er d’un mois : taux, planning, entretien, repas. Les mois d’avant gardent les anciennes conditions.</p>
+      {list.map((a) => {
+        const before = termsAt({ ...c, avenants: list.filter((x) => x.from < a.from) }, a.from);
+        return (
+          <a class="btn btn-outline btn-block" style={{ justifyContent: 'flex-start', textAlign: 'left', flexDirection: 'column', alignItems: 'flex-start' }} href={`#/avenant/${c.id}/${a.id}`}>
+            <b>À partir {deMois(a.from.slice(0, 7) as Month)}</b>
+            {avenantSummary(before, a.changes).map((l) => <span style={{ fontWeight: 400 }}>{l}</span>)}
+          </a>
+        );
+      })}
+      <a class="btn btn-secondary btn-block" href={`#/avenant/${c.id}/nouveau`}><Icon name="plus" />Faire un avenant</a>
+    </section>
   );
 }

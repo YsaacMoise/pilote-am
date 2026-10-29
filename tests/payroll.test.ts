@@ -477,3 +477,27 @@ describe('repas fournis par les parents (avantage en nature, impots.gouv)', () =
     expect(avec.recu - sans.recu).toBe(22 * 550);
   });
 });
+
+describe('avenants (nouvelles conditions à partir d’un mois)', () => {
+  it('nouveau taux à partir du 1er juin : mai à l’ancien taux, juin au nouveau', () => {
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', avenants: [{ id: 'a1', from: '2026-06-01', changes: { rateNet: 400 } }] });
+    const ctx = makeCtx(c, [], [], '2026-07-15');
+    expect(monthBase(ctx, '2026-05').base).toBe(68250); // 195 h × 3,50
+    expect(monthBase(ctx, '2026-06').base).toBe(78000); // 195 h × 4,00
+  });
+  it('nouveau planning : les heures mensualisées et les jours prévus changent', () => {
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05',
+      avenants: [{ id: 'a1', from: '2026-09-01', changes: { planning: week('08:00', '17:00', [1, 2, 3, 4]) } }] });
+    const ctx = makeCtx(c, [], [], '2026-10-15');
+    expect(monthBase(ctx, '2026-08').heuresNormales).toBe(195);
+    expect(monthBase(ctx, '2026-09').heuresNormales).toBe(156); // 36 h × 52 ÷ 12
+    expect(dayInfo(ctx, '2026-09-04').plannedMin).toBe(0); // vendredi : plus d’accueil
+    expect(dayInfo(ctx, '2026-08-28').plannedMin).toBe(540);
+  });
+  it('repas fournis par les parents à partir d’un avenant : compté aux impôts seulement après', () => {
+    const c = contract({ start: '2026-10-01', trackedFrom: '2026-10-01', repasParents: false,
+      avenants: [{ id: 'a1', from: '2026-11-01', changes: { repasParents: true } }] });
+    const f = fiscalYear(makeCtx(c, [], [], '2026-11-30'), 2026, 0, '2026-11');
+    expect(f.repasParents).toBe(20 * 550); // novembre : 21 jours ouvrés moins le 11 novembre
+  });
+});

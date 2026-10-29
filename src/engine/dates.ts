@@ -134,3 +134,9 @@ export function nowHHMM(): string {
   const n = new Date();
   return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
 }
+
+/** « de juin », « d’octobre » */
+export function deMois(m: Month): string {
+  const l = monthLabel(m);
+  return /^[aeiouyhâéèê]/i.test(l) ? `d’${l}` : `de ${l}`;
+}

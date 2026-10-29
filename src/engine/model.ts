@@ -30,6 +30,20 @@ export interface StartBalances {
   maladieDeduits: number;
 }
 
+/** Conditions du contrat qu'un avenant peut changer */
+export type Terms = Pick<Contract, 'planning' | 'rateNet' | 'majoration' | 'entretienJour' | 'repasPrix' | 'repasParJour' | 'repasParents' | 'kmTaux'>;
+export const TERM_KEYS: (keyof Terms)[] = ['planning', 'rateNet', 'majoration', 'entretienJour', 'repasPrix', 'repasParJour', 'repasParents', 'kmTaux'];
+
+/** Avenant : nouvelles conditions à partir du 1er jour d'un mois */
+export interface Avenant {
+  id: string;
+  /** Premier jour du mois d'effet */
+  from: ISODate;
+  /** Date de signature, si connue */
+  signe?: ISODate;
+  changes: Partial<Terms>;
+}
+
 export interface Contract {
   id: string;
   /** Prénom de l'enfant (ne quitte jamais le téléphone) */
@@ -56,6 +70,8 @@ export interface Contract {
   repasParJour: number;
   /** Les parents fournissent les repas de l'enfant : avantage en nature imposable (impots.gouv). Non renseigné sur les anciens contrats. */
   repasParents?: boolean;
+  /** Avenants, du plus ancien au plus récent */
+  avenants?: Avenant[];
   /** Indemnité kilométrique (centimes par km) */
   kmTaux: number;
   cpMode: CpPayMode;

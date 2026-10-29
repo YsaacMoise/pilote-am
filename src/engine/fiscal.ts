@@ -1,7 +1,7 @@
 // Compteur fiscal (CGI art. 80 sexies) : abattement spécifique et revenu imposable estimé.
 import { eachDay, lastDay, monthsBetween, type Month } from './dates';
 import { computeMonth } from './month';
-import { dayInfo, type Ctx } from './payroll';
+import { dayInfo, termsAt, type Ctx } from './payroll';
 import { ratesAt } from './rates';
 
 export interface FiscalChild {
@@ -52,14 +52,14 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
       // Sans détail des jours : jours d'activité du bulletin, journées supposées de 8 h ou plus.
       jours += r.joursActivite;
       abat += r.joursActivite * facteur * smicAt(lastDay(m));
-      if (c.repasParents) rp += r.joursActivite * ratesAt(lastDay(m)).repasAvantage;
+      if (termsAt(c, `${m}-01`).repasParents) rp += r.joursActivite * ratesAt(lastDay(m)).repasAvantage;
       continue;
     }
     for (const d of eachDay(`${m}-01`, lastDay(m))) {
       const di = dayInfo(ctx, d);
       if (di.presentMin <= 0 || (di.kind !== 'present' && di.kind !== 'prevu')) continue;
       jours++;
-      if (c.repasParents) rp += ratesAt(d).repasAvantage;
+      if (termsAt(c, d).repasParents) rp += ratesAt(d).repasAvantage;
       const ratio = Math.min(1, di.presentMin / 480);
       if (ratio < 1) courts++;
       abat += facteur * smicAt(d) * ratio;

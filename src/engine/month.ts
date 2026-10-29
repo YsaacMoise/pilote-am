@@ -1,7 +1,7 @@
 // Récapitulatif mensuel par enfant, dans l'ordre de la déclaration Pajemploi.
 import { lastDay, monthLabel, type Month } from './dates';
 import { cpForMonth } from './conges';
-import { monthBase, type Ctx, type MonthBase } from './payroll';
+import { monthBase, termsAt, type Ctx, type MonthBase } from './payroll';
 import { netToBrut } from './rates';
 import { euros, hoursLabel } from './money';
 
@@ -51,7 +51,7 @@ export function declarationLines(ctx: Ctx, r: MonthResult): DeclLine[] {
     {
       label: 'Heures majorées',
       value: hoursLabel(r.majContratMin + r.majMin),
-      hint: `Au-delà de 45 h dans la semaine, prévues au contrat ou en plus, +${ctx.c.majoration}\u00a0%`,
+      hint: `Au-delà de 45 h dans la semaine, prévues au contrat ou en plus, +${termsAt(ctx.c, `${r.month}-01`).majoration}\u00a0%`,
     },
     { label: 'Salaire net', value: euros(r.netTotal) },
     { label: 'Indemnités d’entretien', value: euros(r.entretien), hint: `${r.presenceDays} jour${r.presenceDays > 1 ? 's' : ''} d’accueil` },

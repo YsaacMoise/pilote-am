@@ -8,6 +8,7 @@ import { Carnet } from './screens/Carnet';
 import { Mois } from './screens/Mois';
 import { Plus } from './screens/Plus';
 import { Contrat } from './screens/Contrat';
+import { Avenant } from './screens/Avenant';
 import { Historique } from './screens/Historique';
 import { Controle } from './screens/Controle';
 import { Conges } from './screens/Conges';
@@ -52,7 +53,7 @@ export function App() {
   useEffect(() => { if (s.ready) logUsage('ecran', p || 'aujourdhui'); }, [p, s.ready]);
   useEffect(() => {
     const title = ({
-      '': 'Aujourd’hui', carnet: 'Carnet', mois: 'Mois', plus: 'Plus', contrat: 'Contrat', historique: 'Historique',
+      '': 'Aujourd’hui', carnet: 'Carnet', mois: 'Mois', plus: 'Plus', contrat: 'Contrat', avenant: 'Avenant', historique: 'Historique',
       controle: 'Contrôle du bulletin', conges: 'Congés', fin: 'Fin de contrat', fiscal: 'Impôts', sauvegarde: 'Sauvegarde',
       pilote: 'Données du pilote', reglages: 'Réglages', regles: 'Comment l’app calcule', installer: 'Installer',
     } as Record<string, string>)[p] ?? 'Pilote AM';
@@ -71,6 +72,7 @@ export function App() {
     case 'mois': screen = <Mois month={parts[1]} cid={parts[2]} />; break;
     case 'plus': screen = <Plus />; break;
     case 'contrat': screen = <Contrat key={parts[1]} id={parts[1] === 'nouveau' ? undefined : parts[1]} />; break;
+    case 'avenant': screen = <Avenant key={hash} cid={parts[1]} aid={parts[2] === 'nouveau' ? undefined : parts[2]} />; break;
     case 'historique': screen = <Historique id={parts[1]} />; break;
     case 'controle': screen = <Controle key={hash} cid={parts[1]} month={parts[2]} />; break;
     case 'conges': screen = <Conges />; break;
