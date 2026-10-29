@@ -421,3 +421,8 @@ dialog.sheet[open] { animation: sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 }
 .kid-actions .btn-edit { padding: 0 18px; }
 h1:focus { outline: none; }
+
+/* Guide d'installation iPhone : flèche vers le bouton Partager */
+.install-arrow { display: flex; align-items: center; gap: 10px; justify-content: center; margin-top: 12px; padding: 12px; border-radius: 14px; background: var(--primary-soft); color: var(--ink); font-weight: 600; animation: install-bob 1.4s ease-in-out infinite; }
+@keyframes install-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) { .install-arrow { animation: none; } }

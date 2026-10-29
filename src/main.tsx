@@ -5,6 +5,13 @@ import { load, state, toast } from './store';
 import { getAll, isDemo } from './db';
 import { seedDemo } from './demo';
 
+// Android, Chrome et Edge proposent une vraie installation : on garde l'événement pour le bouton « Installer ».
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  (window as any).__pamInstall = e;
+  window.dispatchEvent(new Event('pam-install-ready'));
+});
+
 async function start() {
   try {
     if (isDemo()) {
