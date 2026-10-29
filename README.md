@@ -1,4 +1,4 @@
-# Pilote AM, version de travail
+# Arvela (ex-Pilote AM), version de travail
 
 > Cette branche `main` est la version de travail, en ligne sur https://ysaacmoise.github.io/pilote-am/ .
 > Elle part d'une copie de la version Claude Code du 28/10/2026. L'original (`base-claude-code-v1`, à ne jamais

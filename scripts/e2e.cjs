@@ -29,7 +29,7 @@ async function run(scheme) {
   const toastHas = async (re) => { await p.locator('.toast p', { hasText: re }).waitFor({ timeout: 5000 }); return true; };
 
   await p.goto(base);
-  await p.getByRole('heading', { name: 'Pilote AM' }).waitFor();
+  await p.getByRole('heading', { name: 'Arvela' }).waitFor();
   assert(await p.getByText('Safari et l’icône ne partagent pas leurs données').isVisible(), 'accueil : avertissement données séparées');
   await p.getByRole('button', { name: 'Commencer ici quand même' }).click();
   await p.getByLabel('Ton prénom').fill('Sonia');
@@ -155,7 +155,7 @@ async function run(scheme) {
   fs.writeFileSync(bad, '{"hello":1}');
   await p.goto(base + '#/sauvegarde');
   await p.locator('input[type=file]').setInputFiles(bad);
-  await p.getByText('Ce fichier n’est pas une sauvegarde de Pilote AM.').waitFor();
+  await p.getByText('Ce fichier n’est pas une sauvegarde d’Arvela.').waitFor();
   assert(true, 'restauration : fichier étranger refusé');
 
   // Export anonymisé

@@ -36,7 +36,7 @@ export async function checkBackup(file: File): Promise<Checked | Rejected> {
     return { ok: false, error: 'Ce fichier n’est pas une sauvegarde lisible (format JSON attendu).' };
   }
   const b = raw as BackupFile;
-  if (!b || b.format !== FORMAT) return { ok: false, error: 'Ce fichier n’est pas une sauvegarde de Pilote AM.' };
+  if (!b || b.format !== FORMAT) return { ok: false, error: 'Ce fichier n’est pas une sauvegarde d’Arvela.' };
   if (typeof b.version !== 'number' || b.version > FORMAT_VERSION) {
     return { ok: false, error: 'Cette sauvegarde vient d’une version plus récente de l’app. Mets l’app à jour puis réessaie.' };
   }

@@ -1,4 +1,4 @@
-// Service worker de Pilote AM (version de travail). Caches préfixés « pam- ».
+// Service worker d’Arvela (version de travail). Caches préfixés « pam- ».
 // La base Claude Code est servie sous /cc/ sur la même origine : on n'y touche jamais.
 const VERSION = '__VERSION__';
 const CACHE = 'pam-' + VERSION;

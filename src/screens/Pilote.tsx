@@ -22,7 +22,7 @@ export function Pilote() {
     <>
       <Topbar title="Données du pilote" back="#/plus" screen="pilote" />
       <main>
-        <p>Pilote AM est en test. Chaque mois, envoie l’export anonymisé à YKM : il sert à construire l’app finale. Il ne contient <b>aucun prénom</b> (les enfants deviennent A, B, C) et <b>aucune note du carnet</b>.</p>
+        <p>Arvela est en test. Chaque mois, envoie l’export anonymisé à YKM : il sert à construire l’app finale. Il ne contient <b>aucun prénom</b> (les enfants deviennent A, B, C) et <b>aucune note du carnet</b>.</p>
         {due && <Banner tone="info">L’export de {monthLabel(addMonths(monthOf(today()), -1))} est prêt.</Banner>}
         <section class="card stack">
           <div class="month-nav">

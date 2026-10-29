@@ -56,8 +56,8 @@ export function App() {
       '': 'Aujourd’hui', carnet: 'Carnet', mois: 'Mois', plus: 'Plus', contrat: 'Contrat', avenant: 'Avenant', historique: 'Historique',
       controle: 'Contrôle du bulletin', conges: 'Congés', fin: 'Fin de contrat', fiscal: 'Impôts', sauvegarde: 'Sauvegarde',
       pilote: 'Données du pilote', reglages: 'Réglages', regles: 'Comment l’app calcule', installer: 'Installer',
-    } as Record<string, string>)[p] ?? 'Pilote AM';
-    document.title = `${title} · Pilote AM`;
+    } as Record<string, string>)[p] ?? 'Arvela';
+    document.title = `${title} · Arvela`;
   }, [p]);
 
   if (!s.ready) return null;

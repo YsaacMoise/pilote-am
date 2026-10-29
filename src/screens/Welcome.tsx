@@ -24,7 +24,7 @@ export function InstallSteps() {
       <li><span>Ouvre cette page dans <b>Safari</b> (pas dans une autre app).</span></li>
       <li><span>Touche le bouton <b>Partager</b> <span class="kbd-ico"><Icon name="share" size={20} label="Partager" /></span> en bas de l’écran.</span></li>
       <li><span>Fais défiler et choisis <b>Sur l’écran d’accueil</b> <span class="kbd-ico"><Icon name="square_plus" size={20} /></span>, puis <b>Ajouter</b>.</span></li>
-      <li><span>Ouvre <b>Pilote AM</b> depuis la nouvelle icône. C’est là que tu travailleras.</span></li>
+      <li><span>Ouvre <b>Arvela</b> depuis la nouvelle icône. C’est là que tu travailleras.</span></li>
     </ol>
   );
 }
@@ -109,7 +109,7 @@ export function Welcome() {
       <div class="hero-gommettes" aria-hidden="true">
         {CHILD_COLORS.slice(0, 4).map((c) => <span style={{ background: c }} />)}
       </div>
-      <h1 class="hero-title">Pilote AM</h1>
+      <h1 class="hero-title">Arvela</h1>
       <p style={{ fontSize: '19px' }}>Ton carnet de bord d’assistante maternelle : les arrivées et départs en un geste, le carnet pour les parents, le salaire à déclarer sur Pajemploi, tes congés.</p>
       <p class="row muted"><Icon name="shield" />Tout reste sur ton téléphone. Pas de compte, pas de serveur.</p>
       {!standalone && (

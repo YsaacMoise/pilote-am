@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "Pilote AM",
-  "short_name": "Pilote AM",
+  "name": "Arvela",
+  "short_name": "Arvela",
   "description": "Le carnet de bord de l'assistante maternelle : pointage, carnet, paie, congés.",
   "lang": "fr",
   "start_url": "./",

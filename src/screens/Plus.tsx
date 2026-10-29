@@ -52,7 +52,7 @@ export function Plus() {
             <ListLink href="#/installer" icon="phone" title="Installer sur l’iPhone" />
           </div>
         </section>
-        <p class="footer-note">Pilote AM ne remplace ni Pajemploi ni un conseil juridique. Tout reste sur ce téléphone.</p>
+        <p class="footer-note">Arvela ne remplace ni Pajemploi ni un conseil juridique. Tout reste sur ce téléphone.</p>
       </main>
     </>
   );
