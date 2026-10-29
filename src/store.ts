@@ -206,6 +206,7 @@ export function logUsage(ev: string, screen?: string) {
   const u: Usage = { id: uid(), ts: Date.now(), ev, screen };
   state.usage.push(u);
   db.put('usage', u).catch(() => {});
+  import('./analytics').then((a) => a.track(ev, screen)).catch(() => {});
 }
 
 // ---------- Contexte de calcul ----------

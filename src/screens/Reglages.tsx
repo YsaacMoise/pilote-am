@@ -1,8 +1,11 @@
+import { useState } from 'preact/hooks';
 import { saveSettings, useStore } from '../store';
-import { Stepper, TextInput, Topbar } from '../ui/kit';
+import { mesureActive, setMesure } from '../analytics';
+import { Stepper, Switch, TextInput, Topbar } from '../ui/kit';
 
 export function Reglages() {
   const s = useStore();
+  const [mesure, setM] = useState(mesureActive());
   return (
     <>
       <Topbar title="Réglages" back="#/plus" screen="reglages" />
@@ -15,7 +18,14 @@ export function Reglages() {
             <p class="hint">Chaque enfant à charge te donne 2 jours de congés en plus, sans dépasser 30 jours.</p>
           </fieldset>
         </section>
-        <p class="footer-note">Version Claude Code du pilote. Aucune donnée ne quitte ce téléphone sans ton geste.</p>
+        <section class="card">
+          <fieldset>
+            <legend>Mesure d’usage du pilote</legend>
+            <Switch label="Aider à améliorer l’app" hint="Les écrans ouverts, les gestes et les erreurs sont envoyés à PostHog (serveurs en Europe), pour améliorer l’app pendant le test." checked={mesure} onChange={(v) => { setMesure(v); setM(v); }} />
+            <p class="hint">Les prénoms des enfants et les noms des familles sont remplacés par « Enfant 1 », « Famille 1 » avant tout envoi. Les notes libres du carnet et ce que tu tapes dans les champs ne sont pas envoyés. Aucune adresse internet n’est gardée.</p>
+          </fieldset>
+        </section>
+        <p class="footer-note">Tes données (contrats, journées, carnet) restent sur ce téléphone.</p>
       </main>
     </>
   );

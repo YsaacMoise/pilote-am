@@ -26,6 +26,8 @@ async function start() {
     return;
   }
   render(<App />, document.getElementById('app')!);
+  // Mesure d'usage du pilote, chargée après l'affichage.
+  setTimeout(() => { import('./analytics').then((a) => a.initAnalytics()).catch(() => {}); }, 1500);
   if (state.contracts.length && !state.settings.persisted) {
     navigator.storage?.persist?.().then((ok) => { if (ok) state.settings.persisted = true; }).catch(() => {});
   }
