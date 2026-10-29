@@ -1,3 +1,4 @@
+import { termsAt } from '../engine/payroll';
 import { useState } from 'preact/hooks';
 import { ctxFor, deleteLeave, toast, useStore, state } from '../store';
 import { cpPeriodStartYear, dayLabel, today, shortDate } from '../engine/dates';
@@ -42,7 +43,7 @@ export function Conges() {
                     <dt>Le plus favorable</dt><dd>{euros(ind.montant)}</dd>
                   </dl>
                   <p class="muted small">
-                    {c.yearType === 'complete'
+                    {termsAt(c, today()).yearType === 'complete'
                       ? 'Année complète : tes congés sont payés dans le salaire mensualisé ; si le dixième est plus favorable, la différence est versée en juin.'
                       : c.cpMode === 'juin' ? 'Année incomplète : versée en juin.' : c.cpMode === 'principale' ? 'Année incomplète : versée avec ta prise principale de congés.' : 'Année incomplète : versée au fur et à mesure des congés pris.'}
                     {' '}Le dixième est calculé sur les salaires connus à ce jour.

@@ -241,6 +241,9 @@ export function avenantSummary(before: Contract, ch: Partial<Terms>): string[] {
   if (ch.repasParJour != null && ch.repasParJour !== before.repasParJour) out.push(`Repas par jour : ${before.repasParJour} → ${ch.repasParJour}`);
   if (ch.kmTaux != null) out.push(`Indemnité kilométrique : ${euros(before.kmTaux)} → ${euros(ch.kmTaux)} par km`);
   if (ch.majoration != null) out.push(`Majoration après 45 h : ${before.majoration} % → ${ch.majoration} %`);
+  if (ch.yearType && ch.yearType !== before.yearType) out.push(ch.yearType === 'complete' ? 'Passage en année complète (52 semaines)' : `Passage en année incomplète (${ch.weeks ?? before.weeks} semaines)`);
+  else if (ch.weeks != null && ch.weeks !== before.weeks) out.push(`Semaines d’accueil : ${before.weeks} → ${ch.weeks}`);
+  if (ch.weeksOff) out.push('Semaines sans accueil modifiées');
   return out;
 }
 
@@ -249,12 +252,12 @@ function AvenantsCard({ c }: { c: Contract }) {
   return (
     <section class="card stack" aria-label="Avenants">
       <h2>Avenants</h2>
-      <p class="hint">Un avenant change le contrat à partir du 1er d’un mois : taux, planning, entretien, repas. Les mois d’avant gardent les anciennes conditions.</p>
+      <p class="hint">Un avenant change le contrat à partir d’une date : taux, planning, entretien, repas, type d’année. Les jours d’avant gardent les anciennes conditions.</p>
       {list.map((a) => {
         const before = termsAt({ ...c, avenants: list.filter((x) => x.from < a.from) }, a.from);
         return (
           <a class="btn btn-outline btn-block" style={{ justifyContent: 'flex-start', textAlign: 'left', flexDirection: 'column', alignItems: 'flex-start' }} href={`#/avenant/${c.id}/${a.id}`}>
-            <b>À partir {deMois(a.from.slice(0, 7) as Month)}</b>
+            <b>{a.from.slice(8) === '01' ? `À partir ${deMois(a.from.slice(0, 7) as Month)}` : `À partir du ${shortDate(a.from)}`}</b>
             {avenantSummary(before, a.changes).map((l) => <span style={{ fontWeight: 400 }}>{l}</span>)}
           </a>
         );

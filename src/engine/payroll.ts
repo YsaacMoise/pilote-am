@@ -1,6 +1,6 @@
 // Moteur de paie d'un contrat d'assistante maternelle (CCN IDCC 3239). Montants en centimes entiers.
 import {
-  addDays, eachDay, firstDay, lastDay, minutes, monthOf, mondayOf, weekday, daysBetween, addMonthsToDate,
+  addDays, eachDay, firstDay, monthsBetween, lastDay, minutes, monthOf, mondayOf, weekday, daysBetween, addMonthsToDate,
   type ISODate, type Month,
 } from './dates';
 import { holidayName, isMayDay } from './holidays';
@@ -94,8 +94,9 @@ export function amLeaveOn(leaves: AmLeave[], d: ISODate): AmAbs | undefined {
 /** Plages prévues au planning ce jour-là (hors semaines sans accueil, hors contrat) */
 export function plannedPlages(c: Contract, d: ISODate): Plage[] {
   if (!inContract(c, d)) return [];
-  if (c.yearType === 'incomplete' && c.weeksOff.includes(mondayOf(d))) return [];
-  return (termsAt(c, d).planning[weekday(d)] ?? []).filter((p) => plageMin(p) > 0);
+  const t = termsAt(c, d);
+  if (t.yearType === 'incomplete' && t.weeksOff.includes(mondayOf(d))) return [];
+  return (t.planning[weekday(d)] ?? []).filter((p) => plageMin(p) > 0);
 }
 
 export type DayKind =
@@ -358,6 +359,12 @@ export interface MonthBase {
   km: number;
   /** Salaire net hors congés payés */
   net: number;
+  /** Régularisation versée avec un avenant (année incomplète qui se termine) */
+  regulAvenant?: number;
+  /** Heures normales non arrondies (minutes) */
+  normalesMin?: number;
+  /** Périodes du mois quand un avenant tombe en cours de mois */
+  segments?: { from: ISODate; salaireMens: number; base: number }[];
   brut?: number;
   alerts: string[];
   forgotten: ISODate[];
@@ -378,13 +385,119 @@ function emptyBase(m: Month): MonthBase {
   };
 }
 
+/** Dates d'avenant qui tombent après le 1er du mois (le mois est alors coupé en périodes) */
+export function avenantCuts(c: Contract, m: Month): ISODate[] {
+  const from = firstDay(m), to = lastDay(m);
+  return [...new Set((c.avenants ?? []).map((a) => a.from).filter((d) => d > from && d <= to))].sort();
+}
+
 function computeMonthBase(ctx: Ctx, m: Month): MonthBase {
-  // Conditions du mois : les avenants prennent effet le 1er du mois.
-  const c = termsAt(ctx.c, firstDay(m));
+  const c0 = ctx.c;
+  const from = firstDay(m), to = lastDay(m);
+  if (c0.start > to || (c0.end && c0.end < from) || m < monthOf(c0.trackedFrom)) return computeRange(ctx, m, from, to);
+  const cuts = avenantCuts(c0, m);
+  if (!cuts.length) { const r = computeRange(ctx, m, from, to); applyAvenantRegul(ctx, m, r); return r; }
+  // Avenant en cours de mois : chaque période est calculée comme un mois d'entrée ou de sortie (prorata), puis additionnée.
+  const bounds = [from, ...cuts];
+  const parts = bounds.map((a, i) => computeRange(ctx, m, a, i + 1 < bounds.length ? addDays(bounds[i + 1], -1) : to)).filter((p) => p.active);
+  const r = mergeParts(m, parts, cuts);
+  applyAvenantRegul(ctx, m, r, parts[0]);
+  return r;
+}
+
+/** Début de la période à régulariser qui se termine la veille de `until` : embauche (ou début du suivi), ou avenant précédent */
+export function regulStart(c: Contract, until: ISODate): ISODate {
+  let s = c.trackedFrom > c.start ? c.trackedFrom : c.start;
+  for (const a of c.avenants ?? []) if (a.from < until && a.from > s) s = a.from;
+  return s;
+}
+
+/**
+ * Régularisation (année incomplète) : heures prévues réellement dues (hors absences retenues) moins heures payées
+ * par la mensualisation, sur [from, to]. `cur` donne les heures payées du mois en cours de calcul (évite la récursion).
+ */
+export function regularisation(ctx: Ctx, from: ISODate, to: ISODate, cur?: { m: Month; payeesMin: number }): { minutes: number; montant: number } {
+  const c = ctx.c;
+  if (to < from) return { minutes: 0, montant: 0 };
+  let dues = 0, payees = 0;
+  for (const d of eachDay(from, to)) {
+    const di = dayInfo(ctx, d);
+    if (di.inDivisor && !di.deducted) dues += di.plannedMin;
+  }
+  for (const m of monthsBetween(monthOf(from), monthOf(to))) {
+    if (cur && m === cur.m) { payees += cur.payeesMin; continue; }
+    const b = monthBase(ctx, m);
+    if (!b.active || b.fromHistory) continue;
+    if (m === monthOf(from) && from > c.start && from.slice(8) !== '01') {
+      // Mois entamé : seule la part postérieure au début de la période compte.
+      const part = eachDay(from, lastDay(m)).reduce((s, d) => { const x = dayInfo(ctx, d); return s + (x.inDivisor ? x.plannedMin : 0); }, 0);
+      payees += (b.mensuelMin * b.paidFraction * part) / (b.divisorMin || 1);
+    } else {
+      payees += b.mensuelMin * b.paidFraction;
+    }
+  }
+  const minutes = Math.max(0, Math.round(dues - payees));
+  return { minutes, montant: Math.round((minutes * termsAt(c, to).rateNet) / 60) };
+}
+
+/** Régularisation versée le mois d'un avenant, si la période qui se termine était en année incomplète (fiche DDETS 31, 2021) */
+function applyAvenantRegul(ctx: Ctx, m: Month, r: MonthBase, firstPart?: MonthBase) {
+  const c = ctx.c;
+  for (const a of c.avenants ?? []) {
+    if (monthOf(a.from) !== m || a.from <= c.start || a.from <= c.trackedFrom) continue;
+    const veille = addDays(a.from, -1);
+    if (termsAt(c, veille).yearType !== 'incomplete') continue;
+    const start = regulStart(c, a.from);
+    const cur = a.from.slice(8) !== '01' && firstPart ? { m, payeesMin: firstPart.mensuelMin * firstPart.paidFraction } : undefined;
+    const reg = regularisation(ctx, start, veille, cur);
+    if (reg.montant > 0) {
+      r.regulAvenant = (r.regulAvenant ?? 0) + reg.montant;
+      r.net += reg.montant;
+      r.alerts.push(`Régularisation à l’avenant du ${a.from.slice(8, 10)}/${a.from.slice(5, 7)} : ${hoursMin(reg.minutes)} accueillies depuis le ${start.split('-').reverse().join('/')} et pas encore payées.`);
+    }
+  }
+}
+
+function hoursMin(min: number): string {
+  const h = Math.floor(min / 60), mm = min % 60;
+  return mm ? `${h} h ${String(mm).padStart(2, '0')}` : `${h} h`;
+}
+
+const SUM_KEYS = ['base', 'retenue', 'majContratMin', 'joursActivite', 'complMin', 'majMin', 'complAmount', 'majAmount', 'ferieAmount',
+  'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
+
+function mergeParts(m: Month, parts: MonthBase[], cuts: ISODate[]): MonthBase {
+  const r = emptyBase(m);
+  if (!parts.length) return r;
+  r.active = true;
+  for (const p of parts) {
+    for (const k of SUM_KEYS) (r as any)[k] = ((r as any)[k] ?? 0) + ((p as any)[k] ?? 0);
+    r.ferieDays.push(...p.ferieDays);
+    r.forgotten.push(...p.forgotten);
+    for (const a of p.alerts) if (!r.alerts.includes(a)) r.alerts.push(a);
+    r.sickPaidNotice ||= p.sickPaidNotice;
+    // Heures payées par la mensualisation (sert à la régularisation)
+    r.mensuelMin += p.mensuelMin * p.paidFraction;
+  }
+  const last = parts[parts.length - 1];
+  r.salaireMens = last.salaireMens;
+  r.divisorDays = last.divisorDays;
+  r.divisorMin = last.divisorMin;
+  r.paidFraction = 1;
+  r.heuresNormales = Math.round((r.normalesMin ?? 0) / 60);
+  r.segments = parts.map((p, i) => ({ from: i === 0 ? firstDay(m) : cuts[i - 1], salaireMens: p.salaireMens, base: p.base }));
+  r.alerts.unshift(`Avenant au ${cuts.map((d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`).join(', ')} : le salaire du mois est calculé au prorata de chaque période.`);
+  return r;
+}
+
+function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): MonthBase {
+  // Conditions en vigueur au début de la période.
+  const c = termsAt(ctx.c, segFrom);
   const r = emptyBase(m);
   const from = firstDay(m), to = lastDay(m);
-  if (c.start > to || (c.end && c.end < from)) return r;
+  if (c.start > segTo || (c.end && c.end < segFrom)) return r;
   r.active = true;
+  const inSeg = (d: ISODate) => inContract(c, d) && d >= segFrom && d <= segTo;
 
   if (m < monthOf(c.trackedFrom)) {
     r.fromHistory = true;
@@ -406,9 +519,9 @@ function computeMonthBase(ctx: Ctx, m: Month): MonthBase {
 
   // Diviseur : jours (ou heures) qui auraient été travaillés sur le mois entier, d'après le planning.
   const allDays = eachDay(from, to);
-  const startsOrEndsInMonth = c.start > from || (!!c.end && c.end < to);
-  // Pour le mois entier on simule un contrat actif tout le mois.
-  const full: Contract = { ...c, start: from < c.start ? from : c.start, end: undefined };
+  const startsOrEndsInMonth = c.start > from || (!!c.end && c.end < to) || segFrom > from || segTo < to;
+  // Pour le mois entier on simule un contrat actif tout le mois, aux conditions de la période.
+  const full: Contract = { ...c, start: from < c.start ? from : c.start, end: undefined, avenants: [] };
   const fullCtx: Ctx = { ...ctx, c: full, cache: new Map() };
   let fullDays = 0, fullMin = 0;
   for (const d of allDays) {
@@ -421,7 +534,7 @@ function computeMonthBase(ctx: Ctx, m: Month): MonthBase {
   let cDays = 0, cMin = 0, dedDays = 0, dedMin = 0;
   const forgotten: ISODate[] = [];
   for (const d of allDays) {
-    if (!inContract(c, d)) continue;
+    if (!inSeg(d)) continue;
     const di = dayInfo(ctx, d);
     if (di.inDivisor) { cDays++; cMin += di.plannedMin; }
     if (di.deducted) { dedDays++; dedMin += di.plannedMin; }
@@ -466,16 +579,17 @@ function computeMonthBase(ctx: Ctx, m: Month): MonthBase {
 
   // Pajemploi : les heures du contrat au-delà de 45 h/semaine vont en « heures majorées », pas en heures normales.
   const majContrat = mensuelMajoreesMinutes(c);
-  r.heuresNormales = Math.round(((r.mensuelMin - majContrat) * fraction) / 60);
+  r.normalesMin = (r.mensuelMin - majContrat) * fraction;
+  r.heuresNormales = Math.round(r.normalesMin / 60);
   r.majContratMin = Math.round(majContrat * fraction);
   if (startsOrEndsInMonth) r.joursActivite = Math.max(0, cDays - dedDays) + r.extraDays;
   else r.joursActivite = Math.max(0, joursMensualises(c) - dedDays) + r.extraDays;
 
   // Heures en plus, par semaine, rattachées au mois du jour.
-  const weeks = new Set(allDays.filter((d) => inContract(c, d)).map(mondayOf));
+  const weeks = new Set(allDays.filter(inSeg).map(mondayOf));
   for (const mon of weeks) {
     for (const [d, v] of weekOvertime(ctx, mon)) {
-      if (monthOf(d) !== m || !inContract(c, d)) continue;
+      if (monthOf(d) !== m || !inSeg(d)) continue;
       r.complMin += v.compl;
       r.majMin += v.maj;
     }

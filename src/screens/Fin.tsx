@@ -1,3 +1,4 @@
+import { termsAt } from '../engine/payroll';
 import { useState } from 'preact/hooks';
 import { ctxFor, useStore } from '../store';
 import { shortDate, today } from '../engine/dates';
@@ -43,7 +44,7 @@ export function Fin({ id }: { id?: string }) {
           </dl>
           <div class="decl">
             <div class="decl-line"><span class="decl-label"><span>Indemnité de rupture</span><span class="decl-hint">{f.ruptureExplication}</span></span><span class="decl-value">{euros(f.indemniteRupture)}</span></div>
-            <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint">{c.yearType === 'incomplete' ? (f.regulMinutes ? `${hoursLabel(f.regulMinutes)} accueillies mais non payées par la mensualisation` : 'Pas d’heures accueillies au-delà de ce qui a été payé') : 'Année complète : pas de régularisation'}</span></span><span class="decl-value">{euros(f.regularisation)}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint">{f.regularisation > 0 || termsAt(c, f.dernierJour).yearType === 'incomplete' ? (f.regulMinutes ? `${hoursLabel(f.regulMinutes)} accueillies mais non payées par la mensualisation` : 'Pas d’heures accueillies au-delà de ce qui a été payé') : 'Année complète : pas de régularisation'}</span></span><span class="decl-value">{euros(f.regularisation)}</span></div>
             <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{euros(f.cpIndemnite)}</span></div>
           </div>
           <div class="spread"><b>Total estimé, hors salaire du dernier mois</b><span class="decl-value">{euros(total)}</span></div>

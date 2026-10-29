@@ -31,13 +31,13 @@ export interface StartBalances {
 }
 
 /** Conditions du contrat qu'un avenant peut changer */
-export type Terms = Pick<Contract, 'planning' | 'rateNet' | 'majoration' | 'entretienJour' | 'repasPrix' | 'repasParJour' | 'repasParents' | 'kmTaux'>;
-export const TERM_KEYS: (keyof Terms)[] = ['planning', 'rateNet', 'majoration', 'entretienJour', 'repasPrix', 'repasParJour', 'repasParents', 'kmTaux'];
+export type Terms = Pick<Contract, 'planning' | 'rateNet' | 'majoration' | 'entretienJour' | 'repasPrix' | 'repasParJour' | 'repasParents' | 'kmTaux' | 'yearType' | 'weeks' | 'weeksOff'>;
+export const TERM_KEYS: (keyof Terms)[] = ['planning', 'rateNet', 'majoration', 'entretienJour', 'repasPrix', 'repasParJour', 'repasParents', 'kmTaux', 'yearType', 'weeks', 'weeksOff'];
 
-/** Avenant : nouvelles conditions à partir du 1er jour d'un mois */
+/** Avenant : nouvelles conditions à partir d'une date */
 export interface Avenant {
   id: string;
-  /** Premier jour du mois d'effet */
+  /** Premier jour d'application */
   from: ISODate;
   /** Date de signature, si connue */
   signe?: ISODate;

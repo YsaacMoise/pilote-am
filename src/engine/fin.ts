@@ -1,11 +1,11 @@
 // Fin de contrat : préavis (art. 120), indemnité de rupture (art. 121), régularisation (art. 124),
 // indemnité de congés non pris. Aucun document officiel n'est produit.
 import {
-  addDays, addMonthsToDate, cpPeriod, cpPeriodStartYear, eachDay, fullMonthsBetween, lastDay, monthOf, monthsBetween,
+  addDays, addMonthsToDate, cpPeriod, cpPeriodStartYear, fullMonthsBetween, lastDay, monthOf, monthsBetween,
   type ISODate, type Month,
 } from './dates';
 import { acquisition, compteur, cpForMonth, indemnite, maintien } from './conges';
-import { dayInfo, monthBase, monthBrut, termsAt, type Ctx } from './payroll';
+import { monthBase, monthBrut, regularisation, regulStart, termsAt, type Ctx } from './payroll';
 import { netToBrut } from './rates';
 
 export type Motif = 'retrait' | 'demission' | 'deces' | 'inaptitude_pro' | 'faute_grave' | 'essai';
@@ -104,30 +104,14 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     ruptureExplication = 'Pas d’indemnité pendant la période d’essai.';
   }
 
-  // Régularisation : heures réellement dues (planning, hors absences retenues) contre heures payées.
-  let dues = 0, payees = 0;
-  const from = c.trackedFrom > c.start ? c.trackedFrom : c.start;
-  // Depuis l'embauche (ou le début du suivi par l'app) : art. 124.
-  const regStart = from;
-  for (const d of eachDay(regStart, dernierJour)) {
-    const di = dayInfo(endCtx, d);
-    if (di.inDivisor && !di.deducted) dues += di.plannedMin;
-  }
-  for (const m of monthsBetween(monthOf(regStart), monthOf(dernierJour))) {
-    const b = monthBase(endCtx, m);
-    if (!b.active || b.fromHistory) continue;
-    if (m === monthOf(regStart) && regStart > c.start && regStart.slice(8) !== '01') {
-      // mois entamé : seule la part postérieure au début de la régularisation compte
-      const part = eachDay(regStart, lastDay(m)).reduce((s, d) => s + (dayInfo(endCtx, d).inDivisor ? dayInfo(endCtx, d).plannedMin : 0), 0);
-      const tot = b.divisorMin || 1;
-      payees += (b.mensuelMin * b.paidFraction * part) / tot;
-    } else {
-      payees += b.mensuelMin * b.paidFraction;
-    }
-  }
-  const regulMinutes = Math.max(0, Math.round(dues - payees));
-  const regularisation = c.yearType === 'incomplete' ? Math.round((regulMinutes * termsAt(c, dernierJour).rateNet) / 60) : 0;
-  if (c.yearType === 'complete' && regulMinutes > 60) {
+  // Régularisation : heures réellement dues (planning, hors absences retenues) contre heures payées,
+  // depuis l'embauche, le début du suivi ou le dernier avenant (régularisé à ce moment-là).
+  const finTerms = termsAt(c, dernierJour);
+  const regStart = regulStart(c, addDays(dernierJour, 1));
+  const reg = regularisation(endCtx, regStart, dernierJour);
+  const regulMinutes = reg.minutes;
+  const regularisation_ = finTerms.yearType === 'incomplete' ? reg.montant : 0;
+  if (finTerms.yearType === 'complete' && regulMinutes > 60) {
     alertes.push('Année complète : la régularisation ne s’applique pas en principe, vérifie le planning du contrat.');
   }
 
@@ -145,7 +129,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // Période précédente : jours restants, moins ce qui a déjà été versé.
   let precMontant = 0;
   if (restantsPrec > 0) {
-    if (c.yearType === 'complete') {
+    if (finTerms.yearType === 'complete') {
       // Les jours pris ont été payés dans le salaire, le complément du dixième en juin : reste le maintien.
       precMontant = maintien(endCtx, restantsPrec, dernierJour);
     } else {
@@ -166,6 +150,6 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
 
   return {
     ancienneteMois: anc, preavisLabel, preavisFin, dernierJour, indemniteRupture, ruptureExplication, totalBrut,
-    regularisation, regulMinutes, cpJoursRestants: joursCur + restantsPrec, cpIndemnite, cpExplication, manquants, alertes,
+    regularisation: regularisation_, regulMinutes, cpJoursRestants: joursCur + restantsPrec, cpIndemnite, cpExplication, manquants, alertes,
   };
 }

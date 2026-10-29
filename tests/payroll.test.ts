@@ -501,3 +501,41 @@ describe('avenants (nouvelles conditions à partir d’un mois)', () => {
     expect(f.repasParents).toBe(20 * 550); // novembre : 21 jours ouvrés moins le 11 novembre
   });
 });
+
+describe('avenants en cours de mois et changement de type d’année', () => {
+  it('avenant au 15 octobre : chaque période payée au prorata de ses heures prévues', () => {
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', avenants: [{ id: 'a1', from: '2026-10-15', changes: { rateNet: 400 } }] });
+    const r = monthBase(makeCtx(c, [], [], '2026-11-15'), '2026-10');
+    // octobre 2026 : 22 jours ouvrés, 10 avant le 15 et 12 à partir du 15 (9 h par jour)
+    const avant = Math.round(68250 * (10 * 540) / (22 * 540));
+    const apres = Math.round(78000 * (12 * 540) / (22 * 540));
+    expect(r.base).toBe(avant + apres);
+    expect(r.segments?.length).toBe(2);
+    expect(r.alerts[0]).toMatch(/Avenant au 15\/10/);
+  });
+  it('mois suivant un avenant en cours de mois : nouveau salaire entier', () => {
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', avenants: [{ id: 'a1', from: '2026-10-15', changes: { rateNet: 400 } }] });
+    expect(monthBase(makeCtx(c, [], [], '2026-12-15'), '2026-11').base).toBe(78000);
+  });
+  it('passage de l’année incomplète à l’année complète : nouvelle mensualisation et régularisation versée', () => {
+    // 46 semaines prévues mais aucune semaine sans accueil saisie : toutes les semaines ont été accueillies
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', yearType: 'incomplete', weeks: 46,
+      avenants: [{ id: 'a1', from: '2026-09-01', changes: { yearType: 'complete', weeks: 52 } }] });
+    const ctx = makeCtx(c, [], [], '2026-10-15');
+    expect(monthBase(ctx, '2026-08').base).toBe(60375);
+    const sept = monthBase(ctx, '2026-09');
+    expect(sept.regulAvenant ?? 0).toBeGreaterThan(0);
+    expect(sept.net).toBe(68250 + (sept.regulAvenant ?? 0));
+    expect(monthBase(ctx, '2026-10').regulAvenant ?? 0).toBe(0);
+  });
+  it('fin de contrat après un avenant : la régularisation repart de l’avenant', () => {
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', yearType: 'incomplete', weeks: 46,
+      avenants: [{ id: 'a1', from: '2026-09-01', changes: { rateNet: 400 } }] });
+    const ctx = makeCtx(c, [], [], '2026-12-31');
+    const sept = monthBase(ctx, '2026-09');
+    expect(sept.regulAvenant ?? 0).toBeGreaterThan(0); // janvier → août régularisé à l’avenant
+    const f = finDeContrat(ctx, '2026-10-30', 'retrait');
+    const fFull = finDeContrat(makeCtx({ ...c, avenants: [] }, [], [], '2026-12-31'), '2026-10-30', 'retrait');
+    expect(f.regulMinutes).toBeLessThan(fFull.regulMinutes);
+  });
+});

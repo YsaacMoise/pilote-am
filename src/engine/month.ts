@@ -34,7 +34,7 @@ export interface DeclLine { label: string; value: string; hint?: string }
 
 /** Les cases de la déclaration Pajemploi, dans l'ordre */
 export function declarationLines(ctx: Ctx, r: MonthResult): DeclLine[] {
-  const complete = ctx.c.yearType === 'complete';
+  const complete = termsAt(ctx.c, `${r.month}-01`).yearType === 'complete';
   return [
     { label: 'Heures normales', value: `${r.heuresNormales} h`, hint: 'Les heures payées chaque mois, jusqu’à 45 h par semaine, arrondies à l’heure' },
     { label: 'Jours d’activité', value: `${r.joursActivite}` },
@@ -74,6 +74,7 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   if (r.retenue) out.push(`• Retenue pour absence : −${euros(r.retenue)}`);
   if (r.complAmount) out.push(`• Heures complémentaires : ${euros(r.complAmount)}`);
   if (r.majAmount) out.push(`• Heures majorées en plus du contrat : ${euros(r.majAmount)}`);
+  if (r.regulAvenant) out.push(`• Régularisation à l’avenant : ${euros(r.regulAvenant)}`);
   if (r.ferieAmount) out.push(`• Majoration jours fériés travaillés : ${euros(r.ferieAmount)}`);
   if (r.cpIndemnite) out.push(`• Indemnité de congés payés : ${euros(r.cpIndemnite)}`);
   if (r.cpComplement) out.push(`• Complément de congés payés : ${euros(r.cpComplement)}`);

@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { ctxFor, logUsage, toast, useStore, state } from '../store';
 import { addMonths, dayLabel, eachDay, firstDay, lastDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
 import { computeMonth, declarationLines, declarationText } from '../engine/month';
-import { dayInfo } from '../engine/payroll';
+import { dayInfo, termsAt } from '../engine/payroll';
 import { euros, hoursLabel } from '../engine/money';
 import { CHILD_ABS_LABEL, AM_ABS_LABEL, type Contract } from '../engine/model';
 import { Banner, Gommette, Topbar } from '../ui/kit';
@@ -112,9 +112,10 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
         <div class="more-body">
           <dl class="kv">
             <dt>Salaire de base (le même chaque mois)</dt><dd>{euros(r.salaireMens)}</dd>
-            <dt>{c.yearType === 'complete' ? 'Heures prévues ce mois' : 'Jours prévus ce mois'}</dt>
-            <dd>{c.yearType === 'complete' ? hoursLabel(r.divisorMin) : r.divisorDays}</dd>
-            {r.retenue > 0 && (<><dt>Retenue ({c.yearType === 'complete' ? hoursLabel(r.deductedMin) : `${r.deductedDays} j`} non payés)</dt><dd>−{euros(r.retenue)}</dd></>)}
+            <dt>{termsAt(c, `${month}-01`).yearType === 'complete' ? 'Heures prévues ce mois' : 'Jours prévus ce mois'}</dt>
+            <dd>{termsAt(c, `${month}-01`).yearType === 'complete' ? hoursLabel(r.divisorMin) : r.divisorDays}</dd>
+            {r.retenue > 0 && (<><dt>Retenue ({termsAt(c, `${month}-01`).yearType === 'complete' ? hoursLabel(r.deductedMin) : `${r.deductedDays} j`} non payés)</dt><dd>−{euros(r.retenue)}</dd></>)}
+            {!!r.regulAvenant && (<><dt>Régularisation à l’avenant</dt><dd>{euros(r.regulAvenant)}</dd></>)}
             {r.complAmount > 0 && (<><dt>Heures complémentaires ({hoursLabel(r.complMin)})</dt><dd>{euros(r.complAmount)}</dd></>)}
             {r.majAmount > 0 && (<><dt>Heures majorées en plus ({hoursLabel(r.majMin)})</dt><dd>{euros(r.majAmount)}</dd></>)}
             {r.ferieAmount > 0 && (<><dt>Fériés travaillés</dt><dd>{euros(r.ferieAmount)}</dd></>)}
@@ -126,7 +127,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
             {r.km > 0 && (<><dt>Kilomètres</dt><dd>{euros(r.km)}</dd></>)}
           </dl>
           <p class="muted small">
-            {c.yearType === 'complete'
+            {termsAt(c, `${month}-01`).yearType === 'complete'
               ? 'Année complète : retenue = salaire mensualisé × heures non payées ÷ heures prévues dans le mois (art. 111).'
               : 'Année incomplète : retenue = salaire mensualisé × jours non payés ÷ jours prévus dans le mois (art. 111).'}
           </p>

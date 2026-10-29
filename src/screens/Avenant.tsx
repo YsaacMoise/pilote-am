@@ -1,12 +1,12 @@
 // Avenant : nouvelles conditions du contrat à partir du 1er d'un mois.
 import { useState } from 'preact/hooks';
 import { logUsage, putContract, state, toast, uid, useStore } from '../store';
-import { addMonths, deMois, firstDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
+import { addMonths, firstDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, termsAt, weeklyMinutes } from '../engine/payroll';
 import { ratesAt } from '../engine/rates';
 import { euros, hoursLabel } from '../engine/money';
 import { TERM_KEYS, type Avenant as Av, type Contract, type Planning, type Terms } from '../engine/model';
-import { Banner, Choices, DateInput, EuroInput, NumberInput, Topbar } from '../ui/kit';
+import { Banner, Choices, DateInput, EuroInput, NumberInput, Seg, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { PlanDay, avenantSummary } from './Contrat';
 
@@ -24,22 +24,23 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
   useStore();
   const c = state.contracts.find((x) => x.id === cid);
   const existing = c?.avenants?.find((a) => a.id === aid);
-  const [month, setMonth] = useState<Month>(() => (existing ? (existing.from.slice(0, 7) as Month) : addMonths(monthOf(today()), 1)));
+  const [date, setDate] = useState<string>(() => existing?.from ?? firstDay(addMonths(monthOf(today()), 1)));
+  const month = date.slice(0, 7) as Month;
   const others = (c?.avenants ?? []).filter((a) => a.id !== existing?.id);
-  const base = (m: Month) => (c ? termsAt({ ...c, avenants: others }, firstDay(m)) : undefined);
+  const base = (d: string) => (c ? termsAt({ ...c, avenants: others }, d) : undefined);
   const [t, setT] = useState<Terms | undefined>(() => {
-    const b = base(month);
+    const b = base(date);
     return b ? { ...pickTerms(b), ...(existing ? structuredClone(existing.changes) : {}) } : undefined;
   });
   const [signe, setSigne] = useState(existing?.signe ?? '');
   const [errors, setErrors] = useState<string[]>([]);
   if (!c || !t) return (<><Topbar title="Avenant" back="#/plus" screen="avenant" /><main><Banner tone="warn">Contrat introuvable.</Banner></main></>);
 
-  const before = base(month)!;
+  const before = base(date)!;
   const set = (p: Partial<Terms>) => { setT({ ...t, ...p }); setErrors([]); };
   const preview: Contract = { ...c, ...t };
   const wk = weeklyMinutes(t.planning);
-  const rates = ratesAt(firstDay(month));
+  const rates = ratesAt(date);
   const changes: Partial<Terms> = {};
   for (const k of TERM_KEYS) if (!same(t[k], (before as any)[k])) (changes as any)[k] = structuredClone(t[k]);
   const summary = avenantSummary(before, changes);
@@ -47,17 +48,19 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
   async function save() {
     const errs: string[] = [];
     if (!summary.length) errs.push('Rien n’a changé par rapport au contrat en vigueur ce mois-là.');
-    if (firstDay(month) < c!.start) errs.push('L’avenant commence avant le début du contrat.');
-    if (others.some((a) => a.from === firstDay(month))) errs.push('Un autre avenant commence déjà ce mois-là : modifie-le plutôt.');
+    if (!date) errs.push('Indique la date de début de l’avenant.');
+    if (date <= c!.start) errs.push('L’avenant doit commencer après le début du contrat.');
+    if (t!.yearType === 'incomplete' && (t!.weeks < 1 || t!.weeks > 46)) errs.push('En année incomplète, le nombre de semaines va de 1 à 46.');
+    if (others.some((a) => a.from === date)) errs.push('Un autre avenant commence déjà ce jour-là : modifie-le plutôt.');
     if (wk <= 0) errs.push('Le planning est vide.');
     for (let d = 1; d <= 7; d++) for (const p of t!.planning[d] ?? []) if (p.end <= p.start) errs.push('Une heure de fin est avant le début.');
     setErrors(errs);
     if (errs.length) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-    const av: Av = { id: existing?.id ?? uid(), from: firstDay(month), ...(signe ? { signe } : {}), changes };
+    const av: Av = { id: existing?.id ?? uid(), from: date, ...(signe ? { signe } : {}), changes };
     const next: Contract = { ...c!, avenants: [...others, av].sort((a, b) => (a.from < b.from ? -1 : 1)) };
     const prev = await putContract(next);
     logUsage(existing ? 'avenant_modifie' : 'avenant_cree', 'avenant');
-    toast(`Avenant à partir ${deMois(month)} enregistré`, prev ? async () => { await putContract(prev); } : undefined);
+    toast(`Avenant à partir du ${date.split('-').reverse().join('/')} enregistré`, prev ? async () => { await putContract(prev); } : undefined);
     location.hash = `#/contrat/${c!.id}`;
   }
 
@@ -81,17 +84,8 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
         <section class="card">
           <fieldset>
             <legend>Quand</legend>
-            <div class="field">
-              <label class="label" for="av-month">À partir du mois de</label>
-              <input id="av-month" class="input" type="month" value={month} min={c.start.slice(0, 7)}
-                onInput={(e) => {
-                  const v = (e.target as HTMLInputElement).value as Month;
-                  if (!v) return;
-                  setMonth(v);
-                  if (!existing) { const b = base(v); if (b) setT(pickTerms(b)); }
-                }} />
-              <span class="hint">Le changement s’applique dès le 1er {monthLabel(month)}. Les mois d’avant gardent les anciennes conditions.</span>
-            </div>
+            <DateInput label="À partir du" hint="Premier jour avec les nouvelles conditions. Les jours d’avant gardent les anciennes. Un avenant en cours de mois est calculé au prorata." value={date} min={c.start}
+              onChange={(v) => { setDate(v); setErrors([]); if (!existing && v) { const b = base(v); if (b) setT(pickTerms(b)); } }} />
             <DateInput label="Signé le (facultatif)" value={signe} onChange={setSigne} />
           </fieldset>
         </section>
@@ -119,6 +113,10 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
         <section class="card">
           <fieldset>
             <legend>Le planning</legend>
+            <Seg label="Accueil sur l’année" value={t.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(t.weeks, 46) || 46 })}
+              options={[{ v: 'complete', l: 'Toute l’année (52 sem.)' }, { v: 'incomplete', l: 'Année incomplète' }]} />
+            {t.yearType === 'incomplete' && <NumberInput label="Semaines d’accueil par an" hint="46 au plus" value={t.weeks} min={1} max={46} onChange={(v) => set({ weeks: v ?? 46 })} />}
+            {before.yearType === 'incomplete' && <p class="hint">Le contrat était en année incomplète : l’app calcule une régularisation à la date de l’avenant (heures accueillies et pas encore payées), versée avec le salaire de ce mois.</p>}
             {[1, 2, 3, 4, 5, 6, 7].map((d) => <PlanDay d={d} plages={t.planning[d] ?? []} onChange={(p) => set({ planning: { ...t.planning, [d]: p } as Planning })} />)}
             <div class="banner info" style={{ marginTop: '4px' }}>
               <span class="b-ico"><Icon name="clock" /></span>
@@ -133,7 +131,6 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
         <section class="card stack" aria-label="Ce qui change">
           <h2>Ce qui change</h2>
           {summary.length ? summary.map((l) => <p>{l}</p>) : <p class="muted">Rien pour l’instant.</p>}
-          <p class="hint">Pour passer de l’année complète à l’année incomplète (ou l’inverse), il faut une régularisation : ce cas n’est pas encore géré par un avenant.</p>
         </section>
 
         <button class="btn btn-primary btn-block btn-lg" onClick={save}>Enregistrer l’avenant</button>

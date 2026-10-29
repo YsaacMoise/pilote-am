@@ -1,5 +1,5 @@
 // Congés payés (art. 48 et 102) : acquisition, compteur, indemnité.
-import { addMonths, cpPeriod, cpPeriodStartYear, daysBetween, eachDay, monthOf, monthsBetween, weekday, type ISODate, type Month } from './dates';
+import { addDays, addMonths, cpPeriod, cpPeriodStartYear, daysBetween, eachDay, monthOf, monthsBetween, weekday, type ISODate, type Month } from './dates';
 import { holidayName } from './holidays';
 import { H45, monthBase, termsAt, weeklyMinutes, weeksPerYear, type Ctx } from './payroll';
 
@@ -33,12 +33,21 @@ function weeksIn(ctx: Ctx, from: ISODate, to: ISODate): number {
   const a = from < c.start ? c.start : from;
   const b = c.end && c.end < to ? c.end : to;
   if (b < a) return 0;
-  const cal = (daysBetween(a, b) + 1) / 7;
-  if (c.yearType === 'complete') return cal;
-  // Année incomplète : semaines programmées au prorata de la période de référence (365 ou 366 jours)
-  const p = cpPeriod(cpPeriodStartYear(a));
-  const periodDays = daysBetween(p.from, p.to) + 1;
-  return (Math.min(daysBetween(a, b) + 1, periodDays) / periodDays) * weeksPerYear(c);
+  // Un avenant peut changer le type d'année : chaque morceau est compté selon ses propres conditions.
+  const cuts = [...new Set((c.avenants ?? []).map((x) => x.from).filter((d) => d > a && d <= b))].sort();
+  const bounds = [a, ...cuts];
+  let total = 0;
+  bounds.forEach((s, i) => {
+    const e = i + 1 < bounds.length ? addDays(bounds[i + 1], -1) : b;
+    const t = termsAt(c, s);
+    const days = daysBetween(s, e) + 1;
+    if (t.yearType === 'complete') { total += days / 7; return; }
+    // Année incomplète : semaines programmées au prorata de la période de référence (365 ou 366 jours)
+    const p = cpPeriod(cpPeriodStartYear(s));
+    const periodDays = daysBetween(p.from, p.to) + 1;
+    total += (Math.min(days, periodDays) / periodDays) * weeksPerYear(t);
+  });
+  return total;
 }
 
 function round(x: number): number {
@@ -186,7 +195,7 @@ export function cpForMonth(ctx: Ctx, m: Month, enfants = 0): CpMonth {
     const ind = indemnite(ctx, prevY, enfants);
     if (ind.jours === 0) return out;
     const juin = `${y}-06` as Month;
-    if (c.yearType === 'complete') {
+    if (termsAt(c, `${m}-01`).yearType === 'complete') {
       if (m === juin) {
         out.complement = Math.max(0, ind.dixieme - ind.maintien);
         if (out.complement) out.note = 'Complément du dixième (année complète), versé en juin.';
