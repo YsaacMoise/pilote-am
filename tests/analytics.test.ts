@@ -15,5 +15,6 @@ describe('mesure d’usage : pseudonymisation avant envoi', () => {
     expect(pseudonymise('Merci ! Sonia')).toBe('Merci ! AM');
     expect(pseudonymise('Léonard reste Léonard')).toBe('Léonard reste Léonard');
     expect(pseudonymise('Malade, avec certificat : 713,81 €')).toBe('Malade, avec certificat : 713,81 €');
+    expect(pseudonymise('Connectée : sonia.dupont@gmail.com')).toBe('Connectée : e-mail masqué');
   });
 });

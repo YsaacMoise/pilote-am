@@ -45,9 +45,12 @@ function table(): Array<[RegExp, string]> {
   return cacheTable;
 }
 
+const EMAIL = /[^\s@<>()"',;:]+@[^\s@<>()"',;:]+\.[A-Za-z]{2,}/g;
+
 export function pseudonymise(text: string): string {
   if (!text) return text;
-  let t = text;
+  // Les adresses e-mail (écran Compte) ne partent jamais.
+  let t = text.replace(EMAIL, 'e-mail masqué');
   for (const [re, rep] of table()) t = t.replace(re, rep);
   return t;
 }

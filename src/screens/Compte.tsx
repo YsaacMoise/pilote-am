@@ -42,7 +42,7 @@ export function AccountForm({ initial = 'create', onDone }: { initial?: 'create'
 
   if (mode === 'reset') {
     return (
-      <form class="stack" onSubmit={submit} noValidate>
+      <form key="reset" class="stack" onSubmit={submit} noValidate>
         <h2>Mot de passe oublié</h2>
         {sent ? (
           <Banner tone="ok">Si un compte existe pour cette adresse, un e-mail vient de partir. Ouvre le lien qu’il contient pour choisir un nouveau mot de passe.</Banner>
@@ -59,7 +59,7 @@ export function AccountForm({ initial = 'create', onDone }: { initial?: 'create'
 
   const create = mode === 'create';
   return (
-    <form class="stack" onSubmit={submit} noValidate>
+    <form key={mode} class="stack" onSubmit={submit} noValidate>
       <h2>{create ? 'Crée ton compte' : 'Connecte-toi'}</h2>
       <TextInput label="Adresse e-mail" type="email" inputMode="email" autoComplete={create ? 'email' : 'username'} value={email} onChange={setEmail} />
       <TextInput
