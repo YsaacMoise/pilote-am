@@ -23,10 +23,9 @@ export function enterDemo() {
 export function InstallSteps() {
   return (
     <ol class="steps">
-      <li><span>Ouvre cette page dans <b>Safari</b> (pas dans une autre app).</span></li>
-      <li><span>Touche le bouton <b>Partager</b> <span class="kbd-ico"><Icon name="share" size={20} label="Partager" /></span> en bas de l’écran.</span></li>
-      <li><span>Fais défiler et choisis <b>Sur l’écran d’accueil</b> <span class="kbd-ico"><Icon name="square_plus" size={20} /></span>, puis <b>Ajouter</b>.</span></li>
-      <li><span>Ouvre <b>Arvela</b> depuis la nouvelle icône. C’est là que tu travailleras.</span></li>
+      <li><span>Touche le bouton <b>Partager</b> <span class="kbd-ico"><Icon name="share" size={20} label="Partager" /></span> : en bas dans Safari, en haut à droite dans Chrome.</span></li>
+      <li><span>Choisis <b>Sur l’écran d’accueil</b> <span class="kbd-ico"><Icon name="square_plus" size={20} /></span>, puis <b>Ajouter</b>.</span></li>
+      <li><span>Ouvre <b>Arvela</b> depuis la nouvelle icône et connecte-toi avec ton adresse e-mail. Tu y retrouves tout.</span></li>
     </ol>
   );
 }
@@ -66,7 +65,7 @@ export function InstallButton({ label = 'Installer l’app sur l’écran d’ac
             <>
               <InstallSteps />
               <p class="hint">Apple ne permet pas à un site de s’installer tout seul sur iPhone  : ces gestes sont le seul chemin, et une seule fois suffit.</p>
-              <div class="install-arrow" aria-hidden="true"><Icon name="share" size={28} /><span>Le bouton Partager est en bas de Safari</span></div>
+              <div class="install-arrow" aria-hidden="true"><Icon name="share" size={28} /><span>Partager : en bas dans Safari, en haut à droite dans Chrome</span></div>
             </>
           ) : (
             <p>Ouvre le menu du navigateur (les trois points ⋮ en haut à droite) et choisis <b>Installer l’application</b> ou <b>Ajouter à l’écran d’accueil</b>.</p>
@@ -74,15 +73,6 @@ export function InstallButton({ label = 'Installer l’app sur l’écran d’ac
         </Sheet>
       )}
     </>
-  );
-}
-
-export function SeparateDataWarning() {
-  return (
-    <Banner tone="warn">
-      <strong>Safari et l’icône ne partagent pas leurs données</strong>
-      <span>Ce que tu saisis dans Safari n’apparaît pas tout seul dans l’app installée. Avec un compte, connecte-toi aussi dans l’app installée : tu y retrouves tout.</span>
-    </Banner>
   );
 }
 
@@ -154,7 +144,6 @@ export function Installer() {
       <Topbar title="Installer l’app" back="#/plus" screen="installer" />
       <main>
         {isStandalone() ? <Banner tone="ok">L’app est déjà installée : tu l’utilises depuis son icône.</Banner> : <><InstallButton /><InstallSteps /></>}
-        <SeparateDataWarning />
         <section class="card stack-sm">
           <h2>Hors ligne</h2>
           <p>Une fois installée, l’app marche sans réseau : à la maison, au parc, en sortie.</p>
