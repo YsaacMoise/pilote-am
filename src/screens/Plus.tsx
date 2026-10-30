@@ -1,10 +1,14 @@
 import { useStore } from '../store';
+import { isDemo } from '../db';
+import { statusText, useCloud } from '../cloud-state';
 import { today, shortDate } from '../engine/dates';
 import { Gommette, ListLink, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 
 export function Plus() {
   const s = useStore();
+  const cloud = useCloud();
+  const demo = isDemo();
   const t = today();
   const lastB = s.settings.lastBackup;
   return (
@@ -40,6 +44,7 @@ export function Plus() {
         <section class="stack-sm" aria-labelledby="donnees">
           <h2 id="donnees" class="section-title">Mes données</h2>
           <div class="list">
+            {!demo && <ListLink href="#/compte" icon="cloud" title="Compte" sub={cloud.email ? `${cloud.email} · ${statusText(cloud)}` : statusText(cloud)} />}
             <ListLink href="#/sauvegarde" icon="shield" title="Sauvegarde" sub={lastB ? `Dernière le ${new Date(lastB).toLocaleDateString('fr-FR')}` : 'Aucune sauvegarde pour l’instant'} />
             <ListLink href="#/pilote" icon="message" title="Données du pilote" sub="Tes remarques et l’export anonymisé" />
             <ListLink href="#/reglages" icon="settings" title="Réglages" sub="Ton prénom, tes enfants à charge" />
@@ -52,7 +57,7 @@ export function Plus() {
             <ListLink href="#/installer" icon="phone" title="Installer sur l’iPhone" />
           </div>
         </section>
-        <p class="footer-note">Arvela ne remplace ni Pajemploi ni un conseil juridique. Tout reste sur ce téléphone.</p>
+        <p class="footer-note">Arvela ne remplace ni Pajemploi ni un conseil juridique. {cloud.email ? 'Tes données sont sur ce téléphone, avec une copie dans ton compte.' : 'Tout reste sur ce téléphone.'}</p>
       </main>
     </>
   );

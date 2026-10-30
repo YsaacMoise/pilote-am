@@ -32,6 +32,28 @@ const axe = fs.readFileSync(process.env.AXE, 'utf8');
     await p.waitForTimeout(400);
     await audit('feuille journée');
     await ctx.close();
+
+    // Écrans du compte (hors exemple) : connexion, mot de passe oublié, écran Compte
+    const c2 = await b.newContext({ viewport: { width: 390, height: 844 }, colorScheme: scheme, locale: 'fr-FR', isMobile: true, hasTouch: true });
+    const q = await c2.newPage();
+    await q.goto(base);
+    const audit2 = async (name) => {
+      await q.addScriptTag({ content: axe });
+      const r = await q.evaluate(async () => (await axe.run(document, { runOnly: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] })).violations.map((v) => `${v.id} (${v.impact}) : ${v.nodes.length} × ${v.nodes.slice(0, 2).map((n) => n.target.join(' ')).join(' | ')}`));
+      total += r.length;
+      console.log(`[${scheme}] ${name} : ${r.length ? r.join('\n    ') : 'OK'}`);
+    };
+    await q.getByRole('button', { name: 'J’ai déjà un compte' }).click();
+    await audit2('accueil, connexion');
+    await q.getByRole('button', { name: 'Mot de passe oublié' }).click();
+    await audit2('accueil, mot de passe oublié');
+    await q.getByRole('button', { name: 'Revenir à la connexion' }).click();
+    await q.getByRole('button', { name: 'Continuer sans compte' }).click();
+    await q.getByRole('button', { name: 'Ajouter mon premier enfant' }).click();
+    await q.evaluate(() => { location.hash = '#/compte'; });
+    await q.waitForTimeout(400);
+    await audit2('#/compte');
+    await c2.close();
   }
   console.log(total ? `${total} problème(s)` : 'Audit axe : aucun problème WCAG 2.1 AA');
   await b.close();

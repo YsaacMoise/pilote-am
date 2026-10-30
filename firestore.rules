@@ -1,0 +1,26 @@
+rules_version = '2';
+
+// Règles de sécurité de la base Arvela (projet arvela-app).
+// Chaque compte ne voit et ne modifie que ses propres données : users/{son uid}/data/...
+// Tout le reste est fermé.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid}/data/{docId} {
+      function isOwner() {
+        return request.auth != null && request.auth.uid == uid;
+      }
+      function validDoc() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['s', 'k', 'v', 't', 'd'])
+          && d.keys().hasAll(['s', 'k', 'v', 't'])
+          && d.s in ['kv', 'contracts', 'days', 'leaves', 'bulletins', 'journal', 'feedback']
+          && d.k is string && d.k.size() > 0 && d.k.size() <= 300
+          && (d.v == null || (d.v is string && d.v.size() <= 500000))
+          && d.t == request.time
+          && (!('d' in d) || (d.d is string && d.d.size() <= 64));
+      }
+      allow read, delete: if isOwner();
+      allow create, update: if isOwner() && validDoc();
+    }
+  }
+}

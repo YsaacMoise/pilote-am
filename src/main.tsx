@@ -4,6 +4,7 @@ import { App } from './app';
 import { load, state, toast } from './store';
 import { getAll, isDemo } from './db';
 import { seedDemo } from './demo';
+import { hasCloudAccount } from './cloud-state';
 
 // Android, Chrome et Edge proposent une vraie installation : on garde l'événement pour le bouton « Installer ».
 window.addEventListener('beforeinstallprompt', (e) => {
@@ -26,6 +27,8 @@ async function start() {
     return;
   }
   render(<App />, document.getElementById('app')!);
+  // Compte en ligne déjà branché sur ce téléphone : on reprend la copie (Firebase chargé seulement dans ce cas).
+  if (!isDemo() && hasCloudAccount()) import('./cloud').then((c) => c.startCloud()).catch(() => {});
   // Mesure d'usage du pilote, chargée après l'affichage.
   setTimeout(() => { import('./analytics').then((a) => a.initAnalytics()).catch(() => {}); }, 1500);
   if (state.contracts.length && !state.settings.persisted) {

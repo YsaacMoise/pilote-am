@@ -30,8 +30,8 @@ async function run(scheme) {
 
   await p.goto(base);
   await p.getByRole('heading', { name: 'Arvela' }).waitFor();
-  assert(await p.getByText('Safari et l’icône ne partagent pas leurs données').isVisible(), 'accueil : avertissement données séparées');
-  await p.getByRole('button', { name: 'Commencer ici quand même' }).click();
+  assert(await p.getByRole('button', { name: 'Créer mon compte' }).isVisible(), 'accueil : création de compte proposée');
+  await p.getByRole('button', { name: 'Continuer sans compte' }).click();
   await p.getByLabel('Ton prénom').fill('Sonia');
   await p.getByRole('button', { name: 'Ajouter mon premier enfant' }).click();
 

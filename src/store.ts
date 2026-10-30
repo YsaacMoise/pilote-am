@@ -242,7 +242,9 @@ export async function autoCopy(force = false) {
   await db.put('snapshots', snap);
   const all = (await db.getAll<Snapshot>('snapshots')).sort((a, b) => b.ts - a.ts);
   for (const s of all.slice(7)) await db.del('snapshots', s.id);
-  state.settings = { ...state.settings, lastAutoCopy: Date.now() };
+  // Relu juste avant d'écrire : un autre appareil a pu changer les réglages pendant la copie.
+  const cur = await db.get<{ k: string; v: Settings }>('kv', 'settings');
+  state.settings = { ...state.settings, ...(cur?.v ?? {}), lastAutoCopy: Date.now() };
   await db.put('kv', { k: 'settings', v: state.settings });
 }
 

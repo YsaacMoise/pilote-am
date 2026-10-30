@@ -19,6 +19,7 @@ import { Pilote } from './screens/Pilote';
 import { Reglages } from './screens/Reglages';
 import { Regles } from './screens/Regles';
 import { Installer, Welcome } from './screens/Welcome';
+import { Compte } from './screens/Compte';
 
 function useHash(): string {
   const [h, setH] = useState(location.hash || '#/');
@@ -55,7 +56,7 @@ export function App() {
     const title = ({
       '': 'Aujourd’hui', carnet: 'Carnet', mois: 'Mois', plus: 'Plus', contrat: 'Contrat', avenant: 'Avenant', historique: 'Historique',
       controle: 'Contrôle du bulletin', conges: 'Congés', fin: 'Fin de contrat', fiscal: 'Impôts', sauvegarde: 'Sauvegarde',
-      pilote: 'Données du pilote', reglages: 'Réglages', regles: 'Comment l’app calcule', installer: 'Installer',
+      pilote: 'Données du pilote', compte: 'Compte', reglages: 'Réglages', regles: 'Comment l’app calcule', installer: 'Installer',
     } as Record<string, string>)[p] ?? 'Arvela';
     document.title = `${title} · Arvela`;
   }, [p]);
@@ -81,6 +82,7 @@ export function App() {
     case 'sauvegarde': screen = <Sauvegarde />; break;
     case 'pilote': screen = <Pilote />; break;
     case 'reglages': screen = <Reglages />; break;
+    case 'compte': screen = isDemo() ? <Today /> : <Compte />; break;
     case 'regles': screen = <Regles />; break;
     case 'installer': screen = <Installer />; break;
     case 'bienvenue': screen = <Welcome />; break;

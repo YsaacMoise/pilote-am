@@ -25,7 +25,7 @@ export function Reglages() {
             <p class="hint">Les prénoms des enfants et les noms des familles sont remplacés par « Enfant 1 », « Famille 1 » avant tout envoi. Les notes libres du carnet et ce que tu tapes dans les champs ne sont pas envoyés. Aucune adresse internet n’est gardée.</p>
           </fieldset>
         </section>
-        <p class="footer-note">Tes données (contrats, journées, carnet) restent sur ce téléphone.</p>
+        <p class="footer-note">Tes données (contrats, journées, carnet) sont rangées sur ce téléphone. Avec un compte, une copie va en ligne : voir Plus › Compte.</p>
       </main>
     </>
   );

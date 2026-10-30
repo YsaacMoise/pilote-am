@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
-import { saveSettings, logUsage, useStore } from '../store';
+import { saveSettings, logUsage, state, useStore } from '../store';
+import { AccountForm } from './Compte';
+import { useCloud } from '../cloud-state';
 import { MODE_KEY } from '../db';
 import { Banner, Sheet, Stepper, TextInput, Topbar, CHILD_COLORS } from '../ui/kit';
 import { Icon } from '../ui/icons';
@@ -79,15 +81,17 @@ export function SeparateDataWarning() {
   return (
     <Banner tone="warn">
       <strong>Safari et l’icône ne partagent pas leurs données</strong>
-      <span>Ce que tu saisis dans Safari n’apparaîtra pas dans l’app installée, et inversement. Installe d’abord l’icône, puis commence à saisir dans l’app.</span>
+      <span>Ce que tu saisis dans Safari n’apparaît pas tout seul dans l’app installée. Avec un compte, connecte-toi aussi dans l’app installée : tu y retrouves tout.</span>
     </Banner>
   );
 }
 
 export function Welcome() {
   const s = useStore();
-  const [step, setStep] = useState<'hello' | 'me'>('hello');
+  const [step, setStep] = useState<'hello' | 'installer' | 'me'>('hello');
   const standalone = isStandalone();
+  const cloud = useCloud();
+  const signedIn = !!cloud.email && cloud.status !== 'off';
   if (step === 'me') {
     return (
       <div class="welcome">
@@ -104,6 +108,20 @@ export function Welcome() {
       </div>
     );
   }
+  if (step === 'installer') {
+    return (
+      <div class="welcome">
+        <h1 class="hero-title">Ton compte est prêt</h1>
+        <section class="card stack" aria-labelledby="inst">
+          <h2 id="inst">Installe l’app sur ton téléphone</h2>
+          <p>Avec son icône sur l’écran d’accueil, l’app s’ouvre en un geste, en plein écran, même sans réseau.</p>
+          <InstallButton />
+          <p class="hint">Ouvre ensuite l’app depuis son icône et connecte-toi avec la même adresse e-mail.</p>
+        </section>
+        <button class="btn btn-secondary btn-lg btn-block" onClick={() => setStep('me')}>Continuer ici pour l’instant</button>
+      </div>
+    );
+  }
   return (
     <div class="welcome">
       <div class="hero-gommettes" aria-hidden="true">
@@ -111,18 +129,21 @@ export function Welcome() {
       </div>
       <h1 class="hero-title">Arvela</h1>
       <p style={{ fontSize: '19px' }}>Ton carnet de bord d’assistante maternelle : les arrivées et départs en un geste, le carnet pour les parents, le salaire à déclarer sur Pajemploi, tes congés.</p>
-      <p class="row muted"><Icon name="shield" />Tout reste sur ton téléphone. Pas de compte, pas de serveur.</p>
-      {!standalone && (
-        <section class="card stack" aria-labelledby="inst">
-          <h2 id="inst">Installe l’app sur ton téléphone</h2>
-          <p>Avec son icône sur l’écran d’accueil, l’app s’ouvre en un geste, en plein écran, même sans réseau.</p>
-          <InstallButton />
+      {signedIn ? (
+        <section class="card stack">
+          <p class="row"><Icon name="cloud" />Connectée avec <strong>{cloud.email}</strong></p>
+          <button class="btn btn-primary btn-lg btn-block" onClick={() => setStep(standalone ? 'me' : 'installer')}>Continuer</button>
         </section>
-      )}
-      {!standalone && <SeparateDataWarning />}
+      ) : <section class="card">
+        <AccountForm onDone={() => {
+          // Données retrouvées d'un autre appareil : l'accueil est déjà fait, l'app s'ouvre directement.
+          if (state.settings.onboarded) { location.hash = '#/'; return; }
+          setStep(standalone ? 'me' : 'installer');
+        }} />
+      </section>}
       <div class="stack">
-        <button class="btn btn-primary btn-lg btn-block" onClick={() => setStep('me')}>{standalone ? 'Commencer' : 'Commencer ici quand même'}</button>
         <button class="btn btn-secondary btn-lg btn-block" onClick={() => { logUsage('demo'); enterDemo(); }}>Voir avec des enfants d’exemple</button>
+        <button class="btn btn-ghost btn-block" onClick={() => { logUsage('sans_compte'); setStep('me'); }}>Continuer sans compte</button>
       </div>
       <p class="footer-note">Les enfants d’exemple sont rangés à part : ils ne se mélangent jamais à tes vraies données.</p>
     </div>
