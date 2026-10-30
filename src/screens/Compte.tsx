@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { statusText, useCloud, type CloudStatus } from '../cloud-state';
+import { cloudInfo, statusText, useCloud, type CloudStatus } from '../cloud-state';
 import { toast, useStore } from '../store';
 import { Banner, Sheet, TextInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
@@ -84,7 +84,7 @@ export function AccountForm({ initial = 'create', onDone }: { initial?: 'create'
 }
 
 const TONE: Record<CloudStatus, 'ok' | 'info' | 'warn'> = {
-  off: 'info', starting: 'info', merging: 'info', synced: 'ok', pending: 'info', offline: 'info', error: 'warn',
+  off: 'info', starting: 'info', merging: 'info', choice: 'warn', synced: 'ok', pending: 'info', offline: 'info', error: 'warn',
 };
 
 export function Compte() {
@@ -106,14 +106,15 @@ export function Compte() {
       <Topbar title="Compte" back="#/plus" screen="compte" />
       <main>
         {!signedIn ? (
-          <section class="card"><AccountForm onDone={() => toast('Compte branché : tes données sont copiées en ligne.', undefined, 'ok')} /></section>
+          <section class="card"><AccountForm onDone={() => { if (cloudInfo().status !== 'choice') toast('Compte branché : tes données sont copiées en ligne.', undefined, 'ok'); }} /></section>
         ) : (
           <>
             <section class="card stack-sm">
               <p class="row"><Icon name="user" /><strong>{c.email}</strong></p>
               <Banner tone={TONE[c.status]} icon={c.status === 'synced' ? 'cloud' : undefined}>{statusText(c)}</Banner>
-              <p class="hint">Chaque changement est rangé sur le téléphone puis copié dans ton compte dès qu’il y a du réseau. Sur un autre appareil, connecte-toi avec la même adresse pour tout retrouver.</p>
+              {c.status !== 'choice' && <p class="hint">Chaque changement est rangé sur le téléphone puis copié dans ton compte dès qu’il y a du réseau. Sur un autre appareil, connecte-toi avec la même adresse pour tout retrouver.</p>}
             </section>
+            {c.status === 'choice' && <LinkChoice />}
             <div class="stack">
               <button class="btn btn-outline btn-block" onClick={() => void out(false)}>Me déconnecter</button>
               <button class="btn btn-danger btn-block" onClick={() => setDel(true)}>Supprimer mon compte</button>
@@ -122,7 +123,7 @@ export function Compte() {
         )}
         <section class="card stack-sm">
           <h2 class="row"><Icon name="lock" />Où vont tes données</h2>
-          <p>La copie en ligne est rangée chez Google Firebase, sur des serveurs à Paris. Dans l’app, seul ton compte y donne accès. Comme pour tout service en ligne, l’équipe d’Arvela peut techniquement la consulter pour l’entretien.</p>
+          <p>La copie de tes données est rangée chez Google Firebase, sur des serveurs à Paris. Ton adresse e-mail et ton mot de passe, chiffré, sont gérés par Google hors de France. Dans l’app, seul ton compte donne accès à tes données. Comme pour tout service en ligne, l’équipe d’Arvela peut techniquement les consulter pour l’entretien.</p>
           <p class="hint">Les sauvegardes dans Fichiers restent utiles : elles ne dépendent d’aucun compte.</p>
         </section>
       </main>
@@ -137,6 +138,37 @@ export function Compte() {
       )}
       {del && <DeleteSheet onClose={() => setDel(false)} />}
     </>
+  );
+}
+
+/** Le téléphone et le compte ont chacun des enfants : elle choisit avant la première copie. */
+function LinkChoice() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const go = async (mode: 'account' | 'phone' | 'merge') => {
+    setBusy(true);
+    setError('');
+    try {
+      await (await cloud()).chooseLink(mode);
+      toast(mode === 'phone' ? 'Ton compte a pris le contenu de ce téléphone.' : mode === 'account' ? 'Ce téléphone a pris le contenu de ton compte.' : 'Tout est gardé. Vérifie qu’aucun enfant n’apparaît en double.', undefined, 'ok');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section class="card stack" aria-labelledby="choix">
+      <h2 id="choix">Ce téléphone et ton compte ont chacun des enfants</h2>
+      <p>Les réunir sans demander pourrait créer des doublons, et donc des salaires comptés deux fois. Choisis ce que tu gardes.</p>
+      <button class="btn btn-primary btn-block" disabled={busy} onClick={() => void go('account')}>Garder ce qui est dans mon compte</button>
+      <p class="hint">Ce téléphone prend le contenu du compte. Une copie de ce qu’il contenait est gardée dans Sauvegarde, copies automatiques.</p>
+      <button class="btn btn-outline btn-block" disabled={busy} onClick={() => void go('phone')}>Garder ce qui est sur ce téléphone</button>
+      <p class="hint">Ton compte prend le contenu de ce téléphone. Ce qui n’était que dans le compte est effacé.</p>
+      <button class="btn btn-ghost btn-block" disabled={busy} onClick={() => void go('merge')}>Tout garder</button>
+      <p class="hint">Les enfants des deux côtés restent. À vérifier ensuite dans Plus.</p>
+      {error && <Banner tone="warn">{error}</Banner>}
+    </section>
   );
 }
 

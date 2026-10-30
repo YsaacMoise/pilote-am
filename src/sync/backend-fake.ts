@@ -93,10 +93,10 @@ export const backend: Backend = {
       try {
         const r = await call<{ docs: Array<RemoteDoc & { d: string }> }>(`/docs?uid=${uid}&since=${s}`);
         for (const d of r.docs) if (d.t > s) s = d.t;
-        cb(r.docs.filter((d) => d.d !== me), { fromCache: false });
+        cb(r.docs.filter((d) => d.d !== me), { fromCache: false, maxT: s });
       } catch (e) {
         if ((e as { code?: string }).code === 'permission-denied') onError(e);
-        else cb([], { fromCache: true });
+        else cb([], { fromCache: true, maxT: 0 });
       }
       if (!stop) setTimeout(tick, 700);
     };

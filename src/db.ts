@@ -31,6 +31,49 @@ export interface Mirror {
 let mirror: Mirror | null = null;
 export function setMirror(m: Mirror | null) { mirror = m; }
 
+// ---------- Changements en attente d'envoi ----------
+// Quand un compte est (ou a été) branché sur ce téléphone mais que la copie en direct ne tourne pas
+// (démarrage, Firebase pas encore chargé, déconnexion), chaque clé modifiée est notée ici.
+// La copie les envoie dès qu'elle reprend : aucun changement ne se perd.
+export const OUTBOX_KEY = 'pam-cloud-outbox';
+/** Repères localStorage qui disent qu'un compte est concerné par ce téléphone (voir cloud-state.ts) */
+const ACCOUNT_KEYS = ['pam-cloud-linked', 'pam-cloud-pending', 'pam-cloud-last'];
+
+function ls(): Storage | null {
+  try { return localStorage; } catch { return null; }
+}
+
+function tracking(): boolean {
+  const l = ls();
+  return !!l && !isDemo() && ACCOUNT_KEYS.some((k) => !!l.getItem(k));
+}
+
+export function outboxRead(): Array<{ s: SyncedStore; k: string }> {
+  try {
+    const raw = JSON.parse(ls()?.getItem(OUTBOX_KEY) ?? '[]') as string[];
+    return raw.map((x) => { const i = x.indexOf('|'); return { s: x.slice(0, i) as SyncedStore, k: x.slice(i + 1) }; });
+  } catch { return []; }
+}
+
+function outboxAdd(entries: Array<{ s: SyncedStore; k: string }>) {
+  const l = ls();
+  if (!l || !entries.length) return;
+  try {
+    const cur = new Set(JSON.parse(l.getItem(OUTBOX_KEY) ?? '[]') as string[]);
+    for (const e of entries) cur.add(`${e.s}|${e.k}`);
+    l.setItem(OUTBOX_KEY, JSON.stringify([...cur]));
+  } catch { /* stockage plein : la prochaine réunion complète rattrapera */ }
+}
+
+export function outboxClear() {
+  try { ls()?.removeItem(OUTBOX_KEY); } catch { /* */ }
+}
+
+function noteChange(store: SyncedStore, key: string) {
+  if (mirror) return;
+  if (tracking()) outboxAdd([{ s: store, k: key }]);
+}
+
 export function isDemo(): boolean {
   try { return localStorage.getItem(MODE_KEY) === 'demo'; } catch { return false; }
 }
@@ -90,12 +133,16 @@ export async function delRaw(store: StoreName, key: string): Promise<void> {
 
 export async function put(store: StoreName, value: unknown): Promise<void> {
   await putRaw(store, value);
-  if (mirror && isSynced(store)) mirror.put(store, keyOf(store, value), value);
+  if (!isSynced(store)) return;
+  if (mirror) mirror.put(store, keyOf(store, value), value);
+  else noteChange(store, keyOf(store, value));
 }
 
 export async function del(store: StoreName, key: string): Promise<void> {
   await delRaw(store, key);
-  if (mirror && isSynced(store)) mirror.del(store, key);
+  if (!isSynced(store)) return;
+  if (mirror) mirror.del(store, key);
+  else noteChange(store, key);
 }
 
 export type Dump = Record<Exclude<StoreName, 'snapshots'>, unknown[]>;
@@ -111,7 +158,8 @@ export async function replaceAll(d: Dump): Promise<void> {
   const db = await openDb();
   const names = STORES.filter((s) => s !== 'snapshots');
   const oldKeys = new Map<SyncedStore, string[]>();
-  if (mirror) {
+  const track = !mirror && tracking();
+  if (mirror || track) {
     for (const s of SYNCED) {
       oldKeys.set(s, (await wrap(db.transaction(s).objectStore(s).getAllKeys())).map(String));
     }
@@ -128,6 +176,14 @@ export async function replaceAll(d: Dump): Promise<void> {
     tx.onabort = () => rej(tx.error);
   });
   if (mirror) mirror.replaced(oldKeys, d);
+  else if (track) {
+    const all: Array<{ s: SyncedStore; k: string }> = [];
+    for (const s of SYNCED) {
+      for (const k of oldKeys.get(s) ?? []) all.push({ s, k });
+      for (const v of (d[s] ?? []) as unknown[]) all.push({ s, k: keyOf(s, v) });
+    }
+    outboxAdd(all);
+  }
 }
 
 export async function deleteDatabase(name: string): Promise<void> {

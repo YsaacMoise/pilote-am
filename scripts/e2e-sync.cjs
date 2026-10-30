@@ -153,6 +153,49 @@ async function phone(b, name) {
   await a2.locator('article.kid', { hasText: 'Lou' }).waitFor();
   assert(true, 'déconnectée : les données restent sur le téléphone');
 
+  console.log('\n== Changements faits déconnectée, puis reconnexion ==');
+  await a2.goto(base + '#/reglages');
+  await a2.getByLabel('Ton prénom').fill('Sonia déconnectée');
+  await a2.waitForTimeout(300);
+  await a2.goto(base + '#/compte');
+  await a2.getByRole('button', { name: 'J’ai déjà un compte' }).click().catch(() => {});
+  await a2.getByLabel('Adresse e-mail').fill(email);
+  await a2.getByLabel('Mot de passe').fill(pw);
+  await a2.getByRole('button', { name: 'Me connecter' }).click();
+  await a2.getByText(/^À jour/).waitFor({ timeout: 10000 });
+  await p2.goto(base + '#/reglages');
+  await p2.waitForFunction(() => document.querySelector('input[autocomplete="given-name"]')?.value === 'Sonia déconnectée', null, { timeout: 10000 });
+  assert(true, 'changement fait pendant la déconnexion : envoyé à la reconnexion, visible sur B');
+
+  console.log('\n== Troisième téléphone avec ses propres enfants : choix demandé ==');
+  const C = await phone(b, 'C');
+  const c = C.p;
+  await c.goto(base);
+  await c.getByRole('button', { name: 'Continuer sans compte' }).click();
+  await c.getByRole('button', { name: 'Ajouter mon premier enfant' }).click();
+  await c.getByLabel('Prénom de l’enfant').fill('Malo');
+  await c.getByLabel('Nom de la famille').fill('Roux');
+  await c.getByLabel('Taux horaire net').fill('3,40');
+  await c.getByRole('radio', { name: /^Les parents/ }).click();
+  await c.getByRole('button', { name: /^Enregistrer/ }).first().click();
+  await c.waitForTimeout(500);
+  await c.goto(base + '#/compte');
+  await c.getByRole('button', { name: 'J’ai déjà un compte' }).click();
+  await c.getByLabel('Adresse e-mail').fill(email);
+  await c.getByLabel('Mot de passe').fill(pw);
+  await c.getByRole('button', { name: 'Me connecter' }).click();
+  await c.getByRole('heading', { name: 'Ce téléphone et ton compte ont chacun des enfants' }).waitFor({ timeout: 10000 });
+  assert(true, 'enfants des deux côtés : le choix est demandé, rien n’est mélangé');
+  await c.shot('05-choix');
+  const live1 = (await stats())[uid].live;
+  assert(!JSON.stringify(await (await fetch(`${cloud}/docs?uid=${uid}&since=-1`)).json()).includes('Malo'), 'avant le choix : rien de ce téléphone n’est parti en ligne');
+  await c.getByRole('button', { name: 'Garder ce qui est dans mon compte' }).click();
+  await c.getByText(/^À jour/).waitFor({ timeout: 10000 });
+  await c.goto(base + '#/plus');
+  await c.locator('.li-title', { hasText: 'Lou' }).waitFor();
+  assert(!(await c.locator('.li-title', { hasText: 'Malo' }).count()), '« garder le compte » : le téléphone a pris les enfants du compte, sans doublon');
+  assert((await stats())[uid].live === live1, 'le compte n’a pas changé');
+
   console.log('\n== Suppression du compte sur B ==');
   await p2.goto(base + '#/compte');
   await p2.getByRole('button', { name: 'Supprimer mon compte' }).click();
@@ -165,7 +208,7 @@ async function phone(b, name) {
   await p2.locator('article.kid', { hasText: 'Lou' }).waitFor();
   assert(true, 'après suppression du compte : les données restent sur le téléphone');
 
-  const errs = [...A.errors, ...B.errors].filter((e) => !/Failed to fetch|ERR_INTERNET_DISCONNECTED|net::|status of 400/.test(e));
+  const errs = [...A.errors, ...B.errors, ...C.errors].filter((e) => !/Failed to fetch|ERR_INTERNET_DISCONNECTED|net::|status of 400/.test(e));
   assert(errs.length === 0, 'aucune erreur dans la console' + (errs.length ? ' : ' + errs.join(' | ') : ''));
   await b.close();
   console.log('\nParcours compte et synchronisation : tout est bon.');

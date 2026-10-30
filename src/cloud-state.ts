@@ -5,6 +5,7 @@ export type CloudStatus =
   | 'off' // pas de compte sur ce téléphone
   | 'starting' // connexion au service en cours
   | 'merging' // première réunion des données du téléphone et du compte
+  | 'choice' // le téléphone et le compte ont chacun des enfants : elle doit choisir
   | 'synced' // tout est envoyé
   | 'pending' // des changements attendent le réseau
   | 'offline' // pas de réseau, rien en attente
@@ -23,6 +24,8 @@ export interface CloudInfo {
 export const LS = {
   /** uid du compte dont les données ont été réunies avec ce téléphone */
   linked: 'pam-cloud-linked',
+  /** uid d'un compte connecté dont la première réunion n'est pas finie (reprise au prochain démarrage) */
+  pending: 'pam-cloud-pending',
   /** Dernier compte connecté sur ce téléphone (gardé après déconnexion) */
   last: 'pam-cloud-last',
   /** Heure serveur du dernier changement reçu */
@@ -49,7 +52,7 @@ export function deviceId(): string {
 
 /** Vrai si un compte a déjà été branché sur ce téléphone : Firebase est alors chargé au démarrage. */
 export function hasCloudAccount(): boolean {
-  return !!lsGet(LS.linked);
+  return !!lsGet(LS.linked) || !!lsGet(LS.pending);
 }
 
 let info: CloudInfo = { status: 'off' };
@@ -81,6 +84,7 @@ export function statusText(c: CloudInfo): string {
     case 'off': return 'Pas encore de compte';
     case 'starting': return 'Connexion…';
     case 'merging': return 'Réunion de tes données…';
+    case 'choice': return 'Un choix est nécessaire avant la première copie';
     case 'synced': return c.lastSync ? `À jour, ${new Date(c.lastSync).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : 'À jour';
     case 'pending': return 'En attente de réseau : rien n’est perdu';
     case 'offline': return 'Hors ligne : tout est gardé sur le téléphone';

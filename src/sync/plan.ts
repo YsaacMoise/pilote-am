@@ -72,18 +72,26 @@ export interface MergePlan {
   deleteLocal: Array<{ s: SyncedStore; k: string }>;
   /** À envoyer au compte */
   toRemote: LocalRecord[];
-  /** Enregistrements présents des deux côtés avec un contenu différent (la version en ligne a gagné) */
+  /** À marquer supprimé en ligne */
+  deleteRemote: Array<{ s: SyncedStore; k: string }>;
+  /** Enregistrements présents des deux côtés avec un contenu différent */
   conflicts: number;
 }
 
 /**
- * Réunit ce qu'il y a sur le téléphone et en ligne quand un appareil se branche sur un compte.
- * Quand les deux diffèrent, la version en ligne gagne (le téléphone est copié avant, par sécurité),
- * sauf `preferLocal` : ce téléphone était déjà branché sur ce compte, ses changements faits entre-temps sont les plus récents.
- * Une suppression en ligne l'emporte sur l'enregistrement local, sauf `preferLocal` (il est alors renvoyé).
+ * Façon de réunir le téléphone et le compte :
+ * - « merge » : on garde tout ; en cas de différence la version en ligne gagne, sauf pour les clés de `localWins`
+ *   (changées sur ce téléphone pendant qu'il n'était pas relié, donc plus récentes) ;
+ * - « account » : le téléphone prend le contenu du compte (ce qui n'y est pas est retiré du téléphone) ;
+ * - « phone » : le compte prend le contenu du téléphone (ce qui n'y est pas est marqué supprimé en ligne).
+ * Les réglages sont toujours fusionnés champ par champ, les repères propres à l'appareil restent les siens.
  */
-export function planMerge(local: LocalRecord[], remote: RemoteDoc[], preferLocal = false): MergePlan {
-  const plan: MergePlan = { toLocal: [], deleteLocal: [], toRemote: [], conflicts: 0 };
+export type MergeMode = 'merge' | 'account' | 'phone';
+
+export function planMerge(local: LocalRecord[], remote: RemoteDoc[], opts: { mode?: MergeMode; localWins?: Set<string> } = {}): MergePlan {
+  const mode = opts.mode ?? 'merge';
+  const wins = opts.localWins ?? new Set<string>();
+  const plan: MergePlan = { toLocal: [], deleteLocal: [], toRemote: [], deleteRemote: [], conflicts: 0 };
   const rem = new Map<string, RemoteDoc>();
   for (const d of remote) if (isSyncedStore(d.s)) rem.set(docId(d.s, d.k), d);
   const seen = new Set<string>();
@@ -92,30 +100,43 @@ export function planMerge(local: LocalRecord[], remote: RemoteDoc[], preferLocal
     const id = docId(r.s, r.k);
     seen.add(id);
     const d = rem.get(id);
-    if (!d) { plan.toRemote.push(r); continue; }
-    if (d.v === null) {
-      if (preferLocal) plan.toRemote.push(r);
-      else plan.deleteLocal.push({ s: r.s, k: r.k });
+    const localFirst = mode === 'phone' || (mode === 'merge' && wins.has(id));
+    if (r.s === 'kv' && r.k === 'settings') {
+      const rv = d?.v ? (JSON.parse(d.v) as { v?: Record<string, unknown> }).v : undefined;
+      const merged = { k: 'settings', v: mergeSettings((r.value as { v?: Record<string, unknown> }).v, rv, localFirst) };
+      if (stable(merged) !== stable(r.value)) plan.toLocal.push({ s: r.s, k: r.k, value: merged });
+      if (!d?.v || stable(forRemote(r.s, r.k, merged)) !== stable(forRemote(r.s, r.k, { k: 'settings', v: rv }))) plan.toRemote.push({ s: r.s, k: r.k, value: merged });
+      continue;
+    }
+    if (!d || d.v === null) {
+      // Absent en ligne (ou supprimé en ligne)
+      if (mode === 'account' || (d && !localFirst)) plan.deleteLocal.push({ s: r.s, k: r.k });
+      else plan.toRemote.push(r);
       continue;
     }
     const rv: unknown = JSON.parse(d.v);
-    if (r.s === 'kv' && r.k === 'settings') {
-      const merged = { k: 'settings', v: mergeSettings((r.value as { v?: Record<string, unknown> }).v, (rv as { v?: Record<string, unknown> }).v, preferLocal) };
-      if (stable(merged) !== stable(r.value)) plan.toLocal.push({ s: r.s, k: r.k, value: merged });
-      if (stable(forRemote(r.s, r.k, merged)) !== stable(forRemote(r.s, r.k, rv))) plan.toRemote.push({ s: r.s, k: r.k, value: merged });
-      continue;
-    }
-    if (stable(rv) !== stable(r.value)) {
-      plan.conflicts++;
-      if (preferLocal) plan.toRemote.push(r);
-      else plan.toLocal.push({ s: r.s, k: r.k, value: rv });
-    }
+    if (stable(rv) === stable(r.value)) continue;
+    plan.conflicts++;
+    if (localFirst) plan.toRemote.push(r);
+    else plan.toLocal.push({ s: r.s, k: r.k, value: rv });
   }
   for (const [id, d] of rem) {
     if (seen.has(id) || d.v === null) continue;
-    plan.toLocal.push({ s: d.s, k: d.k, value: JSON.parse(d.v) });
+    if (mode === 'phone') plan.deleteRemote.push({ s: d.s, k: d.k });
+    else plan.toLocal.push({ s: d.s, k: d.k, value: JSON.parse(d.v) });
   }
   return plan;
+}
+
+/** Vrai si le téléphone et le compte ont chacun des enfants : les réunir sans demander risquerait des doublons. */
+export function needsChoice(local: LocalRecord[], remote: RemoteDoc[]): boolean {
+  const remoteKids = remote.some((d) => d.s === 'contracts' && d.v !== null);
+  const localKids = local.some((r) => r.s === 'contracts');
+  if (!remoteKids || !localKids) return false;
+  // Exactement les mêmes enfants des deux côtés : pas de doublon possible.
+  const rk = new Set(remote.filter((d) => d.s === 'contracts' && d.v !== null).map((d) => d.k));
+  const lk = local.filter((r) => r.s === 'contracts').map((r) => r.k);
+  return !(lk.length === rk.size && lk.every((k) => rk.has(k)));
 }
 
 /** Ce que l'appareil doit faire d'un document reçu en direct d'un autre appareil. */

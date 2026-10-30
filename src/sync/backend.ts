@@ -7,6 +7,8 @@ export interface CloudUser { uid: string; email: string | null }
 export interface ListenMeta {
   /** Les données viennent du cache du téléphone, pas du serveur (hors ligne) */
   fromCache: boolean;
+  /** Heure serveur la plus récente vue, échos de ce téléphone compris (pour reprendre l'écoute au bon endroit) */
+  maxT: number;
 }
 
 export interface Backend {

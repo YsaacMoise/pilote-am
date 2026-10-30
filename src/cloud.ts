@@ -7,7 +7,7 @@ import * as db from './db';
 import { autoCopy, load, logUsage, state, toast } from './store';
 import { cloudInfo, LS, lsGet, lsSet, setCloud } from './cloud-state';
 import { errCode, type Backend, type CloudUser } from './sync/backend';
-import { applyRemote, forRemote, nextSince, planMerge, RESUME_MARGIN_MS, stable, type LocalRecord, type RemoteDoc } from './sync/plan';
+import { applyRemote, docId, forRemote, needsChoice, nextSince, planMerge, RESUME_MARGIN_MS, stable, type LocalRecord, type MergeMode, type RemoteDoc } from './sync/plan';
 
 let be: Backend | null = null;
 let starting: Promise<Backend> | null = null;
@@ -33,7 +33,7 @@ export function startCloud(): Promise<Backend> {
       b.onPending((p) => { pending = p; refreshStatus(); });
       b.onUser((u) => { void onUser(u); });
       window.addEventListener('online', () => {
-        if (user && lsGet(LS.linked) !== user.uid) void link(user).catch(() => {});
+        if (user && lsGet(LS.linked) !== user.uid && cloudInfo().status !== 'choice') void link(user).catch(() => {});
         refreshStatus();
       });
       window.addEventListener('offline', refreshStatus);
@@ -60,6 +60,7 @@ function nextLink(): Promise<void> {
 
 async function onUser(u: CloudUser | null) {
   if (!u) {
+    // Déconnexion (voulue ou non) : la copie s'arrête, les changements suivants sont notés dans la file d'attente.
     detach();
     user = null;
     setCloud({ status: 'off', email: undefined, lastSync: undefined });
@@ -91,66 +92,70 @@ async function localRecords(): Promise<LocalRecord[]> {
 let linking: Promise<void> | null = null;
 
 /** Branche un compte sur ce téléphone : réunit les données des deux côtés, puis écoute les changements. */
-function link(u: CloudUser): Promise<void> {
+function link(u: CloudUser, mode?: MergeMode): Promise<void> {
   if (!linking) {
-    linking = doLink(u)
+    linking = doLink(u, mode)
       .catch((e) => { if (!attached) db.setMirror(null); throw e; })
       .finally(() => { linking = null; });
   }
   return linking;
 }
 
-async function doLink(u: CloudUser) {
+/** Réponse au choix « garder le compte / garder ce téléphone / tout réunir ». */
+export async function chooseLink(mode: MergeMode) {
+  if (!user) throw new Error('Reconnecte-toi d’abord.');
+  try { await link(user, mode); } catch (e) { throw friendly(e); }
+}
+
+async function doLink(u: CloudUser, mode?: MergeMode) {
   const b = be!;
   const last = lsGet(LS.last);
   if (last && last !== u.uid && localHasData()) {
     await b.signOut();
     throw new Error('Ce téléphone contient les données d’un autre compte. Connecte-toi avec celui-là, ou demande de l’aide avant de changer de compte.');
   }
+  // Si l'app est fermée avant la fin, la réunion reprendra au prochain démarrage.
+  lsSet(LS.pending, u.uid);
   setCloud({ status: 'merging' });
-  // Pendant la réunion, les changements faits sur le téléphone sont notés pour être envoyés juste après.
-  const touched = new Map<string, { s: db.SyncedStore; k: string }>();
-  const note = (s: db.SyncedStore, k: string) => touched.set(`${s}|${k}`, { s, k });
-  db.setMirror({
-    put: (s, k) => note(s, k),
-    del: (s, k) => note(s, k),
-    replaced: (old, d) => {
-      for (const s of db.SYNCED) {
-        for (const k of old.get(s) ?? []) note(s, k);
-        for (const v of (d[s] ?? []) as unknown[]) note(s, db.keyOf(s, v));
-      }
-    },
-  });
+  // Pendant la réunion, les changements faits sur le téléphone vont dans la file d'attente (db.ts), envoyée juste après.
+  db.setMirror(null);
   let remote: RemoteDoc[];
   try {
     remote = await b.fetchAll(u.uid);
   } catch (e) {
-    db.setMirror(null);
-    setCloud({ status: 'error', error: 'Il faut du réseau pour la première copie. Elle reprendra toute seule au retour du réseau.' });
+    setCloud({ status: 'error', error: 'Il faut du réseau pour la première copie. Elle reprendra au retour du réseau.' });
     throw friendly(e);
   }
-  const preferLocal = last === u.uid;
   const local = await localRecords();
-  const plan = planMerge(local, remote, preferLocal);
+  const sameAccount = last === u.uid;
+  if (!mode && !sameAccount && needsChoice(local, remote)) {
+    // Des enfants des deux côtés : réunir sans demander pourrait créer des doublons.
+    setCloud({ status: 'choice' });
+    logUsage('compte_choix_demande');
+    return;
+  }
+  // Ce téléphone était déjà relié à ce compte : ce qu'il a changé depuis est plus récent que la version en ligne.
+  const localWins = new Set(sameAccount ? db.outboxRead().map((x) => docId(x.s, x.k)) : []);
+  const plan = planMerge(local, remote, { mode: mode ?? 'merge', localWins });
   if (plan.toLocal.length + plan.deleteLocal.length > 0 && localHasData()) await autoCopy(true);
   for (const r of plan.toLocal) await db.putRaw(r.s, r.value);
   for (const r of plan.deleteLocal) await db.delRaw(r.s, r.k);
-  await b.write(u.uid, plan.toRemote.map((r) => ({ s: r.s, k: r.k, v: JSON.stringify(forRemote(r.s, r.k, r.value)) })));
+  await b.write(u.uid, [
+    ...plan.toRemote.map((r) => ({ s: r.s, k: r.k, v: stable(forRemote(r.s, r.k, r.value)) })),
+    ...plan.deleteRemote.map((r) => ({ s: r.s, k: r.k, v: null })),
+  ]);
   lsSet(LS.linked, u.uid);
   lsSet(LS.last, u.uid);
+  lsSet(LS.pending, null);
   lsSet(LS.since, String(nextSince(0, remote)));
   const hadLocal = localHasData();
   await load();
-  logUsage('compte_branche', remote.length ? (hadLocal ? 'fusion' : 'recuperation') : 'premier_envoi');
+  logUsage('compte_branche', mode ?? (remote.length ? (hadLocal ? 'fusion' : 'recuperation') : 'premier_envoi'));
   if (remote.length && hadLocal && (plan.toLocal.length || plan.deleteLocal.length)) {
     toast('Les données de ton compte et celles du téléphone sont réunies.', undefined, 'ok');
   }
+  // La file d'attente (changements d'avant et de pendant la réunion) est renvoyée par attach : sans risque, c'est la valeur actuelle du téléphone.
   attach(u);
-  for (const { s, k } of touched.values()) {
-    const v = await db.get(s, k);
-    if (v === undefined) enqueue(s, k, null);
-    else enqueueValue(s, k, v);
-  }
 }
 
 // ---------- Copie en direct ----------
@@ -196,16 +201,27 @@ const mirror: db.Mirror = {
   },
 };
 
+/** Lance la copie en direct, après avoir envoyé ce qui a changé pendant qu'elle ne tournait pas. */
 function attach(u: CloudUser) {
   detach();
   const set = state.settings;
   sharedSettings = stable(forRemote('kv', 'settings', { k: 'settings', v: set }));
+  const waiting = db.outboxRead();
+  db.outboxClear();
   db.setMirror(mirror);
   attached = true;
+  void (async () => {
+    for (const { s, k } of waiting) {
+      const v = await db.get(s, k);
+      if (v === undefined) enqueue(s, k, null);
+      else enqueue(s, k, stable(forRemote(s, k, v)));
+    }
+  })();
   const since = Math.max(0, Number(lsGet(LS.since) ?? 0) - RESUME_MARGIN_MS);
   let chain = Promise.resolve();
   unlisten = be!.listen(u.uid, since, (docs, meta) => {
     fromCache = meta.fromCache;
+    if (meta.maxT > Number(lsGet(LS.since) ?? 0)) lsSet(LS.since, String(meta.maxT));
     chain = chain.then(() => receive(docs)).catch((e) => console.warn(e));
     refreshStatus();
   }, (e) => {
@@ -307,6 +323,7 @@ export async function signOut(force = false): Promise<boolean> {
   if (!force && !(await b.waitPending(4000))) return false;
   detach();
   lsSet(LS.linked, null);
+  lsSet(LS.pending, null);
   await b.signOut();
   logUsage('deconnexion');
   return true;
@@ -319,11 +336,15 @@ export async function deleteAccount(password: string) {
   try {
     await b.deleteAccount(password);
   } catch (e) {
-    if (user) attach(user);
+    // Une partie des données en ligne a pu être effacée : on refait une réunion complète, qui renvoie le téléphone.
+    if (user) {
+      lsSet(LS.linked, null);
+      lsSet(LS.last, null);
+      void link(user).catch(() => {});
+    }
     throw friendly(e);
   }
-  lsSet(LS.linked, null);
-  lsSet(LS.last, null);
-  lsSet(LS.since, null);
+  for (const k of [LS.linked, LS.last, LS.since, LS.pending]) lsSet(k, null);
+  db.outboxClear();
   logUsage('compte_supprime');
 }

@@ -100,15 +100,18 @@ export const backend: Backend = {
     const q = query(col(uid), where('t', '>', Timestamp.fromMillis(since)));
     return onSnapshot(q, { includeMetadataChanges: true }, (snap) => {
       const docs: RemoteDoc[] = [];
+      let maxT = 0;
       for (const ch of snap.docChanges()) {
         if (ch.type === 'removed') continue; // sorti de la requête, pas supprimé : les suppressions sont des pierres tombales
         if (ch.doc.metadata.hasPendingWrites) continue;
         const data = ch.doc.data();
-        if (data.d === me) continue; // écho de ce téléphone
         const r = toRemote(data);
-        if (r) docs.push(r);
+        if (!r) continue;
+        if (r.t > maxT) maxT = r.t;
+        if (data.d === me) continue; // écho de ce téléphone
+        docs.push(r);
       }
-      cb(docs, { fromCache: snap.metadata.fromCache });
+      cb(docs, { fromCache: snap.metadata.fromCache, maxT });
     }, onError);
   },
   onPending(cb) {
