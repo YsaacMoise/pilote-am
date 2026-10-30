@@ -1,6 +1,5 @@
-# Publication de la version de travail (branche main) :
-# - sur Firebase Hosting (arvela.fr), dès que la clé de déploiement FIREBASE_SERVICE_ACCOUNT_ARVELA_APP existe dans les secrets du dépôt ;
-# - sur GitHub Pages (ysaacmoise.github.io/pilote-am), le temps de la bascule vers arvela.fr.
+# Publication de la version de travail (branche main) sur Firebase Hosting (arvela.fr).
+# GitHub Pages n'est plus utilisé : le dépôt peut devenir privé.
 # Les versions archivées ne sont jamais publiées.
 name: Publier le site
 on:
@@ -9,10 +8,8 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  pages: write
-  id-token: write
 concurrency:
-  group: pages
+  group: publication
   cancel-in-progress: true
 jobs:
   build:
@@ -32,23 +29,11 @@ jobs:
           npx tsc --noEmit -p .
           npm test
           npm run build
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: main/dist
       - uses: actions/upload-artifact@v4
         with:
           name: site
           path: main/dist
           retention-days: 3
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
   firebase:
     needs: build
     runs-on: ubuntu-latest
