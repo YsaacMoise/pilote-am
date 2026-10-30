@@ -170,16 +170,29 @@ async function phone(b, name) {
   console.log('\n== Troisième téléphone avec ses propres enfants : choix demandé ==');
   const C = await phone(b, 'C');
   const c = C.p;
+  // Téléphone utilisé avant l'arrivée des comptes : ses données sont posées directement dans sa base.
+  const all = (await (await fetch(`${cloud}/docs?uid=${uid}&since=-1`)).json()).docs;
+  const lou = JSON.parse(all.find((d) => d.s === 'contracts' && d.v && d.v.includes('"Lou"')).v);
+  const malo = { ...lou, id: 'ancien-malo', child: 'Malo', family: 'Roux', createdAt: 1 };
   await c.goto(base);
-  await c.getByRole('button', { name: 'Continuer sans compte' }).click();
-  await c.getByRole('button', { name: 'Ajouter mon premier enfant' }).click();
-  await c.getByLabel('Prénom de l’enfant').fill('Malo');
-  await c.getByLabel('Nom de la famille').fill('Roux');
-  await c.getByLabel('Taux horaire net').fill('3,40');
-  await c.getByRole('radio', { name: /^Les parents/ }).click();
-  await c.getByRole('button', { name: /^Enregistrer/ }).first().click();
-  await c.waitForTimeout(500);
+  await c.evaluate(async (malo) => {
+    const stores = { kv: 'k', contracts: 'id', days: 'key', leaves: 'id', bulletins: 'id', journal: 'id', feedback: 'id', usage: 'id', snapshots: 'id' };
+    const db = await new Promise((res, rej) => {
+      const r = indexedDB.open('pam-donnees', 1);
+      r.onupgradeneeded = () => { for (const [s, k] of Object.entries(stores)) if (!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s, { keyPath: k }); };
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    await new Promise((res) => {
+      const tx = db.transaction(['kv', 'contracts'], 'readwrite');
+      tx.objectStore('kv').put({ k: 'settings', v: { amName: 'Ancienne', enfantsACharge: 0, onboarded: true } });
+      tx.objectStore('contracts').put(malo);
+      tx.oncomplete = res;
+    });
+    db.close();
+  }, malo);
   await c.goto(base + '#/compte');
+  await c.reload();
   await c.getByRole('button', { name: 'J’ai déjà un compte' }).click();
   await c.getByLabel('Adresse e-mail').fill(email);
   await c.getByLabel('Mot de passe').fill(pw);

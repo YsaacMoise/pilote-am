@@ -61,11 +61,10 @@ export function AccountForm({ initial = 'create', onDone }: { initial?: 'create'
   return (
     <form class="stack" onSubmit={submit} noValidate>
       <h2>{create ? 'Crée ton compte' : 'Connecte-toi'}</h2>
-      {create && <p class="hint">Tes données restent sur ton téléphone et une copie va dans ton compte. Si tu changes de téléphone, tu retrouves tout.</p>}
       <TextInput label="Adresse e-mail" type="email" inputMode="email" autoComplete={create ? 'email' : 'username'} value={email} onChange={setEmail} />
       <TextInput
         label="Mot de passe" type="password" autoComplete={create ? 'new-password' : 'current-password'} value={pw} onChange={setPw}
-        hint={create ? '8 caractères au moins. L’iPhone peut en proposer un et le retenir pour toi.' : undefined}
+        hint={create ? '8 caractères au moins.' : undefined}
       />
       {error && <Banner tone="warn">{error}</Banner>}
       <button class="btn btn-primary btn-lg btn-block" type="submit" disabled={busy}>

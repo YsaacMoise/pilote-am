@@ -1,4 +1,4 @@
-// Enfants d'exemple pour découvrir l'app (base séparée « pam-demo »).
+// Enfants fictifs pour découvrir l'app (démonstration) (base séparée « pam-demo »).
 import * as db from './db';
 import { addDays, addMonths, firstDay, monthOf, today, weekday } from './engine/dates';
 import type { AmLeave, Contract, DayRec, Journal, Planning } from './engine/model';

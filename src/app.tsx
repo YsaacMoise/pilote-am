@@ -92,15 +92,15 @@ export function App() {
   return (
     <>
       {isDemo() && (
-        <div class="demo-banner" role="region" aria-label="Mode découverte">
+        <div class="demo-banner" role="region" aria-label="Démonstration">
           <Icon name="info" size={20} />
-          <span>Enfants d’exemple</span>
+          <span>Démonstration</span>
           <button onClick={async () => {
             try { localStorage.removeItem(MODE_KEY); } catch { /* */ }
             await deleteDatabase('pam-demo');
             location.hash = '#/';
             location.reload();
-          }}>Quitter l’exemple</button>
+          }}>Quitter la démonstration</button>
         </div>
       )}
       <div class="app">

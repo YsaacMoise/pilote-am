@@ -1,4 +1,5 @@
 // Audit WCAG 2.1 AA (axe-core) de tous les écrans, clair et sombre. AXE=chemin/vers/axe.min.js
+// Site construit avec VITE_FAKE_CLOUD et faux service lancé (scripts/fake-cloud.mjs) : l'audit crée un compte de test local.
 const { chromium } = require('playwright');
 const fs = require('fs');
 const base = process.env.BASE || 'http://localhost:4173/pilote-am/';
@@ -18,7 +19,7 @@ const axe = fs.readFileSync(process.env.AXE, 'utf8');
       console.log(`[${scheme}] ${name} : ${r.length ? r.join('\n    ') : 'OK'}`);
     };
     await audit('accueil');
-    await p.getByRole('button', { name: 'Voir avec des enfants d’exemple' }).click();
+    await p.getByRole('button', { name: 'Découvrir avec des enfants fictifs' }).click();
     await p.waitForTimeout(1000);
     for (const s of ['', 'carnet', 'mois', 'plus', 'contrat/demo-leo', 'avenant/demo-leo/nouveau', 'historique/demo-leo', 'controle', 'conges', 'fin/demo-leo', 'fiscal', 'sauvegarde', 'pilote', 'reglages', 'regles', 'installer']) {
       await p.evaluate((h) => { location.hash = '#/' + h; }, s);
@@ -48,7 +49,13 @@ const axe = fs.readFileSync(process.env.AXE, 'utf8');
     await q.getByRole('button', { name: 'Mot de passe oublié' }).click();
     await audit2('accueil, mot de passe oublié');
     await q.getByRole('button', { name: 'Revenir à la connexion' }).click();
-    await q.getByRole('button', { name: 'Continuer sans compte' }).click();
+    await q.getByRole('button', { name: 'Créer un compte' }).click();
+    await q.getByLabel('Adresse e-mail').fill(`axe-${scheme}-${Date.now()}@exemple.fr`);
+    await q.getByLabel('Mot de passe').fill('motdepasse-solide');
+    await q.getByRole('button', { name: 'Créer mon compte' }).click();
+    await q.getByRole('heading', { name: 'Ton compte est prêt' }).waitFor();
+    await audit2('accueil, compte prêt');
+    await q.getByRole('button', { name: 'Continuer ici pour l’instant' }).click();
     await q.getByRole('button', { name: 'Ajouter mon premier enfant' }).click();
     await q.evaluate(() => { location.hash = '#/compte'; });
     await q.waitForTimeout(400);

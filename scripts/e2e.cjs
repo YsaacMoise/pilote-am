@@ -1,5 +1,6 @@
 // Parcours complet automatisé (Playwright + Chromium), 390 × 844, clair puis sombre.
-// Usage : node scripts/serve.mjs 4173 & node scripts/e2e.cjs
+// Usage : VITE_FAKE_CLOUD=http://localhost:4180 npm run build, puis
+//   node scripts/fake-cloud.mjs 4180 & node scripts/serve.mjs 4173 & node scripts/e2e.cjs
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
@@ -31,7 +32,10 @@ async function run(scheme) {
   await p.goto(base);
   await p.getByRole('heading', { name: 'Arvela' }).waitFor();
   assert(await p.getByRole('button', { name: 'Créer mon compte' }).isVisible(), 'accueil : création de compte proposée');
-  await p.getByRole('button', { name: 'Continuer sans compte' }).click();
+  await p.getByLabel('Adresse e-mail').fill(`parcours-${scheme}-${Date.now()}@exemple.fr`);
+  await p.getByLabel('Mot de passe').fill('motdepasse-solide');
+  await p.getByRole('button', { name: 'Créer mon compte' }).click();
+  await p.getByRole('button', { name: 'Continuer ici pour l’instant' }).click();
   await p.getByLabel('Ton prénom').fill('Sonia');
   await p.getByRole('button', { name: 'Ajouter mon premier enfant' }).click();
 

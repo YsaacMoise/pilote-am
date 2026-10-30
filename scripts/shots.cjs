@@ -13,7 +13,7 @@ const out = __dirname + '/out/';
     await p.goto(base);
     await p.waitForTimeout(500);
     await p.screenshot({ path: `${out}${scheme}-00-welcome.png`, fullPage: true });
-    await p.getByRole('button', { name: 'Voir avec des enfants d’exemple' }).click();
+    await p.getByRole('button', { name: 'Découvrir avec des enfants fictifs' }).click();
     await p.waitForTimeout(1200);
     const screens = ['', 'carnet', 'mois', 'plus', 'contrat/demo-leo', 'historique/demo-leo', 'controle', 'conges', 'fin/demo-leo', 'fiscal', 'sauvegarde', 'pilote', 'reglages', 'regles', 'installer', 'contrat/nouveau'];
     let i = 1;

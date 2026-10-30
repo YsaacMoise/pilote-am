@@ -24,7 +24,7 @@ async function loadBackend(): Promise<Backend> {
 
 /** Charge le service en ligne et reprend la session enregistrée sur ce téléphone, s'il y en a une. */
 export function startCloud(): Promise<Backend> {
-  if (db.isDemo()) return Promise.reject(new Error('Pas de compte avec les enfants d’exemple'));
+  if (db.isDemo()) return Promise.reject(new Error('Pas de compte pendant la démonstration'));
   if (!starting) {
     starting = (async () => {
       if (cloudInfo().status === 'off') setCloud({ status: 'starting' });

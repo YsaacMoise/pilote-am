@@ -142,10 +142,8 @@ export function Welcome() {
         }} />
       </section>}
       <div class="stack">
-        <button class="btn btn-secondary btn-lg btn-block" onClick={() => { logUsage('demo'); enterDemo(); }}>Voir avec des enfants d’exemple</button>
-        <button class="btn btn-ghost btn-block" onClick={() => { logUsage('sans_compte'); setStep('me'); }}>Continuer sans compte</button>
+        <button class="btn btn-secondary btn-lg btn-block" onClick={() => { logUsage('demo'); enterDemo(); }}>Découvrir avec des enfants fictifs</button>
       </div>
-      <p class="footer-note">Les enfants d’exemple sont rangés à part : ils ne se mélangent jamais à tes vraies données.</p>
     </div>
   );
 }
