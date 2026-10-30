@@ -13,7 +13,7 @@ export const TEXTE_PARENTS = `Bonjour,
 
 Pour gérer l'accueil de votre enfant (heures d'arrivée et de départ, absences, carnet de liaison, calcul du salaire à déclarer sur Pajemploi), j'utilise l'application Arvela.
 
-J'y note le prénom de votre enfant, votre nom de famille, les horaires, les absences (sans aucun diagnostic médical) et les informations du contrat. Ces données sont enregistrées sur mon téléphone, avec une copie dans mon compte Arvela, hébergée en France par Google Firebase. Seule moi y ai accès.
+J'y note le prénom de votre enfant, votre nom de famille, les horaires, les absences (sans aucun diagnostic médical) et les informations du contrat. Ces données sont enregistrées sur mon téléphone, avec une copie dans mon compte Arvela, hébergée en France par Google Firebase. Dans l'application, je suis la seule à y avoir accès. Comme pour tout service en ligne, l'éditeur de l'application peut techniquement y accéder pour l'entretien.
 
 L'application mesure aussi la façon dont elle est utilisée, pour être améliorée. Les prénoms et noms y sont remplacés par des codes (« Enfant 1 », « Famille 1 ») avant tout envoi.
 

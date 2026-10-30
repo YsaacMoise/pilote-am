@@ -15,7 +15,7 @@ export function Confidentialite({ back = '#/plus' }: { back?: string }) {
         <section class="card stack-sm">
           <h2>L’essentiel</h2>
           <p>Tes données servent à une seule chose : faire marcher l’app pour toi. Elles ne sont ni vendues, ni louées, ni utilisées pour de la publicité.</p>
-          <p>Ce que tu saisis est rangé sur ton téléphone, avec une copie dans ton compte, en France. Seul ton compte peut y accéder.</p>
+          <p>Ce que tu saisis est rangé sur ton téléphone, avec une copie dans ton compte, en France. Aucun autre compte de l’app ne peut y accéder.</p>
           <p>La mesure d’usage, qui sert à améliorer l’app, ne reçoit jamais les prénoms des enfants, les noms des familles ni ton adresse e-mail.</p>
         </section>
 
@@ -23,6 +23,7 @@ export function Confidentialite({ back = '#/plus' }: { back?: string }) {
           <h2>Qui est responsable</h2>
           <p>{LEGAL.responsable}. Pour toute question sur tes données : {LEGAL.contact}.</p>
           <p>Pour les données des enfants et des parents que tu saisis, c’est toi qui décides de ce que tu notes, comme dans un cahier. Arvela les garde et les traite pour ton compte, uniquement pour faire marcher l’app.</p>
+          <p>Comme pour tout service en ligne, l’éditeur d’Arvela peut techniquement accéder à la copie en ligne, pour l’entretien du service.</p>
         </section>
 
         <section class="card stack-sm">
