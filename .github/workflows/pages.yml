@@ -1,4 +1,6 @@
-# Publication sur GitHub Pages : uniquement la version de travail (branche main).
+# Publication de la version de travail (branche main) :
+# - sur Firebase Hosting (arvela.fr), dès que la clé de déploiement FIREBASE_SERVICE_ACCOUNT_ARVELA_APP existe dans les secrets du dépôt ;
+# - sur GitHub Pages (ysaacmoise.github.io/pilote-am), le temps de la bascule vers arvela.fr.
 # Les versions archivées ne sont jamais publiées.
 name: Publier le site
 on:
@@ -33,6 +35,11 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: main/dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: main/dist
+          retention-days: 3
   deploy:
     needs: build
     runs-on: ubuntu-latest
@@ -42,3 +49,28 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+  firebase:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      HAS_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ARVELA_APP != '' }}
+    steps:
+      - name: Clé de déploiement présente ?
+        if: env.HAS_KEY != 'true'
+        run: echo "Pas encore de clé FIREBASE_SERVICE_ACCOUNT_ARVELA_APP dans les secrets du dépôt, publication Firebase sautée."
+      - uses: actions/checkout@v4
+        if: env.HAS_KEY == 'true'
+        with:
+          ref: main
+      - uses: actions/download-artifact@v4
+        if: env.HAS_KEY == 'true'
+        with:
+          name: site
+          path: dist
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        if: env.HAS_KEY == 'true'
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ARVELA_APP }}
+          projectId: arvela-app
+          channelId: live
