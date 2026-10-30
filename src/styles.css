@@ -426,3 +426,9 @@ h1:focus { outline: none; }
 .install-arrow { display: flex; align-items: center; gap: 10px; justify-content: center; margin-top: 12px; padding: 12px; border-radius: 14px; background: var(--primary-soft); color: var(--ink); font-weight: 600; animation: install-bob 1.4s ease-in-out infinite; }
 @keyframes install-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(6px); } }
 @media (prefers-reduced-motion: reduce) { .install-arrow { animation: none; } }
+
+/* Pages de texte (confidentialité) */
+.prose-page h2 { font-size: 20px; margin: 0; }
+.prose-page h3 { font-size: 16px; margin: 8px 0 0; }
+.prose-page p { margin: 0; line-height: 1.5; }
+.quote-box { margin: 0; padding: 12px 14px; border-left: 4px solid var(--primary); background: var(--surface-2); border-radius: 10px; display: flex; flex-direction: column; gap: 8px; font-size: 15px; }

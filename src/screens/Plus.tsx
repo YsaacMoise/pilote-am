@@ -55,6 +55,7 @@ export function Plus() {
           <div class="list">
             <ListLink href="#/regles" icon="help" title="Comment l’app calcule" sub="Les règles de la convention et nos choix" />
             <ListLink href="#/installer" icon="phone" title="Installer sur l’iPhone" />
+            <ListLink href="#/confidentialite" icon="shield" title="Confidentialité" sub="Ce qui est gardé, où, et tes droits" />
           </div>
         </section>
         <p class="footer-note">Arvela ne remplace ni Pajemploi ni un conseil juridique. {cloud.email ? 'Tes données sont sur ce téléphone, avec une copie dans ton compte.' : 'Tout reste sur ce téléphone.'}</p>

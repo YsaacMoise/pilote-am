@@ -9,6 +9,7 @@ import { Mois } from './screens/Mois';
 import { Plus } from './screens/Plus';
 import { Contrat } from './screens/Contrat';
 import { Avenant } from './screens/Avenant';
+import { Confidentialite } from './screens/Confidentialite';
 import { Historique } from './screens/Historique';
 import { Controle } from './screens/Controle';
 import { Conges } from './screens/Conges';
@@ -56,13 +57,15 @@ export function App() {
     const title = ({
       '': 'Aujourd’hui', carnet: 'Carnet', mois: 'Mois', plus: 'Plus', contrat: 'Contrat', avenant: 'Avenant', historique: 'Historique',
       controle: 'Contrôle du bulletin', conges: 'Congés', fin: 'Fin de contrat', fiscal: 'Impôts', sauvegarde: 'Sauvegarde',
-      pilote: 'Données du pilote', compte: 'Compte', reglages: 'Réglages', regles: 'Comment l’app calcule', installer: 'Installer',
+      pilote: 'Données du pilote', compte: 'Compte', reglages: 'Réglages', regles: 'Comment l’app calcule', confidentialite: 'Confidentialité', installer: 'Installer',
     } as Record<string, string>)[p] ?? 'Arvela';
     document.title = `${title} · Arvela`;
   }, [p]);
 
   if (!s.ready) return null;
   if (!s.settings.onboarded && !isDemo()) {
+    // La politique de confidentialité reste lisible avant la création du compte.
+    if (p === 'confidentialite') return <><Confidentialite back="#/" /><Toaster /></>;
     return <><Welcome /><Toaster /></>;
   }
 
@@ -84,6 +87,7 @@ export function App() {
     case 'reglages': screen = <Reglages />; break;
     case 'compte': screen = isDemo() ? <Today /> : <Compte />; break;
     case 'regles': screen = <Regles />; break;
+    case 'confidentialite': screen = <Confidentialite />; break;
     case 'installer': screen = <Installer />; break;
     case 'bienvenue': screen = <Welcome />; break;
     default: screen = <Today />;

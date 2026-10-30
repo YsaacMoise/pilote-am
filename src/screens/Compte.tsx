@@ -67,6 +67,7 @@ export function AccountForm({ initial = 'create', onDone }: { initial?: 'create'
         hint={create ? '8 caractères au moins.' : undefined}
       />
       {error && <Banner tone="warn">{error}</Banner>}
+      {create && <p class="hint">Ton compte garde une copie de tes données, hébergée à Paris. <a href="#/confidentialite">Ce qui est gardé et tes droits</a></p>}
       <button class="btn btn-primary btn-lg btn-block" type="submit" disabled={busy}>
         {busy ? (create ? 'Création…' : 'Connexion…') : create ? 'Créer mon compte' : 'Me connecter'}
       </button>
