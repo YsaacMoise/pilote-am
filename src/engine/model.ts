@@ -46,7 +46,7 @@ export interface Avenant {
 
 export interface Contract {
   id: string;
-  /** Prénom de l'enfant (ne quitte jamais le téléphone) */
+  /** Prénom de l'enfant (copié dans le compte de l'AM ; jamais envoyé à la mesure d'usage) */
   child: string;
   /** Nom de la famille / du parent employeur */
   family: string;
