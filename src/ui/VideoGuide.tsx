@@ -1,7 +1,6 @@
 // Guides vidéo en motion design, au format téléphone (9:16). Deux sujets, jamais une longue vidéo :
 //  - « Au quotidien » (54 s) : pointer, noter dans le carnet, envoyer aux parents, voir le mois, les congés ;
 //  - « Installer » (33 s), en deux versions, iPhone et Android : chacun ne voit que les gestes de son téléphone.
-// Commentées par une voix française de synthèse (modèle Kokoro, licence Apache 2.0, fabriquée hors ligne) et sous-titrées.
 // Fichiers dans public/videos/ : arvela-quotidien, arvela-installer-iphone, arvela-installer-android (.mp4 H.264 + .vtt).
 // Ils ne sont pas mis en cache hors ligne (trop lourds) : une vidéo ne se charge que si on appuie sur Lecture.
 import { useRef, useState } from 'preact/hooks';
@@ -16,7 +15,7 @@ const CLIPS: Record<Clip, { onglet: string; titre: string; duree: string; resume
 };
 
 /** Les vidéos sont déposées dans public/videos/ : les emplacements apparaissent. Repasser à false les masque partout. */
-export const VIDEOS_PRETES = true;
+export const VIDEOS_PRETES = false; // emplacements prêts, vidéos à refaire : rien n'apparaît tant que c'est false
 
 export function isIOS(): boolean {
   return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);

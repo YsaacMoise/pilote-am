@@ -170,7 +170,7 @@ export function Welcome() {
           <dl class="hero-facts" id={VIDEOS_PRETES ? undefined : 'fonctions'}>
             <div><dt>Paris</dt><dd>Données hébergées en France</dd></div>
             <div><dt>Hors ligne</dt><dd>Marche sans réseau</dd></div>
-            <div><dt>Mobile</dt><dd>et ordinateur, sans store</dd></div>
+            <div><dt>Mobile</dt><dd>Téléphone ou ordinateur, sans App Store</dd></div>
           </dl>
         </div>
 
@@ -206,9 +206,9 @@ export function Welcome() {
       {VIDEOS_PRETES && (
         <section id="fonctions" class="landing-video" aria-labelledby="video-t">
           <div class="landing-video-text">
-            <span class="eyebrow">Comment ça marche</span>
-            <h2 id="video-t" class="hero-subtitle">Deux vidéos courtes, pas une de plus.</h2>
-            <p class="hero-lead">Moins d’une minute pour voir une journée avec Arvela. Une demi-minute pour l’installer, avec les gestes de ton téléphone. Commentées à voix haute, avec le texte à l’écran.</p>
+            <span class="eyebrow">En vidéo</span>
+            <h2 id="video-t" class="hero-subtitle">Voir Arvela en action.</h2>
+            <p class="hero-lead">Une journée type, de l’arrivée des enfants à la déclaration du mois. Puis l’installation sur ton téléphone, geste par geste.</p>
           </div>
           <VideoGuide />
         </section>
