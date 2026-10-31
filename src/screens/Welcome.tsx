@@ -5,6 +5,7 @@ import { useCloud } from '../cloud-state';
 import { MODE_KEY } from '../db';
 import { Banner, Sheet, Stepper, TextInput, Topbar } from '../ui/kit';
 import { Logo } from '../ui/Logo';
+import { VIDEOS_PRETES, VideoClip, VideoGuide, isIOS } from '../ui/VideoGuide';
 import { Icon } from '../ui/icons';
 
 /** Logo vertical empilé de la charte (déclinaison 02 « Page connexion & accueil ») */
@@ -22,9 +23,6 @@ export function isStandalone(): boolean {
   return (navigator as any).standalone === true || window.matchMedia?.('(display-mode: standalone)').matches;
 }
 
-function isIOS(): boolean {
-  return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-}
 
 export function enterDemo() {
   try { localStorage.setItem(MODE_KEY, 'demo'); } catch { /* stockage indisponible */ }
@@ -121,6 +119,7 @@ export function Welcome() {
           <h2 id="inst">Installe l’app sur ton téléphone</h2>
           <p>Avec son icône sur l’écran d’accueil, l’app s’ouvre en un geste, en plein écran, même sans réseau.</p>
           <InstallButton />
+          {VIDEOS_PRETES && <VideoClip clip="installer" />}
           <p class="hint">Ouvre ensuite l’app depuis son icône et connecte-toi avec la même adresse e-mail.</p>
         </section>
         <button class="btn btn-secondary btn-lg btn-block" onClick={() => setStep('me')}>Continuer ici pour l’instant</button>
@@ -168,7 +167,7 @@ export function Welcome() {
             <button class="btn btn-primary btn-lg" type="button" onClick={() => (signedIn ? setStep(standalone ? 'me' : 'installer') : goCompte('create'))}>{signedIn ? 'Continuer' : 'Démarrer avec Arvela'} <span aria-hidden="true">→</span></button>
             <button class="btn btn-secondary btn-lg" type="button" onClick={() => { logUsage('demo'); enterDemo(); }}>Voir un exemple</button>
           </div>
-          <dl class="hero-facts" id="fonctions">
+          <dl class="hero-facts" id={VIDEOS_PRETES ? undefined : 'fonctions'}>
             <div><dt>Paris</dt><dd>Données hébergées en France</dd></div>
             <div><dt>Hors ligne</dt><dd>Marche sans réseau</dd></div>
             <div><dt>Mobile</dt><dd>et ordinateur, sans store</dd></div>
@@ -204,6 +203,17 @@ export function Welcome() {
         </figure>
       </div>
 
+      {VIDEOS_PRETES && (
+        <section id="fonctions" class="landing-video" aria-labelledby="video-t">
+          <div class="landing-video-text">
+            <span class="eyebrow">Comment ça marche</span>
+            <h2 id="video-t" class="hero-subtitle">Deux vidéos courtes, pas une de plus.</h2>
+            <p class="hero-lead">Une minute pour voir une journée avec Arvela. Vingt-cinq secondes pour l’installer, avec les gestes de ton téléphone. Sans le son, les sous-titres suffisent.</p>
+          </div>
+          <VideoGuide />
+        </section>
+      )}
+
       <section id="compte" class="landing-compte card">
         {signedIn ? (
           <div class="stack">
@@ -236,7 +246,7 @@ export function Installer() {
     <>
       <Topbar title="Installer l’app" back="#/plus" screen="installer" />
       <main>
-        {isStandalone() ? <Banner tone="ok">L’app est déjà installée : tu l’utilises depuis son icône.</Banner> : <><InstallButton /><InstallSteps /></>}
+        {isStandalone() ? <Banner tone="ok">L’app est déjà installée : tu l’utilises depuis son icône.</Banner> : <><InstallButton /><InstallSteps />{VIDEOS_PRETES && <VideoClip clip="installer" />}</>}
         <section class="card stack-sm">
           <h2>Hors ligne</h2>
           <p>Une fois installée, l’app marche sans réseau : à la maison, au parc, en sortie.</p>
