@@ -97,8 +97,8 @@ export function Carnet() {
                   {entries.map((e) => (
                     <li class="tl-item">
                       <span class="tl-time">{e.time.replace(':', 'h')}</span>
-                      <span><b>{KIND_LABEL[e.kind]}</b> · <span data-ph-mask={e.kind === 'note' ? '' : undefined}>{e.detail}</span></span>
-                      <button class="icon-btn" aria-label={e.kind === 'note' ? 'Supprimer la note' : `Supprimer « ${e.detail} »`} onClick={async () => { const u = await deleteJournal(e.id); toast('Note supprimée', u); }}>
+                      <span class="ph-no-capture"><b>{KIND_LABEL[e.kind]}</b> · <span class="ph-no-capture" data-ph-mask="">{e.detail}</span></span>
+                      <button class="icon-btn ph-no-capture" aria-label={`Supprimer la note de ${e.time.replace(':', 'h')}`} onClick={async () => { const u = await deleteJournal(e.id); toast('Note supprimée', u); }}>
                         <Icon name="trash" size={20} />
                       </button>
                     </li>

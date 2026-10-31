@@ -29,8 +29,10 @@ async function start() {
   render(<App />, document.getElementById('app')!);
   // Compte en ligne déjà branché sur ce téléphone : on reprend la copie (Firebase chargé seulement dans ce cas).
   if (!isDemo() && hasCloudAccount()) import('./cloud').then((c) => c.startCloud()).catch(() => {});
-  // Mesure d'usage du pilote, chargée après l'affichage.
-  setTimeout(() => { import('./analytics').then((a) => a.initAnalytics()).catch(() => {}); }, 1500);
+  // Mesure d'usage du pilote : seulement après accord dans Réglages ; sinon, on efface toute trace laissée par une ancienne version.
+  setTimeout(() => {
+    import('./analytics').then((a) => (a.mesureActive() ? a.initAnalytics() : a.effacerTracesMesure())).catch(() => {});
+  }, 1500);
   if (state.contracts.length && !state.settings.persisted) {
     navigator.storage?.persist?.().then((ok) => { if (ok) state.settings.persisted = true; }).catch(() => {});
   }

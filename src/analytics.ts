@@ -1,20 +1,54 @@
-// Mesure d'usage du pilote (PostHog, hébergement UE). Chargée après l'app, jamais en local ni pendant les tests.
-// Prénoms d'enfants, noms de familles et prénom de l'AM sont remplacés avant tout envoi (« Enfant 1 », « Famille 1 », « AM »).
+// Mesure d'usage du pilote (PostHog, hébergement UE).
+// Corrections après audit (C-030, C-031, C-032, C-033, C-034) :
+// - la mesure est éteinte par défaut et ne démarre qu'après un accord donné dans Plus › Réglages ;
+// - jamais en démonstration, jamais en local, jamais pendant les tests ;
+// - aucun enregistrement d'écran, aucune capture automatique des clics, aucune carte de chaleur,
+//   aucune capture des erreurs avec leur texte, aucune requête réseau enregistrée ;
+// - seuls partent des noms d'événements métier (« arrivee », « depart »…) et le nom de l'écran ;
+// - couper la mesure efface l'identifiant gardé sur le téléphone.
 import { state } from './store';
 import { isDemo } from './db';
 
+declare const __APP_VERSION__: string;
+
 const KEY = 'phc_o2YzAa4ztXQV3DNa9RQaEiiDZJWBjNY3TsJWEGpYThhD';
-const OPT_OUT = 'pam-mesure-off';
+/** Accord donné dans Réglages (valeur « 1 »). Sans cet accord, rien ne part. */
+const OPT_IN = 'pam-mesure-on';
+/** Ancienne clé (mesure active par défaut) : retirée, elle ne vaut plus accord. */
+const OLD_OPT_OUT = 'pam-mesure-off';
 let ph: any = null;
 
 export function mesureActive(): boolean {
-  try { return localStorage.getItem(OPT_OUT) !== '1'; } catch { return true; }
+  try { return localStorage.getItem(OPT_IN) === '1'; } catch { return false; }
+}
+
+/** Efface tout ce que PostHog a pu garder sur le téléphone (identifiant, file d'attente, accord). */
+export function effacerTracesMesure() {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith('ph_') || k.startsWith('__ph_') || k.startsWith('_ph_'))) keys.push(k);
+    }
+    keys.forEach((k) => localStorage.removeItem(k));
+    localStorage.removeItem(OLD_OPT_OUT);
+  } catch { /* stockage indisponible */ }
+  try {
+    for (const k of Object.keys(sessionStorage)) if (k.startsWith('ph_') || k.startsWith('__ph_')) sessionStorage.removeItem(k);
+  } catch { /* stockage indisponible */ }
 }
 
 export function setMesure(on: boolean) {
-  try { on ? localStorage.removeItem(OPT_OUT) : localStorage.setItem(OPT_OUT, '1'); } catch { /* stockage indisponible */ }
-  if (ph) on ? ph.opt_in_capturing() : ph.opt_out_capturing();
-  else if (on) void initAnalytics();
+  try { on ? localStorage.setItem(OPT_IN, '1') : localStorage.removeItem(OPT_IN); } catch { /* stockage indisponible */ }
+  if (on) {
+    if (ph) ph.opt_in_capturing();
+    else void initAnalytics();
+    return;
+  }
+  if (ph) {
+    try { ph.opt_out_capturing(); ph.reset(); } catch { /* sans effet */ }
+  }
+  effacerTracesMesure();
 }
 
 function esc(s: string): string {
@@ -55,65 +89,89 @@ export function pseudonymise(text: string): string {
   return t;
 }
 
-function deep(v: unknown, depth = 0): unknown {
-  if (depth > 6) return v;
+/** Pseudonymise toutes les chaînes, à toute profondeur (C-031 : l'ancienne version s'arrêtait à 6 niveaux). */
+export function deep(v: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
   if (typeof v === 'string') return pseudonymise(v);
-  if (Array.isArray(v)) return v.map((x) => deep(x, depth + 1));
-  if (v && typeof v === 'object') {
-    const o: Record<string, unknown> = {};
-    for (const [k, x] of Object.entries(v)) o[k] = deep(x, depth + 1);
-    return o;
-  }
-  return v;
+  if (!v || typeof v !== 'object') return v;
+  if (seen.has(v as object)) return undefined;
+  seen.add(v as object);
+  if (Array.isArray(v)) return v.map((x) => deep(x, seen));
+  const o: Record<string, unknown> = {};
+  for (const [k, x] of Object.entries(v)) o[k] = deep(x, seen);
+  return o;
+}
+
+/** Nom d'écran sans identifiant de contrat ni paramètre (C-034). */
+export function ecranCourant(hash: string): string {
+  return hash.replace(/^#\/?/, '').split(/[/?]/)[0] || 'aujourdhui';
+}
+
+/** Réglages passés à posthog.init : exportés pour être vérifiés par les tests. */
+export function posthogOptions() {
+  return {
+    api_host: 'https://eu.i.posthog.com',
+    ui_host: 'https://eu.posthog.com',
+    persistence: 'localStorage',
+    // Pas de profil de personne : des événements seulement.
+    person_profiles: 'identified_only',
+    autocapture: false,
+    capture_pageview: false,
+    capture_pageleave: false,
+    capture_dead_clicks: false,
+    rageclick: false,
+    enable_heatmaps: false,
+    capture_heatmaps: false,
+    capture_exceptions: false,
+    capture_performance: false,
+    disable_surveys: true,
+    disable_session_recording: true,
+    // Défense en profondeur : même si l'enregistrement était réactivé depuis la console PostHog,
+    // aucun corps ni en-tête de requête ne serait copié, et tout le texte serait masqué.
+    session_recording: {
+      recordBody: false,
+      recordHeaders: false,
+      maskAllInputs: true,
+      maskTextSelector: '*',
+      maskTextFn: (text: string) => text.replace(/\S/g, '•'),
+    },
+    advanced_disable_feature_flags: true,
+    before_send: (ev: any) => {
+      if (!ev) return ev;
+      ev.properties = deep(ev.properties) as any;
+      if (ev.$set) ev.$set = deep(ev.$set);
+      if (ev.$set_once) ev.$set_once = deep(ev.$set_once);
+      return ev;
+    },
+  };
+}
+
+function version(): string {
+  try { return typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'inconnue'; } catch { return 'inconnue'; }
 }
 
 export async function initAnalytics() {
-  if (ph || !import.meta.env.PROD || !mesureActive()) return;
+  if (ph || !import.meta.env.PROD || !mesureActive() || isDemo()) return;
   const host = location.hostname;
   if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost')) return;
   const mod: any = await import('posthog-js/dist/module.full.no-external');
   const posthog = mod.default ?? mod.posthog ?? mod;
   posthog.init(KEY, {
-    api_host: 'https://eu.i.posthog.com',
-    ui_host: 'https://eu.posthog.com',
-    persistence: 'localStorage',
-    debug: location.search.includes('phdebug'),
-    person_profiles: 'always',
-    autocapture: true,
-    capture_pageview: false,
-    capture_pageleave: true,
-    capture_dead_clicks: true,
-    enable_heatmaps: true,
-    capture_exceptions: true,
-    capture_performance: { web_vitals: true },
-    disable_surveys: false,
-    disable_session_recording: false,
-    session_recording: {
-      maskAllInputs: true,
-      // Tout le texte passe par la pseudonymisation ; les notes libres du carnet sont masquées.
-      maskTextSelector: '*',
-      maskTextFn: (text: string, el?: HTMLElement | null) => (el?.closest?.('[data-ph-mask]') ? text.replace(/\S/g, '•') : pseudonymise(text)),
-      // Les attributs (aria-label, title, value…) passent aussi par la pseudonymisation.
-      maskAttributeFn: (_name: string, value: string) => (typeof value === 'string' && value ? pseudonymise(value) : value),
-    },
-    before_send: (ev: any) => {
-      if (!ev) return ev;
-      ev.properties = deep(ev.properties) as any;
-      if (ev.$set) ev.$set = deep(ev.$set);
-      return ev;
-    },
+    ...posthogOptions(),
     loaded: (p: any) => {
-      p.register({ app_mode: isDemo() ? 'exemple' : 'reel', app_version: (window as any).__PAM_VERSION ?? 'inconnue' });
+      p.register({ app_mode: 'reel', app_version: version() });
     },
   });
   ph = posthog;
-  const page = () => ph?.capture('$pageview', { $current_url: pseudonymise(location.href), ecran: location.hash.replace(/^#\/?/, '').split('/')[0] || 'aujourdhui' });
+  const page = () => {
+    const ecran = ecranCourant(location.hash);
+    ph?.capture('$pageview', { $current_url: `${location.origin}/#/${ecran}`, ecran });
+  };
   page();
   window.addEventListener('hashchange', page);
 }
 
-/** Événements métier (déjà notés dans le journal local) */
+/** Événements métier (déjà notés dans le journal local) : un nom et l'écran, jamais de texte saisi. */
 export function track(ev: string, screen?: string) {
   if (!ph) return;
-  ph.capture(ev, screen ? { ecran: screen } : undefined);
+  ph.capture(ev, screen ? { ecran: ecranCourant(screen) } : undefined);
 }

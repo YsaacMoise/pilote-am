@@ -15,6 +15,62 @@ describe('mesure d’usage : pseudonymisation avant envoi', () => {
     expect(pseudonymise('Merci ! Sonia')).toBe('Merci ! AM');
     expect(pseudonymise('Léonard reste Léonard')).toBe('Léonard reste Léonard');
     expect(pseudonymise('Malade, avec certificat : 713,81 €')).toBe('Malade, avec certificat : 713,81 €');
-    expect(pseudonymise('Connectée : sonia.dupont@gmail.com')).toBe('Connectée : e-mail masqué');
+    expect(pseudonymise('Connectée : sonia.dupont@example.com')).toBe('Connectée : e-mail masqué');
+  });
+});
+
+import { deep, ecranCourant, posthogOptions, setMesure, mesureActive } from '../src/analytics';
+
+describe('mesure d’usage : réglages après audit (C-030 à C-034)', () => {
+  it('aucun enregistrement d’écran, aucune capture automatique, aucun profil de personne', () => {
+    const o: any = posthogOptions();
+    expect(o.disable_session_recording).toBe(true);
+    expect(o.autocapture).toBe(false);
+    expect(o.enable_heatmaps).toBe(false);
+    expect(o.capture_heatmaps).toBe(false);
+    expect(o.capture_dead_clicks).toBe(false);
+    expect(o.capture_exceptions).toBe(false);
+    expect(o.capture_performance).toBe(false);
+    expect(o.capture_pageleave).toBe(false);
+    expect(o.person_profiles).toBe('identified_only');
+    expect(o.session_recording.recordBody).toBe(false);
+    expect(o.session_recording.recordHeaders).toBe(false);
+  });
+
+  it('pseudonymise à toute profondeur (l’ancienne limite était 6 niveaux)', () => {
+    state.contracts = [{ id: 'a', child: 'Anaïs', family: 'Petit', createdAt: 1 } as any];
+    let v: any = 'Anaïs Petit';
+    for (let i = 0; i < 12; i++) v = { x: [v] };
+    expect(JSON.stringify(deep(v))).not.toMatch(/Anaïs|Petit/);
+  });
+
+  it('le nom d’écran ne garde ni identifiant de contrat ni paramètre', () => {
+    expect(ecranCourant('#/contrat/k7f3x9')).toBe('contrat');
+    expect(ecranCourant('#/mois?c=demo-leo')).toBe('mois');
+    expect(ecranCourant('')).toBe('aujourdhui');
+  });
+
+  it('éteinte par défaut ; l’éteindre efface les clés PostHog du téléphone', () => {
+    const store = new Map<string, string>();
+    const ls: any = {
+      getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+      key: (i: number) => [...store.keys()][i] ?? null,
+      get length() { return store.size; },
+    };
+    (globalThis as any).localStorage = ls;
+    (globalThis as any).sessionStorage = { ...ls };
+    expect(mesureActive()).toBe(false);
+    store.set('pam-mesure-off', '1');
+    expect(mesureActive()).toBe(false);
+    store.set('pam-mesure-on', '1');
+    expect(mesureActive()).toBe(true);
+    store.set('ph_phc_xxx_posthog', '{"distinct_id":"abc"}');
+    store.set('__ph_opt_in_out_phc_xxx', '1');
+    store.set('pam-autre', 'garde');
+    setMesure(false);
+    expect(mesureActive()).toBe(false);
+    expect([...store.keys()].sort()).toEqual(['pam-autre']);
   });
 });
