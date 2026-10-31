@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Arvela a déménagé</title>
+    <meta http-equiv="refresh" content="0; url=https://arvela.fr/" />
+    <link rel="canonical" href="https://arvela.fr/" />
+    <script>
+      // Ancienne adresse de test (audit C-110) : on désinstalle l'ancienne version et on part sur arvela.fr.
+      (async () => {
+        try {
+          if ('serviceWorker' in navigator) for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+          if ('caches' in window) for (const k of await caches.keys()) await caches.delete(k);
+        } catch (e) { /* sans effet */ }
+        location.replace('https://arvela.fr/');
+      })();
+    </script>
+  </head>
+  <body style="font-family: system-ui, sans-serif; padding: 24px; line-height: 1.5">
+    <h1>Arvela a déménagé</h1>
+    <p>L’app est maintenant sur <a href="https://arvela.fr/">arvela.fr</a>. Si tu l’avais ajoutée à l’écran d’accueil depuis cette ancienne adresse, supprime l’ancienne icône et ajoute arvela.fr.</p>
+  </body>
+</html>

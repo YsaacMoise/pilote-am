@@ -1,6 +1,6 @@
 # Arvela (ex-Pilote AM), version de travail
 
-> Cette branche `main` est la version de travail, en ligne sur https://ysaacmoise.github.io/pilote-am/ .
+> Cette branche `main` est la version de travail, en ligne sur https://arvela.fr/ .
 > Elle part d'une copie de la version Claude Code du 28/10/2026. L'original (`base-claude-code-v1`, à ne jamais
 > modifier) et l'ancienne version « Registre » (`archive-registre-v1`) sont archivés dans le dépôt privé
 > `YsaacMoise/pilote-am-archives`, avec une copie de l'historique de `main` au 29/10/2026.
@@ -16,7 +16,7 @@
 
 L’app de bord d’une assistante maternelle (AM) : pointage par exception, carnet de liaison, déclaration Pajemploi par enfant, contrôle du bulletin, congés payés, fin de contrat, impôts. Tout reste sur le téléphone.
 
-En ligne : **https://ysaacmoise.github.io/pilote-am/cc/**
+En ligne : **https://arvela.fr/**
 
 Cette version a été conçue, codée, testée et publiée de bout en bout par Claude (Claude Code), sans question posée, pour le pilote de phase 1 (une AM, en France, sur iPhone). Les choix ci-dessous sont les miens.
 
@@ -24,7 +24,7 @@ Cette version a été conçue, codée, testée et publiée de bout en bout par C
 
 ## Installer sur iPhone
 
-1. Ouvrir https://ysaacmoise.github.io/pilote-am/cc/ dans **Safari**.
+1. Ouvrir https://arvela.fr/ dans **Safari**.
 2. Toucher **Partager**, puis **Sur l’écran d’accueil**, puis **Ajouter**.
 3. Ouvrir **Pilote AM** depuis l’icône : c’est là qu’on travaille.
 

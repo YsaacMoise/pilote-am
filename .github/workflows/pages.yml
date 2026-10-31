@@ -1,6 +1,7 @@
 # Publication de la version de travail (branche main) sur Firebase Hosting (arvela.fr).
-# GitHub Pages n'est plus utilisé : le dépôt peut devenir privé.
+# GitHub Pages ne sert plus qu'une page de redirection vers arvela.fr (audit C-110).
 # Les versions archivées ne sont jamais publiées.
+# Actions épinglées par empreinte exacte et firebase-tools figé (audit C-044, C-112).
 name: Publier le site
 on:
   push:
@@ -15,11 +16,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: main
           path: main
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
       - name: Version de travail (main)
@@ -29,33 +30,64 @@ jobs:
           npx tsc --noEmit -p .
           npm test
           npm run build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: site
           path: main/dist
           retention-days: 3
-  firebase:
-    needs: build
+  regles:
     runs-on: ubuntu-latest
-    env:
-      HAS_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ARVELA_APP != '' }}
     steps:
-      - name: Clé de déploiement présente ?
-        if: env.HAS_KEY != 'true'
-        run: echo "Pas encore de clé FIREBASE_SERVICE_ACCOUNT_ARVELA_APP dans les secrets du dépôt, publication Firebase sautée."
-      - uses: actions/checkout@v4
-        if: env.HAS_KEY == 'true'
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: main
-      - uses: actions/download-artifact@v4
-        if: env.HAS_KEY == 'true'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Matrice des règles Firestore (rien n'est publié si un cas échoue)
+        run: npx firebase emulators:exec --only firestore --project demo-arvela "node tests/rules/rules.test.mjs"
+  firebase:
+    needs: [build, regles]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clé de déploiement présente ?
+        env:
+          HAS_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ARVELA_APP != '' }}
+        run: |
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "::error::Clé FIREBASE_SERVICE_ACCOUNT_ARVELA_APP absente des secrets du dépôt : publication impossible."
+            exit 1
+          fi
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: site
           path: dist
-      - uses: FirebaseExtended/action-hosting-deploy@v0
-        if: env.HAS_KEY == 'true'
+      - uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0.11.0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ARVELA_APP }}
           projectId: arvela-app
           channelId: live
+          firebaseToolsVersion: 15.34.2
+  redirection-github-pages:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: pages-redirection
+      - id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

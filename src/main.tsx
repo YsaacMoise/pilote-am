@@ -46,6 +46,12 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
     const offer = (w: ServiceWorker) => {
       toast('Une nouvelle version est prête.', async () => { asked = true; w.postMessage('pam-skip-waiting'); }, undefined, 'Mettre à jour');
     };
+    // Audit C-042 : chercher une nouvelle version à chaque retour dans l'app, et la reproposer si elle attend.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      reg.update().catch(() => {});
+      if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
+    });
     if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
     reg.addEventListener('updatefound', () => {
       const w = reg.installing;

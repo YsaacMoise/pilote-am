@@ -3,6 +3,8 @@ import { saveSettings, useStore } from '../store';
 import { mesureActive, setMesure } from '../analytics';
 import { Stepper, Switch, TextInput, Topbar } from '../ui/kit';
 
+declare const __APP_VERSION__: string;
+
 export function Reglages() {
   const s = useStore();
   const [mesure, setM] = useState(mesureActive());
@@ -27,6 +29,7 @@ export function Reglages() {
           </fieldset>
         </section>
         <p class="footer-note">Tes données (contrats, journées, carnet) sont rangées sur ce téléphone. Avec un compte, une copie va en ligne : voir Plus › Compte.</p>
+        <p class="footer-note">Version de l’app : {typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'inconnue'}</p>
       </main>
     </>
   );

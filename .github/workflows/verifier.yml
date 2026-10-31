@@ -1,0 +1,30 @@
+# Vérification à chaque envoi, sur toutes les branches : types, tests, construction,
+# et matrice des règles de sécurité Firestore sur l'émulateur (audit C-040, C-081).
+name: Vérifier
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx tsc --noEmit -p .
+      - run: npm test
+      - run: npm run build
+  regles-firestore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Matrice des règles sur l'émulateur Firestore (27 cas)
+        run: npx firebase emulators:exec --only firestore --project demo-arvela "node tests/rules/rules.test.mjs"
