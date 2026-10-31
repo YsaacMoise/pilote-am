@@ -212,10 +212,11 @@ export function logUsage(ev: string, screen?: string) {
 // ---------- Contexte de calcul ----------
 const ctxCache = new Map<string, Ctx>();
 export function ctxFor(c: Contract, at = today()): Ctx {
-  const k = c.id + at;
+  const enfants = state.settings?.enfantsACharge ?? 0;
+  const k = c.id + at + '|' + enfants;
   let x = ctxCache.get(k);
   if (!x) {
-    x = makeCtx(c, [...state.days.values()].filter((d) => d.cid === c.id), state.leaves, at);
+    x = makeCtx(c, [...state.days.values()].filter((d) => d.cid === c.id), state.leaves, at, enfants);
     ctxCache.set(k, x);
   }
   return x;

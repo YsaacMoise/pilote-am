@@ -5,7 +5,7 @@ import {
   type ISODate, type Month,
 } from './dates';
 import { acquisition, compteur, cpForMonth, indemnite, maintien } from './conges';
-import { monthBase, monthBrut, regularisation, regulStart, termsAt, type Ctx } from './payroll';
+import { monthBase, monthBrut, regularisation, regulStart, semainesSansAccueilManquantes, termsAt, type Ctx } from './payroll';
 import { netToBrut } from './rates';
 
 export type Motif = 'retrait' | 'demission' | 'deces' | 'inaptitude_pro' | 'faute_grave' | 'essai';
@@ -105,12 +105,17 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   }
 
   // Régularisation : heures réellement dues (planning, hors absences retenues) contre heures payées,
-  // depuis l'embauche, le début du suivi ou le dernier avenant (régularisé à ce moment-là).
+  // depuis l'embauche, le début du suivi ou le dernier passage d'une année à l'autre (C-001 : les autres avenants ne coupent pas).
   const finTerms = termsAt(c, dernierJour);
   const regStart = regulStart(c, addDays(dernierJour, 1));
   const reg = regularisation(endCtx, regStart, dernierJour);
   const regulMinutes = reg.minutes;
-  const regularisation_ = finTerms.yearType === 'incomplete' ? reg.montant : 0;
+  // C-002 : sans toutes les semaines sans accueil, les semaines non saisies compteraient comme accueillies.
+  const manque = finTerms.yearType === 'incomplete' ? semainesSansAccueilManquantes(c, dernierJour) : 0;
+  if (manque > 0) {
+    alertes.push(`Régularisation non calculée : il manque ${manque} semaine${manque > 1 ? 's' : ''} sans accueil dans le contrat. Saisis-les d’abord, sinon les vacances compteraient comme des semaines accueillies.`);
+  }
+  const regularisation_ = finTerms.yearType === 'incomplete' && manque === 0 ? reg.montant : 0;
   if (finTerms.yearType === 'complete' && regulMinutes > 60) {
     alertes.push('Année complète : la régularisation ne s’applique pas en principe, vérifie le planning du contrat.');
   }

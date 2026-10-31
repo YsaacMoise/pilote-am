@@ -96,6 +96,37 @@ export function cpPrisEntre(ctx: Ctx, from: ISODate, to: ISODate): ISODate[] {
   return [...new Set(out)].sort();
 }
 
+/** Jours restant à prendre au titre de la période de référence `y` (droits acquis la période précédente) */
+export function droitsAPrendre(ctx: Ctx, y: number, enfantsACharge = ctx.enfants ?? 0): number {
+  const trackedY = cpPeriodStartYear(ctx.c.trackedFrom);
+  if (y === trackedY) return ctx.c.balances.cpRestants;
+  if (y > trackedY) return acquisition(ctx, y - 1, enfantsACharge).jours;
+  return 0;
+}
+
+/**
+ * Jours de congés payés pris au-delà des droits acquis (C-004), période de référence par période de référence.
+ * Les droits sont consommés dans l'ordre chronologique : les premiers jours ouvrables pris sont payés,
+ * les suivants deviennent des congés sans solde.
+ */
+export function cpExces(ctx: Ctx): Set<ISODate> {
+  return memo(ctx, `cpx|${ctx.enfants ?? 0}`, () => {
+    const out = new Set<ISODate>();
+    const cpLeaves = ctx.leaves.filter((l) => l.type === 'cp');
+    if (!cpLeaves.length) return out;
+    const years = new Set<number>();
+    for (const l of cpLeaves) for (const d of eachDay(l.from, l.to)) years.add(cpPeriodStartYear(d));
+    for (const y of years) {
+      if (y < cpPeriodStartYear(ctx.c.trackedFrom)) continue;
+      const p = cpPeriod(y);
+      const pris = cpPrisEntre(ctx, p.from, p.to);
+      const droits = Math.max(0, droitsAPrendre(ctx, y));
+      pris.slice(droits).forEach((d) => out.add(d));
+    }
+    return out;
+  });
+}
+
 export interface Compteur {
   /** Période en cours */
   enCours: Acquisition;

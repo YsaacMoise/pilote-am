@@ -5,6 +5,7 @@ import {
 } from './dates';
 import { holidayName, isMayDay } from './holidays';
 import { entretienPlancher, netToBrut } from './rates';
+import { cpExces } from './conges';
 import type { AmAbs, AmLeave, Contract, DayRec, Plage, Planning } from './model';
 
 export interface Ctx {
@@ -12,6 +13,8 @@ export interface Ctx {
   days: Map<ISODate, DayRec>;
   leaves: AmLeave[];
   today: ISODate;
+  /** Enfants à charge de l'AM (2 jours de congés en plus chacun) : sert au contrôle des droits à congés (C-004) */
+  enfants?: number;
   cache?: Map<string, unknown>;
 }
 
@@ -25,10 +28,10 @@ export function termsAt(c: Contract, d: ISODate): Contract {
   return out;
 }
 
-export function makeCtx(c: Contract, recs: DayRec[], leaves: AmLeave[], today: ISODate): Ctx {
+export function makeCtx(c: Contract, recs: DayRec[], leaves: AmLeave[], today: ISODate, enfants = 0): Ctx {
   const days = new Map<ISODate, DayRec>();
   for (const r of recs) if (r.cid === c.id) days.set(r.date, r);
-  return { c, days, leaves, today, cache: new Map() };
+  return { c, days, leaves, today, enfants, cache: new Map() };
 }
 
 function memo<T>(ctx: Ctx, key: string, f: () => T): T {
@@ -129,6 +132,8 @@ export interface DayInfo {
   inDivisor: boolean;
   /** Férié chômé non payé (absence de l'AM la veille ou le lendemain, art. 47) */
   ferieNonPaye?: boolean;
+  /** Jour de congé payé pris au-delà des droits acquis : retenu comme congé sans solde (C-004) */
+  cpSansDroits?: boolean;
 }
 
 export function dayInfo(ctx: Ctx, d: ISODate): DayInfo {
@@ -153,7 +158,13 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
     info.kind = 'am';
     if (plannedMin > 0) {
       // Congés payés : pas travaillé, hors diviseur. Autres absences de l'AM : retenue si non rémunérées.
-      if (amLeave === 'am_malade' || amLeave === 'am_enfant_malade' || amLeave === 'sans_solde') {
+      // Année complète : un jour de congé pris au-delà des droits acquis est un congé sans solde, donc retenu
+      // (fiche DREETS Occitanie « Accueil sur 52 semaines » : 5 semaines « rémunérées ou prises sans solde en fonction des droits acquis »).
+      if (amLeave === 'cp' && termsAt(c, d).yearType === 'complete' && cpExces(ctx).has(d)) {
+        info.deducted = true;
+        info.inDivisor = true;
+        info.cpSansDroits = true;
+      } else if (amLeave === 'am_malade' || amLeave === 'am_enfant_malade' || amLeave === 'sans_solde') {
         info.deducted = true;
         info.inDivisor = true;
       } else if (amLeave === 'evenement') {
@@ -165,9 +176,12 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
 
   if (ferie && plannedMin > 0 && !rec?.ferieTravaille && !rec?.pres?.some((p) => p.a)) {
     info.kind = 'ferie';
+    // Le férié chômé d'un jour habituellement travaillé compte dans le diviseur des retenues (C-006 ;
+    // fiches DREETS Occitanie et DDETS 31 : « les jours fériés chômés correspondant à un jour habituellement travaillé »).
+    info.inDivisor = true;
     // Art. 47 : payé si l'AM a travaillé le dernier jour prévu avant et le premier jour prévu après,
     // sauf absence autorisée au préalable (congés, événement familial, absence voulue par les parents).
-    if (!d.endsWith('-05-01') && ferieNonPaye(ctx, d)) { info.inDivisor = true; info.deducted = true; info.ferieNonPaye = true; }
+    if (!d.endsWith('-05-01') && ferieNonPaye(ctx, d)) { info.deducted = true; info.ferieNonPaye = true; }
     return info;
   }
 
@@ -405,11 +419,37 @@ function computeMonthBase(ctx: Ctx, m: Month): MonthBase {
   return r;
 }
 
-/** Début de la période à régulariser qui se termine la veille de `until` : embauche (ou début du suivi), ou avenant précédent */
+/** Avenant qui change le type d'année (complète ↔ incomplète) : seul cas où la période de régularisation est coupée */
+export function changeTypeAnnee(c: Contract, from: ISODate): boolean {
+  return termsAt(c, addDays(from, -1)).yearType !== termsAt(c, from).yearType;
+}
+
+/**
+ * Début de la période à régulariser qui se termine la veille de `until` : embauche (ou début du suivi),
+ * ou dernier avenant qui a changé le type d'année. Les autres avenants (taux, entretien, planning) ne coupent
+ * plus la période (C-001, art. 124 : régularisation en fin de contrat).
+ */
 export function regulStart(c: Contract, until: ISODate): ISODate {
   let s = c.trackedFrom > c.start ? c.trackedFrom : c.start;
-  for (const a of c.avenants ?? []) if (a.from < until && a.from > s) s = a.from;
+  for (const a of c.avenants ?? []) if (a.from < until && a.from > s && changeTypeAnnee(c, a.from)) s = a.from;
   return s;
+}
+
+/**
+ * Semaines sans accueil manquantes (année incomplète, C-002) pour chaque année de contrat commencée au plus tard le `at` :
+ * une année de 52 semaines dont N programmées doit compter 52 − N semaines sans accueil saisies.
+ */
+export function semainesSansAccueilManquantes(c: Contract, at: ISODate): number {
+  let manque = 0;
+  for (let i = 0; addMonthsToDate(c.start, 12 * i) <= at && (!c.end || addMonthsToDate(c.start, 12 * i) <= c.end); i++) {
+    const a = addMonthsToDate(c.start, 12 * i);
+    const t = termsAt(c, a);
+    if (t.yearType !== 'incomplete') continue;
+    const b = addDays(addMonthsToDate(c.start, 12 * (i + 1)), -1);
+    const saisies = new Set(t.weeksOff.filter((w) => w >= mondayOf(a) && w <= b)).size;
+    manque += Math.max(0, 52 - Math.min(46, t.weeks) - saisies);
+  }
+  return manque;
 }
 
 /**
@@ -440,13 +480,21 @@ export function regularisation(ctx: Ctx, from: ISODate, to: ISODate, cur?: { m: 
   return { minutes, montant: Math.round((minutes * termsAt(c, to).rateNet) / 60) };
 }
 
-/** Régularisation versée le mois d'un avenant, si la période qui se termine était en année incomplète (fiche DDETS 31, 2021) */
+/**
+ * Régularisation versée le mois d'un avenant qui fait passer de l'année incomplète à l'année complète (fiche DDETS 31, 2021).
+ * Les autres avenants ne déclenchent plus de régularisation (C-001) : elle se fait en fin de contrat.
+ */
 function applyAvenantRegul(ctx: Ctx, m: Month, r: MonthBase, firstPart?: MonthBase) {
   const c = ctx.c;
   for (const a of c.avenants ?? []) {
     if (monthOf(a.from) !== m || a.from <= c.start || a.from <= c.trackedFrom) continue;
     const veille = addDays(a.from, -1);
-    if (termsAt(c, veille).yearType !== 'incomplete') continue;
+    if (termsAt(c, veille).yearType !== 'incomplete' || termsAt(c, a.from).yearType !== 'complete') continue;
+    const manque = semainesSansAccueilManquantes(c, veille);
+    if (manque > 0) {
+      r.alerts.push(`Régularisation à l’avenant non calculée : il manque ${manque} semaine${manque > 1 ? 's' : ''} sans accueil dans le contrat.`);
+      continue;
+    }
     const start = regulStart(c, a.from);
     const cur = a.from.slice(8) !== '01' && firstPart ? { m, payeesMin: firstPart.mensuelMin * firstPart.paidFraction } : undefined;
     const reg = regularisation(ctx, start, veille, cur);
@@ -531,13 +579,16 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   r.divisorDays = fullDays;
   r.divisorMin = fullMin;
 
-  let cDays = 0, cMin = 0, dedDays = 0, dedMin = 0;
+  let cDays = 0, cMin = 0, dedDays = 0, dedMin = 0, actDays = 0, cpSansDroits = 0;
   const forgotten: ISODate[] = [];
   for (const d of allDays) {
     if (!inSeg(d)) continue;
     const di = dayInfo(ctx, d);
     if (di.inDivisor) { cDays++; cMin += di.plannedMin; }
     if (di.deducted) { dedDays++; dedMin += di.plannedMin; }
+    // Jours d'activité (Pajemploi) : jours prévus et payés, sans les fériés chômés.
+    if (di.inDivisor && !di.deducted && di.kind !== 'ferie') actDays++;
+    if (di.cpSansDroits) cpSansDroits++;
     if (di.departOublie) forgotten.push(d);
     if (di.ferieNonPaye) r.alerts.push(`Férié du ${d.slice(8, 10)}/${d.slice(5, 7)} non payé : tu étais absente le jour prévu juste avant ou juste après (article 47 de la convention).`);
     if (di.rec?.abs === 'malade_certif' && !di.deducted && di.plannedMin > 0) r.sickPaidNotice = true;
@@ -582,8 +633,15 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   r.normalesMin = (r.mensuelMin - majContrat) * fraction;
   r.heuresNormales = Math.round(r.normalesMin / 60);
   r.majContratMin = Math.round(majContrat * fraction);
-  if (startsOrEndsInMonth) r.joursActivite = Math.max(0, cDays - dedDays) + r.extraDays;
+  if (startsOrEndsInMonth) r.joursActivite = actDays + r.extraDays;
   else r.joursActivite = Math.max(0, joursMensualises(c) - dedDays) + r.extraDays;
+  if (cpSansDroits) {
+    r.alerts.push(`${dayCountLabel(cpSansDroits)} de congés pris au-delà de tes droits acquis : retenu${cpSansDroits > 1 ? 's' : ''} comme congés sans solde. Si ton solde de congés au début du suivi est faux, corrige-le dans le contrat ; si les parents ont accepté par écrit des congés par anticipation, signale-le avec « Ça coince ».`);
+  }
+  if (c.yearType === 'incomplete') {
+    const manque = semainesSansAccueilManquantes(ctx.c, segTo);
+    if (manque > 0) r.alerts.push(`Année incomplète : il manque ${manque} semaine${manque > 1 ? 's' : ''} sans accueil dans le contrat. Tant qu’elles ne sont pas saisies, la régularisation de fin de contrat n’est pas calculée.`);
+  }
 
   // Heures en plus, par semaine, rattachées au mois du jour.
   const weeks = new Set(allDays.filter(inSeg).map(mondayOf));

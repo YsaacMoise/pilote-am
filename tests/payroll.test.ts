@@ -78,12 +78,13 @@ describe('retenue pour absence (art. 111)', () => {
     const ctx = makeCtx(contract(), [rec('2026-10-14', { abs: 'parents' })], [], '2026-11-15');
     expect(monthBase(ctx, '2026-10').base).toBe(68250);
   });
-  it('jour férié chômé : payé et hors diviseur', () => {
+  it('jour férié chômé : payé et compté dans le diviseur (audit C-006, fiches DREETS Occitanie et DDETS 31)', () => {
     const ctx = makeCtx(contract(), [], [], '2026-12-15');
     const b = monthBase(ctx, '2026-11'); // 11 novembre 2026 = mercredi
     expect(holidayName('2026-11-11')).toBe('11 novembre');
     expect(b.base).toBe(68250);
-    expect(b.divisorDays).toBe(20); // 21 jours de semaine − 1 férié
+    expect(b.divisorDays).toBe(21); // 21 jours de semaine, férié chômé compris
+    expect(b.joursActivite).toBe(22); // mois complet : jours mensualisés
   });
   it('mois d’entrée : prorata des heures prévues', () => {
     // Début le jeudi 15 octobre 2026 : 12 jours prévus sur 22
@@ -279,11 +280,18 @@ describe('fin de contrat (art. 120, 121, 124)', () => {
     expect(f.alertes[0]).toMatch(/Historique incomplet/);
   });
   it('régularisation en année incomplète si des heures prévues n’ont pas été payées', () => {
-    // 46 semaines payées, mais aucune semaine sans accueil saisie : 3 mois accueillis à temps plein
-    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', yearType: 'incomplete', weeks: 46 });
+    // 46 semaines payées ; les 6 semaines sans accueil de l'année sont prévues en été, après la fin : 3 mois accueillis à temps plein
+    const ete = ['2026-07-20', '2026-07-27', '2026-08-03', '2026-08-10', '2026-08-17', '2026-08-24'];
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', yearType: 'incomplete', weeks: 46, weeksOff: ete });
     const f = finDeContrat(makeCtx(c, [], [], '2026-04-30'), '2026-03-20', 'retrait');
     expect(f.regulMinutes).toBeGreaterThan(0);
     expect(f.regularisation).toBe(Math.round((f.regulMinutes * 350) / 60));
+  });
+  it('audit C-002 : sans les semaines sans accueil, la régularisation n’est pas versée et une alerte l’explique', () => {
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', yearType: 'incomplete', weeks: 46 });
+    const f = finDeContrat(makeCtx(c, [], [], '2026-04-30'), '2026-03-20', 'retrait');
+    expect(f.regularisation).toBe(0);
+    expect(f.alertes.join(' ')).toMatch(/il manque 6 semaines sans accueil/);
   });
 });
 
@@ -519,7 +527,9 @@ describe('avenants en cours de mois et changement de type d’année', () => {
   });
   it('passage de l’année incomplète à l’année complète : nouvelle mensualisation et régularisation versée', () => {
     // 46 semaines prévues mais aucune semaine sans accueil saisie : toutes les semaines ont été accueillies
+    // Semaines sans accueil prévues en fin d'année : aucune n'a été prise avant le passage en année complète.
     const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', yearType: 'incomplete', weeks: 46,
+      weeksOff: ['2026-11-02', '2026-11-09', '2026-11-16', '2026-11-23', '2026-11-30', '2026-12-07'],
       avenants: [{ id: 'a1', from: '2026-09-01', changes: { yearType: 'complete', weeks: 52 } }] });
     const ctx = makeCtx(c, [], [], '2026-10-15');
     expect(monthBase(ctx, '2026-08').base).toBe(60375);
@@ -528,14 +538,79 @@ describe('avenants en cours de mois et changement de type d’année', () => {
     expect(sept.net).toBe(68250 + (sept.regulAvenant ?? 0));
     expect(monthBase(ctx, '2026-10').regulAvenant ?? 0).toBe(0);
   });
-  it('fin de contrat après un avenant : la régularisation repart de l’avenant', () => {
+  it('audit C-001 : un avenant de taux ne verse aucune régularisation ; elle se fait en fin de contrat, depuis l’embauche', () => {
     const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', yearType: 'incomplete', weeks: 46,
+      weeksOff: ['2026-11-02', '2026-11-09', '2026-11-16', '2026-11-23', '2026-11-30', '2026-12-07'],
       avenants: [{ id: 'a1', from: '2026-09-01', changes: { rateNet: 400 } }] });
     const ctx = makeCtx(c, [], [], '2026-12-31');
-    const sept = monthBase(ctx, '2026-09');
-    expect(sept.regulAvenant ?? 0).toBeGreaterThan(0); // janvier → août régularisé à l’avenant
+    expect(monthBase(ctx, '2026-09').regulAvenant).toBeUndefined();
     const f = finDeContrat(ctx, '2026-10-30', 'retrait');
     const fFull = finDeContrat(makeCtx({ ...c, avenants: [] }, [], [], '2026-12-31'), '2026-10-30', 'retrait');
-    expect(f.regulMinutes).toBeLessThan(fFull.regulMinutes);
+    expect(f.regulMinutes).toBe(fFull.regulMinutes);
+    expect(f.regularisation).toBeGreaterThan(0);
+  });
+  it('audit C-001 (cas M1) : un avenant vide en cours d’année incomplète ne change pas le salaire du mois', () => {
+    const p = week('08:00', '18:00', [1, 2, 3, 4]); // 40 h sur 4 jours
+    const base = contract({ start: '2025-09-01', trackedFrom: '2025-09-01', yearType: 'incomplete', weeks: 46, rateNet: 380, planning: p,
+      weeksOff: ['2025-12-22', '2025-12-29', '2026-04-13', '2026-08-03', '2026-08-10', '2026-08-17'] });
+    const sans = monthBase(makeCtx(base, [], [], '2025-11-30'), '2025-10');
+    const avec = monthBase(makeCtx({ ...base, avenants: [{ id: 'a', from: '2025-10-31', changes: {} }] }, [], [], '2025-11-30'), '2025-10');
+    expect(avec.regulAvenant).toBeUndefined();
+    expect(avec.net).toBe(sans.net);
+  });
+});
+
+describe('corrections après audit indépendant (31 octobre 2026)', () => {
+  it('C-004 (cas 38) : congés pris sans droits acquis, année complète : jours retenus comme congés sans solde', () => {
+    // Contrat commencé le 1er septembre 2026, aucun droit acquis ; 12 jours ouvrables posés du 12 au 24 octobre.
+    const c = contract({ start: '2026-09-01', trackedFrom: '2026-09-01' });
+    const leaves: AmLeave[] = [{ id: 'cp', type: 'cp', from: '2026-10-12', to: '2026-10-24' }];
+    const b = monthBase(makeCtx(c, [], leaves, '2026-11-15'), '2026-10');
+    expect(b.deductedDays).toBe(10); // 10 jours prévus (lundi → vendredi) sur les 12 jours ouvrables
+    expect(b.deductedMin).toBe(90 * 60);
+    expect(b.base).toBe(Math.round((68250 * 108) / 198));
+    expect(b.alerts.join(' ')).toMatch(/au-delà de tes droits acquis/);
+  });
+  it('C-004 : congés dans la limite des droits : payés, rien n’est retenu', () => {
+    const c = contract({ start: '2025-06-02', trackedFrom: '2026-09-01', balances: { cpRestants: 30, cpEnCours: 0, maladieDeduits: 0 } });
+    const leaves: AmLeave[] = [{ id: 'cp', type: 'cp', from: '2026-10-12', to: '2026-10-24' }];
+    const b = monthBase(makeCtx(c, [], leaves, '2026-11-15'), '2026-10');
+    expect(b.deductedDays).toBe(0);
+    expect(b.base).toBe(68250);
+  });
+  it('C-004 : droits partiels consommés dans l’ordre, le reste devient sans solde', () => {
+    // 5 jours ouvrables de droits ; 12 posés : du lundi 12 au samedi 17 → 5 payés (12-16), le samedi 17 et la semaine suivante sans solde
+    const c = contract({ start: '2025-06-02', trackedFrom: '2026-09-01', balances: { cpRestants: 5, cpEnCours: 0, maladieDeduits: 0 } });
+    const leaves: AmLeave[] = [{ id: 'cp', type: 'cp', from: '2026-10-12', to: '2026-10-24' }];
+    const ctx = makeCtx(c, [], leaves, '2026-11-15');
+    expect(dayInfo(ctx, '2026-10-16').deducted).toBe(false);
+    expect(dayInfo(ctx, '2026-10-19').deducted).toBe(true);
+    expect(monthBase(ctx, '2026-10').deductedDays).toBe(5);
+  });
+  it('C-004 : les enfants à charge ajoutent des droits et évitent une retenue à tort', () => {
+    // Du 27 avril au 31 mai : 5 semaines → 5 ÷ 4 × 2,5 = 3,1 → 4 jours ; avec 1 enfant à charge : 6 jours.
+    // 7 jours ouvrables posés (lundi 6 → lundi 13 juillet, le 14 juillet étant férié).
+    const c = contract({ start: '2026-04-27', trackedFrom: '2026-04-27' });
+    const leaves: AmLeave[] = [{ id: 'cp', type: 'cp', from: '2026-07-06', to: '2026-07-13' }];
+    // Sans enfant : vendredi 10, samedi 11 et lundi 13 au-delà des droits → 2 jours prévus retenus
+    expect(monthBase(makeCtx(c, [], leaves, '2026-08-15', 0), '2026-07').deductedDays).toBe(2);
+    // Avec 1 enfant : seul le lundi 13 dépasse
+    expect(monthBase(makeCtx(c, [], leaves, '2026-08-15', 1), '2026-07').deductedDays).toBe(1);
+  });
+  it('C-006 : retenue d’un jour en novembre 2026 : le 11 novembre compte dans le diviseur (189 h et non 180 h)', () => {
+    // Jeudi 19 novembre (pas le 12 : une absence au lendemain du 11 rendrait le férié non payé, article 47)
+    const leaves: AmLeave[] = [{ id: 'l', type: 'am_malade', from: '2026-11-19', to: '2026-11-19' }];
+    const b = monthBase(makeCtx(contract(), [], leaves, '2026-12-15'), '2026-11');
+    expect(b.divisorMin).toBe(21 * 9 * 60);
+    expect(b.base).toBe(Math.round((68250 * 180) / 189));
+    expect(b.joursActivite).toBe(21);
+  });
+  it('C-006 : mois d’entrée avec un férié chômé : le férié est payé, il ne compte pas comme jour d’activité', () => {
+    // Début le lundi 2 novembre 2026 ; le 11 novembre est chômé.
+    const b = monthBase(makeCtx(contract({ start: '2026-11-02', trackedFrom: '2026-11-02' }), [], [], '2026-12-15'), '2026-11');
+    expect(b.contractDays).toBe(21);
+    expect(b.divisorDays).toBe(21);
+    expect(b.base).toBe(68250);
+    expect(b.joursActivite).toBe(20);
   });
 });
