@@ -1,6 +1,7 @@
 // Guides vidéo en motion design, au format téléphone (9:16). Deux sujets, jamais une longue vidéo :
-//  - « Au quotidien » (environ 60 s) : pointer, noter dans le carnet, envoyer aux parents, voir le mois ;
-//  - « Installer » (environ 25 s), en deux versions, iPhone et Android : chacun ne voit que les gestes de son téléphone.
+//  - « Au quotidien » (54 s) : pointer, noter dans le carnet, envoyer aux parents, voir le mois, les congés ;
+//  - « Installer » (33 s), en deux versions, iPhone et Android : chacun ne voit que les gestes de son téléphone.
+// Commentées par une voix française de synthèse (modèle Kokoro, licence Apache 2.0, fabriquée hors ligne) et sous-titrées.
 // Fichiers dans public/videos/ : arvela-quotidien, arvela-installer-iphone, arvela-installer-android (.mp4 H.264 + .vtt).
 // Ils ne sont pas mis en cache hors ligne (trop lourds) : une vidéo ne se charge que si on appuie sur Lecture.
 import { useRef, useState } from 'preact/hooks';
@@ -10,12 +11,12 @@ export type Clip = 'quotidien' | 'installer';
 type Systeme = 'iphone' | 'android';
 
 const CLIPS: Record<Clip, { onglet: string; titre: string; duree: string; resume: string }> = {
-  quotidien: { onglet: 'Au quotidien', titre: 'Une journée avec Arvela', duree: '1:00', resume: 'Pointer une arrivée et un départ, noter un repas, envoyer le résumé aux parents, voir ce qui est à déclarer à la fin du mois.' },
-  installer: { onglet: 'Installer', titre: 'Installer l’app', duree: '0:25', resume: 'Les gestes pour mettre Arvela sur l’écran d’accueil. Une fois installée, elle marche même sans réseau.' },
+  quotidien: { onglet: 'Au quotidien', titre: 'Une journée avec Arvela', duree: '0:54', resume: 'Pointer une arrivée et un départ, noter un repas, envoyer le résumé aux parents, voir ce qui est à déclarer à la fin du mois.' },
+  installer: { onglet: 'Installer', titre: 'Installer l’app', duree: '0:33', resume: 'Les gestes pour mettre Arvela sur l’écran d’accueil. Une fois installée, elle marche même sans réseau.' },
 };
 
-/** Vrai quand les vidéos sont déposées : avant, aucun emplacement n'apparaît dans l'app. */
-export const VIDEOS_PRETES = (import.meta as any).env?.VITE_VIDEOS === '1';
+/** Les vidéos sont déposées dans public/videos/ : les emplacements apparaissent. Repasser à false les masque partout. */
+export const VIDEOS_PRETES = false; // passe à true quand les fichiers sont dans public/videos/
 
 export function isIOS(): boolean {
   return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
