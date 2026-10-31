@@ -28,6 +28,8 @@ jobs:
       - run: npm ci
       - name: Matrice des règles sur l'émulateur Firestore (27 cas)
         run: |
+          # firebase-tools exige Java 21 ; les runners GitHub l'ont préinstallé à côté de Java 17.
+          export JAVA_HOME="${JAVA_HOME_21_X64:-$JAVA_HOME}"; export PATH="$JAVA_HOME/bin:$PATH"
           echo "::notice title=Java::$(java -version 2>&1 | head -1)"
           set +e
           npx firebase emulators:exec --only firestore --project demo-arvela "node tests/rules/rules.test.mjs" > regles.txt 2>&1
