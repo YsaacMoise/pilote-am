@@ -28,6 +28,9 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname)) return;
   // La base enregistrée sous /cc/ a son propre service worker
   if (url.pathname.startsWith(scope.pathname + 'cc/')) return;
+  // Vidéos : lues par morceaux (requêtes « Range », réponses 206 que le cache refuse) et trop lourdes pour le hors ligne :
+  // le navigateur les charge directement, sans passer par ce service worker.
+  if (url.pathname.startsWith(scope.pathname + 'videos/')) return;
   if (req.mode === 'navigate') {
     event.respondWith(
       caches.open(CACHE).then((c) => c.match('./').then((r) => r || fetch(req)))

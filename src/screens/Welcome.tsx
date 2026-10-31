@@ -208,7 +208,7 @@ export function Welcome() {
           <div class="landing-video-text">
             <span class="eyebrow">Comment ça marche</span>
             <h2 id="video-t" class="hero-subtitle">Deux vidéos courtes, pas une de plus.</h2>
-            <p class="hero-lead">Moins d’une minute pour voir une journée avec Arvela. Une demi-minute pour l’installer, avec les gestes de ton téléphone. Commentées à voix haute, et sous-titrées.</p>
+            <p class="hero-lead">Moins d’une minute pour voir une journée avec Arvela. Une demi-minute pour l’installer, avec les gestes de ton téléphone. Commentées à voix haute, avec le texte à l’écran.</p>
           </div>
           <VideoGuide />
         </section>

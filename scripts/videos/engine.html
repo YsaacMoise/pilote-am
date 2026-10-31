@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><title>Arvela vidéo</title>
+<style>html,body{margin:0;background:#000}canvas{display:block}</style></head>
+<body><canvas id="c" width="1080" height="1920"></canvas>
+<script>
+// Moteur de rendu image par image : chaque image est une fonction pure du temps t (secondes).
+const W = 1080, H = 1920;
+const C = { bg: '#F7F4EF', surface: '#FFFFFF', subtle: '#EAE4DC', border: '#E2DBD0', ink: '#1E201D', muted: '#686660', accent: '#C87D55', accentInk: '#9B5733', sauge: '#5E7165', ok: '#2E6F4E', okBg: '#EBF3EE' };
+const F = { display: '"Cormorant Garamond", Georgia, serif', body: '"Plus Jakarta Sans", sans-serif', mono: '"JetBrains Mono", monospace' };
+const cv = document.getElementById('c');
+const g = cv.getContext('2d');
+const IMG = {};
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const easeOut = (k) => 1 - Math.pow(1 - clamp(k), 3);
+const easeInOut = (k) => { k = clamp(k); return k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2; };
+const easeBack = (k) => { k = clamp(k); const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); };
+const win = (t, a, b) => clamp((t - a) / (b - a)); // progression 0→1 entre a et b
+
+async function load() {
+  const fonts = [
+    ['Cormorant Garamond', 'cormorant-garamond-latin-600-normal.woff2', { weight: '600' }],
+    ['Cormorant Garamond', 'cormorant-garamond-latin-700-normal.woff2', { weight: '700' }],
+    ['Cormorant Garamond', 'cormorant-garamond-latin-400-italic.woff2', { weight: '400', style: 'italic' }],
+    ['Plus Jakarta Sans', 'plus-jakarta-sans-latin-wght-normal.woff2', { weight: '200 800' }],
+    ['JetBrains Mono', 'jetbrains-mono-latin-wght-normal.woff2', { weight: '100 800' }],
+  ];
+  for (const [fam, file, d] of fonts) { const f = new FontFace(fam, `url(assets/${file})`, d); await f.load(); document.fonts.add(f); }
+  const names = ['today-avant', 'today-apres', 'carnet-avant', 'carnet-sheet', 'carnet-apres', 'mois-long', 'conges', 'site', 'connexion'];
+  await Promise.all(names.map((n) => new Promise((ok, ko) => { const i = new Image(); i.onload = () => { IMG[n] = i; ok(); }; i.onerror = ko; i.src = `assets/${n}.png`; })));
+}
+
+// ---------- Primitives ----------
+function rrect(x, y, w, h, r) { g.beginPath(); g.roundRect(x, y, w, h, r); }
+function text(s, x, y, { font, size, weight = 400, color = C.ink, align = 'left', spacing = 0, style = 'normal', alpha = 1 }) {
+  g.save(); g.globalAlpha *= alpha; g.fillStyle = color; g.textAlign = align; g.textBaseline = 'alphabetic';
+  g.font = `${style} ${weight} ${size}px ${font}`; g.letterSpacing = `${spacing}px`; g.fillText(s, x, y); g.restore();
+}
+function wrap(s, maxW, font, size, weight = 400, style = 'normal') {
+  g.save(); g.font = `${style} ${weight} ${size}px ${font}`; g.letterSpacing = '0px';
+  const words = s.split(' '); const lines = []; let cur = '';
+  for (const w of words) { const t = cur ? cur + ' ' + w : w; if (g.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t; }
+  if (cur) lines.push(cur); g.restore(); return lines;
+}
+// Symbole des galets (viewBox 120), centré en (cx, cy), taille px ; anim de 0 à 1 (assemblage)
+function galets(cx, cy, size, { ink = C.ink, accent = C.accent, k = 1, alpha = 1 } = {}) {
+  const s = size / 120; g.save(); g.globalAlpha *= alpha; g.translate(cx - 60 * s, cy - 60 * s); g.scale(s, s);
+  const a1 = easeOut(win(k, 0, 0.55)), a2 = easeOut(win(k, 0.1, 0.65)), p = easeBack(win(k, 0.5, 0.95));
+  const peb = (x0, ang, op, dx, kk) => { g.save(); g.globalAlpha *= op * kk; g.translate(x0 + 10 + dx * (1 - kk), 57); g.rotate((ang * kk) * Math.PI / 180); g.fillStyle = ink; rrect(-10, -39, 20, 78, 10); g.fill(); g.restore(); };
+  peb(33, 19, 1, -40, a1); peb(67, -19, 0.88, 40, a2);
+  if (p > 0) { g.save(); g.globalAlpha *= clamp(p * 1.5); g.fillStyle = accent; g.beginPath(); g.arc(60, 73 - 45 * (1 - p), 11.5, 0, Math.PI * 2); g.fill(); g.restore(); }
+  g.restore();
+}
+function appIcon(cx, cy, size, { round = 0.22, circle = false } = {}) {
+  g.save(); g.fillStyle = C.ink;
+  if (circle) { g.beginPath(); g.arc(cx, cy, size / 2, 0, Math.PI * 2); } else rrect(cx - size / 2, cy - size / 2, size, size, size * round);
+  g.fill(); g.restore();
+  galets(cx, cy, size * (circle ? 0.78 : 0.9), { ink: C.bg });
+}
+// Capture d'écran de l'app (780 px de large) cadrée par une « caméra » : échelle s (1 = pleine largeur), point fx, fy placé en ty
+function shot(img, { s = 1, fx = 390, fy = 0, ty = 0, alpha = 1, top = 0 }) {
+  const k = (W * s) / img.width; let x = W / 2 - fx * k; let y = ty - fy * k;
+  x = Math.min(0, Math.max(W - img.width * k, x)); y = Math.min(top, y);
+  y = Math.max(H - img.height * k, y);
+  g.save(); g.globalAlpha *= alpha; g.drawImage(img, x, y, img.width * k, img.height * k); g.restore();
+  return { map: (px, py) => ({ x: x + px * k, y: y + py * k }) };
+}
+// Doigt : pastille qui appuie puis onde d'argile
+function finger(x, y, t, t0) {
+  const appear = win(t, t0 - 0.45, t0 - 0.1), press = win(t, t0 - 0.1, t0 + 0.05), release = win(t, t0 + 0.05, t0 + 0.5);
+  if (t < t0 - 0.45 || t > t0 + 0.6) return;
+  const r = 46 * (1 - 0.18 * press + 0.18 * release);
+  g.save();
+  g.globalAlpha = clamp(appear) * (1 - win(t, t0 + 0.3, t0 + 0.6));
+  g.fillStyle = 'rgba(30,32,29,0.28)'; g.strokeStyle = 'rgba(255,255,255,0.9)'; g.lineWidth = 4;
+  g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); g.stroke(); g.restore();
+  if (t > t0) { const w = win(t, t0, t0 + 0.6); g.save(); g.globalAlpha = 1 - w; g.strokeStyle = C.accent; g.lineWidth = 8; g.beginPath(); g.arc(x, y, 46 + 70 * easeOut(w), 0, Math.PI * 2); g.stroke(); g.restore(); }
+}
+// Carte de légende (bas ou haut)
+function caption(t, t0, t1, step, msg, { pos = 'bottom', note } = {}) {
+  const a = easeOut(win(t, t0, t0 + 0.5)) * (1 - win(t, t1 - 0.35, t1));
+  if (a <= 0) return;
+  const lines = wrap(msg, 880, F.display, 62, 600);
+  const noteLines = note ? wrap(note, 880, F.body, 34, 500) : [];
+  const h = 70 + 46 + lines.length * 70 + (noteLines.length ? 24 + noteLines.length * 46 : 0) + 20;
+  const y0 = pos === 'bottom' ? H - 150 - h + (1 - a) * 40 : 130 - (1 - a) * 40;
+  g.save(); g.globalAlpha = a;
+  g.shadowColor = 'rgba(30,32,29,0.18)'; g.shadowBlur = 50; g.shadowOffsetY = 20;
+  g.fillStyle = C.surface; rrect(60, y0, W - 120, h, 36); g.fill(); g.shadowColor = 'transparent';
+  g.strokeStyle = C.border; g.lineWidth = 2; g.stroke();
+  let y = y0 + 70;
+  if (step) { g.fillStyle = C.accent; g.beginPath(); g.arc(112, y - 11, 9, 0, Math.PI * 2); g.fill(); text(step.toUpperCase(), 136, y, { font: F.mono, size: 28, weight: 600, color: C.accentInk, spacing: 5 }); }
+  y += 70;
+  for (const l of lines) { text(l, 100, y, { font: F.display, size: 62, weight: 600 }); y += 70; }
+  if (noteLines.length) { y += 6; for (const l of noteLines) { text(l, 100, y, { font: F.body, size: 34, weight: 500, color: C.muted }); y += 46; } }
+  g.restore();
+}
+function vignette() { const gr = g.createLinearGradient(0, H - 700, 0, H); gr.addColorStop(0, 'rgba(247,244,239,0)'); gr.addColorStop(1, 'rgba(247,244,239,0.85)'); g.fillStyle = gr; g.fillRect(0, H - 700, W, 700); }
+function fadeBlack(a) { if (a <= 0) return; g.save(); g.globalAlpha = a; g.fillStyle = C.bg; g.fillRect(0, 0, W, H); g.restore(); }
+
+// ---------- Cartes de titre ----------
+function logoCard(t, D, { title, sub } = {}) {
+  g.fillStyle = C.bg; g.fillRect(0, 0, W, H);
+  const k = win(t, 0.1, 2.2);
+  galets(W / 2, 760, 360, { k });
+  const ta = easeOut(win(t, 1.8, 2.6));
+  text('ARVELA', W / 2 + 14, 1080 + (1 - ta) * 30, { font: F.display, size: 112, weight: 600, align: 'center', spacing: 28, alpha: ta });
+  text('ARVELA.FR', W / 2 + 6, 1150, { font: F.body, size: 30, weight: 600, align: 'center', spacing: 12, color: C.accentInk, alpha: ta });
+  if (title) {
+    const tb = easeOut(win(t, 2.6, 3.3));
+    const lines = wrap(title, 900, F.display, 76, 400, 'italic');
+    lines.forEach((l, i) => text(l, W / 2, 1340 + i * 88 + (1 - tb) * 30, { font: F.display, size: 76, weight: 400, style: 'italic', align: 'center', color: C.ink, alpha: tb }));
+    if (sub) text(sub.toUpperCase(), W / 2, 1340 + lines.length * 88 + 40, { font: F.mono, size: 28, weight: 600, align: 'center', spacing: 6, color: C.accentInk, alpha: tb });
+  }
+}
+function endCard(t, D, lines2) {
+  g.fillStyle = C.bg; g.fillRect(0, 0, W, H);
+  galets(W / 2, 700, 300, { k: win(t, 0, 1.6) });
+  const a = easeOut(win(t, 1.1, 1.9));
+  text('ARVELA', W / 2 + 14, 990, { font: F.display, size: 104, weight: 600, align: 'center', spacing: 26, alpha: a });
+  text('ARVELA.FR', W / 2 + 6, 1060, { font: F.body, size: 30, weight: 600, align: 'center', spacing: 12, color: C.accentInk, alpha: a });
+  const b = easeOut(win(t, 1.8, 2.6));
+  lines2.forEach((l, i) => text(l, W / 2, 1260 + i * 64, { font: F.body, size: 44, weight: 500, align: 'center', color: i ? C.muted : C.ink, alpha: b }));
+  fadeBlack(win(t, D - 0.6, D));
+}
+
+// ---------- Décors de téléphone (installation) ----------
+function statusBar(dark = false, y = 0, android = false, heure) {
+  const col = dark ? '#fff' : C.ink;
+  text(heure || (android ? '10:24' : '9:41'), android ? 60 : 110, y + 72, { font: F.body, size: 40, weight: 700, color: col });
+  g.save(); g.fillStyle = col;
+  // réseau, wifi, batterie stylisés
+  for (let i = 0; i < 4; i++) { rrect(W - 300 + i * 18, y + 66 - (i + 1) * 9, 12, (i + 1) * 9, 3); g.fill(); }
+  g.beginPath(); g.arc(W - 200, y + 70, 30, Math.PI * 1.25, Math.PI * 1.75); g.lineWidth = 7; g.strokeStyle = col; g.stroke();
+  g.beginPath(); g.arc(W - 200, y + 70, 15, Math.PI * 1.25, Math.PI * 1.75); g.stroke();
+  rrect(W - 150, y + 44, 64, 32, 9); g.lineWidth = 4; g.stroke(); rrect(W - 145, y + 49, 46, 22, 5); g.fill();
+  g.restore();
+}
+function iconShare(x, y, col = '#0A84FF', s = 1) {
+  g.save(); g.translate(x, y); g.scale(s, s); g.strokeStyle = col; g.lineWidth = 5; g.lineCap = 'round'; g.lineJoin = 'round';
+  g.beginPath(); g.moveTo(-18, -6); g.lineTo(-24, -6); g.lineTo(-24, 30); g.lineTo(24, 30); g.lineTo(24, -6); g.lineTo(18, -6); g.stroke();
+  g.beginPath(); g.moveTo(0, 12); g.lineTo(0, -32); g.moveTo(-12, -20); g.lineTo(0, -32); g.lineTo(12, -20); g.stroke(); g.restore();
+}
+function iconPlusSquare(x, y, col) { g.save(); g.strokeStyle = col; g.lineWidth = 4.5; rrect(x - 22, y - 22, 44, 44, 10); g.stroke(); g.beginPath(); g.moveTo(x, y - 11); g.lineTo(x, y + 11); g.moveTo(x - 11, y); g.lineTo(x + 11, y); g.stroke(); g.restore(); }
+function safariPage(t, { scroll = 0 } = {}) {
+  g.fillStyle = C.bg; g.fillRect(0, 0, W, H);
+  shot(IMG.site, { s: 1, fy: scroll, ty: 0, top: 110 });
+  g.fillStyle = C.bg; g.fillRect(0, 0, W, 110); statusBar(false);
+  // barre Safari en bas
+  g.save(); g.shadowColor = 'rgba(0,0,0,0.12)'; g.shadowBlur = 30; g.fillStyle = 'rgba(250,250,250,0.97)'; g.fillRect(0, H - 250, W, 250); g.restore();
+  g.fillStyle = '#ECECEE'; rrect(60, H - 228, W - 120, 92, 46); g.fill();
+  g.save(); g.fillStyle = '#8A8A8E'; rrect(395, H - 197, 22, 26, 5); g.fill(); g.restore();
+  text('arvela.fr', W / 2 + 20, H - 168, { font: F.body, size: 40, weight: 600, align: 'center', color: '#1C1C1E' });
+  const yIc = H - 72;
+  g.save(); g.strokeStyle = '#0A84FF'; g.lineWidth = 6; g.lineCap = 'round'; g.lineJoin = 'round';
+  g.beginPath(); g.moveTo(130, yIc - 22); g.lineTo(108, yIc); g.lineTo(130, yIc + 22); g.stroke();
+  g.globalAlpha = 0.35; g.beginPath(); g.moveTo(320, yIc - 22); g.lineTo(342, yIc); g.lineTo(320, yIc + 22); g.stroke(); g.globalAlpha = 1;
+  g.beginPath(); g.moveTo(752, yIc - 26); g.lineTo(752, yIc + 22); g.moveTo(752, yIc - 26); g.quadraticCurveTo(720, yIc - 34, 700, yIc - 20); g.lineTo(700, yIc + 28); g.quadraticCurveTo(720, yIc + 14, 752, yIc + 22); g.stroke();
+  rrect(910, yIc - 26, 46, 46, 8); g.stroke(); rrect(924, yIc - 38, 46, 46, 8); g.stroke();
+  g.restore();
+  iconShare(W / 2, yIc + 2);
+  return { share: { x: W / 2, y: yIc } };
+}
+const SHARE_ROWS = ['Copier', 'Ajouter à la liste de lecture', 'Ajouter un signet', 'Ajouter aux favoris', 'Rechercher dans la page', 'Sur l’écran d’accueil', 'Annotations', 'Imprimer'];
+function shareSheet(t, k, scrollK, hl) {
+  const top = lerp(H, 380, easeOut(k));
+  g.save(); g.fillStyle = `rgba(0,0,0,${0.3 * k})`; g.fillRect(0, 0, W, H); g.restore();
+  g.save(); g.fillStyle = '#F2F2F7'; rrect(0, top, W, H - top + 60, 46); g.fill();
+  g.fillStyle = '#C7C7CC'; rrect(W / 2 - 50, top + 18, 100, 12, 6); g.fill();
+  // en-tête : la page partagée
+  g.fillStyle = C.bg; rrect(60, top + 60, 120, 120, 26); g.fill(); galets(120, top + 120, 104);
+  text('Arvela', 210, top + 112, { font: F.body, size: 42, weight: 700, color: '#1C1C1E' });
+  text('arvela.fr', 210, top + 162, { font: F.body, size: 34, weight: 500, color: '#8E8E93' });
+  // contacts (pastilles neutres)
+  for (let i = 0; i < 5; i++) { g.fillStyle = ['#D1D1D6', '#C7C7CC', '#D8D2C8', '#CFCFD4', '#DAD5CC'][i]; g.beginPath(); g.arc(130 + i * 205, top + 300, 70, 0, Math.PI * 2); g.fill(); }
+  // liste d'actions
+  const listTop = top + 430 - scrollK * 380;
+  g.save(); g.beginPath(); g.rect(0, top + 410, W, H); g.clip();
+  g.fillStyle = '#fff'; rrect(40, listTop, W - 80, SHARE_ROWS.length * 124, 30); g.fill();
+  SHARE_ROWS.forEach((r, i) => {
+    const y = listTop + i * 124;
+    if (i === 5 && hl > 0) { g.save(); g.globalAlpha = hl; g.fillStyle = '#E5E5EA'; g.fillRect(40, y, W - 80, 124); g.restore(); }
+    if (i) { g.fillStyle = '#E5E5EA'; g.fillRect(80, y, W - 160, 2); }
+    text(r, 90, y + 78, { font: F.body, size: 42, weight: i === 5 ? 700 : 500, color: '#1C1C1E' });
+    if (i === 5) iconPlusSquare(W - 130, y + 62, '#1C1C1E'); else { g.save(); g.fillStyle = '#C7C7CC'; g.beginPath(); g.arc(W - 130, y + 62, 18, 0, Math.PI * 2); g.fill(); g.restore(); }
+  });
+  g.restore(); g.restore();
+  return { row: { x: W / 2, y: listTop + 5 * 124 + 62 } };
+}
+function addSheet(t, k) {
+  g.save(); g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(0, 0, W, H); g.restore();
+  const top = lerp(H, 140, easeOut(k));
+  g.save(); g.fillStyle = '#F2F2F7'; rrect(0, top, W, H, 46); g.fill();
+  text('Annuler', 70, top + 100, { font: F.body, size: 42, weight: 500, color: '#0A84FF' });
+  text('Ajouter à l’écran d’accueil', W / 2, top + 100, { font: F.body, size: 40, weight: 700, align: 'center', color: '#1C1C1E' });
+  text('Ajouter', W - 70, top + 100, { font: F.body, size: 42, weight: 700, align: 'right', color: '#0A84FF' });
+  g.fillStyle = '#fff'; rrect(40, top + 180, W - 80, 260, 30); g.fill();
+  appIcon(170, top + 310, 170);
+  text('Arvela', 300, top + 290, { font: F.body, size: 46, weight: 600, color: '#1C1C1E' });
+  g.fillStyle = '#E5E5EA'; g.fillRect(300, top + 318, W - 380, 2);
+  text('https://arvela.fr', 300, top + 380, { font: F.body, size: 34, weight: 500, color: '#8E8E93' });
+  g.restore();
+  return { add: { x: W - 140, y: top + 88 } };
+}
+function homeScreen(t, iconK, { android = false } = {}) {
+  const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#E9E2D7'); gr.addColorStop(1, '#C9BFB1'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  statusBar(false, 0, android);
+  const cols = 4, size = android ? 150 : 180, gapX = (W - cols * size) / (cols + 1);
+  const tints = ['#D8D0C4', '#CDC5B8', '#D3CCC1', '#C6BFB3', '#DCD5CA', '#CFC8BC', '#D6CEC2', '#C9C2B6', '#D1C9BD', '#CBC4B8', '#D9D1C5'];
+  const pos = (i) => ({ x: gapX + size / 2 + (i % cols) * (size + gapX), y: 300 + Math.floor(i / cols) * (size + 120) });
+  for (let i = 0; i < 11; i++) { const p = pos(i); g.fillStyle = tints[i]; if (android) { g.beginPath(); g.arc(p.x, p.y, size / 2, 0, Math.PI * 2); g.fill(); } else { rrect(p.x - size / 2, p.y - size / 2, size, size, size * 0.23); g.fill(); } g.fillStyle = 'rgba(30,32,29,0.35)'; rrect(p.x - 50, p.y + size / 2 + 26, 100, 16, 8); g.fill(); }
+  const p = pos(11);
+  if (iconK > 0) {
+    const s = easeBack(iconK); g.save(); g.translate(p.x, p.y); g.scale(s, s); g.translate(-p.x, -p.y);
+    appIcon(p.x, p.y, size, { circle: android }); g.restore();
+    text('Arvela', p.x, p.y + size / 2 + 52, { font: F.body, size: 34, weight: 600, align: 'center', color: C.ink, alpha: clamp(iconK * 2 - 1) });
+  }
+  // dock
+  if (!android) { g.save(); g.fillStyle = 'rgba(255,255,255,0.35)'; rrect(40, H - 270, W - 80, 220, 70); g.fill(); g.restore(); for (let i = 0; i < 4; i++) { g.fillStyle = tints[i + 3]; rrect(gapX + i * (size + gapX), H - 250, size, size, size * 0.23); g.fill(); } }
+  return { icon: p };
+}
+function chromePage(t) {
+  g.fillStyle = C.bg; g.fillRect(0, 0, W, H);
+  shot(IMG.site, { s: 1, fy: 0, ty: 0, top: 250 });
+  g.fillStyle = '#fff'; g.fillRect(0, 0, W, 250); statusBar(false, 0, true);
+  g.fillStyle = '#F1F3F4'; rrect(40, 130, W - 200, 96, 48); g.fill();
+  g.save(); g.strokeStyle = '#5F6368'; g.lineWidth = 4; rrect(80, 160, 26, 34, 6); g.stroke(); g.restore();
+  text('arvela.fr', 130, 192, { font: F.body, size: 40, weight: 500, color: '#202124' });
+  // onglets + menu ⋮
+  g.save(); g.strokeStyle = '#5F6368'; g.lineWidth = 4.5; rrect(W - 140, 158, 40, 40, 8); g.stroke(); g.restore();
+  text('1', W - 120, 189, { font: F.body, size: 26, weight: 700, align: 'center', color: '#5F6368' });
+  g.fillStyle = '#5F6368'; for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(W - 55, 160 + i * 18, 5.5, 0, Math.PI * 2); g.fill(); }
+  return { menu: { x: W - 55, y: 178 } };
+}
+const CHROME_ROWS = ['Nouvel onglet', 'Nouvel onglet de navigation privée', 'Historique', 'Téléchargements', 'Favoris', 'Partager…', 'Installer l’application', 'Version pour ordinateur', 'Paramètres'];
+function chromeMenu(t, k, hl) {
+  const a = easeOut(k); if (a <= 0) return {};
+  const x0 = 330, y0 = 110, w = W - x0 - 30, rowH = 112;
+  g.save(); g.globalAlpha = a; g.shadowColor = 'rgba(0,0,0,0.25)'; g.shadowBlur = 40; g.shadowOffsetY = 12;
+  g.fillStyle = '#fff'; rrect(x0, y0, w, CHROME_ROWS.length * rowH + 30, 24); g.fill(); g.shadowColor = 'transparent';
+  CHROME_ROWS.forEach((r, i) => {
+    const y = y0 + 15 + i * rowH;
+    if (i === 6 && hl > 0) { g.save(); g.globalAlpha = a * hl; g.fillStyle = '#E8EAED'; g.fillRect(x0, y, w, rowH); g.restore(); }
+    text(r, x0 + 120, y + 70, { font: F.body, size: 38, weight: i === 6 ? 700 : 500, color: '#202124' });
+    g.save(); g.fillStyle = '#9AA0A6'; if (i === 6) { iconPlusSquare(x0 + 60, y + 56, '#202124'); } else { g.beginPath(); g.arc(x0 + 60, y + 56, 14, 0, Math.PI * 2); g.fill(); } g.restore();
+  });
+  g.restore();
+  return { row: { x: x0 + w / 2, y: y0 + 15 + 6 * rowH + 56 } };
+}
+function chromeDialog(t, k) {
+  const a = easeOut(k); if (a <= 0) return {};
+  g.save(); g.fillStyle = `rgba(0,0,0,${0.4 * a})`; g.fillRect(0, 0, W, H);
+  g.globalAlpha = a; const y0 = 640 + (1 - a) * 40;
+  g.fillStyle = '#fff'; rrect(80, y0, W - 160, 600, 44); g.fill();
+  text('Installer l’application ?', 140, y0 + 120, { font: F.body, size: 50, weight: 600, color: '#202124' });
+  appIcon(220, y0 + 280, 150, { circle: true });
+  text('Arvela', 330, y0 + 265, { font: F.body, size: 46, weight: 600, color: '#202124' });
+  text('arvela.fr', 330, y0 + 320, { font: F.body, size: 36, weight: 500, color: '#5F6368' });
+  text('Annuler', W - 420, y0 + 510, { font: F.body, size: 42, weight: 600, align: 'center', color: '#1A73E8' });
+  g.fillStyle = '#1A73E8'; rrect(W - 330, y0 + 450, 220, 96, 48); g.fill();
+  text('Installer', W - 220, y0 + 512, { font: F.body, size: 42, weight: 600, align: 'center', color: '#fff' });
+  g.restore();
+  return { ok: { x: W - 220, y: y0 + 498 } };
+}
+function messages(t, k) {
+  g.fillStyle = '#FFFFFF'; g.fillRect(0, 0, W, H);
+  g.fillStyle = '#F7F4EF'; g.fillRect(0, 0, W, 300); g.fillStyle = C.border; g.fillRect(0, 300, W, 2);
+  statusBar(false, 0, false, '18:00');
+  g.fillStyle = C.sauge; g.beginPath(); g.arc(W / 2, 175, 54, 0, Math.PI * 2); g.fill();
+  text('P', W / 2, 196, { font: F.display, size: 60, weight: 700, align: 'center', color: '#fff' });
+  text('Parents d’Inès', W / 2, 270, { font: F.body, size: 36, weight: 600, align: 'center', color: C.ink });
+  const lines = ['Bonjour ! La journée d’Inès,', 'jeudi 29 octobre :', '', 'Arrivée 07h31', 'Repas : A tout mangé (11h50)', '', 'Bonne soirée !'];
+  const a = easeOut(k); const bh = 70 + lines.length * 58, by = 1000 - bh / 2 + (1 - a) * 160;
+  g.save(); g.globalAlpha = a; g.fillStyle = C.ink; rrect(170, by, W - 230, bh, 44); g.fill();
+  lines.forEach((l, i) => text(l, 220, by + 80 + i * 58, { font: F.body, size: 40, weight: 500, color: '#F7F4EF' }));
+  text('Envoyé', W - 70, by + bh + 50, { font: F.body, size: 30, weight: 500, align: 'right', color: C.muted, alpha: clamp(k * 2 - 1) });
+  g.restore();
+}
+
+// ---------- Films ----------
+// Chaque scène : durée (calée sur la voix), légende, et dessin. VOIX[i] = durée de la phrase i (secondes), injectée par le script.
+let VOIX = {};
+const FILMS = {
+  quotidien: () => [
+    { id: 'logo', d: Math.max(5.5, (VOIX.q0 || 4) + 1.2), draw: (t, D) => logoCard(t, D, { title: 'Une journée avec Arvela', sub: 'Jeudi 29 octobre' }) },
+    { id: 'arrivee', d: Math.max(9, (VOIX.q1 || 7) + 1.2), draw: (t, D) => {
+      g.fillStyle = C.bg; g.fillRect(0, 0, W, H);
+      const z = easeInOut(win(t, 0.3, 2.0)); const cam = { s: lerp(1, 1.1, z), fx: 390, fy: lerp(700, 1075, z), ty: lerp(760, 1150, z) };
+      const tap = D * 0.38;
+      const m = shot(IMG['today-avant'], cam); shot(IMG['today-apres'], { ...cam, alpha: win(t, tap + 0.12, tap + 0.4) });
+      const p = m.map(246, 1136); finger(p.x, p.y, t, tap);
+      caption(t, 0.4, D, '07h31', 'Un enfant arrive ? Un geste.', { pos: 'top', note: 'L’heure est notée. Une erreur ? Touche « Annuler ».' });
+    } },
+    { id: 'carnet', d: Math.max(9, (VOIX.q2 || 6) + 1.5), draw: (t, D) => {
+      g.fillStyle = C.bg; g.fillRect(0, 0, W, H);
+      const cam = { s: 1.12, fx: 390, fy: 480, ty: 560 };
+      const t1 = D * 0.28, t2 = D * 0.55;
+      const m = shot(IMG['carnet-avant'], cam);
+      shot(IMG['carnet-sheet'], { s: 1.12, fx: 390, fy: 480, ty: 560, alpha: win(t, t1 + 0.1, t1 + 0.45) * (1 - win(t, t2 + 0.15, t2 + 0.45)) });
+      shot(IMG['carnet-apres'], { ...cam, alpha: win(t, t2 + 0.15, t2 + 0.45) });
+      let p = m.map(144, 354); finger(p.x, p.y, t, t1);
+      p = m.map(390, 467); finger(p.x, p.y, t, t2);
+      caption(t, 0.3, D, '11h50', 'Le carnet se remplit en deux touches.');
+    } },
+    { id: 'envoyer', d: Math.max(7, (VOIX.q3 || 5) + 1.2), draw: (t, D) => {
+      const cut = 1.4;
+      if (t < cut + 0.3) { g.fillStyle = C.bg; g.fillRect(0, 0, W, H); const m = shot(IMG['carnet-apres'], { s: 1.12, fx: 390, fy: 480, ty: 560 }); const p = m.map(390, 1027); finger(p.x, p.y, t, 0.8); }
+      if (t > cut) { g.save(); g.globalAlpha = win(t, cut, cut + 0.3); messages(t, win(t, cut + 0.4, cut + 1.2)); g.restore(); }
+      caption(t, 0.3, D, '18h00', 'Le soir, les parents reçoivent le résumé.');
+    } },
+    { id: 'mois', d: Math.max(11, (VOIX.q4 || 9) + 1.4), draw: (t, D) => {
+      g.fillStyle = C.bg; g.fillRect(0, 0, W, H);
+      const pan = easeInOut(win(t, D * 0.38, D * 0.62));
+      shot(IMG['mois-long'], { s: lerp(1.08, 1.0, pan), fx: 390, fy: lerp(560, 1900, pan), ty: lerp(520, 640, pan) });
+      caption(t, 0.3, D, 'Fin du mois', 'Ce qu’il faut déclarer sur Pajemploi, ligne par ligne.', { note: t > D * 0.45 ? 'Vérifie avant de déclarer : la déclaration Pajemploi fait foi.' : undefined });
+    } },
+    { id: 'conges', d: Math.max(5, (VOIX.q5 || 3) + 1.2), draw: (t, D) => {
+      g.fillStyle = C.bg; g.fillRect(0, 0, W, H);
+      const z = easeInOut(win(t, 0, D)); shot(IMG.conges, { s: lerp(1.05, 1.2, z), fx: 390, fy: 620, ty: 640 });
+      caption(t, 0.3, D, 'Congés', 'Tes congés, comptés pour toi.');
+    } },
+    { id: 'fin', d: Math.max(6, (VOIX.q6 || 4) + 1.6), draw: (t, D) => endCard(t, D, ['Gratuit pendant la phase de test', 'Un outil d’aide, indépendant de l’Urssaf']) },
+  ],
+  iphone: () => installFilm(false),
+  android: () => installFilm(true),
+};
+function installFilm(android) {
+  const P = android ? 'a' : 'i';
+  const sc = [
+    { id: 'logo', d: Math.max(4.5, (VOIX[P + '0'] || 4) + 0.8), draw: (t, D) => {
+      if (t < D - 0.8) logoCard(t, D, { title: android ? 'Installer l’app sur Android' : 'Installer l’app sur iPhone', sub: '3 gestes, une seule fois' });
+      else { android ? chromePage(t) : safariPage(t); fadeBlack(1 - win(t, D - 0.8, D)); }
+    } },
+    { id: 'ouvrir', d: Math.max(4.5, (VOIX[P + '1'] || 4) + 0.8), draw: (t, D) => {
+      if (android) { const r = chromePage(t); finger(r.menu.x, r.menu.y, t, D * 0.62); chromeMenu(t, win(t, D * 0.66, D * 0.9), 0); }
+      else { const r = safariPage(t); finger(r.share.x, r.share.y, t, D * 0.62); shareSheet(t, win(t, D * 0.66, D), 0, 0); }
+      caption(t, 0.2, D, 'Étape 1', android ? 'Touche les trois points ⋮, en haut à droite.' : 'Touche le bouton Partager, en bas.', { pos: android ? 'bottom' : 'top', note: android ? undefined : 'Dans Chrome sur iPhone, il est en haut à droite.' });
+    } },
+    { id: 'choisir', d: Math.max(5, (VOIX[P + '2'] || 4) + 1), draw: (t, D) => {
+      const tap = D * 0.6;
+      if (android) { chromePage(t); const r = chromeMenu(t, 1, win(t, tap - 0.6, tap)); finger(r.row.x, r.row.y, t, tap); }
+      else { safariPage(t); const r = shareSheet(t, 1, easeInOut(win(t, 0.3, tap - 0.8)), win(t, tap - 0.4, tap)); finger(r.row.x, r.row.y, t, tap); }
+      caption(t, 0.2, D, 'Étape 2', android ? 'Choisis « Installer l’application ».' : 'Fais défiler, puis choisis « Sur l’écran d’accueil ».', { pos: android ? 'bottom' : 'top', note: android ? 'Sur certains téléphones : « Ajouter à l’écran d’accueil ».' : undefined });
+    } },
+    { id: 'confirmer', d: Math.max(4.5, (VOIX[P + '3'] || 3) + 1), draw: (t, D) => {
+      const tap = D * 0.65;
+      if (android) { chromePage(t); const r = chromeDialog(t, win(t, 0, 0.5)); finger(r.ok.x, r.ok.y, t, tap); }
+      else { safariPage(t); const r = addSheet(t, win(t, 0, 0.5)); finger(r.add.x, r.add.y, t, tap); }
+      caption(t, 0.2, D, 'Étape 3', android ? 'Confirme avec « Installer ».' : 'Touche « Ajouter », en haut à droite.', { pos: 'bottom' });
+    } },
+    { id: 'icone', d: Math.max(7, (VOIX[P + '4'] || 6) + 1.2), draw: (t, D) => {
+      const open = D * 0.42;
+      if (t < open + 0.6) { const r = homeScreen(t, win(t, 0.3, 1.1), { android }); finger(r.icon.x, r.icon.y, t, open); }
+      if (t > open + 0.2) {
+        const k = easeInOut(win(t, open + 0.2, open + 0.9));
+        g.save(); g.globalAlpha = k; g.fillStyle = C.bg; g.fillRect(0, 0, W, H);
+        const s = lerp(0.6, 1, k); g.translate(W / 2, H / 2); g.scale(s, s); g.translate(-W / 2, -H / 2);
+        shot(IMG.connexion, { s: 1, fy: 300, ty: 300 }); g.restore();
+      }
+      caption(t, 0.3, D, 'C’est installé', 'Ouvre Arvela et connecte-toi avec ton adresse e-mail.', { pos: t > open + 0.5 ? 'top' : 'bottom', note: 'Ensuite, l’app marche même sans réseau.' });
+    } },
+    { id: 'fin', d: 3.5, draw: (t, D) => endCard(t, D, ['Bienvenue dans Arvela']) },
+  ];
+  return sc;
+}
+
+let SCENES = [];
+function setup(film, voix) { VOIX = voix || {}; SCENES = FILMS[film](); let s = 0; for (const x of SCENES) { x.start = s; s += x.d; } return { total: s, scenes: SCENES.map((x) => ({ id: x.id, start: x.start, d: x.d })) }; }
+function render(t) {
+  let sc = SCENES[SCENES.length - 1];
+  for (const x of SCENES) if (t >= x.start && t < x.start + x.d) { sc = x; break; }
+  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; sc.draw(t - sc.start, sc.d); g.restore();
+  // fondu d'entrée de chaque scène (sauf la première)
+  const lt = t - sc.start; const i = SCENES.indexOf(sc);
+  if (i > 0 && lt < 0.25) { /* coupe franche adoucie : rien, les scènes gèrent leurs fondus */ }
+}
+function frame(t) { render(t); return cv.toDataURL('image/jpeg', 0.92).slice(23); }
+window.ARVELA = { load, setup, render, frame };
+</script></body></html>

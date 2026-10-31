@@ -16,7 +16,7 @@ const CLIPS: Record<Clip, { onglet: string; titre: string; duree: string; resume
 };
 
 /** Les vidéos sont déposées dans public/videos/ : les emplacements apparaissent. Repasser à false les masque partout. */
-export const VIDEOS_PRETES = false; // passe à true quand les fichiers sont dans public/videos/
+export const VIDEOS_PRETES = true;
 
 export function isIOS(): boolean {
   return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -42,7 +42,7 @@ export function VideoClip({ clip }: { clip: Clip }) {
       <div class="video-frame">
         <video ref={ref} key={fichier} controls={started} preload="none" playsInline aria-label={`${titre}, ${c.duree}`}>
           <source src={`./videos/${fichier}.mp4`} type="video/mp4" />
-          <track kind="captions" src={`./videos/${fichier}.vtt`} srclang="fr" label="Français" default />
+          <track kind="captions" src={`./videos/${fichier}.vtt`} srclang="fr" label="Français" />
         </video>
         {!started && (
           <button class="video-poster" type="button" aria-label={`Lire la vidéo : ${titre} (${c.duree})`}
