@@ -705,3 +705,35 @@ describe('seconde relecture contradictoire (31 octobre 2026)', () => {
     expect(compteur(makeCtx(c, [], leaves, '2026-11-15'), '2026-11-15').depassement).toBe(false);
   });
 });
+
+import { soldesDeDepart } from '../src/engine/conges';
+
+describe('saisie simplifiée des congés à la reprise (31 octobre 2026)', () => {
+  it('contrat commencé en mars 2025, suivi au 1er novembre 2026, 6 jours pris depuis juin', () => {
+    const c = contract({ start: '2025-03-03', trackedFrom: '2025-03-03' });
+    const s = soldesDeDepart(c, '2026-11-01', 6);
+    expect(s.depuis).toBe('2026-06-01');
+    expect(s.droitsAnDernier).toBe(30); // 52 semaines : 32,5 jours, plafonnés à 30
+    expect(s.cpRestants).toBe(24);
+    expect(s.cpEnCours).toBeCloseTo(((153 / 7) / 4) * 2.5, 2); // 1er juin → 31 octobre
+  });
+  it('contrat commencé le 1er décembre 2025 : 17 jours de droits, 19 avec un enfant à charge', () => {
+    const c = contract({ start: '2025-12-01', trackedFrom: '2025-12-01' });
+    expect(soldesDeDepart(c, '2026-11-01', 0).droitsAnDernier).toBe(17); // 26 semaines → 16,25 → 17
+    expect(soldesDeDepart(c, '2026-11-01', 0, 1).droitsAnDernier).toBe(19);
+  });
+  it('contrat commencé après le 1er juin 2026 : aucun droit de l’an dernier', () => {
+    const c = contract({ start: '2026-09-01', trackedFrom: '2026-09-01' });
+    const s = soldesDeDepart(c, '2026-11-01', 0);
+    expect(s.droitsAnDernier).toBe(0);
+    expect(s.cpRestants).toBe(0);
+    expect(s.cpEnCours).toBeCloseTo(((61 / 7) / 4) * 2.5, 2);
+  });
+  it('avec ces soldes, une semaine de congés à Noël n’entraîne aucune retenue', () => {
+    const base = contract({ start: '2025-03-03', trackedFrom: '2026-11-01' });
+    const s = soldesDeDepart(base, '2026-11-01', 6);
+    const c = { ...base, balances: { cpRestants: s.cpRestants, cpEnCours: s.cpEnCours, maladieDeduits: 0 } };
+    const leaves: AmLeave[] = [{ id: 'noel', type: 'cp', from: '2026-12-21', to: '2026-12-26' }];
+    expect(monthBase(makeCtx(c, [], leaves, '2027-01-15'), '2026-12').retenue).toBe(0);
+  });
+});

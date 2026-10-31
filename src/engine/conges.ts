@@ -1,7 +1,8 @@
 // Congés payés (art. 48 et 102) : acquisition, compteur, indemnité.
 import { addDays, addMonths, cpPeriod, cpPeriodStartYear, daysBetween, eachDay, monthOf, monthsBetween, weekday, type ISODate, type Month } from './dates';
 import { holidayName } from './holidays';
-import { H45, monthBase, termsAt, weeklyMinutes, weeksPerYear, type Ctx } from './payroll';
+import { H45, makeCtx, monthBase, termsAt, weeklyMinutes, weeksPerYear, type Ctx } from './payroll';
+import type { Contract } from './model';
 
 /** Jours ouvrables (lundi → samedi, hors fériés) d'un intervalle */
 export function joursOuvrables(from: ISODate, to: ISODate): ISODate[] {
@@ -134,6 +135,23 @@ export function debutDecompte(ctx: Ctx, y: number): ISODate {
   const p = cpPeriod(y);
   const t = ctx.c.trackedFrom;
   return y === cpPeriodStartYear(t) && t > p.from ? t : p.from;
+}
+
+/**
+ * Saisie simplifiée des soldes de départ (reprise d'un contrat en cours) : les droits sont calculés à partir de la date
+ * de début du contrat (2,5 jours ouvrables par mois d'accueil, enfants à charge compris), en supposant aucune absence
+ * non payée ; l'AM ne donne que les jours déjà pris depuis le dernier 1er juin.
+ */
+export function soldesDeDepart(c: Contract, trackedFrom: ISODate, prisDepuisJuin: number, enfants = 0): {
+  droitsAnDernier: number; cpRestants: number; cpEnCours: number; depuis: ISODate;
+} {
+  const ctx = makeCtx({ ...c, trackedFrom: c.start, end: undefined }, [], [], trackedFrom, enfants);
+  const y = cpPeriodStartYear(trackedFrom);
+  const p = cpPeriod(y);
+  const droitsAnDernier = c.start <= addDays(p.from, -1) ? acquisition(ctx, y - 1, enfants).jours : 0;
+  const debut = c.start > p.from ? c.start : p.from;
+  const cpEnCours = trackedFrom > debut ? Math.round((weeksIn(ctx, debut, addDays(trackedFrom, -1)) / 4) * 2.5 * 100) / 100 : 0;
+  return { droitsAnDernier, cpRestants: Math.max(0, droitsAnDernier - Math.max(0, prisDepuisJuin)), cpEnCours, depuis: p.from };
 }
 
 export interface Compteur {
