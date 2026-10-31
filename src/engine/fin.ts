@@ -1,4 +1,4 @@
-// Fin de contrat : préavis (art. 120), indemnité de rupture (art. 121), régularisation (art. 124),
+// Fin de contrat : préavis (art. 120), indemnité de rupture (art. 121), régularisation (art. 109.2),
 // indemnité de congés non pris. Aucun document officiel n'est produit.
 import {
   addDays, addMonthsToDate, cpPeriod, cpPeriodStartYear, fullMonthsBetween, lastDay, monthOf, monthsBetween,
@@ -111,9 +111,11 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   const reg = regularisation(endCtx, regStart, dernierJour);
   const regulMinutes = reg.minutes;
   // C-002 : sans toutes les semaines sans accueil, les semaines non saisies compteraient comme accueillies.
-  const manque = finTerms.yearType === 'incomplete' ? semainesSansAccueilManquantes(c, dernierJour) : 0;
+  const manque = finTerms.yearType === 'incomplete' ? semainesSansAccueilManquantes(c, regStart, dernierJour) : 0;
   if (manque > 0) {
     alertes.push(`Régularisation non calculée : il manque ${manque} semaine${manque > 1 ? 's' : ''} sans accueil dans le contrat. Saisis-les d’abord, sinon les vacances compteraient comme des semaines accueillies.`);
+  } else if (finTerms.yearType === 'incomplete') {
+    alertes.push('Vérifie que toutes les semaines sans accueil de la dernière année sont saisies : une semaine non saisie compte comme accueillie dans la régularisation.');
   }
   const regularisation_ = finTerms.yearType === 'incomplete' && manque === 0 ? reg.montant : 0;
   if (finTerms.yearType === 'complete' && regulMinutes > 60) {

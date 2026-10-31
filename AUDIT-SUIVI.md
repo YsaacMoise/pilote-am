@@ -5,16 +5,20 @@ Toute session qui corrige un constat met à jour sa ligne ici, dans le même com
 
 Statuts : **Corrigé** (code changé, preuve citée) · **Partiel** (ce qui reste est écrit) · **Prouvé conforme** · **Ouvert, pendant le test** · **Ouvert, avant phase 2** · **Phase 3** · **Action YKM** (hors code : console, compte, décision).
 
-Corrections du 31 octobre 2026 : branche `corrections-audit`, commits 3c69189 (mesure d'usage), e484457 (paie), 3e609d4 (textes), 3bb903e et suivants (exploitation).
+Corrections du 31 octobre 2026 : branche `corrections-audit`, commits 3c69189 (mesure d'usage), e484457 (paie), 3e609d4 (textes), 3bb903e et suivants (exploitation), b7e1519 (contrôle des fuites), puis corrections de la relecture contradictoire de la paie.
+
+Relecture contradictoire du 31/10/2026 (relecteur indépendant, sans accès au raisonnement de l'auteur) : C-001, C-002, C-004 et C-006 confirmés dans leur principe ; défauts trouvés et corrigés le jour même : diviseur de l'art. 111 complet (congés payés et semaines sans accueil compris), congés pris avant le début du suivi imputés deux fois (bug A), solde fractionnaire tronqué, régularisation valorisée au taux final, semaines sans accueil d'avenant ignorées (bug C), contrat ancien bloqué (bug D), bascule en année complète bloquée (bug E), renvoi à un « article 124 » (la régularisation relève de l'art. 109.2). Tests « relecture contradictoire » dans tests/payroll.test.ts.
+
+Contrôle indépendant des fuites du 31/10/2026 (Chrome, faux serveur PostHog) : deux défauts trouvés et corrigés (envois repris après extinction, identifiant de contrat dans les adresses) ; parcours rejoué.
 
 ## Les 12 lignes « bloquant installation »
 
 | Constat | Statut | Preuve |
 |---|---|---|
-| C-001 Régularisation à chaque avenant | Corrigé | Option A : régularisation en fin de contrat ou au passage incomplète → complète. Confirmé par la fiche régularisation DDETS 31 (05/11/2024) et le guide DREETS Bourgogne-Franche-Comté (août 2026) : régularisations annuelles prévisionnelles qui « se compensent » sans règlement, paiement en fin de contrat. Tests « audit C-001 » dans tests/payroll.test.ts |
-| C-002 Année incomplète sans semaines sans accueil | Corrigé | Contrat refusé sans 52 − N semaines saisies ; régularisation non calculée et alerte s'il en manque (`semainesSansAccueilManquantes`). Test « audit C-002 » |
-| C-004 Congés pris sans droits jamais retenus | Corrigé | Année complète : jours au-delà des droits retenus comme sans solde, droits consommés dans l'ordre chronologique, enfants à charge comptés. Règle confirmée par les fiches DREETS Occitanie (52 semaines) et Bourgogne-Franche-Comté (août 2026). Tests « C-004 » (4 cas). **L'ordre chronologique est une convention de l'app : à faire valider (cas 38)** |
-| C-006 Diviseur des retenues sans les fériés chômés | Corrigé (fériés) / Ouvert (semaines sans accueil, avec l'année incomplète) | Férié chômé d'un jour habituellement travaillé dans le diviseur (fiches DREETS Occitanie et DDETS 31). Tests « C-006 » (novembre 2026 : 189 h) |
+| C-001 Régularisation à chaque avenant | Corrigé | Option A : régularisation en fin de contrat ou au passage incomplète → complète, chaque heure valorisée au taux de son jour (art. 109.2). Confirmé par la fiche régularisation DDETS 31 (05/11/2024) et le guide DREETS Bourgogne-Franche-Comté (août 2026) : régularisations annuelles prévisionnelles qui « se compensent » sans règlement, paiement en fin de contrat. Tests « audit C-001 » dans tests/payroll.test.ts |
+| C-002 Année incomplète sans semaines sans accueil | Corrigé | Régularisation non calculée et alerte tant qu'une année de contrat terminée n'a pas ses 52 − N semaines (contrat et avenants réunis) ; bandeau dans le formulaire sans blocage, car l'art. 98.1.2 permet de les communiquer plus tard ; dernière année : alerte de vérification. Tests « C-002 », « bug C », « bug D », « bug E » |
+| C-004 Congés pris sans droits jamais retenus | Corrigé | Année complète : jours au-delà des droits retenus comme sans solde, droits consommés dans l'ordre chronologique, enfants à charge comptés. Règle confirmée par les fiches DREETS Occitanie (52 semaines) et Bourgogne-Franche-Comté (août 2026) et par l'art. 109.1. Congés pris avant le début du suivi non imputés sur le solde de départ ; solde fractionnaire arrondi au supérieur. Tests « C-004 », « bug A », « solde fractionnaire ». **L'ordre chronologique est une convention de l'app : à faire valider (cas 38)** |
+| C-006 Diviseur des retenues incomplet | Corrigé | Diviseur de l'art. 111 : planning type du mois entier, absences, congés payés, semaines sans accueil et fériés chômés compris (texte de l'art. 111 ; fiches DREETS Occitanie et DDETS 31). Tests « C-006 » et « art. 111 » (novembre 2026 : 189 h ; octobre avec congés : 31,02 € ; août incomplet : 575,00 €) |
 | C-030 Soins en clair vers PostHog | Corrigé | Plus d'enregistrement d'écran ni de capture automatique ; carnet masqué ; aria-label sans le texte saisi. Test tests/analytics.test.ts. Parcours piégé dans Chrome contre un faux serveur PostHog (contrôle indépendant du 31/10/2026) : sans accord 0 requête ; avec accord, aucune donnée saisie ni identifiant de contrat ; après extinction, plus aucun envoi ; démonstration 0 requête |
 | C-031 Corps des requêtes capturables | Corrigé | `recordBody`/`recordHeaders` forcés à faux, enregistrement coupé côté client, pseudonymisation sans limite de profondeur. Test analytics |
 | C-032 / C-150 Mesure sans consentement | Corrigé | Option B renforcée : mesure éteinte par défaut, accord explicite dans Réglages, jamais en démonstration, aucun profil de personne, événements métier seulement |
@@ -23,7 +27,7 @@ Corrections du 31 octobre 2026 : branche `corrections-audit`, commits 3c69189 (m
 | C-110 GitHub Pages encore en ligne | Corrigé à la publication | Workflow : page de redirection vers arvela.fr + service worker qui se désinscrit. Option YKM : désactiver Pages dans GitHub > Settings > Pages |
 | C-120 Aucun avertissement de responsabilité | Corrigé | Conditions du test (Mentions légales), avertissement sur l'écran Mois et dans le message au parent |
 | Règles Firestore non exécutées (section 7.1) | Prouvé conforme | `tests/rules/rules.test.mjs`, 27 cas sur 27 sur l'émulateur Firestore (GitHub Actions, workflow Vérifier, 31/10/2026) ; la publication est bloquée si un cas échoue |
-| Validation humaine des 10 cas de l'annexe C | **Action YKM** | Gestionnaire de paie ou relais petite enfance. Ajouter : convention chronologique de C-004. L'annexe C n'a pas été fournie : les cas sont listés dans l'audit (5, 7, 12, 19, 23, 27, 31, 38, 44, 51) |
+| Validation humaine des 10 cas de l'annexe C | **Action YKM** | Gestionnaire de paie ou relais petite enfance. Ajouter les 7 points du relecteur : diviseur de l'art. 111 complet, fériés chômés payés comptés comme heures dues, prorata d'entrée et de sortie avec un férié hors période, ordre chronologique des droits à congés et demi-journées, valorisation de la régularisation au taux de chaque période, saisie des semaines sans accueil (art. 98.1.2), enfants à charge appréciés globalement et non au 30 avril. L'annexe C n'a pas été fournie : les cas sont listés dans l'audit (5, 7, 12, 19, 23, 27, 31, 38, 44, 51) |
 
 ## Toutes les lignes
 
@@ -34,7 +38,7 @@ Corrections du 31 octobre 2026 : branche `corrections-audit`, commits 3c69189 (m
 | C-003 | Élevé | Ouvert, pendant le test | Jours d'activité à l'avenant ; sans effet tant qu'il n'y a pas d'avenant |
 | C-004 | Critique | Corrigé | voir plus haut ; acquisition pendant un arrêt maladie (2 jours par mois, loi d'avril 2024) : l'app compte 2,5, écart en faveur de l'AM, à corriger avant phase 2 |
 | C-005 | Moyen | Partiel | Les fériés chômés payés comptent désormais dans les heures dues (C-006). Prorata : validation humaine (cas 5) |
-| C-006 | Élevé | Corrigé (fériés) | Semaines sans accueil dans le diviseur : avec l'année incomplète, avant phase 2 |
+| C-006 | Élevé | Corrigé | Art. 111 appliqué en entier. Effets à valider : fériés chômés payés comptés comme heures dues dans la régularisation ; prorata d'entrée et de sortie quand un férié tombe hors de la période |
 | C-007 | Faible | Ouvert, validation humaine | Cas 7 |
 | C-008 | Moyen | Ouvert, avant phase 2 | Rapport 78,12 % confirmé pour 2026 (taux de l'app : 4,20 € brut / 3,28 € net au 1er juin 2026, avenant n° 10) |
 | C-009 | Moyen | Ouvert, avant phase 2 | |

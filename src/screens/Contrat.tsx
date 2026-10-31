@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks';
 import { deleteContract, logUsage, putContract, state, toast, uid, useStore } from '../store';
-import { deMois, firstDay, mondayOf, monthOf, shortDate, today, JOUR_NOMS, type Month } from '../engine/dates';
-import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, semainesSansAccueilManquantes, termsAt, weeklyMinutes } from '../engine/payroll';
+import { addMonthsToDate, deMois, firstDay, mondayOf, monthOf, shortDate, today, JOUR_NOMS, type Month } from '../engine/dates';
+import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, semainesSansAccueilAnnee, termsAt, weeklyMinutes } from '../engine/payroll';
 import { entretienPlancher, ratesAt } from '../engine/rates';
 import { euros, hoursLabel } from '../engine/money';
 import type { Avenant, Contract, Plage, Planning, Terms } from '../engine/model';
@@ -43,12 +43,9 @@ export function Contrat({ id }: { id?: string }) {
     if (wk <= 0) errs.push('Le planning est vide : ajoute au moins un jour d’accueil.');
     for (let d = 1; d <= 7; d++) for (const p of c.planning[d] ?? []) if (p.end <= p.start) errs.push(`${JOUR_NOMS[d - 1]} : l’heure de fin doit être après le début.`);
     if (c.yearType === 'incomplete' && (c.weeks < 1 || c.weeks > 46)) errs.push('En année incomplète, le nombre de semaines va de 1 à 46.');
-    // Audit C-002 : en année incomplète, les semaines sans accueil de la première année doivent toutes être saisies,
-    // sinon les vacances compteraient comme des semaines accueillies dans la régularisation.
-    if (c.yearType === 'incomplete' && c.start && c.weeks >= 1 && c.weeks <= 46) {
-      const manque = semainesSansAccueilManquantes({ ...c, avenants: [] }, c.start);
-      if (manque > 0) errs.push(`Année incomplète : saisis les ${52 - c.weeks} semaines sans accueil de la première année de contrat (il en manque ${manque}).`);
-    }
+    // Audit C-002 : les semaines sans accueil manquantes sont signalées dans le formulaire (bandeau) sans bloquer,
+    // car elles peuvent être communiquées plus tard, par écrit, deux mois à l'avance (art. 98.1.2) ;
+    // la régularisation n'est pas calculée tant qu'une année terminée en manque.
     if (c.end && c.end < c.start) errs.push('La date de fin est avant le début.');
     if (c.repasParents === undefined) errs.push('Indique qui fournit les repas de l’enfant.');
     setErrors(errs);
@@ -216,12 +213,16 @@ function WeeksOff({ c, onChange }: { c: Contract; onChange: (w: string[]) => voi
   const [d, setD] = useState('');
   const list = [...c.weeksOff].sort();
   const attendu = Math.max(0, 52 - Math.min(46, c.weeks));
-  const manque = c.start ? semainesSansAccueilManquantes({ ...c, avenants: [] }, c.start) : attendu;
+  // Année de contrat en cours (ou première année pour un nouveau contrat)
+  let debut = c.start || today();
+  while (c.start && addMonthsToDate(debut, 12) <= today()) debut = addMonthsToDate(debut, 12);
+  const saisies = c.start ? semainesSansAccueilAnnee({ ...c, yearType: 'incomplete' }, debut).saisies : 0;
+  const manque = Math.max(0, attendu - saisies);
   return (
     <div class="stack-sm">
       <span class="label">Semaines sans accueil</span>
-      <span class="hint">Obligatoire : les {attendu} semaines où l’enfant ne vient pas (vacances des parents, tes congés) sur la première année du contrat. Une semaine oubliée compterait comme une semaine accueillie.</span>
-      {manque > 0 ? <Banner tone="warn">Il manque {manque} semaine{manque > 1 ? 's' : ''} sans accueil.</Banner> : <p class="hint">Les {attendu} semaines sont saisies.</p>}
+      <span class="hint">Les {attendu} semaines où l’enfant ne vient pas (vacances des parents, tes congés), pour chaque année de contrat. Si elles ne sont pas encore connues, ajoute-les dès que les parents te les donnent (au plus tard deux mois avant). Une semaine oubliée compterait comme une semaine accueillie.</span>
+      {manque > 0 ? <Banner tone="warn">Année de contrat en cours : il manque {manque} semaine{manque > 1 ? 's' : ''} sans accueil. Tant qu’une année terminée en manque, la régularisation n’est pas calculée.</Banner> : <p class="hint">Les {attendu} semaines de l’année en cours sont saisies.</p>}
       {list.length > 0 && (
         <div class="chips" style={{ flexWrap: 'wrap' }}>
           {list.map((w) => (

@@ -287,11 +287,17 @@ describe('fin de contrat (art. 120, 121, 124)', () => {
     expect(f.regulMinutes).toBeGreaterThan(0);
     expect(f.regularisation).toBe(Math.round((f.regulMinutes * 350) / 60));
   });
-  it('audit C-002 : sans les semaines sans accueil, la régularisation n’est pas versée et une alerte l’explique', () => {
-    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', yearType: 'incomplete', weeks: 46 });
-    const f = finDeContrat(makeCtx(c, [], [], '2026-04-30'), '2026-03-20', 'retrait');
+  it('audit C-002 (cas M3c) : une année terminée sans ses semaines sans accueil bloque la régularisation, avec une alerte', () => {
+    const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01', yearType: 'incomplete', weeks: 46 });
+    const f = finDeContrat(makeCtx(c, [], [], '2026-11-30'), '2026-10-01', 'retrait');
     expect(f.regularisation).toBe(0);
     expect(f.alertes.join(' ')).toMatch(/il manque 6 semaines sans accueil/);
+  });
+  it('C-002 : une année pas encore terminée ne bloque pas ; l’app demande de vérifier les semaines', () => {
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', yearType: 'incomplete', weeks: 46 });
+    const f = finDeContrat(makeCtx(c, [], [], '2026-04-30'), '2026-03-20', 'retrait');
+    expect(f.regularisation).toBeGreaterThan(0);
+    expect(f.alertes.join(' ')).toMatch(/Vérifie que toutes les semaines sans accueil/);
   });
 });
 
@@ -545,9 +551,19 @@ describe('avenants en cours de mois et changement de type d’année', () => {
     const ctx = makeCtx(c, [], [], '2026-12-31');
     expect(monthBase(ctx, '2026-09').regulAvenant).toBeUndefined();
     const f = finDeContrat(ctx, '2026-10-30', 'retrait');
-    const fFull = finDeContrat(makeCtx({ ...c, avenants: [] }, [], [], '2026-12-31'), '2026-10-30', 'retrait');
-    expect(f.regulMinutes).toBe(fFull.regulMinutes);
-    expect(f.regularisation).toBeGreaterThan(0);
+    // Relecture contradictoire : chaque heure au taux de son jour (art. 109.2), pas tout au taux final.
+    // Heures dues comptées à la main : jours de semaine du 5 janvier à la fin, hors semaines sans accueil, 9 h chacun.
+    expect(f.dernierJour).toBe('2026-11-13');
+    let dues = 0;
+    for (let t = Date.UTC(2026, 0, 5); t <= Date.UTC(2026, 10, 13); t += 86400000) {
+      const d = new Date(t), iso = d.toISOString().slice(0, 10), wd = d.getUTCDay();
+      if (wd === 0 || wd === 6 || iso >= '2026-11-02') continue; // 2 et 9 novembre : semaines sans accueil
+      dues += 9 * (iso >= '2026-09-01' ? 400 : 350);
+    }
+    const endCtx = makeCtx({ ...c, end: f.dernierJour }, [], [], '2026-12-31');
+    let verse = 0;
+    for (let m = 1; m <= 11; m++) verse += monthBase(endCtx, `2026-${String(m).padStart(2, '0')}` as any).base;
+    expect(f.regularisation).toBe(Math.round(dues - verse));
   });
   it('audit C-001 (cas M1) : un avenant vide en cours d’année incomplète ne change pas le salaire du mois', () => {
     const p = week('08:00', '18:00', [1, 2, 3, 4]); // 40 h sur 4 jours
@@ -612,5 +628,60 @@ describe('corrections après audit indépendant (31 octobre 2026)', () => {
     expect(b.divisorDays).toBe(21);
     expect(b.base).toBe(68250);
     expect(b.joursActivite).toBe(20);
+  });
+});
+
+describe('relecture contradictoire de la paie (31 octobre 2026)', () => {
+  it('art. 111 : une semaine de congés payés reste dans le diviseur (octobre 2026, 1 jour de maladie : 31,02 € et non 40,15 €)', () => {
+    const c = contract({ start: '2025-03-03', trackedFrom: '2025-03-03', balances: { cpRestants: 30, cpEnCours: 0, maladieDeduits: 0 } });
+    const leaves: AmLeave[] = [
+      { id: 'cp', type: 'cp', from: '2026-10-05', to: '2026-10-10' },
+      { id: 'm', type: 'am_malade', from: '2026-10-20', to: '2026-10-20' },
+    ];
+    const b = monthBase(makeCtx(c, [], leaves, '2026-11-15'), '2026-10');
+    expect(b.divisorMin).toBe(198 * 60);
+    expect(b.retenue).toBe(Math.round((68250 * 9) / 198));
+    expect(b.retenue).toBe(3102);
+  });
+  it('art. 111 : année incomplète, août avec 4 semaines sans accueil et 1 jour sans solde : 575,00 € et non 0 €', () => {
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', yearType: 'incomplete', weeks: 46,
+      weeksOff: ['2026-08-03', '2026-08-10', '2026-08-17', '2026-08-24', '2026-12-21', '2026-12-28'] });
+    const leaves: AmLeave[] = [{ id: 's', type: 'sans_solde', from: '2026-08-31', to: '2026-08-31' }];
+    const b = monthBase(makeCtx(c, [], leaves, '2026-09-15'), '2026-08');
+    expect(b.divisorDays).toBe(21);
+    expect(b.base).toBe(57500);
+  });
+  it('bug A : les congés pris avant le début du suivi ne sont pas imputés une seconde fois sur le solde de départ', () => {
+    const c = contract({ start: '2025-03-03', trackedFrom: '2026-10-01', balances: { cpRestants: 10, cpEnCours: 0, maladieDeduits: 0 } });
+    const leaves: AmLeave[] = [
+      { id: 'ete', type: 'cp', from: '2026-08-03', to: '2026-08-14' },
+      { id: 'noel', type: 'cp', from: '2026-12-28', to: '2027-01-02' },
+    ];
+    const ctx = makeCtx(c, [], leaves, '2027-01-15');
+    expect(monthBase(ctx, '2026-12').retenue).toBe(0);
+    expect(compteur(ctx, '2027-01-05').pris).toBe(5); // 28, 29, 30, 31 décembre et 2 janvier (le 1er est férié)
+  });
+  it('solde fractionnaire : 2,5 jours de droits couvrent 3 jours pris', () => {
+    const c = contract({ start: '2025-03-03', trackedFrom: '2026-10-01', balances: { cpRestants: 2.5, cpEnCours: 0, maladieDeduits: 0 } });
+    const leaves: AmLeave[] = [{ id: 'cp', type: 'cp', from: '2026-10-12', to: '2026-10-14' }];
+    expect(monthBase(makeCtx(c, [], leaves, '2026-11-15'), '2026-10').deductedDays).toBe(0);
+  });
+  it('bug C : les semaines sans accueil ajoutées par avenant sont comptées', () => {
+    const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01', yearType: 'incomplete', weeks: 46, weeksOff: ['2025-12-22'],
+      avenants: [{ id: 'a', from: '2026-03-02', changes: { weeksOff: ['2025-12-22', '2026-04-13', '2026-07-20', '2026-07-27', '2026-08-03', '2026-08-10'] } }] });
+    const f = finDeContrat(makeCtx(c, [], [], '2026-11-30'), '2026-10-01', 'retrait');
+    expect(f.alertes.join(' ')).not.toMatch(/il manque/);
+  });
+  it('bug D : un contrat ancien suivi depuis peu n’exige pas les semaines des années d’avant le suivi', () => {
+    const c = contract({ start: '2023-09-04', trackedFrom: '2026-10-01', yearType: 'incomplete', weeks: 46 });
+    const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-11-02', 'retrait');
+    expect(f.alertes.join(' ')).not.toMatch(/il manque/);
+  });
+  it('bug E : passage en année complète en cours d’année, semaines d’après la bascule non exigées', () => {
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', yearType: 'incomplete', weeks: 46,
+      weeksOff: ['2026-04-13', '2026-07-20', '2026-07-27', '2026-08-03', '2026-08-10'],
+      avenants: [{ id: 'a1', from: '2026-09-01', changes: { yearType: 'complete', weeks: 52 } }] });
+    const sept = monthBase(makeCtx(c, [], [], '2026-10-15'), '2026-09');
+    expect(sept.alerts.join(' ')).not.toMatch(/non calculée/);
   });
 });

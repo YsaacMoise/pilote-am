@@ -427,7 +427,7 @@ export function changeTypeAnnee(c: Contract, from: ISODate): boolean {
 /**
  * Début de la période à régulariser qui se termine la veille de `until` : embauche (ou début du suivi),
  * ou dernier avenant qui a changé le type d'année. Les autres avenants (taux, entretien, planning) ne coupent
- * plus la période (C-001, art. 124 : régularisation en fin de contrat).
+ * plus la période (C-001, art. 109.2 : régularisations annuelles prévisionnelles sans règlement, paiement en fin de contrat).
  */
 export function regulStart(c: Contract, until: ISODate): ISODate {
   let s = c.trackedFrom > c.start ? c.trackedFrom : c.start;
@@ -435,49 +435,74 @@ export function regulStart(c: Contract, until: ISODate): ISODate {
   return s;
 }
 
+/** Toutes les semaines sans accueil connues : contrat de départ et avenants (relecture contradictoire, bug C) */
+export function toutesSemainesSansAccueil(c: Contract): Set<ISODate> {
+  const out = new Set<ISODate>(c.weeksOff);
+  for (const a of c.avenants ?? []) for (const w of a.changes.weeksOff ?? []) out.add(w);
+  return out;
+}
+
+/** Semaines sans accueil attendues et saisies pour l'année de contrat qui commence le `debutAnnee` */
+export function semainesSansAccueilAnnee(c: Contract, debutAnnee: ISODate): { attendu: number; saisies: number } {
+  const t = termsAt(c, debutAnnee);
+  const fin = addDays(addMonthsToDate(debutAnnee, 12), -1);
+  const saisies = [...toutesSemainesSansAccueil(c)].filter((w) => w >= mondayOf(debutAnnee) && w <= fin).length;
+  return { attendu: t.yearType === 'incomplete' ? Math.max(0, 52 - Math.min(46, t.weeks)) : 0, saisies };
+}
+
 /**
- * Semaines sans accueil manquantes (année incomplète, C-002) pour chaque année de contrat commencée au plus tard le `at` :
- * une année de 52 semaines dont N programmées doit compter 52 − N semaines sans accueil saisies.
+ * Semaines sans accueil manquantes (année incomplète, C-002) sur les années de contrat entièrement comprises
+ * entre `from` (début de la période à régulariser) et `until`. Une année entamée avant `from` (suivi commencé en
+ * cours d'année) ou pas encore terminée n'est pas exigée : les semaines peuvent être communiquées plus tard
+ * (art. 98.1.2), l'app le signale par une alerte au lieu de bloquer.
  */
-export function semainesSansAccueilManquantes(c: Contract, at: ISODate): number {
+export function semainesSansAccueilManquantes(c: Contract, from: ISODate, until: ISODate): number {
   let manque = 0;
-  for (let i = 0; addMonthsToDate(c.start, 12 * i) <= at && (!c.end || addMonthsToDate(c.start, 12 * i) <= c.end); i++) {
+  for (let i = 0; ; i++) {
     const a = addMonthsToDate(c.start, 12 * i);
-    const t = termsAt(c, a);
-    if (t.yearType !== 'incomplete') continue;
     const b = addDays(addMonthsToDate(c.start, 12 * (i + 1)), -1);
-    const saisies = new Set(t.weeksOff.filter((w) => w >= mondayOf(a) && w <= b)).size;
-    manque += Math.max(0, 52 - Math.min(46, t.weeks) - saisies);
+    if (a > until || (c.end && a > c.end) || b > until) break;
+    if (a < from) continue;
+    const { attendu, saisies } = semainesSansAccueilAnnee(c, a);
+    manque += Math.max(0, attendu - saisies);
   }
   return manque;
 }
 
+/** Minutes prévues au planning type du contrat ce jour-là, sans tenir compte des semaines sans accueil, absences ni fériés */
+export function planningBrutMin(t: Contract, d: ISODate): number {
+  return (t.planning[weekday(d)] ?? []).reduce((s, p) => s + plageMin(p), 0);
+}
+
 /**
- * Régularisation (année incomplète) : heures prévues réellement dues (hors absences retenues) moins heures payées
- * par la mensualisation, sur [from, to]. `cur` donne les heures payées du mois en cours de calcul (évite la récursion).
+ * Régularisation (année incomplète, art. 109.2) : salaire des heures prévues réellement dues (hors absences retenues),
+ * chacune au taux de son jour, moins le salaire de base versé par la mensualisation sur [from, to].
+ * `cur` donne le salaire de base du mois en cours de calcul (évite la récursion).
  */
-export function regularisation(ctx: Ctx, from: ISODate, to: ISODate, cur?: { m: Month; payeesMin: number }): { minutes: number; montant: number } {
+export function regularisation(ctx: Ctx, from: ISODate, to: ISODate, cur?: { m: Month; payees: number }): { minutes: number; montant: number } {
   const c = ctx.c;
   if (to < from) return { minutes: 0, montant: 0 };
   let dues = 0, payees = 0;
   for (const d of eachDay(from, to)) {
     const di = dayInfo(ctx, d);
-    if (di.inDivisor && !di.deducted) dues += di.plannedMin;
+    if (di.inDivisor && !di.deducted) dues += (di.plannedMin * termsAt(c, d).rateNet) / 60;
   }
   for (const m of monthsBetween(monthOf(from), monthOf(to))) {
-    if (cur && m === cur.m) { payees += cur.payeesMin; continue; }
+    if (cur && m === cur.m) { payees += cur.payees; continue; }
     const b = monthBase(ctx, m);
     if (!b.active || b.fromHistory) continue;
     if (m === monthOf(from) && from > c.start && from.slice(8) !== '01') {
       // Mois entamé : seule la part postérieure au début de la période compte.
-      const part = eachDay(from, lastDay(m)).reduce((s, d) => { const x = dayInfo(ctx, d); return s + (x.inDivisor ? x.plannedMin : 0); }, 0);
-      payees += (b.mensuelMin * b.paidFraction * part) / (b.divisorMin || 1);
+      let part = 0;
+      for (const d of eachDay(from, lastDay(m))) if (inContract(c, d)) part += planningBrutMin(termsAt(c, d), d);
+      payees += (b.base * part) / (b.contractMin || 1);
     } else {
-      payees += b.mensuelMin * b.paidFraction;
+      payees += b.base;
     }
   }
-  const minutes = Math.max(0, Math.round(dues - payees));
-  return { minutes, montant: Math.round((minutes * termsAt(c, to).rateNet) / 60) };
+  const montant = Math.max(0, Math.round(dues - payees));
+  const taux = termsAt(c, to).rateNet;
+  return { minutes: taux ? Math.round((montant * 60) / taux) : 0, montant };
 }
 
 /**
@@ -490,13 +515,13 @@ function applyAvenantRegul(ctx: Ctx, m: Month, r: MonthBase, firstPart?: MonthBa
     if (monthOf(a.from) !== m || a.from <= c.start || a.from <= c.trackedFrom) continue;
     const veille = addDays(a.from, -1);
     if (termsAt(c, veille).yearType !== 'incomplete' || termsAt(c, a.from).yearType !== 'complete') continue;
-    const manque = semainesSansAccueilManquantes(c, veille);
+    const manque = semainesSansAccueilManquantes(c, regulStart(c, a.from), veille);
     if (manque > 0) {
       r.alerts.push(`Régularisation à l’avenant non calculée : il manque ${manque} semaine${manque > 1 ? 's' : ''} sans accueil dans le contrat.`);
       continue;
     }
     const start = regulStart(c, a.from);
-    const cur = a.from.slice(8) !== '01' && firstPart ? { m, payeesMin: firstPart.mensuelMin * firstPart.paidFraction } : undefined;
+    const cur = a.from.slice(8) !== '01' && firstPart ? { m, payees: firstPart.base } : undefined;
     const reg = regularisation(ctx, start, veille, cur);
     if (reg.montant > 0) {
       r.regulAvenant = (r.regulAvenant ?? 0) + reg.montant;
@@ -565,16 +590,17 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   r.mensuelMin = mensuelMinutes(c);
   const complete = c.yearType === 'complete';
 
-  // Diviseur : jours (ou heures) qui auraient été travaillés sur le mois entier, d'après le planning.
+  // Diviseur de l'article 111 : heures (ou jours) du planning type sur tout le mois. « Les périodes d'absence,
+  // les semaines de non-accueil ainsi que les jours fériés chômés correspondant à un jour habituellement travaillé
+  // sont comptabilisés » (CCN 2021, art. 111 ; fiches DREETS Occitanie et DDETS 31).
   const allDays = eachDay(from, to);
   const startsOrEndsInMonth = c.start > from || (!!c.end && c.end < to) || segFrom > from || segTo < to;
-  // Pour le mois entier on simule un contrat actif tout le mois, aux conditions de la période.
-  const full: Contract = { ...c, start: from < c.start ? from : c.start, end: undefined, avenants: [] };
-  const fullCtx: Ctx = { ...ctx, c: full, cache: new Map() };
-  let fullDays = 0, fullMin = 0;
+  let fullDays = 0, fullMin = 0, segDays = 0, segMin = 0;
   for (const d of allDays) {
-    const di = startsOrEndsInMonth ? dayInfo(fullCtx, d) : dayInfo(ctx, d);
-    if (di.inDivisor) { fullDays++; fullMin += di.plannedMin; }
+    const x = planningBrutMin(c, d);
+    if (x <= 0) continue;
+    fullDays++; fullMin += x;
+    if (inSeg(d)) { segDays++; segMin += x; }
   }
   r.divisorDays = fullDays;
   r.divisorMin = fullMin;
@@ -608,23 +634,24 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     }
     if (di.rec?.km) r.km += Math.round(di.rec.km * c.kmTaux);
   }
-  r.contractDays = cDays;
-  r.contractMin = cMin;
+  // Jours (heures) de la période payés par la mensualisation, avant retenues
+  r.contractDays = segDays;
+  r.contractMin = segMin;
   r.deductedDays = dedDays;
   r.deductedMin = dedMin;
   r.forgotten = forgotten;
 
   // Méthode des heures (année complète) ou des jours (année incomplète) — art. 111.
   let fraction: number;
-  if (complete) fraction = fullMin > 0 ? (cMin - dedMin) / fullMin : startsOrEndsInMonth ? 0 : 1;
-  else fraction = fullDays > 0 ? (cDays - dedDays) / fullDays : startsOrEndsInMonth ? 0 : 1;
+  if (complete) fraction = fullMin > 0 ? (segMin - dedMin) / fullMin : startsOrEndsInMonth ? 0 : 1;
+  else fraction = fullDays > 0 ? (segDays - dedDays) / fullDays : startsOrEndsInMonth ? 0 : 1;
   fraction = Math.max(0, Math.min(1, fraction));
   // Mois complet sans absence retenue : salaire mensualisé intégral.
   if (!startsOrEndsInMonth && dedDays === 0) fraction = 1;
   r.paidFraction = fraction;
   r.base = Math.round(smens * fraction);
   const prorataOnly = startsOrEndsInMonth
-    ? Math.round(smens * Math.min(1, complete ? (fullMin ? cMin / fullMin : 0) : fullDays ? cDays / fullDays : 0))
+    ? Math.round(smens * Math.min(1, complete ? (fullMin ? segMin / fullMin : 0) : fullDays ? segDays / fullDays : 0))
     : smens;
   r.retenue = Math.max(0, prorataOnly - r.base);
 
@@ -639,7 +666,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     r.alerts.push(`${dayCountLabel(cpSansDroits)} de congés pris au-delà de tes droits acquis : retenu${cpSansDroits > 1 ? 's' : ''} comme congés sans solde. Si ton solde de congés au début du suivi est faux, corrige-le dans le contrat ; si les parents ont accepté par écrit des congés par anticipation, signale-le avec « Ça coince ».`);
   }
   if (c.yearType === 'incomplete') {
-    const manque = semainesSansAccueilManquantes(ctx.c, segTo);
+    const manque = semainesSansAccueilManquantes(ctx.c, regulStart(ctx.c, addDays(segTo, 1)), segTo);
     if (manque > 0) r.alerts.push(`Année incomplète : il manque ${manque} semaine${manque > 1 ? 's' : ''} sans accueil dans le contrat. Tant qu’elles ne sont pas saisies, la régularisation de fin de contrat n’est pas calculée.`);
   }
 

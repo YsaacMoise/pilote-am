@@ -119,12 +119,21 @@ export function cpExces(ctx: Ctx): Set<ISODate> {
     for (const y of years) {
       if (y < cpPeriodStartYear(ctx.c.trackedFrom)) continue;
       const p = cpPeriod(y);
-      const pris = cpPrisEntre(ctx, p.from, p.to);
-      const droits = Math.max(0, droitsAPrendre(ctx, y));
+      // Le solde de départ est celui qui reste au début du suivi : les congés pris avant n'y sont pas imputés (bug A).
+      const pris = cpPrisEntre(ctx, debutDecompte(ctx, y), p.to);
+      // Un solde fractionnaire (2,5 jours) est arrondi au jour supérieur, en faveur de l'AM.
+      const droits = Math.max(0, Math.ceil(droitsAPrendre(ctx, y) - 1e-9));
       pris.slice(droits).forEach((d) => out.add(d));
     }
     return out;
   });
+}
+
+/** Début du décompte des congés pris pour la période `y` : le début du suivi si le suivi commence dans cette période */
+export function debutDecompte(ctx: Ctx, y: number): ISODate {
+  const p = cpPeriod(y);
+  const t = ctx.c.trackedFrom;
+  return y === cpPeriodStartYear(t) && t > p.from ? t : p.from;
 }
 
 export interface Compteur {
@@ -148,7 +157,7 @@ export function compteur(ctx: Ctx, at: ISODate, enfantsACharge = 0): Compteur {
   else if (y > trackedY) aPrendre = acquisition(ctx, y - 1, enfantsACharge).jours;
   else aPrendre = 0;
   const p = cpPeriod(y);
-  const pris = cpPrisEntre(ctx, p.from, at < p.to ? at : p.to).length;
+  const pris = cpPrisEntre(ctx, debutDecompte(ctx, y), at < p.to ? at : p.to).length;
   const reste = aPrendre - pris;
   return { enCours, aPrendre, pris, reste, depassement: reste < 0 };
 }
