@@ -291,10 +291,11 @@ describe('fin de contrat (art. 120, 121, 124)', () => {
     const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01', yearType: 'incomplete', weeks: 46 });
     const f = finDeContrat(makeCtx(c, [], [], '2026-11-30'), '2026-10-01', 'retrait');
     expect(f.regularisation).toBe(0);
-    expect(f.alertes.join(' ')).toMatch(/il manque 6 semaines sans accueil/);
+    // 6 pour l'année terminée (septembre 2025 → août 2026) et 6 pour l'année en cours, où aucune n'est saisie
+    expect(f.alertes.join(' ')).toMatch(/il manque 12 semaines sans accueil/);
   });
   it('C-002 : une année pas encore terminée ne bloque pas ; l’app demande de vérifier les semaines', () => {
-    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', yearType: 'incomplete', weeks: 46 });
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', yearType: 'incomplete', weeks: 46, weeksOff: ['2026-07-20', '2026-07-27'] });
     const f = finDeContrat(makeCtx(c, [], [], '2026-04-30'), '2026-03-20', 'retrait');
     expect(f.regularisation).toBeGreaterThan(0);
     expect(f.alertes.join(' ')).toMatch(/Vérifie que toutes les semaines sans accueil/);
@@ -668,7 +669,7 @@ describe('relecture contradictoire de la paie (31 octobre 2026)', () => {
   });
   it('bug C : les semaines sans accueil ajoutées par avenant sont comptées', () => {
     const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01', yearType: 'incomplete', weeks: 46, weeksOff: ['2025-12-22'],
-      avenants: [{ id: 'a', from: '2026-03-02', changes: { weeksOff: ['2025-12-22', '2026-04-13', '2026-07-20', '2026-07-27', '2026-08-03', '2026-08-10'] } }] });
+      avenants: [{ id: 'a', from: '2026-03-02', changes: { weeksOff: ['2025-12-22', '2026-04-13', '2026-07-20', '2026-07-27', '2026-08-03', '2026-08-10', '2026-12-21'] } }] });
     const f = finDeContrat(makeCtx(c, [], [], '2026-11-30'), '2026-10-01', 'retrait');
     expect(f.alertes.join(' ')).not.toMatch(/il manque/);
   });
@@ -683,5 +684,24 @@ describe('relecture contradictoire de la paie (31 octobre 2026)', () => {
       avenants: [{ id: 'a1', from: '2026-09-01', changes: { yearType: 'complete', weeks: 52 } }] });
     const sept = monthBase(makeCtx(c, [], [], '2026-10-15'), '2026-09');
     expect(sept.alerts.join(' ')).not.toMatch(/non calculée/);
+  });
+});
+
+describe('seconde relecture contradictoire (31 octobre 2026)', () => {
+  it('5b : dernière année non terminée sans aucune semaine sans accueil saisie : régularisation bloquée', () => {
+    const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01', yearType: 'incomplete', weeks: 40 });
+    const f = finDeContrat(makeCtx(c, [], [], '2026-07-31'), '2026-06-01', 'retrait');
+    expect(f.regularisation).toBe(0);
+    expect(f.alertes.join(' ')).toMatch(/il manque 12 semaines/);
+  });
+  it('5a : une semaine sans accueil apportée par un avenant compte aussi dans la paie', () => {
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', yearType: 'incomplete', weeks: 46, weeksOff: ['2026-12-21'],
+      avenants: [{ id: 'a', from: '2026-03-02', changes: { weeksOff: ['2026-08-03'] } }] });
+    expect(dayInfo(makeCtx(c, [], [], '2026-09-01'), '2026-08-04').plannedMin).toBe(0);
+  });
+  it('3 : compteur de congés avec un solde fractionnaire : pas de faux dépassement', () => {
+    const c = contract({ start: '2025-03-03', trackedFrom: '2026-10-01', balances: { cpRestants: 2.5, cpEnCours: 0, maladieDeduits: 0 } });
+    const leaves: AmLeave[] = [{ id: 'cp', type: 'cp', from: '2026-10-12', to: '2026-10-14' }];
+    expect(compteur(makeCtx(c, [], leaves, '2026-11-15'), '2026-11-15').depassement).toBe(false);
   });
 });

@@ -153,7 +153,7 @@ export function compteur(ctx: Ctx, at: ISODate, enfantsACharge = 0): Compteur {
   const trackedY = cpPeriodStartYear(c.trackedFrom);
   const enCours = acquisition(ctx, y, enfantsACharge);
   let aPrendre: number;
-  if (y === trackedY) aPrendre = c.balances.cpRestants;
+  if (y === trackedY) aPrendre = Math.ceil(c.balances.cpRestants - 1e-9); // même arrondi que la paie (cpExces)
   else if (y > trackedY) aPrendre = acquisition(ctx, y - 1, enfantsACharge).jours;
   else aPrendre = 0;
   const p = cpPeriod(y);

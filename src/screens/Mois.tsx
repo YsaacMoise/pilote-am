@@ -114,7 +114,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
         <div class="more-body">
           <dl class="kv">
             <dt>Salaire de base (le même chaque mois)</dt><dd>{euros(r.salaireMens)}</dd>
-            <dt>{termsAt(c, `${month}-01`).yearType === 'complete' ? 'Heures prévues ce mois' : 'Jours prévus ce mois'}</dt>
+            <dt>{termsAt(c, `${month}-01`).yearType === 'complete' ? 'Heures du planning type ce mois (art. 111)' : 'Jours du planning type ce mois (art. 111)'}</dt>
             <dd>{termsAt(c, `${month}-01`).yearType === 'complete' ? hoursLabel(r.divisorMin) : r.divisorDays}</dd>
             {r.retenue > 0 && (<><dt>Retenue ({termsAt(c, `${month}-01`).yearType === 'complete' ? hoursLabel(r.deductedMin) : `${r.deductedDays} j`} non payés)</dt><dd>−{euros(r.retenue)}</dd></>)}
             {!!r.regulAvenant && (<><dt>Régularisation à l’avenant</dt><dd>{euros(r.regulAvenant)}</dd></>)}

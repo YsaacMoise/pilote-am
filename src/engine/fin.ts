@@ -5,7 +5,7 @@ import {
   type ISODate, type Month,
 } from './dates';
 import { acquisition, compteur, cpForMonth, indemnite, maintien } from './conges';
-import { monthBase, monthBrut, regularisation, regulStart, semainesSansAccueilManquantes, termsAt, type Ctx } from './payroll';
+import { monthBase, monthBrut, regularisation, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx } from './payroll';
 import { netToBrut } from './rates';
 
 export type Motif = 'retrait' | 'demission' | 'deces' | 'inaptitude_pro' | 'faute_grave' | 'essai';
@@ -111,7 +111,15 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   const reg = regularisation(endCtx, regStart, dernierJour);
   const regulMinutes = reg.minutes;
   // C-002 : sans toutes les semaines sans accueil, les semaines non saisies compteraient comme accueillies.
-  const manque = finTerms.yearType === 'incomplete' ? semainesSansAccueilManquantes(c, regStart, dernierJour) : 0;
+  let manque = finTerms.yearType === 'incomplete' ? semainesSansAccueilManquantes(c, regStart, dernierJour) : 0;
+  // Dernière année de contrat non terminée : aucune semaine sans accueil saisie alors qu'il en faut = blocage
+  // (seconde relecture, point 5b : sinon les vacances déjà passées compteraient comme accueillies).
+  if (finTerms.yearType === 'incomplete') {
+    let debut = c.start;
+    while (addMonthsToDate(debut, 12) <= dernierJour) debut = addMonthsToDate(debut, 12);
+    const { attendu, saisies } = semainesSansAccueilAnnee(c, debut);
+    if (debut >= regStart && attendu > 0 && saisies === 0) manque += attendu;
+  }
   if (manque > 0) {
     alertes.push(`Régularisation non calculée : il manque ${manque} semaine${manque > 1 ? 's' : ''} sans accueil dans le contrat. Saisis-les d’abord, sinon les vacances compteraient comme des semaines accueillies.`);
   } else if (finTerms.yearType === 'incomplete') {

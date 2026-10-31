@@ -9,6 +9,8 @@ Corrections du 31 octobre 2026 : branche `corrections-audit`, commits 3c69189 (m
 
 Relecture contradictoire du 31/10/2026 (relecteur indépendant, sans accès au raisonnement de l'auteur) : C-001, C-002, C-004 et C-006 confirmés dans leur principe ; défauts trouvés et corrigés le jour même : diviseur de l'art. 111 complet (congés payés et semaines sans accueil compris), congés pris avant le début du suivi imputés deux fois (bug A), solde fractionnaire tronqué, régularisation valorisée au taux final, semaines sans accueil d'avenant ignorées (bug C), contrat ancien bloqué (bug D), bascule en année complète bloquée (bug E), renvoi à un « article 124 » (la régularisation relève de l'art. 109.2). Tests « relecture contradictoire » dans tests/payroll.test.ts.
 
+Seconde relecture contradictoire du 31/10/2026 (commit 70f70c4) : réponse « oui » à la question « les montants de novembre 2026 à janvier 2027 sont-ils justes pour un contrat en année complète sans avenant suivi depuis le 1er novembre ? », à condition que le solde de congés de départ soit exact ; 500 contrats aléatoires sans incohérence ; quatre derniers points corrigés (compteur de congés fractionnaire, semaines sans accueil d'avenant dans la paie, blocage de la régularisation quand aucune semaine n'est saisie pour la dernière année, libellé « planning type (art. 111) » sur l'écran Mois).
+
 Contrôle indépendant des fuites du 31/10/2026 (Chrome, faux serveur PostHog) : deux défauts trouvés et corrigés (envois repris après extinction, identifiant de contrat dans les adresses) ; parcours rejoué.
 
 ## Les 12 lignes « bloquant installation »

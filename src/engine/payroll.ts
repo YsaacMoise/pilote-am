@@ -98,7 +98,8 @@ export function amLeaveOn(leaves: AmLeave[], d: ISODate): AmAbs | undefined {
 export function plannedPlages(c: Contract, d: ISODate): Plage[] {
   if (!inContract(c, d)) return [];
   const t = termsAt(c, d);
-  if (t.yearType === 'incomplete' && t.weeksOff.includes(mondayOf(d))) return [];
+  // Semaines sans accueil du contrat et de ses avenants réunies, comme pour le contrôle (seconde relecture, point 5a).
+  if (t.yearType === 'incomplete' && toutesSemainesSansAccueil(c).has(mondayOf(d))) return [];
   return (t.planning[weekday(d)] ?? []).filter((p) => plageMin(p) > 0);
 }
 
@@ -436,9 +437,13 @@ export function regulStart(c: Contract, until: ISODate): ISODate {
 }
 
 /** Toutes les semaines sans accueil connues : contrat de départ et avenants (relecture contradictoire, bug C) */
+const semainesCache = new WeakMap<Contract, Set<ISODate>>();
 export function toutesSemainesSansAccueil(c: Contract): Set<ISODate> {
-  const out = new Set<ISODate>(c.weeksOff);
+  let out = semainesCache.get(c);
+  if (out) return out;
+  out = new Set<ISODate>(c.weeksOff);
   for (const a of c.avenants ?? []) for (const w of a.changes.weeksOff ?? []) out.add(w);
+  semainesCache.set(c, out);
   return out;
 }
 
