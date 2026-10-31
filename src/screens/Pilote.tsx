@@ -22,7 +22,7 @@ export function Pilote() {
     <>
       <Topbar title="Données du pilote" back="#/plus" screen="pilote" />
       <main>
-        <p>Arvela est en test. Chaque mois, envoie l’export anonymisé à YKM : il sert à construire l’app finale. Il ne contient <b>aucun prénom</b> (les enfants deviennent A, B, C) et <b>aucune note du carnet</b>.</p>
+        <p>Arvela est en test. Chaque mois, envoie l’export pseudonymisé à YKM : il sert à construire l’app finale. Il ne contient <b>aucun prénom</b> (les enfants deviennent A, B, C) et <b>aucune note du carnet</b>.</p>
         {due && <Banner tone="info">L’export de {monthLabel(addMonths(monthOf(today()), -1))} est prêt.</Banner>}
         <section class="card stack">
           <div class="month-nav">
@@ -39,7 +39,7 @@ export function Pilote() {
             const r = await shareFile(jsonFile(`pilote-am-export-${m}.json`, data));
             if (r === 'shared' || r === 'downloaded') { await saveSettings({ lastExport: m }); toast('Export prêt à envoyer.'); }
             logUsage('export_pilote', 'pilote');
-          }}><Icon name="share" />Partager l’export anonymisé</button>
+          }}><Icon name="share" />Partager l’export pseudonymisé</button>
           <button class="btn btn-ghost" aria-expanded={preview} onClick={() => setPreview(!preview)}>{preview ? 'Masquer le contenu' : 'Voir exactement ce qui est envoyé'}</button>
           {preview && <pre style={{ whiteSpace: 'pre-wrap', fontSize: '13px', background: 'var(--surface-2)', padding: '12px', borderRadius: '12px', overflowX: 'auto' }}>{JSON.stringify(data, null, 2)}</pre>}
         </section>

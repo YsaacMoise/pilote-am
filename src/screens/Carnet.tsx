@@ -143,6 +143,9 @@ function EntrySheet({ cs, kind, onClose }: { cs: Contract[]; kind: (typeof KINDS
           {kind.options.map((o) => <button class="choice" onClick={() => add(o)}>{o}</button>)}
         </div>
       )}
+      {kind.k === 'soin' && (
+        <p class="hint">Un médicament se note aussi dans ton registre des médicaments (nom, dose, heure, ordonnance, autorisation écrite des parents) : ce carnet ne le remplace pas. Un accident grave se déclare sans délai à la PMI de ton département.</p>
+      )}
       <div class="field">
         <label for="jr-text">{kind.options.length ? 'Ou écris un détail' : 'Ta note'}</label>
         <textarea id="jr-text" class="input" value={text} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} placeholder="Ex. : a fait ses premiers pas !" />

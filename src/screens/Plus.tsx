@@ -46,7 +46,7 @@ export function Plus() {
           <div class="list">
             {!demo && <ListLink href="#/compte" icon="cloud" title="Compte" sub={cloud.email ? `${cloud.email} · ${statusText(cloud)}` : statusText(cloud)} />}
             <ListLink href="#/sauvegarde" icon="shield" title="Sauvegarde" sub={lastB ? `Dernière le ${new Date(lastB).toLocaleDateString('fr-FR')}` : 'Aucune sauvegarde pour l’instant'} />
-            <ListLink href="#/pilote" icon="message" title="Données du pilote" sub="Tes remarques et l’export anonymisé" />
+            <ListLink href="#/pilote" icon="message" title="Données du pilote" sub="Tes remarques et l’export pseudonymisé" />
             <ListLink href="#/reglages" icon="settings" title="Réglages" sub="Ton prénom, tes enfants à charge" />
           </div>
         </section>
@@ -56,9 +56,10 @@ export function Plus() {
             <ListLink href="#/regles" icon="help" title="Comment l’app calcule" sub="Les règles de la convention et nos choix" />
             <ListLink href="#/installer" icon="phone" title="Installer sur l’iPhone" />
             <ListLink href="#/confidentialite" icon="shield" title="Confidentialité" sub="Ce qui est gardé, où, et tes droits" />
+            <ListLink href="#/mentions" icon="help" title="Mentions légales" sub="Éditeur, hébergeur, conditions du test" />
           </div>
         </section>
-        <p class="footer-note">Arvela ne remplace ni Pajemploi ni un conseil juridique. {cloud.email ? 'Tes données sont sur ce téléphone, avec une copie dans ton compte.' : 'Tout reste sur ce téléphone.'}</p>
+        <p class="footer-note">Arvela est un outil d’aide, indépendant de l’Urssaf : il ne remplace ni Pajemploi ni un conseil juridique. {cloud.email ? 'Tes données sont sur ce téléphone, avec une copie dans ton compte.' : 'Tout reste sur ce téléphone.'}</p>
       </main>
     </>
   );

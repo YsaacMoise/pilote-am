@@ -1,3 +1,4 @@
+import { AVERTISSEMENT_CALCUL } from '../legal';
 import { useState } from 'preact/hooks';
 import { ctxFor, logUsage, toast, useStore, state } from '../store';
 import { addMonths, dayLabel, eachDay, firstDay, lastDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
@@ -83,6 +84,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
       <section class="card" aria-labelledby="decl-t">
         <h2 id="decl-t" style={{ marginBottom: '4px' }}>À déclarer sur Pajemploi</h2>
         <p class="muted small" style={{ marginBottom: '8px' }}>Une déclaration par enfant, faite par le parent, dans cet ordre.</p>
+        <p class="hint" style={{ marginBottom: '8px' }}>{AVERTISSEMENT_CALCUL}</p>
         <div class="decl">
           {lines.map((l) => (
             <div class="decl-line">

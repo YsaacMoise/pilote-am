@@ -81,6 +81,8 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   out.push('');
   out.push(`Total à me verser : ${euros(r.netTotal + r.entretien + r.repas + r.km)}`);
   out.push('');
+  out.push('Calcul fait avec l’application Arvela, outil d’aide indépendant de l’Urssaf : la déclaration Pajemploi fait foi.');
+  out.push('');
   out.push(`Merci ! ${amName}`.trim());
   return out.join('\n');
 }
