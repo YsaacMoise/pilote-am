@@ -1,12 +1,14 @@
 import type { ComponentChildren, JSX } from 'preact';
 import { useEffect, useId, useRef, useState } from 'preact/hooks';
 import { Icon, type IconName } from './icons';
+import { Logo } from './Logo';
 import { onToast, type ToastMsg, addFeedback, toast, logUsage } from '../store';
 import { centsToInput, parseEuros } from '../engine/money';
 
-/** Couleurs d'enfant accordées à la charte (tons de terre, toutes lisibles avec une lettre blanche, contraste ≥ 5,5:1) */
-export const CHILD_COLORS = ['#9B5733', '#3E5C76', '#2E6F4E', '#6E3F5C', '#8A5A12', '#2F6B6B'];
-export const COLOR_NAMES = ['Argile', 'Ardoise', 'Sapin', 'Prune', 'Ocre', 'Canard'];
+// Les deux premières sont celles des enfants de la charte (Terre d'Argile, Sauge Minérale), puis des tons de terre voisins.
+// Initiale en Cormorant gras ≥ 19 px : texte « grand », contraste 3:1 minimum avec le blanc (argile 3,2:1, les autres ≥ 5:1).
+export const CHILD_COLORS = ['#C87D55', '#5E7165', '#3E5C76', '#6E3F5C', '#8A5A12', '#2F6B6B'];
+export const COLOR_NAMES = ['Argile', 'Sauge', 'Ardoise', 'Prune', 'Ocre', 'Canard'];
 
 export function Gommette({ name, color, size }: { name: string; color: number; size?: 'sm' | 'lg' }) {
   return (
@@ -21,10 +23,12 @@ export function Topbar({ title, sub, back, screen, end }: { title: string; sub?:
   const [open, setOpen] = useState(false);
   return (
     <header class="topbar">
-      {back && (
+      {back ? (
         <a class="icon-btn" href={back} aria-label="Retour">
           <Icon name="left" />
         </a>
+      ) : (
+        <span class="logo-tile" aria-hidden="true"><Logo size={30} /></span>
       )}
       <h1>
         {title}
@@ -111,6 +115,7 @@ export function Toaster() {
     <div class="toast-wrap" aria-live="polite" role="status">
       {t && (
         <div class="toast" key={t.id}>
+          <span class="toast-dot" aria-hidden="true" />
           <p>{t.text}</p>
           {t.undo && (
             <button

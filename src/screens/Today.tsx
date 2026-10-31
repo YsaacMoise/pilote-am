@@ -14,6 +14,17 @@ function planText(di: DayInfo): string {
   return 'Prévu ' + di.planned.map((p) => `${fmtH(p.start)} – ${fmtH(p.end)}`).join(' et ');
 }
 
+/** Ligne « Prévu » : les horaires en JetBrains Mono, reliés par une flèche, comme dans la charte (08h15 → 17h45). */
+function PlanLine({ di }: { di: DayInfo }) {
+  if (!di.planned.length) return <>Pas d’accueil prévu</>;
+  return (
+    <>
+      <span class="sr-only">{planText(di)}</span>
+      <span aria-hidden="true">Prévu {di.planned.map((p, i) => <>{i > 0 && ' et '}<span class="hours">{p.start.replace(':', 'h')} → {p.end.replace(':', 'h')}</span></>)}</span>
+    </>
+  );
+}
+
 export function Today() {
   const s = useStore();
   const t = today();
@@ -205,7 +216,7 @@ function KidCard({ c, day, onEdit, compact }: { c: Contract; day: string; onEdit
         <Gommette name={c.child} color={c.color} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div class="kid-name">{c.child}</div>
-          <div class="kid-plan">{planText(di)}</div>
+          <div class="kid-plan"><PlanLine di={di} /></div>
         </div>
       </div>
       {tags.length > 0 && (

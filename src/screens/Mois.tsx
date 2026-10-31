@@ -71,11 +71,11 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
 
   return (
     <>
-      <section class="card stack" aria-labelledby="tot">
-        <span class="muted" id="tot">À verser par la famille {c.family ? `(${c.family})` : ''}</span>
+      <section class="summary stack" aria-labelledby="tot">
+        <span class="summary-label" id="tot">À verser par la famille {c.family ? `(${c.family})` : ''}</span>
         <span class="total">{euros(totalVerse)}</span>
-        <span class="muted small">dont salaire net {euros(r.netTotal)}, soit environ {euros(r.brutEstime)} brut</span>
-        {current && <span class="tag info" style={{ alignSelf: 'flex-start' }}>Provisoire jusqu’à la fin du mois</span>}
+        <span class="summary-sub">dont salaire net {euros(r.netTotal)}, soit environ {euros(r.brutEstime)} brut</span>
+        {current && <span class="summary-note">Provisoire jusqu’à la fin du mois</span>}
       </section>
 
       {r.alerts.map((a) => <Banner tone="warn">{a}</Banner>)}
