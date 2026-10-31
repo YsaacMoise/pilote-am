@@ -27,4 +27,12 @@ jobs:
           node-version: 22
       - run: npm ci
       - name: Matrice des règles sur l'émulateur Firestore (27 cas)
-        run: npx firebase emulators:exec --only firestore --project demo-arvela "node tests/rules/rules.test.mjs"
+        run: |
+          echo "::notice title=Java::$(java -version 2>&1 | head -1)"
+          set +e
+          npx firebase emulators:exec --only firestore --project demo-arvela "node tests/rules/rules.test.mjs" > regles.txt 2>&1
+          code=$?
+          set -e
+          cat regles.txt
+          echo "::notice title=Matrice Firestore (code $code)::$(grep -E 'OK |ÉCHEC|conformes|Error|rror:' regles.txt | tail -40 | tr '\n' '|')"
+          exit $code
