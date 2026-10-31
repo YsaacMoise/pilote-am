@@ -38,7 +38,7 @@ export function Confidentialite({ back = '#/plus' }: { back?: string }) {
         <section class="card stack-sm">
           <h2>Ce qui est gardé, où et pourquoi</h2>
           <h3>Ton compte</h3>
-          <p>Ton adresse e-mail et ton mot de passe, pour te connecter et retrouver tes données sur un autre appareil. Ils sont gérés par Google Firebase Authentication, un service qui fonctionne depuis les États-Unis. Google garde aussi l’adresse internet de connexion quelques semaines, pour la sécurité.</p>
+          <p>Ton adresse e-mail et ton mot de passe, pour te connecter et retrouver tes données sur un autre appareil. Ils sont gérés par Google Firebase Authentication (société Google Ireland Limited), un service qui fonctionne depuis les États-Unis. Google garde aussi l’adresse internet de connexion quelques semaines, pour la sécurité.</p>
           <h3>Ce que tu saisis</h3>
           <p>Les contrats (prénom de l’enfant, nom de la famille, horaires, taux, indemnités, avenants), les journées (arrivées, départs, absences et leur motif, sans diagnostic), tes congés et absences, les chiffres des bulletins que tu contrôles, le carnet de liaison, tes remarques « Ça coince » et tes réglages.</p>
           <p>Tout est d’abord enregistré sur ton téléphone. Une copie est gardée dans ta base Google Firebase, hébergée à Paris. Elle permet de retrouver tes données si tu changes de téléphone. Des règles de sécurité empêchent tout autre compte de la lire.</p>
@@ -46,7 +46,7 @@ export function Confidentialite({ back = '#/plus' }: { back?: string }) {
           <h3>Le carnet de liaison</h3>
           <p>Les soins (température, médicament, petite chute) touchent à la santé de l’enfant. Ne les note qu’avec l’accord écrit des parents : le message prêt à envoyer, plus bas, le leur demande. Le carnet ne remplace pas le registre des médicaments que tu dois tenir.</p>
           <h3>La mesure d’usage (seulement si tu l’as allumée)</h3>
-          <p>Si tu l’allumes dans Plus › Réglages, l’app envoie à PostHog (serveurs en Europe, à Francfort) le nom des écrans ouverts et des gestes faits (par exemple « arrivée pointée », « mois envoyé »), la version de l’app et un identifiant tiré au hasard. Rien de ce que tu écris ou choisis n’est envoyé, l’écran n’est jamais enregistré, et l’adresse internet de ton téléphone n’est pas gardée. Tu peux l’éteindre à tout moment.</p>
+          <p>Si tu l’allumes dans Plus › Réglages, l’app envoie à PostHog (serveurs en Europe, à Francfort) le nom des écrans ouverts et des gestes faits (par exemple « arrivée pointée », « mois envoyé »), la version de l’app, un identifiant tiré au hasard, et les caractéristiques techniques que PostHog relève lui-même : modèle de téléphone, système, navigateur, taille d’écran, langue et fuseau horaire. Rien de ce que tu écris ou choisis n’est envoyé, l’écran n’est jamais enregistré, et le projet PostHog est réglé pour ne pas garder l’adresse internet de ton téléphone. Tu peux l’éteindre à tout moment.</p>
           <h3>La dictée</h3>
           <p>Si tu dictes avec le micro du clavier, c’est ton téléphone qui transcrit ta voix : selon tes réglages, Apple ou Google peut recevoir l’enregistrement. Arvela ne reçoit que le texte.</p>
           <h3>L’hébergement du site</h3>

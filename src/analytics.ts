@@ -22,33 +22,53 @@ export function mesureActive(): boolean {
   try { return localStorage.getItem(OPT_IN) === '1'; } catch { return false; }
 }
 
-/** Efface tout ce que PostHog a pu garder sur le téléphone (identifiant, file d'attente, accord). */
+/**
+ * Efface ce que PostHog a pu garder sur le téléphone (identifiant, file d'attente).
+ * La clé de refus `__ph_opt_in_out_…` est gardée : l'effacer remettait PostHog en « non décidé »
+ * et les envois reprenaient (contrôle indépendant du 31/10/2026, scénario C).
+ */
 export function effacerTracesMesure() {
   try {
     const keys: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && (k.startsWith('ph_') || k.startsWith('__ph_') || k.startsWith('_ph_'))) keys.push(k);
+      if (k && !k.startsWith('__ph_opt_in_out') && (k.startsWith('ph_') || k.startsWith('__ph_') || k.startsWith('_ph_'))) keys.push(k);
     }
     keys.forEach((k) => localStorage.removeItem(k));
     localStorage.removeItem(OLD_OPT_OUT);
   } catch { /* stockage indisponible */ }
   try {
-    for (const k of Object.keys(sessionStorage)) if (k.startsWith('ph_') || k.startsWith('__ph_')) sessionStorage.removeItem(k);
+    for (const k of Object.keys(sessionStorage)) if (!k.startsWith('__ph_opt_in_out') && (k.startsWith('ph_') || k.startsWith('__ph_'))) sessionStorage.removeItem(k);
   } catch { /* stockage indisponible */ }
 }
 
 export function setMesure(on: boolean) {
   try { on ? localStorage.setItem(OPT_IN, '1') : localStorage.removeItem(OPT_IN); } catch { /* stockage indisponible */ }
   if (on) {
-    if (ph) ph.opt_in_capturing();
-    else void initAnalytics();
+    if (ph) {
+      try {
+        ph.set_config({ disable_persistence: false });
+        ph.opt_in_capturing();
+        window.addEventListener('hashchange', page);
+      } catch { /* sans effet */ }
+    } else void initAnalytics();
     return;
   }
+  if (typeof window !== 'undefined') window.removeEventListener('hashchange', page);
   if (ph) {
-    try { ph.opt_out_capturing(); ph.reset(); } catch { /* sans effet */ }
+    try {
+      ph.reset();
+      // Refus posé après reset() (reset ne doit pas l'annuler), puis plus rien n'est écrit sur le téléphone.
+      ph.opt_out_capturing();
+      ph.set_config({ disable_persistence: true });
+    } catch { /* sans effet */ }
   }
   effacerTracesMesure();
+}
+
+/** Remplace, dans une adresse, tout ce qui suit le nom d'écran (identifiant de contrat, paramètres). */
+export function nettoyerAdresse(v: string): string {
+  return v.replace(/#\/?([^/?#\s]*)[^\s"]*/g, (_m, e: string) => `#/${e || 'aujourdhui'}`);
 }
 
 function esc(s: string): string {
@@ -101,6 +121,14 @@ export function deep(v: unknown, seen: WeakSet<object> = new WeakSet()): unknown
   return o;
 }
 
+/** Toute chaîne qui contient une adresse de l'app perd l'identifiant de contrat (C-034, $current_url, $session_entry_url…). */
+function nettoyer(v: unknown): unknown {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return v;
+  const o: Record<string, unknown> = {};
+  for (const [k, x] of Object.entries(v)) o[k] = typeof x === 'string' && x.includes('#') ? nettoyerAdresse(x) : x;
+  return o;
+}
+
 /** Nom d'écran sans identifiant de contrat ni paramètre (C-034). */
 export function ecranCourant(hash: string): string {
   return hash.replace(/^#\/?/, '').split(/[/?]/)[0] || 'aujourdhui';
@@ -136,10 +164,11 @@ export function posthogOptions() {
     },
     advanced_disable_feature_flags: true,
     before_send: (ev: any) => {
-      if (!ev) return ev;
-      ev.properties = deep(ev.properties) as any;
-      if (ev.$set) ev.$set = deep(ev.$set);
-      if (ev.$set_once) ev.$set_once = deep(ev.$set_once);
+      // Dernier verrou : sans accord en cours, rien ne part, même un événement déjà en file.
+      if (!ev || !mesureActive()) return null;
+      ev.properties = nettoyer(deep(ev.properties)) as any;
+      if (ev.$set) ev.$set = nettoyer(deep(ev.$set));
+      if (ev.$set_once) ev.$set_once = nettoyer(deep(ev.$set_once));
       return ev;
     },
   };
@@ -162,16 +191,18 @@ export async function initAnalytics() {
     },
   });
   ph = posthog;
-  const page = () => {
-    const ecran = ecranCourant(location.hash);
-    ph?.capture('$pageview', { $current_url: `${location.origin}/#/${ecran}`, ecran });
-  };
   page();
   window.addEventListener('hashchange', page);
 }
 
+function page() {
+  if (!ph || !mesureActive()) return;
+  const ecran = ecranCourant(location.hash);
+  ph.capture('$pageview', { $current_url: `${location.origin}/#/${ecran}`, ecran });
+}
+
 /** Événements métier (déjà notés dans le journal local) : un nom et l'écran, jamais de texte saisi. */
 export function track(ev: string, screen?: string) {
-  if (!ph) return;
+  if (!ph || !mesureActive()) return;
   ph.capture(ev, screen ? { ecran: ecranCourant(screen) } : undefined);
 }

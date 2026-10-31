@@ -15,7 +15,7 @@ Corrections du 31 octobre 2026 : branche `corrections-audit`, commits 3c69189 (m
 | C-002 Année incomplète sans semaines sans accueil | Corrigé | Contrat refusé sans 52 − N semaines saisies ; régularisation non calculée et alerte s'il en manque (`semainesSansAccueilManquantes`). Test « audit C-002 » |
 | C-004 Congés pris sans droits jamais retenus | Corrigé | Année complète : jours au-delà des droits retenus comme sans solde, droits consommés dans l'ordre chronologique, enfants à charge comptés. Règle confirmée par les fiches DREETS Occitanie (52 semaines) et Bourgogne-Franche-Comté (août 2026). Tests « C-004 » (4 cas). **L'ordre chronologique est une convention de l'app : à faire valider (cas 38)** |
 | C-006 Diviseur des retenues sans les fériés chômés | Corrigé (fériés) / Ouvert (semaines sans accueil, avec l'année incomplète) | Férié chômé d'un jour habituellement travaillé dans le diviseur (fiches DREETS Occitanie et DDETS 31). Tests « C-006 » (novembre 2026 : 189 h) |
-| C-030 Soins en clair vers PostHog | Corrigé | Plus d'enregistrement d'écran ni de capture automatique ; carnet masqué ; aria-label sans le texte saisi. Test tests/analytics.test.ts ; parcours piégé navigateur (voir contrôle indépendant) |
+| C-030 Soins en clair vers PostHog | Corrigé | Plus d'enregistrement d'écran ni de capture automatique ; carnet masqué ; aria-label sans le texte saisi. Test tests/analytics.test.ts. Parcours piégé dans Chrome contre un faux serveur PostHog (contrôle indépendant du 31/10/2026) : sans accord 0 requête ; avec accord, aucune donnée saisie ni identifiant de contrat ; après extinction, plus aucun envoi ; démonstration 0 requête |
 | C-031 Corps des requêtes capturables | Corrigé | `recordBody`/`recordHeaders` forcés à faux, enregistrement coupé côté client, pseudonymisation sans limite de profondeur. Test analytics |
 | C-032 / C-150 Mesure sans consentement | Corrigé | Option B renforcée : mesure éteinte par défaut, accord explicite dans Réglages, jamais en démonstration, aucun profil de personne, événements métier seulement |
 | C-151 Mentions légales et contact | Partiel | Page Mentions légales (éditeur YKM non professionnel, hébergeurs, contact@arvela.fr, conditions du test). **Action YKM : créer l'adresse contact@arvela.fr (redirection OVH)**. Contrat de sous-traitance article 28 complet : avant phase 2 |
@@ -57,8 +57,8 @@ Corrections du 31 octobre 2026 : branche `corrections-audit`, commits 3c69189 (m
 | C-030 | Critique | Corrigé | |
 | C-031 | Élevé | Corrigé | |
 | C-032 | Critique | Corrigé | |
-| C-033 | Moyen | Corrigé | reset() et effacement des clés `ph_`, test analytics |
-| C-034 | Moyen | Corrigé | Plus d'enregistrement ; URL réduite au nom d'écran |
+| C-033 | Moyen | Corrigé | reset() puis refus reposé, persistance coupée, clés `ph_` effacées sauf la clé de refus (le contrôle indépendant a montré que l'effacer relançait les envois) |
+| C-034 | Moyen | Corrigé | Plus d'enregistrement ; toutes les adresses envoyées ($current_url, $session_entry_url…) réduites au nom d'écran (fuite trouvée par le contrôle indépendant, corrigée et rejouée) |
 | C-040 | Conforme | Prouvé conforme | 27/27 sur émulateur |
 | C-041 | Moyen | **Action YKM** | Fermer les inscriptions (console Firebase > Authentication) après la création du compte de la sœur ; alerte de budget |
 | C-042 | Faible | Corrigé | Version affichée dans Réglages et jointe à la mesure ; recherche de mise à jour au retour dans l'app |
