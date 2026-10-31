@@ -3,7 +3,8 @@ import { saveSettings, logUsage, state, useStore } from '../store';
 import { AccountForm } from './Compte';
 import { useCloud } from '../cloud-state';
 import { MODE_KEY } from '../db';
-import { Banner, Sheet, Stepper, TextInput, Topbar, CHILD_COLORS } from '../ui/kit';
+import { Banner, Sheet, Stepper, TextInput, Topbar } from '../ui/kit';
+import { Logo } from '../ui/Logo';
 import { Icon } from '../ui/icons';
 
 export function isStandalone(): boolean {
@@ -114,11 +115,12 @@ export function Welcome() {
   }
   return (
     <div class="welcome">
-      <div class="hero-gommettes" aria-hidden="true">
-        {CHILD_COLORS.slice(0, 4).map((c) => <span style={{ background: c }} />)}
+      <div class="brand">
+        <Logo />
+        <h1 class="brand-name">Arvela</h1>
+        <p class="brand-url" aria-hidden="true">arvela.fr</p>
       </div>
-      <h1 class="hero-title">Arvela</h1>
-      <p style={{ fontSize: '19px' }}>Ton carnet de bord d’assistante maternelle : les arrivées et départs en un geste, le carnet pour les parents, le salaire à déclarer sur Pajemploi, tes congés.</p>
+      <p class="brand-tagline">Ton carnet de bord d’assistante maternelle : les arrivées et départs en un geste, le carnet pour les parents, le salaire à déclarer sur Pajemploi, tes congés.</p>
       {signedIn ? (
         <section class="card stack">
           <p class="row"><Icon name="cloud" />Connectée avec <strong>{cloud.email}</strong></p>

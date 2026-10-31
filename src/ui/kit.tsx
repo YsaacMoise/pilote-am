@@ -4,8 +4,9 @@ import { Icon, type IconName } from './icons';
 import { onToast, type ToastMsg, addFeedback, toast, logUsage } from '../store';
 import { centsToInput, parseEuros } from '../engine/money';
 
-export const CHILD_COLORS = ['#3346C8', '#0F7F68', '#C2410C', '#B4236B', '#6D3FC0', '#0B6E99'];
-export const COLOR_NAMES = ['Myrtille', 'Menthe', 'Abricot', 'Framboise', 'Prune', 'Lagon'];
+/** Couleurs d'enfant accordées à la charte (tons de terre, toutes lisibles avec une lettre blanche, contraste ≥ 5,5:1) */
+export const CHILD_COLORS = ['#9B5733', '#3E5C76', '#2E6F4E', '#6E3F5C', '#8A5A12', '#2F6B6B'];
+export const COLOR_NAMES = ['Argile', 'Ardoise', 'Sapin', 'Prune', 'Ocre', 'Canard'];
 
 export function Gommette({ name, color, size }: { name: string; color: number; size?: 'sm' | 'lg' }) {
   return (
