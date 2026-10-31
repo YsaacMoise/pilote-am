@@ -4,6 +4,7 @@ import { statusText, useCloud } from '../cloud-state';
 import { today, shortDate } from '../engine/dates';
 import { Gommette, ListLink, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
+import { VIDEOS_PRETES } from '../ui/VideoGuide';
 
 export function Plus() {
   const s = useStore();
@@ -53,6 +54,7 @@ export function Plus() {
         <section class="stack-sm" aria-labelledby="aide">
           <h2 id="aide" class="section-title">Aide</h2>
           <div class="list">
+            {VIDEOS_PRETES && <ListLink href="#/guide" icon="phone" title="Guide en vidéo" sub="Une journée avec l’app, l’installation" />}
             <ListLink href="#/regles" icon="help" title="Comment l’app calcule" sub="Les règles de la convention et nos choix" />
             <ListLink href="#/installer" icon="phone" title="Installer sur l’iPhone" />
             <ListLink href="#/confidentialite" icon="shield" title="Confidentialité" sub="Ce qui est gardé, où, et tes droits" />

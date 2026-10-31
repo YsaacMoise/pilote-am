@@ -21,6 +21,8 @@ import { Pilote } from './screens/Pilote';
 import { Reglages } from './screens/Reglages';
 import { Regles } from './screens/Regles';
 import { Installer, Welcome } from './screens/Welcome';
+import { Guide } from './screens/Guide';
+import { VIDEOS_PRETES } from './ui/VideoGuide';
 import { Compte } from './screens/Compte';
 
 function useHash(): string {
@@ -92,6 +94,7 @@ export function App() {
     case 'confidentialite': screen = <Confidentialite />; break;
     case 'mentions': screen = <Mentions />; break;
     case 'installer': screen = <Installer />; break;
+    case 'guide': screen = VIDEOS_PRETES ? <Guide /> : <Plus />; break;
     case 'bienvenue': screen = <Welcome />; break;
     default: screen = <Today />;
   }

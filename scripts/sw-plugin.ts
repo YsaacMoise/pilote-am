@@ -24,7 +24,7 @@ export function swPlugin() {
     closeBundle() {
       const files = walk(outDir)
         .map((p) => relative(outDir, p).split('\\').join('/'))
-        .filter((f) => f !== 'sw.js' && !f.endsWith('.map'));
+        .filter((f) => f !== 'sw.js' && !f.endsWith('.map') && !f.startsWith('videos/')); // vidéos : trop lourdes pour le hors ligne
       const hash = createHash('sha256');
       for (const f of files.sort()) hash.update(f).update(readFileSync(join(outDir, f)));
       const v = hash.digest('hex').slice(0, 10);
