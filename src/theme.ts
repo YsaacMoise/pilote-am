@@ -1,10 +1,11 @@
-// Version nuit de la charte : automatique (réglage du téléphone), ou choisie à la main.
+// Version jour par défaut, toujours. La version nuit, ou le mode automatique qui suit le réglage
+// du téléphone, ne s'appliquent que si l'utilisatrice les choisit (Réglages ou bouton du site).
 // Le choix est gardé sur cet appareil ; index.html l'applique avant l'affichage (pas de flash).
 export type Theme = 'auto' | 'light' | 'dark';
 const KEY = 'pam-theme';
 
 export function getTheme(): Theme {
-  try { const v = localStorage.getItem(KEY); return v === 'light' || v === 'dark' ? v : 'auto'; } catch { return 'auto'; }
+  try { const v = localStorage.getItem(KEY); return v === 'auto' || v === 'dark' ? v : 'light'; } catch { return 'light'; }
 }
 
 /** Thème réellement affiché */
@@ -15,7 +16,7 @@ export function effectiveTheme(): 'light' | 'dark' {
 }
 
 export function setTheme(t: Theme) {
-  try { if (t === 'auto') localStorage.removeItem(KEY); else localStorage.setItem(KEY, t); } catch { /* stockage indisponible */ }
+  try { localStorage.setItem(KEY, t); } catch { /* stockage indisponible */ }
   applyTheme();
   window.dispatchEvent(new Event('pam-theme'));
 }

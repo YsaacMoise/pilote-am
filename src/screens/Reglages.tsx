@@ -26,8 +26,8 @@ export function Reglages() {
         <section class="card">
           <fieldset>
             <legend>Apparence</legend>
-            <Seg label="Couleurs de l’app" value={theme} options={[{ v: 'auto', l: 'Automatique' }, { v: 'light', l: 'Jour' }, { v: 'dark', l: 'Nuit' }]} onChange={(v) => { setTheme(v); setT(v); }} />
-            <p class="hint">Automatique suit le réglage de ton téléphone : jour la journée, nuit le soir s’il est réglé ainsi.</p>
+            <Seg label="Couleurs de l’app" value={theme} options={[{ v: 'light', l: 'Jour' }, { v: 'dark', l: 'Nuit' }, { v: 'auto', l: 'Automatique' }]} onChange={(v) => { setTheme(v); setT(v); }} />
+            <p class="hint">Jour par défaut. Automatique suit le réglage de ton téléphone : jour la journée, nuit le soir s’il est réglé ainsi.</p>
           </fieldset>
         </section>
         <section class="card">
