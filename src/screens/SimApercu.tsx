@@ -1,7 +1,7 @@
 // Aperçu du simulateur sur la page d'accueil : trois curseurs, le résultat tout de suite,
 // puis « Affiner » ouvre le simulateur complet avec les mêmes valeurs.
 import { useState } from 'preact/hooks';
-import { simuler, simulationParDefaut } from '../engine/simulation';
+import { planningRegulier, simuler, simulationParDefaut } from '../engine/simulation';
 import { today } from '../engine/dates';
 import { euros } from '../engine/money';
 import { ratesAt } from '../engine/rates';
@@ -23,7 +23,7 @@ export function SimApercu() {
   const anneeRevenus = Number(d.slice(0, 4)) - 2;
   const [revenusAn, setRevenusAn] = useState(42000);
   const revenus = Math.round(revenusAn / 12);
-  const r = simuler({ ...simulationParDefaut(d), jours: 5, heures, tauxBrut: taux, ressourcesMois: revenus }, d);
+  const r = simuler({ ...simulationParDefaut(d), planning: planningRegulier(5, heures), tauxBrut: taux, ressourcesMois: revenus }, d);
   const lien = `#/simulateur?jours=5&heures=${heures}&tauxBrut=${taux}`;
 
   return (

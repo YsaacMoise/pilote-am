@@ -1,9 +1,10 @@
 // Simulateur d'accueil : ce que coûte une assistante maternelle à une famille, avant et après les aides.
 // Règles et sources : docs/simulateur-regles.md (vérifiées le 1er novembre 2026).
 // Montants en centimes entiers. Aucune donnée personnelle : tout est calculé sur le téléphone.
-import type { ISODate } from './dates';
-import type { Contract, Planning } from './model';
-import { salaireMensualise } from './payroll';
+import { addDays, weekday, type ISODate } from './dates';
+import { holidaysOf } from './holidays';
+import type { Contract, Plage, Planning } from './model';
+import { daysPerWeek, plageMin, salaireMensualise, weeklyMinutes } from './payroll';
 import { entretienPlancher, ratesAt } from './rates';
 
 /** Paramètres du CMG « emploi direct » d'une assistante maternelle (CSS D531-18, décret 2025-515), datés. */
@@ -150,11 +151,70 @@ export function creditImpot(netAnnuel: number, joursAnnuels: number, cmgAnnuel: 
 
 export type AgeEnfant = 'moins6' | '6a12';
 
+/** Repas que l'assistante maternelle peut fournir (CCN art. 114.2 : nature, nombre et prix fixés au contrat) */
+export type TypeRepas = 'petitDej' | 'dejeuner' | 'gouter' | 'diner';
+export const TYPES_REPAS: TypeRepas[] = ['petitDej', 'dejeuner', 'gouter', 'diner'];
+export const REPAS_NOMS: Record<TypeRepas, string> = { petitDej: 'Petit-déjeuner', dejeuner: 'Déjeuner', gouter: 'Goûter', diner: 'Dîner' };
+/**
+ * Un repas est compté un jour d'accueil si l'enfant est présent à son heure (choix du simulateur, réglable en le désactivant) :
+ * petit-déjeuner si l'enfant arrive à 8 h au plus tard ; déjeuner s'il est présent de 11 h 30 à 12 h 30 ;
+ * goûter s'il est présent de 16 h 30 à 17 h ; dîner s'il part à 19 h ou après.
+ */
+export const REPAS_REGLES: Record<TypeRepas, string> = {
+  petitDej: 'les jours où l’enfant arrive à 8 h au plus tard',
+  dejeuner: 'les jours où l’enfant est là de 11 h 30 à 12 h 30',
+  gouter: 'les jours où l’enfant est là de 16 h 30 à 17 h (retour d’école compris)',
+  diner: 'les jours où l’enfant part à 19 h ou après',
+};
+
+const hm = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); };
+function couvre(plages: Plage[], de: number, a: number): boolean {
+  return plages.some((p) => plageMin(p) > 0 && hm(p.start) <= de && hm(p.end) >= a);
+}
+export function repasDuJour(plages: Plage[], type: TypeRepas): boolean {
+  const ok = plages.filter((p) => plageMin(p) > 0);
+  if (!ok.length) return false;
+  switch (type) {
+    case 'petitDej': return ok.some((p) => hm(p.start) <= 8 * 60);
+    case 'dejeuner': return couvre(ok, 11 * 60 + 30, 12 * 60 + 30);
+    case 'gouter': return couvre(ok, 16 * 60 + 30, 17 * 60);
+    case 'diner': return ok.some((p) => hm(p.end) >= 19 * 60);
+  }
+}
+
+/** Indemnités kilométriques (CCN art. 113 ; service-public F12812, vérifié le 17 juin 2026) */
+/** Barème administratif, limite basse (€ par km × 1 000) : ≤ 5 CV, 6-7 CV, ≥ 8 CV ; jusqu'à 2 000 km, 2 001 à 10 000 km, au-delà */
+const KM_ADMIN: number[][] = [[320, 400, 230], [410, 510, 300], [450, 550, 320]];
+/** Barème fiscal, limite haute jusqu'à 5 000 km par an (€ par km × 1 000) : 3, 4, 5, 6, 7 CV et plus (arrêté du 27 mars 2023, reconduit en 2026) */
+const KM_FISCAL: Record<number, number> = { 3: 529, 4: 606, 5: 636, 6: 665, 7: 697 };
+
+/** Fourchette légale du tarif kilométrique (millièmes d'euro par km) pour une puissance et un kilométrage annuel. */
+export function bornesKm(cv: number, kmAn: number): { min: number; max: number } {
+  const g = cv <= 5 ? 0 : cv <= 7 ? 1 : 2;
+  const t = kmAn <= 2000 ? 0 : kmAn <= 10000 ? 1 : 2;
+  return { min: KM_ADMIN[g][t], max: KM_FISCAL[Math.max(3, Math.min(7, Math.round(cv)))] };
+}
+
+/** Jours fériés des 12 mois qui suivent `d`, par jour de la semaine (1 = lundi … 7 = dimanche). */
+export function feriesParJour(d: ISODate, alsaceMoselle: boolean): number[] {
+  const out = [0, 0, 0, 0, 0, 0, 0, 0];
+  const fin = addDays(d, 365);
+  for (const y of [Number(d.slice(0, 4)), Number(d.slice(0, 4)) + 1]) {
+    const jours = [...holidaysOf(y).keys()];
+    // Alsace-Moselle : Vendredi saint et 26 décembre en plus (code du travail L3134-13)
+    if (alsaceMoselle) {
+      const lundiPaques = [...holidaysOf(y).entries()].find(([, n]) => n === 'Lundi de Pâques')?.[0];
+      if (lundiPaques) jours.push(addDays(lundiPaques, -3));
+      jours.push(`${y}-12-26`);
+    }
+    for (const j of jours) if (j >= d && j < fin) out[weekday(j)]++;
+  }
+  return out;
+}
+
 export interface SimInput {
-  /** Jours d'accueil par semaine (1 à 6) */
-  jours: number;
-  /** Heures d'accueil par semaine */
-  heures: number;
+  /** Planning type de la semaine : jour (1 = lundi … 7 = dimanche) → 0, 1 ou 2 plages */
+  planning: Planning;
   yearType: 'complete' | 'incomplete';
   /** Année incomplète : semaines sans accueil en plus des 5 semaines de congés payés */
   semainesAbsence: number;
@@ -164,11 +224,15 @@ export interface SimInput {
   tauxBrut: number;
   /** L'assistante maternelle travaille en Alsace-Moselle (Bas-Rhin, Haut-Rhin, Moselle) : cotisations salariales plus élevées */
   alsaceMoselle: boolean;
-  /** Indemnité d'entretien par jour (centimes) ; le minimum légal s'applique s'il est supérieur */
-  entretienJour: number;
-  /** Prix d'un repas fourni par l'assistante maternelle (centimes) et repas par jour */
-  repasPrix: number;
-  repasParJour: number;
+  /** Indemnité d'entretien prévue au contrat (centimes), par jour ou par heure ; le minimum légal s'applique chaque jour */
+  entretien: number;
+  entretienMode: 'jour' | 'heure';
+  /** Prix de chaque repas fourni par l'assistante maternelle (centimes) ; 0 = non fourni */
+  repas: Record<TypeRepas, number>;
+  /** Déplacements avec l'enfant dans la voiture de l'assistante maternelle : km par mois, tarif (centimes par km), puissance fiscale */
+  kmMois: number;
+  kmTaux: number;
+  cv: number;
   /** Famille */
   enfantsACharge: number;
   enfantsAeeh: number;
@@ -183,8 +247,13 @@ export interface SimResult {
   semaines: number;
   /** Semaines où l'enfant est réellement accueilli (année complète : 52 − 5 semaines de congés de l'AM) */
   semainesGarde: number;
-  /** Heures par semaine retenues pour le calcul (après les limites légales) */
-  heuresRetenues: number;
+  /** Jours d'accueil et heures par semaine (minutes) */
+  joursSemaine: number;
+  minutesSemaine: number;
+  /** Détail par jour de la semaine (jours d'accueil seulement) */
+  parJour: { jour: number; minutes: number; entretien: number; entretienMinimum: number; repas: TypeRepas[]; feries: number }[];
+  /** Jours fériés attendus sur des jours d'accueil, sur un an (sans accueil, donc sans entretien ni repas) */
+  feriesAn: number;
   /** Heures payées par mois (minutes) */
   heuresMoisMin: number;
   /** Heures au-delà de 45 h par semaine, par mois (minutes) */
@@ -192,9 +261,8 @@ export interface SimResult {
   /** Jours d'accueil par an, et en moyenne par mois */
   joursAn: number;
   joursMois: number;
-  /** Minimum légal d'entretien pour une journée moyenne (centimes) */
-  entretienMinimum: number;
-  entretienJourRetenu: number;
+  /** Repas fournis par an, par type */
+  repasAn: Record<TypeRepas, number>;
   /** Taux horaire net (centimes), arrondi comme sur le contrat */
   tauxNet: number;
   /** Salaire net mensualisé, tel qu'il est déclaré à Pajemploi */
@@ -206,6 +274,9 @@ export interface SimResult {
   reductionHeuresMaj: number;
   entretien: number;
   repas: number;
+  /** Indemnités kilométriques du mois, et la fourchette légale du tarif (millièmes d'euro par km) */
+  km: number;
+  kmBornes: { min: number; max: number };
   /** À verser à l'assistante maternelle, en moyenne par mois : salaire, congés, réduction, entretien, repas */
   verse: number;
   /** Cotisations sociales du mois (salariales et patronales) */
@@ -226,10 +297,12 @@ export interface SimResult {
   depensesAnnuelles: number;
   /** Coût mensuel réel, crédit d'impôt réparti sur 12 mois */
   reel: number;
-  /** Heures maximales par semaine pour ce planning (13 h par jour, 2 250 h par an) */
+  /** Heures maximales par semaine pour ce planning (2 250 h par an) */
   heuresMax: number;
-  /** Heures saisies au-delà du possible : ramenées au maximum */
-  heuresPlafonnees: boolean;
+  /** Jours où l'amplitude dépasse 13 h (11 h de repos obligatoire) */
+  joursTropLongs: number[];
+  /** Plus de 2 250 h par an */
+  depasseAnnuel: boolean;
   /** Plus de 48 h par semaine : accord écrit de l'assistante maternelle nécessaire */
   accordNecessaire: boolean;
   sousMinimum: boolean;
@@ -258,24 +331,59 @@ export function heuresMaxSemaine(jours: number, semainesTravail: number): number
   return Math.min(jours * HEURES_MAX_JOUR, Math.floor((HEURES_MAX_AN / semainesTravail) * 4) / 4);
 }
 
-/** Planning régulier équivalent : `jours` journées identiques à partir de 7 h. */
-function planningEquivalent(jours: number, minutesSemaine: number): Planning {
+const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
+/** Planning régulier : `jours` journées identiques (lundi, mardi…) à partir de 8 h, pour `heures` par semaine. */
+export function planningRegulier(jours: number, heures: number): Planning {
+  const n = Math.max(1, Math.min(6, Math.round(jours) || 1));
+  const parJour = Math.min(HEURES_MAX_JOUR * 60, Math.round((Math.max(0, heures) * 60) / n));
   const pl: Planning = {};
-  const parJour = Math.round(minutesSemaine / jours);
-  const fin = 7 * 60 + parJour;
-  const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-  for (let d = 1; d <= jours; d++) pl[d] = [{ start: '07:00', end: hhmm(fin) }];
+  for (let d = 1; d <= n; d++) pl[d] = parJour > 0 ? [{ start: '08:00', end: hhmm(8 * 60 + parJour) }] : [];
+  return pl;
+}
+
+/** Lien partagé : « 1:0800-1700,3:0800-1200+1630-1830 ». */
+export function planningVersTexte(pl: Planning): string {
+  const out: string[] = [];
+  for (let d = 1; d <= 7; d++) {
+    const ok = (pl[d] ?? []).filter((p) => plageMin(p) > 0);
+    if (ok.length) out.push(`${d}:${ok.map((p) => `${p.start.replace(':', '')}-${p.end.replace(':', '')}`).join('+')}`);
+  }
+  return out.join(',');
+}
+
+export function planningDepuisTexte(t: string): Planning | null {
+  const pl: Planning = {};
+  for (const part of t.split(',')) {
+    const m = /^([1-7]):(.+)$/.exec(part.trim());
+    if (!m) return null;
+    const plages: Plage[] = [];
+    for (const r of m[2].split(/[+ ]/).slice(0, 2)) { // « + » devient une espace s'il n'est pas encodé dans l'adresse
+      const x = /^([01]\d|2[0-3])([0-5]\d)-([01]\d|2[0-3])([0-5]\d)$/.exec(r);
+      if (!x) return null;
+      plages.push({ start: `${x[1]}:${x[2]}`, end: `${x[3]}:${x[4]}` });
+    }
+    pl[Number(m[1])] = plages;
+  }
   return pl;
 }
 
 export function simuler(i: SimInput, d: ISODate): SimResult {
   const rates = ratesAt(d);
   const cp = cotisParams(d);
-  const jours = Math.max(1, Math.min(6, Math.round(i.jours) || 1));
+  const planning = i.planning ?? {};
   const semaines = semainesAccueil(i);
   const semainesGarde = semainesTravaillees(i);
-  const heuresMax = heuresMaxSemaine(jours, semainesGarde);
-  const heures = Math.max(0, Math.min(heuresMax, i.heures || 0));
+  const joursSemaine = daysPerWeek(planning);
+  const heuresSemMin = weeklyMinutes(planning);
+  const heuresMax = Math.floor((HEURES_MAX_AN / semainesGarde) * 4) / 4;
+  const joursTropLongs: number[] = [];
+  for (let w = 1; w <= 7; w++) {
+    const ok = (planning[w] ?? []).filter((p) => plageMin(p) > 0);
+    if (!ok.length) continue;
+    const amplitude = Math.max(...ok.map((p) => hm(p.end))) - Math.min(...ok.map((p) => hm(p.start)));
+    if (amplitude > HEURES_MAX_JOUR * 60) joursTropLongs.push(w);
+  }
   const majoration = Math.max(10, i.majoration);
 
   // Brut saisi, net calculé et arrondi au centime comme sur le contrat.
@@ -284,17 +392,40 @@ export function simuler(i: SimInput, d: ISODate): SimResult {
   const tauxBrut = Math.max(0, i.tauxBrut || 0);
   const tauxNet = Math.round(tauxBrut * ratio);
 
-  const heuresSemMin = Math.round(heures * 60);
-  const c = { yearType: i.yearType, weeks: semaines, planning: planningEquivalent(jours, heuresSemMin), rateNet: tauxNet, majoration } as Contract;
+  const c = { yearType: i.yearType, weeks: semaines, planning, rateNet: tauxNet, majoration } as Contract;
   const salaire = heuresSemMin > 0 ? salaireMensualise(c) : 0;
   const heuresMoisMin = Math.round((heuresSemMin * semaines) / 12);
   const heuresMajMoisMin = Math.round((Math.max(0, heuresSemMin - 45 * 60) * semaines) / 12);
-  const joursAn = heuresSemMin > 0 ? jours * semainesGarde : 0;
-  const joursMois = joursAn / 12;
-  const entretienMinimum = entretienPlancher(d, heuresSemMin / jours);
-  const entretienJourRetenu = Math.max(i.entretienJour, entretienMinimum);
-  const entretien = Math.round(entretienJourRetenu * joursMois);
-  const repas = Math.round(i.repasPrix * i.repasParJour * joursMois);
+
+  // Jour par jour : entretien (minimum légal de la journée), repas, et jours fériés sans accueil.
+  // Un férié tombe en moyenne sur une semaine d'accueil dans la proportion semaines travaillées ÷ 52.
+  const feries = feriesParJour(d, i.alsaceMoselle);
+  const parJour: SimResult['parJour'] = [];
+  const repasAn: Record<TypeRepas, number> = { petitDej: 0, dejeuner: 0, gouter: 0, diner: 0 };
+  let joursAnExact = 0, entretienAn = 0, repasMontantAn = 0, feriesAn = 0;
+  for (let w = 1; w <= 7; w++) {
+    const plages = (planning[w] ?? []).filter((p) => plageMin(p) > 0);
+    if (!plages.length) continue;
+    const minutes = plages.reduce((t, p) => t + plageMin(p), 0);
+    const entretienMinimum = entretienPlancher(d, minutes);
+    const prevu = i.entretienMode === 'heure' ? Math.round((i.entretien * minutes) / 60) : i.entretien;
+    const ent = Math.max(prevu, entretienMinimum);
+    const repasJour = TYPES_REPAS.filter((t) => (i.repas?.[t] ?? 0) > 0 && repasDuJour(plages, t));
+    const feriesW = (feries[w] * semainesGarde) / 52;
+    const n = semainesGarde - feriesW;
+    joursAnExact += n; feriesAn += feriesW;
+    entretienAn += n * ent;
+    for (const t of repasJour) { repasAn[t] += n; repasMontantAn += n * i.repas[t]; }
+    parJour.push({ jour: w, minutes, entretien: ent, entretienMinimum, repas: repasJour, feries: feries[w] });
+  }
+  for (const t of TYPES_REPAS) repasAn[t] = Math.round(repasAn[t]);
+  const joursAn = Math.round(joursAnExact);
+  const joursMois = joursAnExact / 12;
+  const entretien = Math.round(entretienAn / 12);
+  const repas = Math.round(repasMontantAn / 12);
+  const kmMois = Math.max(0, i.kmMois || 0);
+  const km = Math.round(kmMois * Math.max(0, i.kmTaux || 0));
+  const kmBornes = bornesKm(i.cv || 5, kmMois * 12);
   // Année incomplète : congés payés en plus du salaire mensualisé (≈ 10 % du salaire de l'année), répartis ici sur 12 mois.
   const congesAnnuels = i.yearType === 'incomplete' ? Math.round(salaire * 12 * 0.1) : 0;
   const congesMois = Math.round(congesAnnuels / 12);
@@ -314,25 +445,26 @@ export function simuler(i: SimInput, d: ISODate): SimResult {
   const cotisationsPrisesEnCharge = cmgEligible ? Math.round(cotisations * cmgCalc.partCotisations) : 0;
   const cotisationsReste = cotisations - cotisationsPrisesEnCharge;
 
-  const verse = salaire + congesMois + reductionHeuresMaj + entretien + repas;
+  // Les indemnités kilométriques ne sont ni dans le coût aidé par le CMG, ni dans le crédit d'impôt : à la charge de la famille.
+  const verse = salaire + congesMois + reductionHeuresMaj + entretien + repas + km;
   const total = verse + cotisations;
   const reste = verse + cotisationsReste - cmg.montant;
 
   // Crédit d'impôt : enfant de moins de 6 ans au 1er janvier.
   const creditEligible = i.age === 'moins6';
-  const { depenses, credit } = creditImpot((salaire + reductionHeuresMaj) * 12 + congesAnnuels, joursAn, cmg.montant * 12, cotisationsReste * 12);
+  const { depenses, credit } = creditImpot((salaire + reductionHeuresMaj) * 12 + congesAnnuels, joursAnExact, cmg.montant * 12, cotisationsReste * 12);
   const creditAnnuel = creditEligible ? credit : 0;
 
   return {
-    semaines, semainesGarde, heuresRetenues: heures, heuresMoisMin, heuresMajMoisMin, joursAn, joursMois, entretienMinimum, entretienJourRetenu,
-    tauxNet, salaire, congesAnnuels, congesMois, reductionHeuresMaj, entretien, repas, verse,
+    semaines, semainesGarde, joursSemaine, minutesSemaine: heuresSemMin, parJour, feriesAn, heuresMoisMin, heuresMajMoisMin, joursAn, joursMois, repasAn,
+    tauxNet, salaire, congesAnnuels, congesMois, reductionHeuresMaj, entretien, repas, km, kmBornes, verse,
     cotisations, cotisationsPrisesEnCharge, cotisationsReste, total,
     cmgEligible, cmg, reste, resteHoraire: heuresMoisMin > 0 ? Math.round(reste / (heuresMoisMin / 60)) : 0,
     creditEligible, creditAnnuel, depensesAnnuelles: creditEligible ? depenses : 0,
     reel: reste - Math.round(creditAnnuel / 12),
-    heuresMax,
-    heuresPlafonnees: (i.heures || 0) > heuresMax,
-    accordNecessaire: heures > HEURES_SANS_ACCORD,
+    heuresMax, joursTropLongs,
+    depasseAnnuel: heuresSemMin / 60 > heuresMax,
+    accordNecessaire: heuresSemMin > HEURES_SANS_ACCORD * 60,
     sousMinimum: tauxBrut < rates.minConvBrut,
     minimumNet: rates.minConvNet, minimumBrut: rates.minConvBrut,
   };
@@ -342,8 +474,9 @@ export function simuler(i: SimInput, d: ISODate): SimResult {
 export function simulationParDefaut(d: ISODate): SimInput {
   const r = ratesAt(d);
   return {
-    jours: 5, heures: 45, yearType: 'complete', semainesAbsence: 1, majoration: 10,
-    tauxBrut: r.minConvBrut, alsaceMoselle: false, entretienJour: 0, repasPrix: 0, repasParJour: 1,
+    planning: planningRegulier(5, 45), yearType: 'complete', semainesAbsence: 1, majoration: 10,
+    tauxBrut: r.minConvBrut, alsaceMoselle: false, entretien: 0, entretienMode: 'jour',
+    repas: { petitDej: 0, dejeuner: 0, gouter: 0, diner: 0 }, kmMois: 0, kmTaux: 0, cv: 5,
     enfantsACharge: 1, enfantsAeeh: 0, age: 'moins6', parentSeul: false, ressourcesMois: 3500,
   };
 }

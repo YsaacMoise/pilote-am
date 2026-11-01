@@ -11,19 +11,27 @@ import { Icon } from '../ui/icons';
 import { BROUILLON_CONTRAT } from './Simulateur';
 import { PartageCard } from './PartageCard';
 
-/** Conditions venues du simulateur (lues une seule fois) : planning de journées égales à partir de 8 h. */
+/** Conditions venues du simulateur (lues une seule fois) : son planning, ou des journées égales à partir de 8 h (anciennes versions). */
 function brouillon(): Partial<Contract> | null {
   try {
     const raw = sessionStorage.getItem(BROUILLON_CONTRAT);
     if (!raw) return null;
     sessionStorage.removeItem(BROUILLON_CONTRAT);
     const b = JSON.parse(raw);
-    const n = Math.max(1, Math.min(6, Math.round(b.jours)));
-    const min = Math.round((b.heures * 60) / n);
-    const fin = 8 * 60 + min;
-    const pl: Planning = {};
-    for (let d = 1; d <= n; d++) pl[d] = [{ start: '08:00', end: `${String(Math.floor(fin / 60)).padStart(2, '0')}:${String(fin % 60).padStart(2, '0')}` }];
-    return { planning: pl, yearType: b.yearType, weeks: b.weeks, majoration: b.majoration, rateNet: b.rateNet, entretienJour: b.entretienJour, repasPrix: b.repasPrix, repasParJour: b.repasParJour };
+    let pl: Planning = {};
+    if (b.planning && typeof b.planning === 'object') {
+      for (let d = 1; d <= 7; d++) {
+        const ps = Array.isArray(b.planning[d]) ? b.planning[d] : [];
+        pl[d] = ps.filter((p: any) => typeof p?.start === 'string' && typeof p?.end === 'string').slice(0, 2).map((p: any) => ({ start: p.start, end: p.end }));
+      }
+    } else {
+      const n = Math.max(1, Math.min(6, Math.round(b.jours)));
+      const min = Math.round((b.heures * 60) / n);
+      const fin = 8 * 60 + min;
+      pl = {};
+      for (let d = 1; d <= n; d++) pl[d] = [{ start: '08:00', end: `${String(Math.floor(fin / 60)).padStart(2, '0')}:${String(fin % 60).padStart(2, '0')}` }];
+    }
+    return { planning: pl, yearType: b.yearType, weeks: b.weeks, majoration: b.majoration, rateNet: b.rateNet, entretienJour: b.entretienJour, repasPrix: b.repasPrix, repasParJour: b.repasParJour, kmTaux: b.kmTaux ?? 0 };
   } catch { return null; }
 }
 
