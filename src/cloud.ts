@@ -4,6 +4,7 @@
 // Chaque changement local est recopié dans le compte ; les changements faits sur un autre appareil
 // arrivent en direct et sont rangés dans la base locale.
 import * as db from './db';
+import { PASSWORD_RULE, passwordChecks } from './password';
 import { autoCopy, load, logUsage, state, toast } from './store';
 import { cloudInfo, LS, lsGet, lsSet, setCloud } from './cloud-state';
 import { errCode, type Backend, type CloudUser } from './sync/backend';
@@ -274,7 +275,7 @@ function refreshStatus() {
 export function messageFor(code: string): string {
   if (code.includes('email-already-in-use')) return 'Un compte existe déjà avec cette adresse. Connecte-toi plutôt.';
   if (code.includes('invalid-email')) return 'Cette adresse e-mail n’est pas valable.';
-  if (code.includes('weak-password')) return 'Le mot de passe doit faire au moins 8 caractères.';
+  if (code.includes('weak-password') || code.includes('password-does-not-meet-requirements')) return PASSWORD_RULE;
   if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found') || code.includes('invalid-login')) {
     return 'Adresse ou mot de passe incorrect.';
   }
@@ -292,10 +293,10 @@ function friendly(e: unknown): Error {
   return new Error(messageFor(errCode(e)));
 }
 
-export const MIN_PASSWORD = 8;
+export { MIN_PASSWORD } from './password';
 
 export async function createAccount(email: string, password: string) {
-  if (password.length < MIN_PASSWORD) throw new Error(messageFor('weak-password'));
+  if (!passwordChecks(password).ok) throw new Error(PASSWORD_RULE);
   const b = await startCloud();
   const done = nextLink();
   try { await b.createAccount(email.trim(), password); } catch (e) { settle(); throw friendly(e); }
@@ -322,7 +323,7 @@ export async function verifyResetCode(code: string): Promise<string> {
 }
 
 export async function confirmReset(code: string, password: string) {
-  if (password.length < MIN_PASSWORD) throw new Error(messageFor('weak-password'));
+  if (!passwordChecks(password).ok) throw new Error(PASSWORD_RULE);
   try { await (await loadBackend()).confirmReset(code, password); } catch (e) { throw friendly(e); }
 }
 

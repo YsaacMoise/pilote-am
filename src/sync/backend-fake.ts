@@ -62,7 +62,7 @@ export const backend: Backend = {
     return () => { userSubs.delete(cb); };
   },
   async createAccount(email, password) {
-    if (password.length < 6) throw err('auth/weak-password');
+    if (password.length < 8) throw err('auth/weak-password');
     const r = await call<{ uid: string }>('/create', { email, password });
     setUser({ uid: r.uid, email });
   },
@@ -73,7 +73,7 @@ export const backend: Backend = {
   async resetPassword(email) { await call('/reset', { email }); },
   async verifyResetCode(code) { return (await call<{ email: string }>('/verify-reset', { code })).email; },
   async confirmReset(code, password) {
-    if (password.length < 6) throw err('auth/weak-password');
+    if (password.length < 8) throw err('auth/weak-password');
     await call('/confirm-reset', { code, password });
   },
   async signOut() { setUser(null); },

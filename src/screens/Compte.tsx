@@ -3,6 +3,7 @@ import { cloudInfo, statusText, useCloud, type CloudStatus } from '../cloud-stat
 import { toast, useStore } from '../store';
 import { Banner, Sheet, TextInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
+import { PasswordRules } from '../ui/PasswordRules';
 
 const cloud = () => import('../cloud');
 
@@ -64,8 +65,8 @@ export function AccountForm({ initial = 'create', initialEmail = '', onDone }: {
       <TextInput label="Adresse e-mail" type="email" inputMode="email" autoComplete={create ? 'email' : 'username'} value={email} onChange={setEmail} />
       <TextInput
         label="Mot de passe" type="password" autoComplete={create ? 'new-password' : 'current-password'} value={pw} onChange={setPw}
-        hint={create ? '8 caractères au moins.' : undefined}
       />
+      {create && <PasswordRules pw={pw} />}
       {error && <Banner tone="warn">{error}</Banner>}
       {create && <p class="hint">Ton compte garde une copie de tes données, hébergée à Paris. <a href="#/confidentialite">Ce qui est gardé et tes droits</a></p>}
       <button class="btn btn-primary btn-lg btn-block" type="submit" disabled={busy}>
