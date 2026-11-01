@@ -5,6 +5,7 @@ import { createServer } from 'node:http';
 const port = Number(process.argv[2] ?? 4180);
 const users = new Map(); // email -> { uid, password }
 const data = new Map(); // uid -> Map(docId -> doc)
+const verifies = new Map(); // code du lien de confirmation -> email
 const resets = new Map(); // code du lien -> email (comme le lien d'un e-mail de réinitialisation)
 let clock = Date.now();
 
@@ -32,8 +33,21 @@ createServer(async (req, res) => {
     case '/signin': {
       const u = users.get(body.email);
       if (!u || u.password !== body.password) return send(res, 400, { code: 'auth/invalid-credential' });
-      return send(res, 200, { uid: u.uid });
+      return send(res, 200, { uid: u.uid, verified: !!u.verified });
     }
+    case '/send-verify': {
+      if (users.has(body.email)) verifies.set('verif-' + Math.random().toString(36).slice(2, 10), body.email);
+      return send(res, 200, {});
+    }
+    case '/last-verify': return send(res, 200, { code: [...verifies].filter(([, e]) => e === url.searchParams.get('email')).pop()?.[0] ?? null });
+    case '/apply-code': {
+      const email = verifies.get(body.code);
+      if (!email) return send(res, 400, { code: 'auth/invalid-action-code' });
+      users.get(email).verified = true;
+      verifies.delete(body.code);
+      return send(res, 200, {});
+    }
+    case '/user': return send(res, 200, { verified: !!users.get(body.email)?.verified });
     case '/reset': {
       if (users.has(body.email)) resets.set('code-' + Math.random().toString(36).slice(2, 10), body.email);
       return send(res, 200, {});

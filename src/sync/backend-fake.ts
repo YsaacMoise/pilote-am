@@ -64,14 +64,22 @@ export const backend: Backend = {
   async createAccount(email, password) {
     if (password.length < 8) throw err('auth/weak-password');
     const r = await call<{ uid: string }>('/create', { email, password });
-    setUser({ uid: r.uid, email });
+    setUser({ uid: r.uid, email, verified: false });
   },
   async signIn(email, password) {
-    const r = await call<{ uid: string }>('/signin', { email, password });
-    setUser({ uid: r.uid, email });
+    const r = await call<{ uid: string; verified?: boolean }>('/signin', { email, password });
+    setUser({ uid: r.uid, email, verified: !!r.verified });
   },
   async resetPassword(email) { await call('/reset', { email }); },
   async verifyResetCode(code) { return (await call<{ email: string }>('/verify-reset', { code })).email; },
+  async sendVerification() { if (current?.email) await call('/send-verify', { email: current.email }); },
+  async refreshUser() {
+    if (!current?.email) return null;
+    const r = await call<{ verified: boolean }>('/user', { email: current.email });
+    current = { ...current, verified: r.verified };
+    return current;
+  },
+  async applyEmailCode(code) { await call('/apply-code', { code }); },
   async confirmReset(code, password) {
     if (password.length < 8) throw err('auth/weak-password');
     await call('/confirm-reset', { code, password });

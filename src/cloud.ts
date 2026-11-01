@@ -64,11 +64,11 @@ async function onUser(u: CloudUser | null) {
     // Déconnexion (voulue ou non) : la copie s'arrête, les changements suivants sont notés dans la file d'attente.
     detach();
     user = null;
-    setCloud({ status: 'off', email: undefined, lastSync: undefined });
+    setCloud({ status: 'off', email: undefined, verified: undefined, lastSync: undefined });
     return;
   }
   user = u;
-  setCloud({ email: u.email ?? undefined });
+  setCloud({ email: u.email ?? undefined, verified: u.verified });
   try {
     if (lsGet(LS.linked) === u.uid) attach(u);
     else await link(u);
@@ -302,6 +302,8 @@ export async function createAccount(email: string, password: string) {
   try { await b.createAccount(email.trim(), password); } catch (e) { settle(); throw friendly(e); }
   await done.catch((e) => { throw friendly(e); });
   logUsage('compte_cree');
+  // E-mail de confirmation d'adresse : sans lui, une faute de frappe rendrait le mot de passe oublié impossible à récupérer.
+  b.sendVerification().then(() => logUsage('confirmation_envoyee')).catch(() => {});
 }
 
 export async function signIn(email: string, password: string) {
@@ -315,6 +317,28 @@ export async function signIn(email: string, password: string) {
 export async function resetPassword(email: string) {
   const b = await startCloud();
   try { await b.resetPassword(email.trim()); } catch (e) { throw friendly(e); }
+}
+
+/** Renvoie l'e-mail de confirmation d'adresse. */
+export async function resendVerification() {
+  const b = await startCloud();
+  try { await b.sendVerification(); } catch (e) { throw friendly(e); }
+  logUsage('confirmation_renvoyee');
+}
+
+/** Relit sur le serveur si l'adresse est confirmée. */
+export async function checkVerified(): Promise<boolean> {
+  const b = await startCloud();
+  try {
+    const u = await b.refreshUser();
+    setCloud({ verified: !!u?.verified });
+    return !!u?.verified;
+  } catch (e) { throw friendly(e); }
+}
+
+/** Lien « confirmer mon adresse » ouvert depuis l'e-mail. */
+export async function applyEmailCode(code: string) {
+  try { await (await loadBackend()).applyEmailCode(code); } catch (e) { throw friendly(e); }
 }
 
 // Lien « nouveau mot de passe » ouvert depuis l'e-mail : pas besoin de session ni de données locales.
