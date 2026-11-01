@@ -9,6 +9,7 @@ import { CHILD_ABS_LABEL, AM_ABS_LABEL, type Contract } from '../engine/model';
 import { Banner, Gommette, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { shareText } from '../share';
+import { AideVideo } from '../ui/VideoGuide';
 import { DaySheet } from './Today';
 
 export function Mois({ month: m0, cid: c0 }: { month?: string; cid?: string }) {
@@ -23,6 +24,7 @@ export function Mois({ month: m0, cid: c0 }: { month?: string; cid?: string }) {
     <>
       <Topbar title="Mois" sub="Déclaration Pajemploi" screen="mois" />
       <main>
+        <AideVideo id="mois" />
         <div class="month-nav">
           <button class="icon-btn" aria-label="Mois précédent" onClick={() => setMonth(addMonths(month, -1))}><Icon name="left" /></button>
           <h2 aria-live="polite">{monthLabel(month).replace(/^./, (x) => x.toUpperCase())}</h2>

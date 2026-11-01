@@ -5,7 +5,7 @@ import { useCloud } from '../cloud-state';
 import { MODE_KEY } from '../db';
 import { Banner, Sheet, Stepper, TextInput, Topbar } from '../ui/kit';
 import { Logo } from '../ui/Logo';
-import { APERCU_QUOTIDIEN, VIDEOS_PRETES, VideoClip, isIOS } from '../ui/VideoGuide';
+import { ApercuVideo, VIDEOS_PRETES, VideoClip, isIOS } from '../ui/VideoGuide';
 import { SimApercu } from './SimApercu';
 import { Icon } from '../ui/icons';
 import { LOGIN_HINT } from '../auth-action';
@@ -99,7 +99,6 @@ export function Welcome() {
   const [step, setStep] = useState<'hello' | 'installer' | 'me'>('hello');
   const [hintEmail] = useState(loginHint);
   const [form, setForm] = useState<null | 'create' | 'login'>(hintEmail ? 'login' : null);
-  const [video, setVideo] = useState(false);
   const standalone = isStandalone();
   const cloud = useCloud();
   const signedIn = !!cloud.email && cloud.status !== 'off';
@@ -222,27 +221,13 @@ export function Welcome() {
               <p class="hero-login">Déjà inscrite ? <button class="btn-link" type="button" onClick={() => ouvrir('login')}>Me connecter</button></p>
             </>
           )}
-          {VIDEOS_PRETES && (
-            <button class="vid-card" type="button" onClick={() => { logUsage('accueil_video'); setVideo(true); }}>
-              <span class="vid-card-img" aria-hidden="true">
-                <img src={APERCU_QUOTIDIEN} alt="" />
-                <span class="video-play"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M8 5v14l11-7z" fill="currentColor" /></svg></span>
-              </span>
-              <span class="vid-card-txt">
-                <span class="eyebrow">Vidéo · 1 minute</span>
-                <b>Voir Arvela en action</b>
-                <small>Pointer une arrivée, noter un repas, retrouver le mois prêt à déclarer.</small>
-              </span>
-            </button>
-          )}
           <p class="hero-meta"><span>Gratuit pendant le test</span><span>Hébergé à Paris</span><span>Sans App Store</span></p>
         </div>
-        {VIDEOS_PRETES && <div class="hero-video"><VideoClip clip="quotidien" /></div>}
+        {VIDEOS_PRETES && <div class="hero-video"><ApercuVideo /></div>}
       </div>
 
       <SimApercu />
       </main>
-      {video && <Sheet title="Une journée avec Arvela" onClose={() => setVideo(false)}><VideoClip clip="quotidien" autoStart /></Sheet>}
 
       <footer class="site-footer">
         <div class="footer-lockup" aria-hidden="true">

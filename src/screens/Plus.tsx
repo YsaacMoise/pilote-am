@@ -4,7 +4,7 @@ import { statusText, useCloud } from '../cloud-state';
 import { today, shortDate } from '../engine/dates';
 import { Gommette, ListLink, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
-import { VIDEOS_PRETES } from '../ui/VideoGuide';
+import { VIDEOS_PRETES, nbVideos } from '../ui/VideoGuide';
 
 export function Plus() {
   const s = useStore();
@@ -43,6 +43,16 @@ export function Plus() {
             <ListLink href="#/simulateur" icon="euro" title="Simuler un accueil" sub="Pour une nouvelle famille : coût, aide de la CAF" />
           </div>
         </section>
+        <section class="stack-sm" aria-labelledby="aide">
+          <h2 id="aide" class="section-title">Aide</h2>
+          <div class="list">
+            {VIDEOS_PRETES && <ListLink href="#/guide" icon="phone" title="Vidéos" sub={`${nbVideos().total} vidéos courtes, avec le son${nbVideos().vues ? ` · ${nbVideos().vues} déjà vue${nbVideos().vues > 1 ? 's' : ''}` : ''}`} />}
+            <ListLink href="#/regles" icon="help" title="Comment l’app calcule" sub="Les règles de la convention et nos choix" />
+            <ListLink href="#/installer" icon="phone" title="Installer sur l’iPhone" />
+            <ListLink href="#/confidentialite" icon="shield" title="Confidentialité" sub="Ce qui est gardé, où, et tes droits" />
+            <ListLink href="#/mentions" icon="help" title="Mentions légales" sub="Éditeur, hébergeur, conditions du test" />
+          </div>
+        </section>
         <section class="stack-sm" aria-labelledby="donnees">
           <h2 id="donnees" class="section-title">Mes données</h2>
           <div class="list">
@@ -50,16 +60,6 @@ export function Plus() {
             <ListLink href="#/sauvegarde" icon="shield" title="Sauvegarde" sub={lastB ? `Dernière le ${new Date(lastB).toLocaleDateString('fr-FR')}` : 'Aucune sauvegarde pour l’instant'} />
             <ListLink href="#/pilote" icon="message" title="Données du pilote" sub="Tes remarques et l’export pseudonymisé" />
             <ListLink href="#/reglages" icon="settings" title="Réglages" sub="Ton prénom, tes enfants à charge" />
-          </div>
-        </section>
-        <section class="stack-sm" aria-labelledby="aide">
-          <h2 id="aide" class="section-title">Aide</h2>
-          <div class="list">
-            {VIDEOS_PRETES && <ListLink href="#/guide" icon="phone" title="Guide en vidéo" sub="Une journée avec l’app, l’installation" />}
-            <ListLink href="#/regles" icon="help" title="Comment l’app calcule" sub="Les règles de la convention et nos choix" />
-            <ListLink href="#/installer" icon="phone" title="Installer sur l’iPhone" />
-            <ListLink href="#/confidentialite" icon="shield" title="Confidentialité" sub="Ce qui est gardé, où, et tes droits" />
-            <ListLink href="#/mentions" icon="help" title="Mentions légales" sub="Éditeur, hébergeur, conditions du test" />
           </div>
         </section>
         <p class="footer-note">Arvela est un outil d’aide, indépendant de l’Urssaf : il ne remplace ni Pajemploi ni un conseil juridique. {cloud.email ? 'Tes données sont sur ce téléphone, avec une copie dans ton compte.' : 'Tout reste sur ce téléphone.'}</p>
