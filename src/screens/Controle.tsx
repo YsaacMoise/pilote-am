@@ -7,7 +7,7 @@ import { euros } from '../engine/money';
 import type { Bulletin } from '../engine/model';
 import { Banner, EuroInput, Gommette, NumberInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
-import { parseBulletin, pdfText } from '../pdf';
+import { ScanError, parseBulletin, pdfText } from '../pdf';
 
 export function Controle({ cid, month }: { cid?: string; month?: string }) {
   const s = useStore();
@@ -18,6 +18,7 @@ export function Controle({ cid, month }: { cid?: string; month?: string }) {
   const [b, setB] = useState<Partial<Bulletin>>(saved ?? {});
   const [key, setKey] = useState(0);
   const [msg, setMsg] = useState('');
+  const [alerte, setAlerte] = useState(false);
 
   if (!c) return <><Topbar title="Contrôle" back="#/plus" screen="controle" /><main><div class="card empty"><p>Ajoute d’abord un contrat.</p></div></main></>;
   const r = computeMonth(ctxFor(c), m, state.settings.enfantsACharge);
@@ -27,6 +28,7 @@ export function Controle({ cid, month }: { cid?: string; month?: string }) {
   async function onPdf(f: File | undefined) {
     if (!f) return;
     setMsg('Lecture du PDF…');
+    setAlerte(false);
     try {
       const x = parseBulletin(await pdfText(f));
       setB({ net: x.net, brut: x.brut, heures: x.heures, jours: x.jours, entretien: x.entretien, source: 'pdf' });
@@ -34,8 +36,9 @@ export function Controle({ cid, month }: { cid?: string; month?: string }) {
       setKey(key + 1);
       setMsg(x.net == null && x.brut == null ? 'Aucun montant reconnu dans ce PDF : saisis-les à la main.' : 'Montants lus dans le PDF : vérifie-les.');
       logUsage('pdf_controle', 'controle');
-    } catch {
-      setMsg('Impossible de lire ce PDF. Saisis les montants à la main.');
+    } catch (e) {
+      if (e instanceof ScanError) { setMsg(e.message); setAlerte(true); logUsage('pdf_scan', 'controle'); }
+      else setMsg('Impossible de lire ce PDF. Saisis les montants à la main.');
     }
   }
 
@@ -62,7 +65,7 @@ export function Controle({ cid, month }: { cid?: string; month?: string }) {
           <Icon name="upload" />Importer le bulletin PDF
           <input type="file" accept="application/pdf,.pdf" class="sr-only" onChange={(e) => onPdf((e.target as HTMLInputElement).files?.[0])} />
         </label>
-        {msg && <p role="status" class="muted">{msg}</p>}
+        {msg && (alerte ? <div role="status"><Banner tone="warn">{msg}</Banner></div> : <p role="status" class="muted">{msg}</p>)}
         <section class="card" key={key}>
           <fieldset>
             <legend>Le bulletin</legend>

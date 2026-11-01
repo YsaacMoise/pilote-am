@@ -5,7 +5,7 @@ import { euros } from '../engine/money';
 import type { HistoryMonth } from '../engine/model';
 import { Banner, EuroInput, NumberInput, Sheet, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
-import { parseBulletin, pdfText, type Extracted } from '../pdf';
+import { ScanError, parseBulletin, pdfText, type Extracted } from '../pdf';
 
 export function Historique({ id }: { id: string }) {
   useStore();
@@ -27,8 +27,9 @@ export function Historique({ id }: { id: string }) {
     for (const f of Array.from(files)) {
       try {
         out.push(parseBulletin(await pdfText(f)));
-      } catch {
-        setErr(`Impossible de lire « ${f.name} ». Saisis ce bulletin à la main.`);
+      } catch (e) {
+        if (e instanceof ScanError) { setErr(`« ${f.name} » : ${e.message.charAt(0).toLowerCase()}${e.message.slice(1)}`); logUsage('pdf_scan', 'historique'); }
+        else setErr(`Impossible de lire « ${f.name} ». Saisis ce bulletin à la main.`);
       }
     }
     setBusy(false);
