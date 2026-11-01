@@ -132,7 +132,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             {i.age === '6a12' && <Switch label="Parent seul" checked={i.parentSeul} onChange={(v) => set({ parentSeul: v })} />}
             <Stepper label="Enfants à charge dans le foyer" value={i.enfantsACharge} min={1} max={10} onChange={(v) => set({ enfantsACharge: v, enfantsAeeh: Math.min(i.enfantsAeeh, v) })} />
             <Stepper label="Dont enfants qui touchent l’AEEH (allocation pour enfant handicapé)" value={i.enfantsAeeh} min={0} max={i.enfantsACharge} onChange={(v) => set({ enfantsAeeh: v })} />
-            <EuroInput label="Revenus mensuels du foyer, pour la CAF" hint="Le revenu imposable de 2024 du foyer (avis d’impôt 2025), divisé par 12. Ce n’est pas le salaire reçu chaque mois." cents={i.ressourcesMois * 100} onChange={(v) => set({ ressourcesMois: Math.round((v ?? 0) / 100) })} />
+            <EuroInput label="Revenus mensuels du foyer, pour la CAF" hint={`Le revenu imposable de ${Number(d.slice(0, 4)) - 2} du foyer (avis d’impôt ${Number(d.slice(0, 4)) - 1}), divisé par 12. Ce n’est ni le salaire reçu chaque mois, ni l’impôt payé.`} cents={i.ressourcesMois * 100} onChange={(v) => set({ ressourcesMois: Math.round((v ?? 0) / 100) })} />
           </fieldset>
         </section>
 

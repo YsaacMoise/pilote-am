@@ -15,10 +15,14 @@ const nf = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
 
 export function SimApercu() {
   const d = today();
-  const min = ratesAt(d).minConvNet;
+  // Curseur par pas de 5 centimes : on part du minimum légal arrondi au-dessus, pour atteindre 10,00 € pile.
+  const min = Math.ceil(ratesAt(d).minConvNet / 5) * 5;
   const [heures, setHeures] = useState(40);
   const [taux, setTaux] = useState(Math.max(min, 400));
-  const [revenus, setRevenus] = useState(3500);
+  // La CAF compte le revenu imposable de l'année N-2 (avis d'impôt), divisé par 12.
+  const anneeRevenus = Number(d.slice(0, 4)) - 2;
+  const [revenusAn, setRevenusAn] = useState(42000);
+  const revenus = Math.round(revenusAn / 12);
   const r = simuler({ ...simulationParDefaut(d), jours: 5, heures, tauxNet: taux, ressourcesMois: revenus }, d);
   const lien = `#/simulateur?jours=5&heures=${heures}&tauxNet=${taux}`;
 
@@ -32,8 +36,9 @@ export function SimApercu() {
       <div class="sim-apercu-box">
         <div class="sim-sliders">
           <Curseur id="sa-h" label="Heures d’accueil par semaine" value={heures} min={10} max={55} step={1} onChange={setHeures} affiche={`${heures} h`} />
-          <Curseur id="sa-t" label="Ton tarif horaire net" value={taux} min={min} max={600} step={5} onChange={setTaux} affiche={euros(taux)} />
-          <Curseur id="sa-r" label="Revenus nets de la famille par mois" value={revenus} min={1000} max={8500} step={100} onChange={setRevenus} affiche={`${nf.format(revenus)} €`} />
+          <Curseur id="sa-t" label="Ton tarif horaire net" value={taux} min={min} max={1000} step={5} onChange={setTaux} affiche={euros(taux)} />
+          <Curseur id="sa-r" label={`Revenu imposable de la famille en ${anneeRevenus}`} value={revenusAn} min={0} max={120000} step={1000} onChange={setRevenusAn} affiche={`${nf.format(revenusAn)} €`} />
+          <p class="hint">Le montant « revenu imposable » de l’avis d’impôt. C’est ce que la CAF retient pour son aide, pas l’impôt payé.</p>
         </div>
         <div class="sim-apercu-res" aria-live="polite">
           <span class="summary-label">Reste à payer par la famille</span>

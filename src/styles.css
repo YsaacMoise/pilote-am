@@ -675,7 +675,7 @@ h1.h-card { font-size: 25px; }
 .ev:last-of-type { border-bottom: 0; }
 .ev b { display: block; }
 .ev span:not(.ev-t) { display: block; color: var(--ink-2); font-size: 15px; }
-.ev-t { font-family: var(--font-num); font-size: 15px; color: var(--ink-2); width: 52px; flex: none; padding-top: 2px; }
+.ev-t { font-family: var(--font-num); font-size: 15px; color: var(--ink-2); min-width: 56px; white-space: nowrap; flex: none; padding-top: 2px; }
 .ev-body { flex: 1; min-width: 0; }
 .ev-details { margin-top: 6px; }
 .ev-details summary { cursor: pointer; color: var(--primary); font-weight: 600; min-height: 44px; display: flex; align-items: center; }

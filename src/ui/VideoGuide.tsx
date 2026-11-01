@@ -7,14 +7,16 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Logo } from './Logo';
 
-export type Clip = 'quotidien' | 'installer';
+export type Clip = 'quotidien' | 'installer' | 'parents';
 type Systeme = 'iphone' | 'android';
 
 /** Image d'aperçu tirée de la vidéo (écran « Aujourd'hui ») : on voit l'app avant d'appuyer sur Lecture. */
 export const APERCU_QUOTIDIEN = './videos/arvela-quotidien.jpg';
+export const APERCU_PARENTS = './videos/arvela-parents.jpg';
 
 const CLIPS: Record<Clip, { onglet: string; titre: string; duree: string; resume: string; apercu?: string }> = {
   quotidien: { onglet: 'Au quotidien', titre: 'Une journée avec Arvela', duree: '1:00', apercu: APERCU_QUOTIDIEN, resume: 'Pointer une arrivée et un départ, noter un repas, envoyer le résumé aux parents, voir ce qui est à déclarer à la fin du mois.' },
+  parents: { onglet: 'Parents', titre: 'Suivre la journée de votre enfant', duree: '0:45', apercu: APERCU_PARENTS, resume: 'Ouvrir le lien, taper le code, suivre la journée en direct, retrouver les cases Pajemploi du mois.' },
   installer: { onglet: 'Installer', titre: 'Installer l’app', duree: '0:21', resume: 'Les gestes pour mettre Arvela sur l’écran d’accueil. Une fois installée, elle marche même sans réseau.' },
 };
 
@@ -33,7 +35,7 @@ export function VideoClip({ clip, autoStart = false }: { clip: Clip; autoStart?:
   useEffect(() => { if (autoStart) ref.current?.play().catch(() => {}); }, []);
   const [sys, setSys] = useState<Systeme>(systemeDetecte);
   const c = CLIPS[clip];
-  const fichier = clip === 'installer' ? `arvela-installer-${sys}` : 'arvela-quotidien';
+  const fichier = clip === 'installer' ? `arvela-installer-${sys}` : `arvela-${clip}`;
   const titre = clip === 'installer' ? `${c.titre} sur ${sys === 'iphone' ? 'iPhone' : 'Android'}` : c.titre;
   return (
     <div class="video-block">

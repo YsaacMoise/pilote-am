@@ -12,6 +12,7 @@ import { euros, hoursLabel } from '../engine/money';
 import { Gommette, Switch } from '../ui/kit';
 import { Logo } from '../ui/Logo';
 import { Icon } from '../ui/icons';
+import { VideoClip } from '../ui/VideoGuide';
 
 const CODE_KEY = (id: string) => `pam-parent-code-${id}`;
 const KIND: Record<EntreeCarnet['kind'], string> = { repas: 'Repas', sieste: 'Sieste', change: 'Change', humeur: 'Humeur', soin: 'Soin', note: 'Note' };
@@ -95,11 +96,17 @@ export function Parent({ link }: { link: string }) {
           </section>
         )}
         {etat.k === 'code' && keys && (
-          <SaisieCode secret={keys.secret} doc={etat.doc} onOk={(c, snap, retenir) => {
-            code.current = c;
-            if (retenir) lsSet(CODE_KEY(keys.id), c);
-            setEtat({ k: 'ok', doc: etat.doc, snap });
-          }} />
+          <>
+            <SaisieCode secret={keys.secret} doc={etat.doc} onOk={(c, snap, retenir) => {
+              code.current = c;
+              if (retenir) lsSet(CODE_KEY(keys.id), c);
+              setEtat({ k: 'ok', doc: etat.doc, snap });
+            }} />
+            <section class="card stack-sm" aria-labelledby="video-p">
+              <h2 id="video-p" class="ph-h2 sm">Comment ça marche</h2>
+              <VideoClip clip="parents" />
+            </section>
+          </>
         )}
         <p class="foot">Lien privé, à ne pas transférer.</p>
       </main>
