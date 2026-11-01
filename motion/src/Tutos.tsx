@@ -120,7 +120,7 @@ const INV_TUTO: TutoCfg = {
   ],
   frappe: { from: 17.75, to: 18.45, texte: T.code, r: T.iPCode },
   chaps: [
-    { from: 2.2, to: 4.75, n: '01', name: 'Pour les parents', title: 'Sans compte ni mot de passe.' },
+    { from: 2.2, to: 4.75, n: '01', name: 'Pour les parents', title: 'Sans mot de passe.' },
     { from: 4.85, to: 11.4, n: '02', name: 'Le lien', title: 'Créer le lien.' },
     { from: 11.5, to: 17.1, n: '03', name: 'Le code', title: 'De vive voix.' },
     { from: 17.2, to: 24.8, n: '04', name: 'Côté parents', title: 'Ils voient tout.' },

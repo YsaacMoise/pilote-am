@@ -81,10 +81,12 @@ export const Accroche: React.FC<{ cfg: AccrocheCfg }> = ({ cfg }) => {
             <div style={{ position: 'absolute', top: 400, left: 0, right: 0, translate: `0 ${-recul * 300}px`, scale: String(interpolate(recul, [0, 1], [1, 0.62])), opacity: interpolate(recul, [0, 1], [1, 0.2]), filter: `blur(${recul * 4}px)` }}>
               {cfg.mots.map((x) => {
                 const kc = spring({ frame: at(x.t + 0.2), fps, config: { damping: 13, stiffness: 180 } });
-                const big = x.w.length > 11;
+                // Taille du mot pour que le mot et sa valeur tiennent sur une ligne
+                const place = 960 - (x.chip ? x.chip.length * 27 + 90 : 0);
+                const taille = Math.min(x.w.length > 11 ? 132 : 176, Math.floor(place / (x.w.length * 0.45)));
                 return (
                   <div key={x.w} style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 30 }}>
-                    <Reveal at={x.t} style={{ fontFamily: F.display, fontWeight: 600, fontSize: big ? 132 : 176, color: C.ink, letterSpacing: -2, lineHeight: 1 }}>{x.w}</Reveal>
+                    <Reveal at={x.t} style={{ fontFamily: F.display, fontWeight: 600, fontSize: taille, color: C.ink, letterSpacing: -2, lineHeight: 1, whiteSpace: 'nowrap' }}>{x.w}</Reveal>
                     {x.chip && (
                       <span style={{ fontFamily: F.mono, fontWeight: 600, fontSize: 42, color: C.ink, background: C.surface, border: `2px solid ${C.border}`, borderRadius: 999, padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 12, opacity: kc, scale: String(interpolate(kc, [0, 1], [0.5, 1])), rotate: `${interpolate(kc, [0, 1], [-10, 0])}deg`, boxShadow: '0 18px 36px -18px rgba(30,32,29,0.25)', whiteSpace: 'nowrap' }}>
                         <span style={{ width: 16, height: 16, borderRadius: 8, background: C.accent }} />{x.chip}
