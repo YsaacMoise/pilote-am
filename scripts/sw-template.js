@@ -31,6 +31,11 @@ self.addEventListener('fetch', (event) => {
   // Vidéos : lues par morceaux (requêtes « Range », réponses 206 que le cache refuse) et trop lourdes pour le hors ligne :
   // le navigateur les charge directement, sans passer par ce service worker.
   if (url.pathname.startsWith(scope.pathname + 'videos/')) return;
+  // Lien reçu par e-mail (nouveau mot de passe) : toujours la dernière version du site, pour que la page existe.
+  if (req.mode === 'navigate' && url.searchParams.has('oobCode')) {
+    event.respondWith(fetch(req).catch(() => caches.open(CACHE).then((c) => c.match('./')).then((r) => r || Response.error())));
+    return;
+  }
   if (req.mode === 'navigate') {
     event.respondWith(
       caches.open(CACHE).then((c) => c.match('./').then((r) => r || fetch(req)))
