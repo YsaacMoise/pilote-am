@@ -309,6 +309,15 @@ export interface SimInput {
   revenusConcernes: number;
   /** Autres aides à la garde, par mois (centimes) : employeur, CSE, commune, CESU préfinancé */
   autresAides: number;
+  /** Calendrier : premier mois du contrat « AAAA-MM » */
+  debut: string;
+  /** Année incomplète : congés payés versés en juin, ou au mois du congé principal (CCN art. 102) */
+  cpMode: 'juin' | 'principale';
+  /** Mois du congé principal (6 à 10) */
+  moisCongePrincipal: number;
+  /** Premier mois : adaptation payée aux heures réelles (0 = pas d'adaptation), et jours d'accueil de ce mois */
+  adaptationHeures: number;
+  adaptationJours: number;
 }
 
 export interface EnfantResult {
@@ -611,5 +620,6 @@ export function simulationParDefaut(d: ISODate): SimInput {
     foyer: 'couple', statutVous: 'travail', statutConjoint: 'travail', residenceAlternee: false,
     enfants: [naissanceIlYA(d, 18)], enfantsACharge: 1, enfantsAeeh: 0,
     revenusAn: 42000, situationRevenus: 'aucune', revenusConcernes: 0, autresAides: 0,
+    debut: naissanceIlYA(d, -1), cpMode: 'juin', moisCongePrincipal: 8, adaptationHeures: 0, adaptationJours: 0,
   };
 }

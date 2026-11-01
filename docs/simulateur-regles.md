@@ -60,6 +60,19 @@ Tests : les 4 exemples chiffrés du communiqué de presse CAF du 15/09/2025 (co�
 - Revenus : revenu fiscal de référence de l'avant-dernière année (libellé du simulateur Urssaf), ÷ 12, arrondi à l'euro. Situations (R532-5 à R532-7) : 30 % des revenus d'activité de la personne retirés (chômage indemnisé depuis 2 mois, arrêt de plus de 6 mois, cessation d'activité avec retraite, invalidité ou AAH) ; la totalité (chômage non indemnisé depuis 2 mois, RSA).
 - Autres aides à la garde (employeur, CSE, commune, CESU préfinancés) : déduites du reste à payer et des dépenses du crédit d'impôt (BOFiP §135).
 
+## Le calendrier (étape 4, 1er novembre 2026)
+
+Moteur : src/engine/calendrier.ts. 24 mois à partir du premier mois du contrat, aux barèmes du jour.
+
+- Adaptation (CCN art. 95, 30 jours au plus) : premier mois payé aux heures réellement faites ; entretien et repas au prorata des jours saisis.
+- Congés payés en année incomplète (CCN art. 102) : 10 % des salaires nets de la période de référence (1er juin → 31 mai ; la première, de l'embauche au 31 mai), versés en juin ou au mois du congé principal (juin à octobre). Le paiement par douzième est interdit (« toute autre modalité est proscrite »). Le maintien de salaire, s'il est plus favorable, n'est pas calculé.
+- CMG du mois des congés : les congés s'ajoutent au coût aidé, hors vérification du plafond horaire (LFSS 2026, art. 100). Hypothèse : aucun texte ne précise si la CAF les retient dans le coût depuis 2026 (Pajemploi : oui en 2025).
+- Fin de l'aide : après le mois des 6 ans (12 ans pour un parent seul) ; ensuite, toutes les cotisations reviennent à la famille.
+- Crédit d'impôt : calculé par année civile et par enfant ; celui de l'année Y versé en juillet Y+1 ; dès la 2e année, avance de 60 % en janvier Y+1 sur le crédit de Y−1, solde en juillet (négatif = trop-perçu remboursé). Service-public F35936.
+- Selon les revenus : coût réel pour 15 000 à 102 000 € de revenu fiscal par an (102 000 € ≈ plafond de 8 500 € par mois).
+- Levier du tarif : écart de salaire net de l'AM et de coût réel de la famille pour +0,10, +0,20, +0,50 € brut de l'heure ; tarif brut maximal avant que le coût horaire (net + entretien + repas) dépasse 8,09 €.
+- Non simulé : congés « au fil des prises », retenue des congés non acquis la première année en année complète, régularisation de fin de contrat, revalorisations futures.
+
 ## Choix de calcul du simulateur
 
 - Moyenne mensuelle sur l'année : en année incomplète, les congés payés (≈ 10 % du salaire) sont répartis sur 12 mois dans le coût, l'aide de la CAF et le crédit d'impôt ; l'écran rappelle qu'ils sont réellement versés en juin, au congé principal ou au fil des congés.
@@ -77,6 +90,6 @@ Cinq cas passés au simulateur Urssaf avec les montants produits par notre moteu
 
 - Plancher de ressources 2026 (815 ou 821 €) : sans effet au-dessus de 821 € de revenus mensuels.
 - Heures majorées : le texte parle d'« heures rémunérées » ; le simulateur compte chaque heure une fois.
-- Congés payés en année incomplète : encore répartis sur 12 mois (interdit par la convention, versés en juin, au congé principal ou au fil des congés) ; corrigé à l'étape 4.
+- Congés payés en année incomplète : la moyenne mensuelle du résumé les répartit sur 12 mois ; le calendrier (étape 4) les montre au mois réel de versement.
 - Congés payés et CMG : depuis janvier 2026 (LFSS 2026), ils ne comptent plus pour le test du plafond horaire ; leur place dans le coût aidé n'est pas documentée.
 - Réduction des heures majorées : traitement exact dans le coût aidé par le CMG non documenté (le simulateur Urssaf ne la calcule pas).

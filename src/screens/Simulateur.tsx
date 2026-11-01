@@ -4,13 +4,14 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { SIM_RESSOURCES } from './SimApercu';
 import { logUsage } from '../store';
-import { JOUR_NOMS, monthLabel, today } from '../engine/dates';
+import { JOUR_NOMS, MOIS_NOMS, monthLabel, today } from '../engine/dates';
 import type { Plage, Planning } from '../engine/model';
 import { euros, hoursLabel } from '../engine/money';
 import {
   HEURES_MAX_AN, HEURES_SANS_ACCORD, HEURES_MAX_JOUR, REPAS_NOMS, REPAS_REGLES, SITUATIONS_REVENUS, STATUTS, TYPES_REPAS, bornesKm, naissanceIlYA,
   planningDepuisTexte, planningRegulier, planningVersTexte, ratioNet, simuler, simulationParDefaut, type SimInput, type SituationRevenus, type Statut, type TypeRepas,
 } from '../engine/simulation';
+import { calendrier, levierTarif, selonRevenus, tarifMaxSansDepassement, type Evenement } from '../engine/calendrier';
 import { Banner, EuroInput, NumberInput, Seg, Stepper, Switch, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { shareText } from '../share';
@@ -26,6 +27,7 @@ export const BROUILLON_CONTRAT = 'pam-contrat-brouillon';
 // Valeurs admises dans un lien partagé (un lien modifié ne doit pas casser le calcul).
 const NOMBRES: Partial<Record<keyof SimInput, [number, number]>> = {
   semainesAbsence: [1, 30], majoration: [10, 100], tauxBrut: [0, 5000], entretien: [0, 5000], kmMois: [0, 5000], kmTaux: [0, 200], cv: [3, 8],
+  moisCongePrincipal: [6, 10], adaptationHeures: [0, 300], adaptationJours: [0, 31],
 };
 const REPAS_CLES: Record<TypeRepas, string> = { petitDej: 'rpd', dejeuner: 'rdj', gouter: 'rgo', diner: 'rdi' };
 
@@ -59,6 +61,9 @@ function depuisAdresse(base: SimInput): SimInput {
   if (yt === 'complete' || yt === 'incomplete') out.yearType = yt;
   if (q.get('alsaceMoselle') !== null) out.alsaceMoselle = q.get('alsaceMoselle') === '1';
   if (q.get('entretienMode') === 'heure') out.entretienMode = 'heure';
+  if (q.get('cpMode') === 'principale') out.cpMode = 'principale';
+  const debut = q.get('debut');
+  if (debut && /^\d{4}-(0[1-9]|1[0-2])$/.test(debut)) out.debut = debut;
   for (const t of TYPES_REPAS) { const n = num(REPAS_CLES[t], 0, 5000); if (n !== undefined) out.repas[t] = n; }
   // Revenus choisis sur la page d'accueil (lus une seule fois, jamais dans l'adresse)
   try {
@@ -76,6 +81,9 @@ function lienPartage(i: SimInput): string {
   q.set('alsaceMoselle', i.alsaceMoselle ? '1' : '0');
   for (const t of TYPES_REPAS) if (i.repas[t] > 0) q.set(REPAS_CLES[t], String(i.repas[t]));
   if (i.kmMois > 0) { q.set('kmMois', String(i.kmMois)); q.set('kmTaux', String(i.kmTaux)); q.set('cv', String(i.cv)); }
+  q.set('debut', i.debut);
+  if (i.yearType === 'incomplete') { q.set('cpMode', i.cpMode); q.set('moisCongePrincipal', String(i.moisCongePrincipal)); }
+  if (i.adaptationHeures > 0) { q.set('adaptationHeures', String(i.adaptationHeures)); q.set('adaptationJours', String(i.adaptationJours)); }
   return `${location.origin}${location.pathname}#/simulateur?${q.toString()}`;
 }
 
@@ -106,6 +114,14 @@ function SelectStatut({ label, value, onChange }: { label: string; value: Statut
     </div>
   );
 }
+
+const EVENEMENTS: Record<Evenement, string> = {
+  adaptation: 'Adaptation', conges: 'Congés payés', credit: 'Crédit d’impôt', avance: 'Avance de 60 %', regularisation: 'Trop-perçu à rembourser', finCmg: 'Fin de l’aide de la CAF',
+};
+const MOIS_COURTS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+const moisCourt = (m: string) => `${MOIS_COURTS[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
+const nfEuros = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
+const eurosRond = (c: number) => `${nfEuros.format(Math.round(c / 100))} €`;
 
 const prixKm = (milliemes: number) => `${(milliemes / 1000).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })} €`;
 
@@ -163,6 +179,14 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
   const repasParSemaine = (t: TypeRepas) => r.parJour.filter((j) => j.repas.includes(t)).length;
   const kmAn = i.kmMois * 12;
   const kmHorsBornes = i.kmMois > 0 && (i.kmTaux * 10 < r.kmBornes.min || i.kmTaux * 10 > r.kmBornes.max);
+  const cal = calendrier(i, d, r);
+  const maxNet = Math.max(1, ...cal.mois.map((m) => Math.abs(m.net)));
+  const premierCredit = cal.mois.find((m) => m.evenements.includes('credit'));
+  const premiereAvance = cal.mois.find((m) => m.evenements.includes('avance'));
+  const parRevenus = selonRevenus(i, d);
+  const procheRevenu = parRevenus.reduce((a, b) => (Math.abs(b.revenusAn - i.revenusAn) < Math.abs(a.revenusAn - i.revenusAn) ? b : a));
+  const levier = levierTarif(i, d);
+  const tarifMax = r.cmgEligible ? tarifMaxSansDepassement(i, d) : 0;
   const partager = async () => {
     logUsage('simulateur_partage', 'simulateur');
     const texte = `Simulation d'accueil Arvela : ${hoursLabel(r.minutesSemaine)} par semaine sur ${r.joursSemaine} jours, ${r.semaines} semaines par an, ${euros(i.tauxBrut)} brut de l'heure (${euros(r.tauxNet)} net).\n`
@@ -325,6 +349,38 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
           </fieldset>
         </section>
 
+        <section class="card">
+          <fieldset>
+            <legend>Le calendrier</legend>
+            <div class="field">
+              <label for="sim-debut">Premier mois du contrat</label>
+              <input id="sim-debut" class="input num" type="month" value={i.debut} onInput={(e) => { const v = (e.target as HTMLInputElement).value; if (/^\d{4}-\d{2}$/.test(v)) set({ debut: v }); }} />
+            </div>
+            <Switch label="Adaptation le premier mois" hint="Payée aux heures réellement faites, 30 jours au plus (convention collective)." checked={i.adaptationHeures > 0}
+              onChange={(on) => set(on ? { adaptationHeures: Math.round(r.heuresMoisMin / 60 / 3), adaptationJours: Math.max(1, Math.round(r.joursMois / 2)) } : { adaptationHeures: 0, adaptationJours: 0 })} />
+            {i.adaptationHeures > 0 && (
+              <div class="grid2">
+                <NumberInput label="Heures ce mois-là" value={i.adaptationHeures} min={1} max={300} onChange={(v) => set({ adaptationHeures: v ?? 0 })} />
+                <NumberInput label="Jours d’accueil" value={i.adaptationJours} min={1} max={31} onChange={(v) => set({ adaptationJours: v ?? 0 })} />
+              </div>
+            )}
+            {i.yearType === 'incomplete' && (
+              <>
+                <Seg label="Congés payés versés" value={i.cpMode} options={[{ v: 'juin', l: 'En juin' }, { v: 'principale', l: 'Au congé principal' }]} onChange={(v) => set({ cpMode: v })} />
+                {i.cpMode === 'principale' && (
+                  <div class="field">
+                    <label for="sim-moiscp">Mois du congé principal</label>
+                    <select id="sim-moiscp" class="input" value={i.moisCongePrincipal} onChange={(e) => set({ moisCongePrincipal: Number((e.target as HTMLSelectElement).value) })}>
+                      {[6, 7, 8, 9, 10].map((m) => <option value={m}>{MOIS_NOMS[m - 1]}</option>)}
+                    </select>
+                  </div>
+                )}
+                <p class="hint">Moins de 52 semaines : les congés payés s’ajoutent au salaire une fois par an (ou au fil des congés, selon le contrat), jamais chaque mois.</p>
+              </>
+            )}
+          </fieldset>
+        </section>
+
         </div>
         <div class="sim-result">
         {/* Rappel du résultat collé en bas de l'écran pendant la saisie ; il s'efface quand le résultat complet est visible. */}
@@ -361,6 +417,62 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
           {r.congesAnnuels > 0 && <Banner tone="info" icon="sun">Moins de 52 semaines : les congés payés sont versés en juin, au congé principal ou au fil des congés. Le mois où ils sont payés, l’aide de la CAF peut être plafonnée.</Banner>}
           {r.cmgEligible && r.cmg.depassePlafond && <Banner tone="warn">Le coût de l’heure ({euros(r.cmg.coutHoraire)}, entretien et repas compris) dépasse {euros(r.cmg.params.plafondHoraire)}. L’aide de la CAF est calculée sur ce plafond, et elle ne prend en charge que {Math.round(r.cmg.partCotisations * 100)} % des cotisations : {euros(r.cotisationsReste)} par mois restent à la famille.</Banner>}
         </section>
+
+        {cal.mois.length > 0 && (
+          <section class="card" aria-labelledby="sim-cal">
+            <h2 id="sim-cal" style={{ marginBottom: '4px' }}>Mois par mois</h2>
+            <p class="hint">Ce que la famille paie chaque mois, après l’aide de la CAF, et le crédit d’impôt le mois où il arrive. {eurosRond(cal.total)} sur {cal.mois.length} mois.</p>
+            {premierCredit && <Banner tone="info">Le premier crédit d’impôt n’arrive qu’en {monthLabel(premierCredit.mois)} : jusque-là, la famille paie sans lui.{premiereAvance ? ` En ${monthLabel(premiereAvance.mois)}, l’avance de 60 % se calcule sur la première année, souvent incomplète : elle est faible, le solde arrive l’été.` : ''}</Banner>}
+            <ol class="cal-list">
+              {cal.mois.map((m) => (
+                <li class={`cal-row ${m.evenements.length ? 'is-event' : ''}`}>
+                  <div class="cal-head">
+                    <span class="cal-mois">{moisCourt(m.mois)}</span>
+                    <span class="cal-bar" aria-hidden="true"><span style={{ width: `${Math.max(0, (m.net / maxNet) * 100)}%` }} /></span>
+                    <b class="cal-net">{euros(m.net)}</b>
+                  </div>
+                  <span class="decl-hint">
+                    {`payé ${eurosRond(m.verse + m.cotisationsReste)}`}{m.cmg ? ` · CAF −${eurosRond(m.cmg)}` : ''}{m.autresAides ? ` · aides −${eurosRond(m.autresAides)}` : ''}{m.credit ? ` · crédit ${m.credit > 0 ? '−' : '+'}${eurosRond(Math.abs(m.credit))}` : ''}
+                    {m.evenements.length > 0 && <> · <span class="cal-ev">{m.evenements.map((e) => EVENEMENTS[e]).join(', ')}{m.conges ? ` ${eurosRond(m.conges)}` : ''}</span></>}
+                  </span>
+                </li>
+              ))}
+            </ol>
+            <p class="hint">Aux barèmes actuels : les revalorisations à venir (SMIC, aide de la CAF) ne sont pas connues. Entretien et repas à leur moyenne mensuelle.{i.yearType === 'complete' ? ' La première année, les congés que l’assistante maternelle n’a pas encore acquis peuvent être retenus sur son salaire.' : ''}</p>
+          </section>
+        )}
+
+        <section class="card" aria-labelledby="sim-rev">
+          <h2 id="sim-rev" style={{ marginBottom: '4px' }}>Selon les revenus de la famille</h2>
+          <p class="hint">Pour répondre aux parents avant de connaître leurs revenus. Même accueil, même tarif.</p>
+          <div class="decl">
+            {parRevenus.map((x) => (
+              <div class={`decl-line ${x === procheRevenu ? 'is-current' : ''}`}>
+                <span class="decl-label"><span>{x.revenusAn >= 102000 ? `${nfEuros.format(x.revenusAn)} € et plus` : `${nfEuros.format(x.revenusAn)} €`}</span><span class="decl-hint">revenu fiscal par an · aide de la CAF {eurosRond(x.cmg)}</span></span>
+                <span class="decl-value">{euros(x.reel)}</span>
+              </div>
+            ))}
+          </div>
+          <p class="hint">Coût réel par mois, après l’aide de la CAF et le crédit d’impôt.</p>
+        </section>
+
+        {levier.length > 0 && r.nbEnfants > 0 && (
+          <section class="card" aria-labelledby="sim-tarif">
+            <h2 id="sim-tarif" style={{ marginBottom: '4px' }}>Et si le tarif augmente ?</h2>
+            <p class="hint">Ce que gagne l’assistante maternelle en plus, et ce que la famille paie vraiment en plus, aides comprises.</p>
+            <div class="decl">
+              {levier.map((l) => (
+                <div class="decl-line">
+                  <span class="decl-label"><span>+{euros(l.hausse)} brut de l’heure</span><span class="decl-hint">assistante maternelle : +{euros(l.gainNet)} net par mois</span></span>
+                  <span class="decl-value">+{euros(l.coutFamille)}</span>
+                </div>
+              ))}
+            </div>
+            {r.cmgEligible && levier[0]?.part < 1 && <p class="hint">Pour cette famille, la CAF et le crédit d’impôt absorbent {Math.round((1 - levier[0].part) * 100)} % de la hausse.</p>}
+            {r.cmgEligible && tarifMax > 0 && <p class="hint">{tarifMax > i.tauxBrut ? `Jusqu’à ${euros(tarifMax)} brut de l’heure, la CAF prend en charge toutes les cotisations de cette famille.` : `Au-delà de ${euros(tarifMax)} brut de l’heure, une partie des cotisations reste à la charge de la famille.`}</p>}
+            {!r.cmgEligible && <p class="hint">Sans aide de la CAF, chaque hausse coûte plus à la famille qu’elle ne rapporte en net, à cause des cotisations.</p>}
+          </section>
+        )}
 
         <div class="btn-row">
           <button class="btn btn-primary btn-lg" onClick={() => void partager()}><Icon name="share" />Envoyer à la famille</button>

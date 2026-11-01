@@ -740,3 +740,16 @@ h1.h-card { font-size: 25px; }
   .site-brand-tag { letter-spacing: 0.08em; }
 }
 @media (min-width: 900px) { .hero-cta .btn { padding: 0 16px; } }
+
+/* Simulateur : calendrier mois par mois (étape 4) */
+.cal-list { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; }
+.cal-row { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
+.cal-row:last-child { border-bottom: 0; }
+.cal-head { display: grid; grid-template-columns: 72px 1fr auto; align-items: center; gap: 10px; }
+.cal-mois { font-size: 14px; }
+.cal-bar { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.cal-bar > span { display: block; height: 100%; background: var(--ink); opacity: 0.55; border-radius: 3px; }
+.cal-row.is-event .cal-bar > span { background: var(--accent); opacity: 1; }
+.cal-net { font-family: var(--font-num); font-size: 14px; }
+.cal-ev { color: var(--accent-ink); font-weight: 600; }
+.decl-line.is-current { background: var(--primary-soft); border-radius: 8px; padding-inline: 8px; }
