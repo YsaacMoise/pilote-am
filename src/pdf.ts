@@ -14,6 +14,16 @@ export interface Extracted {
   text: string;
 }
 
+/** Le PDF ne contient qu'une image (scan, photo enregistrée en PDF) : aucun texte à lire. */
+export class ScanError extends Error {
+  constructor() { super('Ce PDF est un scan ou une photo : l’app ne peut pas y lire de texte. Télécharge plutôt le bulletin depuis ton compte Pajemploi, ou saisis les montants à la main.'); }
+}
+
+/** Moins de 40 lettres ou chiffres sur toutes les pages : c'est une image, pas un vrai PDF de bulletin. */
+export function isScanText(text: string): boolean {
+  return (text.match(/[\p{L}\d]/gu) ?? []).length < 40;
+}
+
 export async function pdfText(file: File): Promise<string> {
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/legacy/build/pdf.worker.min.mjs', import.meta.url).href;
@@ -31,7 +41,9 @@ export async function pdfText(file: File): Promise<string> {
     parts.push(line);
   }
   await doc.destroy();
-  return parts.join('\n').replace(/[ \t  ]+/g, ' ');
+  const text = parts.join('\n').replace(/[ \t  ]+/g, ' ');
+  if (isScanText(text)) throw new ScanError();
+  return text;
 }
 
 const MOIS: Record<string, string> = {
