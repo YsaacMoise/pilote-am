@@ -122,7 +122,7 @@ async function phone(b, name) {
   await a.close();
   const a2 = await A.ctx.newPage();
   await a2.goto(base + '#/compte');
-  await a2.getByText(email).waitFor();
+  await a2.getByText(email).first().waitFor();
   await a2.getByText(/^À jour/).waitFor({ timeout: 8000 });
   assert(true, 'réouverture : toujours connectée et à jour');
 

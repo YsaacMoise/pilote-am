@@ -1,14 +1,14 @@
-// Page « nouveau mot de passe », ouverte depuis le lien de l'e-mail. Elle marche sans session et sans
+// Pages ouvertes depuis les liens des e-mails : « nouveau mot de passe » et « confirmer mon adresse ». Elle marche sans session et sans
 // données sur l'appareil (le lien s'ouvre souvent dans Safari, hors de l'app installée, parfois en navigation privée).
 import { useEffect, useState } from 'preact/hooks';
 import { LOGIN_HINT, type AuthAction } from '../auth-action';
-import { confirmReset, verifyResetCode } from '../cloud';
+import { applyEmailCode, confirmReset, verifyResetCode } from '../cloud';
 import { PASSWORD_RULE, passwordChecks } from '../password';
 import { PasswordRules } from '../ui/PasswordRules';
 import { Banner, TextInput } from '../ui/kit';
 import { LockupStacked } from './Welcome';
 
-type Etat = { k: 'verif' } | { k: 'form'; email: string } | { k: 'fini'; email: string } | { k: 'erreur'; msg: string };
+type Etat = { k: 'verif' } | { k: 'form'; email: string } | { k: 'fini'; email: string } | { k: 'confirmee' } | { k: 'erreur'; msg: string };
 
 function ouvrirArvela(email?: string) {
   try { if (email) sessionStorage.setItem(LOGIN_HINT, email); } catch { /* stockage indisponible */ }
@@ -24,6 +24,13 @@ export function MotDePasse({ action }: { action: AuthAction }) {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (action.mode === 'verifyEmail') {
+      document.title = 'Adresse confirmée · Arvela';
+      applyEmailCode(action.code)
+        .then(() => setEtat({ k: 'confirmee' }))
+        .catch((e) => setEtat({ k: 'erreur', msg: (e as Error).message }));
+      return;
+    }
     document.title = 'Nouveau mot de passe · Arvela';
     if (action.mode !== 'resetPassword') { setEtat({ k: 'erreur', msg: 'Ce lien n’est pas reconnu par Arvela.' }); return; }
     verifyResetCode(action.code)
@@ -70,6 +77,14 @@ export function MotDePasse({ action }: { action: AuthAction }) {
           <Banner tone="ok">Ton nouveau mot de passe est enregistré.</Banner>
           <p class="hint">Si Arvela est installée sur ton téléphone, ouvre-la depuis son icône et connecte-toi avec ce nouveau mot de passe.</p>
           <button class="btn btn-primary btn-lg btn-block" type="button" onClick={() => ouvrirArvela(etat.email)}>Me connecter</button>
+        </section>
+      )}
+
+      {etat.k === 'confirmee' && (
+        <section class="card stack" role="status">
+          <h1 class="h-card">Adresse confirmée</h1>
+          <Banner tone="ok">Merci. Tu pourras récupérer ton compte si tu oublies ton mot de passe.</Banner>
+          <button class="btn btn-primary btn-lg btn-block" type="button" onClick={() => ouvrirArvela()}>Ouvrir Arvela</button>
         </section>
       )}
 

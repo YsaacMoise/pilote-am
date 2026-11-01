@@ -123,6 +123,9 @@ export function Welcome() {
       <div class="welcome">
         <LockupStacked />
         <h1 class="hero-title">Ton compte est prêt</h1>
+        {cloud.verified === false && cloud.email && (
+          <p class="hint center" role="status">Un e-mail de confirmation est parti à <strong>{cloud.email}</strong>. Ouvre-le quand tu peux : il protège ton compte si tu oublies ton mot de passe.</p>
+        )}
         <section class="card stack" aria-labelledby="inst">
           <h2 id="inst">Installe l’app sur ton téléphone</h2>
           <p>Avec son icône sur l’écran d’accueil, l’app s’ouvre en un geste, en plein écran, même sans réseau.</p>

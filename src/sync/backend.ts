@@ -2,7 +2,7 @@
 // un faux serveur local pour les tests automatisés (jamais inclus dans le site publié).
 import type { RemoteDoc } from './plan';
 
-export interface CloudUser { uid: string; email: string | null }
+export interface CloudUser { uid: string; email: string | null; /** Adresse confirmée par le lien de l'e-mail */ verified?: boolean }
 
 export interface ListenMeta {
   /** Les données viennent du cache du téléphone, pas du serveur (hors ligne) */
@@ -22,6 +22,12 @@ export interface Backend {
   verifyResetCode(code: string): Promise<string>;
   /** Enregistre le nouveau mot de passe avec le code du lien (le code est alors consommé) */
   confirmReset(code: string, password: string): Promise<void>;
+  /** Envoie l'e-mail de confirmation d'adresse au compte connecté */
+  sendVerification(): Promise<void>;
+  /** Relit le compte connecté sur le serveur (adresse confirmée ou non) */
+  refreshUser(): Promise<CloudUser | null>;
+  /** Lien « confirmer mon adresse » reçu par e-mail */
+  applyEmailCode(code: string): Promise<void>;
   signOut(): Promise<void>;
   /** Supprime toutes les données en ligne puis le compte (mot de passe redemandé par sécurité) */
   deleteAccount(password: string): Promise<void>;

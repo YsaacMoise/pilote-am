@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { cloudInfo, statusText, useCloud, type CloudStatus } from '../cloud-state';
 import { toast, useStore } from '../store';
 import { Banner, Sheet, TextInput, Topbar } from '../ui/kit';
@@ -84,6 +84,28 @@ export function AccountForm({ initial = 'create', initialEmail = '', onDone }: {
   );
 }
 
+/** Adresse pas encore confirmée : rappel discret, sans rien bloquer. */
+function ConfirmAddress({ email }: { email: string }) {
+  const [busy, setBusy] = useState(false);
+  // Relit l'état à l'ouverture de l'écran : le lien a peut-être été ouvert entre-temps.
+  useEffect(() => { void cloud().then((m) => m.checkVerified()).catch(() => {}); }, []);
+  const run = async (f: () => Promise<void>) => {
+    setBusy(true);
+    try { await f(); } catch (e) { toast((e as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <section class="card stack-sm" aria-labelledby="confirm-t">
+      <h2 id="confirm-t" class="row"><Icon name="alert" />Confirme ton adresse</h2>
+      <p>Un e-mail de confirmation est parti à <strong>{email}</strong>. Ouvre le lien qu’il contient : sans adresse confirmée, tu ne pourras pas récupérer ton compte si tu oublies ton mot de passe.</p>
+      <p class="hint">Pas reçu ? Regarde dans les courriers indésirables. Il vient de noreply@arvela.fr.</p>
+      <div class="btn-row">
+        <button class="btn btn-outline" disabled={busy} onClick={() => run(async () => { await (await cloud()).resendVerification(); toast('E-mail renvoyé.', undefined, 'ok'); })}>Renvoyer l’e-mail</button>
+        <button class="btn btn-primary" disabled={busy} onClick={() => run(async () => { const ok = await (await cloud()).checkVerified(); toast(ok ? 'Adresse confirmée, merci.' : 'Pas encore confirmée : ouvre le lien de l’e-mail.', undefined, ok ? 'ok' : undefined); })}>J’ai confirmé</button>
+      </div>
+    </section>
+  );
+}
+
 const TONE: Record<CloudStatus, 'ok' | 'info' | 'warn'> = {
   off: 'info', starting: 'info', merging: 'info', choice: 'warn', synced: 'ok', pending: 'info', offline: 'info', error: 'warn',
 };
@@ -115,6 +137,7 @@ export function Compte() {
               <Banner tone={TONE[c.status]} icon={c.status === 'synced' ? 'cloud' : undefined}>{statusText(c)}</Banner>
               {c.status !== 'choice' && <p class="hint">Chaque changement est rangé sur le téléphone puis copié dans ton compte dès qu’il y a du réseau. Sur un autre appareil, connecte-toi avec la même adresse pour tout retrouver.</p>}
             </section>
+            {c.verified === false && <ConfirmAddress email={c.email!} />}
             {c.status === 'choice' && <LinkChoice />}
             <div class="stack">
               <button class="btn btn-outline btn-block" onClick={() => void out(false)}>Me déconnecter</button>

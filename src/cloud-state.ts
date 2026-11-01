@@ -14,6 +14,8 @@ export type CloudStatus =
 export interface CloudInfo {
   status: CloudStatus;
   email?: string;
+  /** Adresse du compte confirmée (lien reçu par e-mail) */
+  verified?: boolean;
   /** Heure du dernier échange réussi avec le serveur */
   lastSync?: number;
   /** Message lisible si quelque chose bloque */

@@ -2,8 +2,8 @@
 // Chargé à la demande : l'app démarre et marche sans ce module.
 import { initializeApp } from 'firebase/app';
 import {
-  browserLocalPersistence, confirmPasswordReset, createUserWithEmailAndPassword, deleteUser, EmailAuthProvider, indexedDBLocalPersistence,
-  initializeAuth, onAuthStateChanged, reauthenticateWithCredential, sendPasswordResetEmail, signInWithEmailAndPassword,
+  applyActionCode, browserLocalPersistence, confirmPasswordReset, createUserWithEmailAndPassword, deleteUser, EmailAuthProvider, indexedDBLocalPersistence,
+  initializeAuth, onAuthStateChanged, reauthenticateWithCredential, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword,
   signOut, verifyPasswordResetCode,
 } from 'firebase/auth';
 import {
@@ -51,7 +51,7 @@ export const backend: Backend = {
   durableQueue: true,
 
   onUser(cb) {
-    return onAuthStateChanged(auth, (u) => cb(u ? ({ uid: u.uid, email: u.email } satisfies CloudUser) : null));
+    return onAuthStateChanged(auth, (u) => cb(u ? ({ uid: u.uid, email: u.email, verified: u.emailVerified } satisfies CloudUser) : null));
   },
   async createAccount(email, password) {
     await createUserWithEmailAndPassword(auth, email, password);
@@ -67,6 +67,18 @@ export const backend: Backend = {
   },
   async confirmReset(code, password) {
     await confirmPasswordReset(auth, code, password);
+  },
+  async sendVerification() {
+    if (auth.currentUser) await sendEmailVerification(auth.currentUser);
+  },
+  async refreshUser() {
+    const u = auth.currentUser;
+    if (!u) return null;
+    await u.reload();
+    return { uid: u.uid, email: u.email, verified: u.emailVerified };
+  },
+  async applyEmailCode(code) {
+    await applyActionCode(auth, code);
   },
   async signOut() {
     await signOut(auth);

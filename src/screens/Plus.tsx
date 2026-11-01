@@ -45,7 +45,7 @@ export function Plus() {
         <section class="stack-sm" aria-labelledby="donnees">
           <h2 id="donnees" class="section-title">Mes données</h2>
           <div class="list">
-            {!demo && <ListLink href="#/compte" icon="cloud" title="Compte" sub={cloud.email ? `${cloud.email} · ${statusText(cloud)}` : statusText(cloud)} />}
+            {!demo && <ListLink href="#/compte" icon="cloud" title="Compte" sub={cloud.email ? `${cloud.email} · ${cloud.verified === false ? 'adresse à confirmer' : statusText(cloud)}` : statusText(cloud)} />}
             <ListLink href="#/sauvegarde" icon="shield" title="Sauvegarde" sub={lastB ? `Dernière le ${new Date(lastB).toLocaleDateString('fr-FR')}` : 'Aucune sauvegarde pour l’instant'} />
             <ListLink href="#/pilote" icon="message" title="Données du pilote" sub="Tes remarques et l’export pseudonymisé" />
             <ListLink href="#/reglages" icon="settings" title="Réglages" sub="Ton prénom, tes enfants à charge" />
