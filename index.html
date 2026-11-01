@@ -13,8 +13,9 @@
       })();
     </script>
  <script>
-      // Version nuit choisie à la main (Réglages ou bouton du site) : appliquée avant l'affichage.
-      try { var t = localStorage.getItem('pam-theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+      // Version jour par défaut ; nuit ou automatique seulement si l'utilisatrice l'a choisi. Appliqué avant l'affichage.
+      (function () { var t = null; try { t = localStorage.getItem('pam-theme'); } catch (e) {}
+        if (t !== 'auto') document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light'); })();
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Arvela</title>
