@@ -713,9 +713,12 @@ h1.h-card { font-size: 25px; }
 @media (hover: hover) { .vid-card:hover { box-shadow: var(--shadow-hover); } }
 @media (min-width: 900px) { .vid-card { display: none; } }
 /* Simulateur en section, avec curseurs et résultat immédiat */
-.sim-apercu { display: grid; gap: 18px; padding: 22px 18px; margin-top: 8px; border-radius: var(--r-md); background: var(--sauge-soft); }
-.sim-apercu h2 { font-size: 30px; line-height: 1.1; margin: 6px 0 8px; }
-.sim-apercu-txt p { margin: 0; color: var(--ink-2); }
+/* Bloc plein, sauge soutenue et texte albâtre : il se détache de la page, en jour comme en nuit */
+.sim-apercu { display: grid; gap: 18px; padding: 22px 18px; margin-top: 8px; border-radius: var(--r-md); background: #4f6157; color: #f7f4ef; box-shadow: 0 24px 50px -28px rgb(30 32 29 / 0.55); }
+.sim-apercu h2 { font-size: 30px; line-height: 1.1; margin: 6px 0 8px; color: #f7f4ef; }
+.sim-apercu .eyebrow { color: #f3dccd; }
+.sim-apercu-txt p { margin: 0; color: #e4e9e5; }
+.sim-apercu-box { color: var(--ink); }
 .sim-apercu-box { display: flex; flex-direction: column; gap: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 16px; }
 .sim-sliders { display: flex; flex-direction: column; gap: 14px; }
 .curseur label { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-weight: 600; }
