@@ -5,7 +5,8 @@ import { useCloud } from '../cloud-state';
 import { MODE_KEY } from '../db';
 import { Banner, Sheet, Stepper, TextInput, Topbar } from '../ui/kit';
 import { Logo } from '../ui/Logo';
-import { VIDEOS_PRETES, VideoClip, isIOS } from '../ui/VideoGuide';
+import { APERCU_QUOTIDIEN, VIDEOS_PRETES, VideoClip, isIOS } from '../ui/VideoGuide';
+import { SimApercu } from './SimApercu';
 import { Icon } from '../ui/icons';
 import { LOGIN_HINT } from '../auth-action';
 
@@ -218,29 +219,25 @@ export function Welcome() {
               <p class="hero-login">Déjà inscrite ? <button class="btn-link" type="button" onClick={() => ouvrir('login')}>Me connecter</button></p>
             </>
           )}
+          {VIDEOS_PRETES && (
+            <button class="vid-card" type="button" onClick={() => { logUsage('accueil_video'); setVideo(true); }}>
+              <span class="vid-card-img" aria-hidden="true">
+                <img src={APERCU_QUOTIDIEN} alt="" />
+                <span class="video-play"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M8 5v14l11-7z" fill="currentColor" /></svg></span>
+              </span>
+              <span class="vid-card-txt">
+                <span class="eyebrow">Vidéo · 1 minute</span>
+                <b>Voir Arvela en action</b>
+                <small>Pointer une arrivée, noter un repas, retrouver le mois prêt à déclarer.</small>
+              </span>
+            </button>
+          )}
           <p class="hero-meta"><span>Gratuit pendant le test</span><span>Hébergé à Paris</span><span>Sans App Store</span></p>
         </div>
         {VIDEOS_PRETES && <div class="hero-video"><VideoClip clip="quotidien" /></div>}
       </div>
 
-      {VIDEOS_PRETES && (
-        <button class="vid-row" type="button" onClick={() => { logUsage('accueil_video'); setVideo(true); }}>
-          <span class="vid-thumb" aria-hidden="true"><span class="video-play"><svg viewBox="0 0 24 24" width="16" height="16"><path d="M8 5v14l11-7z" fill="currentColor" /></svg></span></span>
-          <span>
-            <b>Une journée avec Arvela</b>
-            <small>Pointer, noter un repas, préparer le mois.</small>
-            <span class="dur">VIDÉO · 1:00</span>
-          </span>
-        </button>
-      )}
-      <a class="sim-row" href="#/simulateur" onClick={() => logUsage('accueil_simulateur')}>
-        <span class="sim-ico" aria-hidden="true"><Icon name="euro" /></span>
-        <span>
-          <b>Combien coûte un accueil ?</b>
-          <small>Salaire, aide de la CAF et crédit d’impôt, calculés selon les règles de 2026.</small>
-        </span>
-        <Icon name="right" size={20} />
-      </a>
+      <SimApercu />
       </main>
       {video && <Sheet title="Une journée avec Arvela" onClose={() => setVideo(false)}><VideoClip clip="quotidien" autoStart /></Sheet>}
 

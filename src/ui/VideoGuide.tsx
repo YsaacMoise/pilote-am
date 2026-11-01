@@ -10,8 +10,11 @@ import { Logo } from './Logo';
 export type Clip = 'quotidien' | 'installer';
 type Systeme = 'iphone' | 'android';
 
-const CLIPS: Record<Clip, { onglet: string; titre: string; duree: string; resume: string }> = {
-  quotidien: { onglet: 'Au quotidien', titre: 'Une journée avec Arvela', duree: '1:00', resume: 'Pointer une arrivée et un départ, noter un repas, envoyer le résumé aux parents, voir ce qui est à déclarer à la fin du mois.' },
+/** Image d'aperçu tirée de la vidéo (écran « Aujourd'hui ») : on voit l'app avant d'appuyer sur Lecture. */
+export const APERCU_QUOTIDIEN = './videos/arvela-quotidien.jpg';
+
+const CLIPS: Record<Clip, { onglet: string; titre: string; duree: string; resume: string; apercu?: string }> = {
+  quotidien: { onglet: 'Au quotidien', titre: 'Une journée avec Arvela', duree: '1:00', apercu: APERCU_QUOTIDIEN, resume: 'Pointer une arrivée et un départ, noter un repas, envoyer le résumé aux parents, voir ce qui est à déclarer à la fin du mois.' },
   installer: { onglet: 'Installer', titre: 'Installer l’app', duree: '0:21', resume: 'Les gestes pour mettre Arvela sur l’écran d’accueil. Une fois installée, elle marche même sans réseau.' },
 };
 
@@ -42,11 +45,19 @@ export function VideoClip({ clip, autoStart = false }: { clip: Clip; autoStart?:
         </div>
       )}
       <div class="video-frame">
-        <video ref={ref} key={fichier} controls={started} preload="none" playsInline aria-label={`${titre}, ${c.duree}`}>
+        <video ref={ref} key={fichier} controls={started} preload="none" playsInline poster={c.apercu} aria-label={`${titre}, ${c.duree}`}>
           <source src={`./videos/${fichier}.mp4`} type="video/mp4" />
           <track kind="captions" src={`./videos/${fichier}.vtt`} srclang="fr" label="Français" />
         </video>
-        {!started && (
+        {!started && c.apercu && (
+          <button class="video-poster has-img" type="button" aria-label={`Lire la vidéo : ${titre} (${c.duree})`}
+            onClick={() => { setStarted(true); ref.current?.play().catch(() => {}); }}>
+            <img src={c.apercu} alt="" />
+            <span class="video-play" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26"><path d="M8 5v14l11-7z" fill="currentColor" /></svg></span>
+            <span class="video-pill">{titre} · {c.duree}</span>
+          </button>
+        )}
+        {!started && !c.apercu && (
           <button class="video-poster" type="button" aria-label={`Lire la vidéo : ${titre} (${c.duree})`}
             onClick={() => { setStarted(true); ref.current?.play().catch(() => {}); }}>
             <Logo size={56} />
