@@ -15,16 +15,16 @@ const nf = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
 
 export function SimApercu() {
   const d = today();
-  // Curseur par pas de 5 centimes : on part du minimum légal arrondi au-dessus, pour atteindre 10,00 € pile.
-  const min = Math.ceil(ratesAt(d).minConvNet / 5) * 5;
+  // Curseur par pas de 5 centimes : on part du minimum conventionnel brut arrondi au-dessus, jusqu'à 13,00 € brut.
+  const min = Math.ceil(ratesAt(d).minConvBrut / 5) * 5;
   const [heures, setHeures] = useState(40);
-  const [taux, setTaux] = useState(Math.max(min, 400));
+  const [taux, setTaux] = useState(Math.max(min, 510));
   // La CAF compte le revenu imposable de l'année N-2 (avis d'impôt), divisé par 12.
   const anneeRevenus = Number(d.slice(0, 4)) - 2;
   const [revenusAn, setRevenusAn] = useState(42000);
   const revenus = Math.round(revenusAn / 12);
-  const r = simuler({ ...simulationParDefaut(d), jours: 5, heures, tauxNet: taux, ressourcesMois: revenus }, d);
-  const lien = `#/simulateur?jours=5&heures=${heures}&tauxNet=${taux}`;
+  const r = simuler({ ...simulationParDefaut(d), jours: 5, heures, tauxBrut: taux, ressourcesMois: revenus }, d);
+  const lien = `#/simulateur?jours=5&heures=${heures}&tauxBrut=${taux}`;
 
   return (
     <section class="sim-apercu" aria-labelledby="sim-t">
@@ -35,15 +35,15 @@ export function SimApercu() {
       </div>
       <div class="sim-apercu-box">
         <div class="sim-sliders">
-          <Curseur id="sa-h" label="Heures d’accueil par semaine" value={heures} min={10} max={55} step={1} onChange={setHeures} affiche={`${heures} h`} />
-          <Curseur id="sa-t" label="Ton tarif horaire net" value={taux} min={min} max={1000} step={5} onChange={setTaux} affiche={euros(taux)} />
+          <Curseur id="sa-h" label="Heures d’accueil par semaine" value={heures} min={10} max={47} step={1} onChange={setHeures} affiche={`${heures} h`} />
+          <Curseur id="sa-t" label="Ton tarif horaire" value={taux} min={min} max={1300} step={5} onChange={setTaux} affiche={`${euros(taux)} brut`} />
           <Curseur id="sa-r" label={`Revenu imposable de la famille en ${anneeRevenus}`} value={revenusAn} min={0} max={120000} step={1000} onChange={setRevenusAn} affiche={`${nf.format(revenusAn)} €`} />
           <p class="hint">Le montant « revenu imposable » de l’avis d’impôt. C’est ce que la CAF retient pour son aide, pas l’impôt payé.</p>
         </div>
         <div class="sim-apercu-res" aria-live="polite">
           <span class="summary-label">Reste à payer par la famille</span>
           <span class="total">{euros(r.reste)}<small> / mois</small></span>
-          <span class="summary-sub">Coût {euros(r.total)}, aide de la CAF −{euros(r.cmg.montant)}</span>
+          <span class="summary-sub">À verser {euros(r.verse)}, aide de la CAF −{euros(r.cmg.montant)}{r.cotisationsReste > 0 ? `, cotisations +${euros(r.cotisationsReste)}` : ''}</span>
           {r.creditAnnuel > 0 && <span class="summary-sub">Avec le crédit d’impôt : <b>{euros(r.reel)}</b> par mois en réalité</span>}
         </div>
         <a class="btn btn-primary btn-lg btn-block" href={lien} onClick={() => {

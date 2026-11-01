@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calculCmg, creditImpot, simuler, simulationParDefaut, tauxEffort } from '../src/engine/simulation';
+import { calculCmg, cotisationsDuMois, creditImpot, heuresMaxSemaine, simuler, simulationParDefaut, tauxEffort } from '../src/engine/simulation';
 
 // Exemples officiels : communiqué de presse CAF du 15/09/2025 (coût horaire de référence 4,85 €)
 // et webinaire CAF de septembre 2025. Une date de septembre 2025 sélectionne ces paramètres.
@@ -44,7 +44,7 @@ describe('crédit d’impôt garde d’enfant (CGI 200 quater B)', () => {
 });
 
 describe('simulateur complet', () => {
-  const base = { ...simulationParDefaut('2026-11-01'), jours: 5, heures: 40, tauxNet: 398, entretienJour: 380, ressourcesMois: 3500 };
+  const base = { ...simulationParDefaut('2026-11-01'), jours: 5, heures: 40, tauxBrut: 510, entretienJour: 380, ressourcesMois: 3500 };
 
   it('cas type : 40 h sur 5 jours, 52 semaines, 3,98 € net, 1 enfant, 3 500 € de ressources', () => {
     const r = simuler(base, '2026-11-01');
@@ -54,10 +54,13 @@ describe('simulateur complet', () => {
     // Entretien seulement les jours d'accueil : 5 jours × 47 semaines (les 5 semaines de congés de l'AM sans accueil)
     expect(r.joursAn).toBe(235);
     expect(r.entretien).toBe(Math.round((380 * 235) / 12));
-    expect(r.total).toBe(r.salaire + r.entretien);
+    expect(r.tauxNet).toBe(398); // 5,10 € brut × (1 − 21,88 %)
+    expect(r.verse).toBe(r.salaire + r.entretien);
     // 3 500 × 0,0619 % ÷ 4,91 = 44,12 % restent à la famille
-    expect(r.cmg.montant).toBe(Math.round(r.total * (1 - (3500 * 100 * 0.000619) / 491)));
-    expect(r.reste).toBe(r.total - r.cmg.montant);
+    expect(r.cmg.montant).toBe(Math.round(r.verse * (1 - (3500 * 100 * 0.000619) / 491)));
+    // Cotisations entièrement prises en charge sous le plafond horaire
+    expect(r.cotisationsReste).toBe(0);
+    expect(r.reste).toBe(r.verse - r.cmg.montant);
     expect(r.resteHoraire).toBe(Math.round(r.reste / (10400 / 60)));
     // Crédit : net annuel + 2,65 € × 235 jours − CMG annuel, plafonné à 1 750 €
     expect(r.creditAnnuel).toBe(Math.min(175000, Math.round((68987 * 12 + 265 * 235 - r.cmg.montant * 12) / 2)));
@@ -84,14 +87,14 @@ describe('simulateur complet', () => {
     expect(r.semaines).toBe(43);
     expect(r.joursAn).toBe(5 * 43);
     expect(r.congesMois).toBe(Math.round(r.congesAnnuels / 12));
-    expect(r.total).toBe(r.salaire + r.congesMois + r.entretien + r.repas);
+    expect(r.verse).toBe(r.salaire + r.congesMois + r.entretien + r.repas);
     const attendu = Math.round(Math.min(350000, r.salaire * 12 + r.congesAnnuels + 265 * r.joursAn - r.cmg.montant * 12) / 2);
     expect(r.creditAnnuel).toBe(attendu);
   });
 
   it('heures vides : rien à payer, pas de crédit négatif ; plus de 13 h par jour : ramené au maximum', () => {
     const vide = simuler({ ...base, heures: 0 }, '2026-11-01');
-    expect([vide.total, vide.creditAnnuel, vide.reel]).toEqual([0, 0, 0]);
+    expect([vide.total, vide.cotisations, vide.creditAnnuel, vide.reel]).toEqual([0, 0, 0, 0]);
     const long = simuler({ ...base, jours: 2, heures: 40 }, '2026-11-01');
     expect(long.heuresPlafonnees).toBe(true);
     expect(long.heuresMoisMin).toBe(Math.round((26 * 60 * 52) / 12));
@@ -108,14 +111,99 @@ describe('simulateur complet', () => {
   });
 
   it('l’entretien ne descend jamais sous le minimum légal ; heures au-delà de 45 h majorées', () => {
-    const r = simuler({ ...base, heures: 50, entretienJour: 0 }, '2026-11-01');
-    expect(r.entretienJourRetenu).toBe(435); // 10 h × 0,435 €
-    expect(r.heuresMajMoisMin).toBe(1300); // 5 h × 52 ÷ 12
-    expect(r.salaire).toBe(Math.round(((45 * 60 * 398 + 5 * 60 * 398 * 1.1) * 52) / 12 / 60));
+    const r = simuler({ ...base, heures: 47, entretienJour: 0 }, '2026-11-01');
+    expect(r.entretienJourRetenu).toBe(409); // 9 h 24 × 0,435 €
+    expect(r.heuresMajMoisMin).toBe(520); // 2 h × 52 ÷ 12
+    expect(r.salaire).toBe(Math.round(((45 * 60 * 398 + 2 * 60 * 398 * 1.1) * 52) / 12 / 60));
+    // Réduction de 11,31 % du brut des heures majorées, versée en plus du net
+    expect(r.reductionHeuresMaj).toBe(Math.round(((520 / 60) * 398 * 1.1) / (1 - 0.2188025) * 0.1131));
+    expect(r.verse).toBe(r.salaire + r.reductionHeuresMaj + r.entretien);
   });
 
-  it('signale un salaire horaire sous le minimum conventionnel (3,28 € net depuis juin 2026)', () => {
-    expect(simuler({ ...base, tauxNet: 320 }, '2026-11-01').sousMinimum).toBe(true);
+  it('signale un salaire horaire sous le minimum conventionnel (4,20 € brut depuis juin 2026)', () => {
+    expect(simuler({ ...base, tauxBrut: 419 }, '2026-11-01').sousMinimum).toBe(true);
     expect(simuler(base, '2026-11-01').sousMinimum).toBe(false);
   });
 });
+
+// Références : simulateur officiel Urssaf/Pajemploi (calculerResteACharge), interrogé le 1er novembre 2026
+// avec les montants mensuels produits par notre moteur. CMG et reste à charge au centime ; cotisations à 5 centimes près
+// (l'Urssaf arrondit composante par composante).
+describe('comparaison avec le simulateur officiel Urssaf (1er novembre 2026)', () => {
+  const d = '2026-11-01';
+  const base = { ...simulationParDefaut(d), jours: 5, heures: 40, tauxBrut: 510, entretienJour: 380, ressourcesMois: 3500 };
+  const proche = (a: number, b: number, tol = 5) => expect(Math.abs(a - b)).toBeLessThanOrEqual(tol);
+
+  it('cotisations : 83,75 % du net + 5 € (Urssaf : 581,73 € pour 688,62 € net ; 2 098,78 € pour 2 500 €)', () => {
+    proche(cotisationsDuMois(68862, d, false), 58173);
+    proche(cotisationsDuMois(250000, d, false), 209878);
+    // Alsace-Moselle (Bas-Rhin) : 603,13 € et 1 307,89 €
+    proche(cotisationsDuMois(68862, d, true), 60313);
+    proche(cotisationsDuMois(150000, d, true), 130789);
+  });
+
+  it('au-delà de 8,09 € de l’heure : prise en charge au prorata, arrondie au centième supérieur', () => {
+    // 173 h, 1 400 € net + 83,60 € d'entretien : 95 % pris en charge (Urssaf : 1 118,65 € sur 1 177,53 €)
+    expect(calculCmg(148360, 173, 3500, 1, 0, d).partCotisations).toBe(0.95);
+    expect(calculCmg(168360, 173, 3500, 1, 0, d).partCotisations).toBe(0.84);
+    expect(calculCmg(178360, 173, 3500, 1, 0, d).partCotisations).toBe(0.79);
+    expect(calculCmg(208360, 173, 3500, 1, 0, d).partCotisations).toBe(0.68);
+    expect(calculCmg(138360, 173, 3500, 1, 0, d).partCotisations).toBe(1);
+  });
+
+  it('A : couple, 1 enfant, 40 h, 5,10 € brut → CMG 427,05 €, reste 337,24 €', () => {
+    const r = simuler(base, d);
+    expect(r.cmg.montant).toBe(42705);
+    expect(r.reste).toBe(33724);
+    proche(r.cotisations, 58275);
+  });
+
+  it('B : couple, enfant de 6 à 12 ans → aucune aide, 582,75 € de cotisations, reste 1 347,04 €', () => {
+    const r = simuler({ ...base, age: '6a12' }, d);
+    expect(r.cmg.montant).toBe(0);
+    proche(r.cotisationsReste, 58275);
+    proche(r.reste, 134704);
+  });
+
+  it('C : 45 h à 10,90 € brut (8,52 € net) → CMG 881,47 €, cotisations restantes 125,68 €, reste 982,38 €', () => {
+    const r = simuler({ ...base, heures: 45, tauxBrut: 1090, entretienJour: 392 }, d);
+    expect(r.cmg.montant).toBe(88147);
+    expect(r.cmg.partCotisations).toBe(0.91);
+    proche(r.cotisationsReste, 12568);
+    proche(r.reste, 98238);
+  });
+
+  it('D : Alsace-Moselle → net 679,47 €, CMG 421,24 €, cotisations 595,20 €', () => {
+    const r = simuler({ ...base, alsaceMoselle: true }, d);
+    expect(r.salaire).toBe(67947);
+    expect(r.cmg.montant).toBe(42124);
+    proche(r.cotisations, 59520);
+    expect(r.reste).toBe(33265);
+  });
+
+  it('E : parent seul, 2 enfants à charge, enfant de 6 à 12 ans, repas 4 € → CMG 709,79 €, reste 132,83 €', () => {
+    const r = simuler({ ...base, repasPrix: 400, ressourcesMois: 1500, enfantsACharge: 2, parentSeul: true, age: '6a12' }, d);
+    expect(r.cmg.montant).toBe(70979);
+    expect(r.reste).toBe(13283);
+    expect(r.creditAnnuel).toBe(0);
+  });
+});
+
+describe('durée du travail (CASF L423-21 et L423-22)', () => {
+  it('au plus 13 h par jour et 2 250 h par an, arrondi au quart d’heure', () => {
+    expect(heuresMaxSemaine(5, 47)).toBe(47.75);
+    expect(heuresMaxSemaine(3, 47)).toBe(39);
+    expect(heuresMaxSemaine(5, 40)).toBe(56.25);
+  });
+  it('au-delà de 48 h : accord écrit de l’assistante maternelle signalé ; au-delà du maximum : ramené', () => {
+    const b = { ...simulationParDefaut('2026-11-01'), jours: 5, tauxBrut: 510 };
+    const r = simuler({ ...b, heures: 60 }, '2026-11-01');
+    expect(r.heuresPlafonnees).toBe(true);
+    expect(r.heuresRetenues).toBe(47.75);
+    expect(r.accordNecessaire).toBe(false);
+    const inc = simuler({ ...b, heures: 52, yearType: 'incomplete', semainesAbsence: 6 }, '2026-11-01');
+    expect(inc.heuresPlafonnees).toBe(false);
+    expect(inc.accordNecessaire).toBe(true);
+  });
+});
+
