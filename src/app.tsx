@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
 import { logUsage, useStore } from './store';
-import { isDemo, MODE_KEY, deleteDatabase } from './db';
+import { isDemo, setDemo, deleteDatabase } from './db';
 import { Toaster } from './ui/kit';
 import { Icon, type IconName } from './ui/icons';
 import { Today } from './screens/Today';
@@ -116,7 +116,7 @@ export function App() {
           <Icon name="info" size={20} />
           <span>Démonstration</span>
           <button onClick={async () => {
-            try { localStorage.removeItem(MODE_KEY); } catch { /* */ }
+            setDemo(false);
             await deleteDatabase('pam-demo');
             location.hash = '#/';
             location.reload();

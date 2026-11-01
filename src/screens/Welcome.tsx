@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { saveSettings, logUsage, state, useStore } from '../store';
 import { AccountForm } from './Compte';
 import { useCloud } from '../cloud-state';
-import { MODE_KEY } from '../db';
+import { deleteDatabase, setDemo } from '../db';
 import { Banner, Sheet, Stepper, TextInput, Topbar } from '../ui/kit';
 import { Logo } from '../ui/Logo';
 import { ApercuVideo, VIDEOS_PRETES, VideoClip, isIOS } from '../ui/VideoGuide';
@@ -32,8 +32,10 @@ export function isStandalone(): boolean {
 }
 
 
-export function enterDemo() {
-  try { localStorage.setItem(MODE_KEY, 'demo'); } catch { /* stockage indisponible */ }
+export async function enterDemo() {
+  // Enfants fictifs refaits à chaque démo : les journées restent calées sur aujourd'hui.
+  await deleteDatabase('pam-demo');
+  setDemo(true);
   location.hash = '#/';
   location.reload();
 }
