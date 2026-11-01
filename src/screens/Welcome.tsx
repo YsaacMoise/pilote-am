@@ -180,7 +180,7 @@ export function Welcome() {
       <header class="site-nav">
         <a class="site-brand" href="#/" aria-label="Arvela, accueil">
           <Logo size={36} />
-          <span class="site-brand-text" aria-hidden="true"><span class="site-brand-name">Arvela</span><span class="site-brand-tag">Maison de gestion et de soin</span></span>
+          <span class="site-brand-text" aria-hidden="true"><span class="site-brand-name">Arvela</span><span class="site-brand-tag">Accueil et gestion</span></span>
         </a>
         <nav class="site-links" aria-label="Liens">
           <a href="#/simulateur">Simuler un accueil</a>
@@ -248,7 +248,7 @@ export function Welcome() {
         <div class="footer-lockup" aria-hidden="true">
           <Logo size={48} />
           <span class="footer-name">Arvela</span>
-          <span class="footer-tag">Maison de gestion et de soin</span>
+          <span class="footer-tag">Accueil et gestion</span>
         </div>
         <nav aria-label="Pied de page">
           <a href="#/simulateur">Simuler un accueil</a>
