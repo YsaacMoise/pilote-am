@@ -2,7 +2,7 @@ import { render } from 'preact';
 import './styles.css';
 import { App } from './app';
 import { load, state, toast } from './store';
-import { getAll, isDemo } from './db';
+import { clearLegacyDemo, getAll, isDemo } from './db';
 import { seedDemo } from './demo';
 import { hasCloudAccount } from './cloud-state';
 import { authAction } from './auth-action';
@@ -36,6 +36,7 @@ async function start() {
     return;
   }
   try {
+    await clearLegacyDemo();
     if (isDemo()) {
       const cs = await getAll('contracts');
       if (!cs.length) await seedDemo();

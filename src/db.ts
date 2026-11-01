@@ -74,8 +74,31 @@ function noteChange(store: SyncedStore, key: string) {
   if (tracking()) outboxAdd([{ s: store, k: key }]);
 }
 
+/**
+ * La démonstration ne dure que le temps de l'onglet (sessionStorage) : à la visite suivante,
+ * on retombe sur l'accueil du site au lieu de la démo.
+ */
 export function isDemo(): boolean {
-  try { return localStorage.getItem(MODE_KEY) === 'demo'; } catch { return false; }
+  try { return sessionStorage.getItem(MODE_KEY) === 'demo'; } catch { return false; }
+}
+
+export function setDemo(on: boolean) {
+  try {
+    if (on) sessionStorage.setItem(MODE_KEY, 'demo');
+    else sessionStorage.removeItem(MODE_KEY);
+  } catch { /* stockage indisponible */ }
+  // Ancienne version : la démo était gardée d'une visite à l'autre (localStorage).
+  try { localStorage.removeItem(MODE_KEY); } catch { /* */ }
+}
+
+/** Ancienne version : la démo restait mémorisée. On efface la marque et les enfants fictifs. Renvoie true si une trace existait. */
+export async function clearLegacyDemo(): Promise<boolean> {
+  let legacy = false;
+  try { legacy = localStorage.getItem(MODE_KEY) === 'demo'; } catch { return false; }
+  if (!legacy) return false;
+  try { localStorage.removeItem(MODE_KEY); } catch { /* */ }
+  if (!isDemo()) await deleteDatabase('pam-demo');
+  return true;
 }
 
 export function dbName(): string {
