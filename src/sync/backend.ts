@@ -18,6 +18,10 @@ export interface Backend {
   createAccount(email: string, password: string): Promise<void>;
   signIn(email: string, password: string): Promise<void>;
   resetPassword(email: string): Promise<void>;
+  /** Lien « nouveau mot de passe » reçu par e-mail : renvoie l'adresse du compte (le code n'est pas consommé) */
+  verifyResetCode(code: string): Promise<string>;
+  /** Enregistre le nouveau mot de passe avec le code du lien (le code est alors consommé) */
+  confirmReset(code: string, password: string): Promise<void>;
   signOut(): Promise<void>;
   /** Supprime toutes les données en ligne puis le compte (mot de passe redemandé par sécurité) */
   deleteAccount(password: string): Promise<void>;

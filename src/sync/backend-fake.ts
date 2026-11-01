@@ -71,6 +71,11 @@ export const backend: Backend = {
     setUser({ uid: r.uid, email });
   },
   async resetPassword(email) { await call('/reset', { email }); },
+  async verifyResetCode(code) { return (await call<{ email: string }>('/verify-reset', { code })).email; },
+  async confirmReset(code, password) {
+    if (password.length < 6) throw err('auth/weak-password');
+    await call('/confirm-reset', { code, password });
+  },
   async signOut() { setUser(null); },
   async deleteAccount(password) {
     if (!current) throw err('auth/no-current-user');

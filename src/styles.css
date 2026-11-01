@@ -527,7 +527,9 @@ h1:focus { outline: none; }
 .hero-cta { display: flex; flex-wrap: wrap; gap: 10px; }
 .hero-cta .btn { flex: 1 1 auto; }
 .hero-login { font-size: 15px; color: var(--ink-2); margin: 0; }
-.hero-login.center { text-align: center; }
+.hero-login.center, .hint.center { text-align: center; }
+/* Titre de page posé dans une carte (page « nouveau mot de passe ») */
+h1.h-card { font-size: 25px; }
 /* Lien d'action discret (« Me connecter »), zone de toucher de 44 px */
 .btn-link { background: none; border: 0; color: var(--accent-ink); font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; min-height: 44px; padding: 0 4px; cursor: pointer; }
 .hero-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; font-family: var(--font-num); font-size: 12px; letter-spacing: 0.04em; color: var(--ink-2); }

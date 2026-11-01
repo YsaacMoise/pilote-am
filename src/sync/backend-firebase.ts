@@ -2,9 +2,9 @@
 // Chargé à la demande : l'app démarre et marche sans ce module.
 import { initializeApp } from 'firebase/app';
 import {
-  browserLocalPersistence, createUserWithEmailAndPassword, deleteUser, EmailAuthProvider, indexedDBLocalPersistence,
+  browserLocalPersistence, confirmPasswordReset, createUserWithEmailAndPassword, deleteUser, EmailAuthProvider, indexedDBLocalPersistence,
   initializeAuth, onAuthStateChanged, reauthenticateWithCredential, sendPasswordResetEmail, signInWithEmailAndPassword,
-  signOut,
+  signOut, verifyPasswordResetCode,
 } from 'firebase/auth';
 import {
   collection, doc, getDocsFromServer, initializeFirestore, onSnapshot, persistentLocalCache, persistentMultipleTabManager,
@@ -61,6 +61,12 @@ export const backend: Backend = {
   },
   async resetPassword(email) {
     await sendPasswordResetEmail(auth, email);
+  },
+  async verifyResetCode(code) {
+    return verifyPasswordResetCode(auth, code);
+  },
+  async confirmReset(code, password) {
+    await confirmPasswordReset(auth, code, password);
   },
   async signOut() {
     await signOut(auth);

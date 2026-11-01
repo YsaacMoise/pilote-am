@@ -5,6 +5,7 @@ import { createServer } from 'node:http';
 const port = Number(process.argv[2] ?? 4180);
 const users = new Map(); // email -> { uid, password }
 const data = new Map(); // uid -> Map(docId -> doc)
+const resets = new Map(); // code du lien -> email (comme le lien d'un e-mail de réinitialisation)
 let clock = Date.now();
 
 function send(res, code, body) {
@@ -33,7 +34,23 @@ createServer(async (req, res) => {
       if (!u || u.password !== body.password) return send(res, 400, { code: 'auth/invalid-credential' });
       return send(res, 200, { uid: u.uid });
     }
-    case '/reset': return send(res, 200, {});
+    case '/reset': {
+      if (users.has(body.email)) resets.set('code-' + Math.random().toString(36).slice(2, 10), body.email);
+      return send(res, 200, {});
+    }
+    // Pour les tests : le dernier lien « envoyé » à une adresse
+    case '/last-reset': return send(res, 200, { code: [...resets].filter(([, e]) => e === url.searchParams.get('email')).pop()?.[0] ?? null });
+    case '/verify-reset': {
+      const email = resets.get(body.code);
+      return email ? send(res, 200, { email }) : send(res, 400, { code: 'auth/invalid-action-code' });
+    }
+    case '/confirm-reset': {
+      const email = resets.get(body.code);
+      if (!email) return send(res, 400, { code: 'auth/invalid-action-code' });
+      users.get(email).password = body.password;
+      resets.delete(body.code);
+      return send(res, 200, {});
+    }
     case '/delete': {
       const u = users.get(body.email);
       if (!u || u.password !== body.password) return send(res, 400, { code: 'auth/invalid-credential' });

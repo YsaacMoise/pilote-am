@@ -7,9 +7,15 @@ import { Banner, Sheet, Stepper, TextInput, Topbar } from '../ui/kit';
 import { Logo } from '../ui/Logo';
 import { VIDEOS_PRETES, VideoClip, isIOS } from '../ui/VideoGuide';
 import { Icon } from '../ui/icons';
+import { LOGIN_HINT } from '../auth-action';
+
+/** Adresse laissée par la page « nouveau mot de passe » : la connexion s'ouvre déjà remplie (lue une seule fois). */
+function loginHint(): string {
+  try { const e = sessionStorage.getItem(LOGIN_HINT) ?? ''; sessionStorage.removeItem(LOGIN_HINT); return e; } catch { return ''; }
+}
 
 /** Logo vertical empilé de la charte (déclinaison 02 « Page connexion & accueil ») */
-function LockupStacked() {
+export function LockupStacked() {
   return (
     <div class="brand" aria-hidden="true">
       <Logo />
@@ -89,7 +95,8 @@ export function InstallButton({ label = 'Installer l’app sur l’écran d’ac
 export function Welcome() {
   const s = useStore();
   const [step, setStep] = useState<'hello' | 'installer' | 'me'>('hello');
-  const [form, setForm] = useState<null | 'create' | 'login'>(null);
+  const [hintEmail] = useState(loginHint);
+  const [form, setForm] = useState<null | 'create' | 'login'>(hintEmail ? 'login' : null);
   const [video, setVideo] = useState(false);
   const standalone = isStandalone();
   const cloud = useCloud();
@@ -146,7 +153,7 @@ export function Welcome() {
               <p class="row"><Icon name="cloud" />Connectée avec <strong>{cloud.email}</strong></p>
               <button class="btn btn-primary btn-lg btn-block" onClick={() => setStep('me')}>Continuer</button>
             </div>
-          ) : <AccountForm initial="login" onDone={done} />}
+          ) : <AccountForm initial="login" initialEmail={hintEmail} onDone={done} />}
         </section>
         <p class="hero-login center"><button class="btn-link" type="button" onClick={essayer}>Voir un exemple</button></p>
       </main>
@@ -194,7 +201,7 @@ export function Welcome() {
           ) : form ? (
             <>
               <section id="compte" class="hero-form" aria-label="Compte">
-                <AccountForm key={form} initial={form} onDone={done} />
+                <AccountForm key={form} initial={form} initialEmail={form === 'login' ? hintEmail : ''} onDone={done} />
               </section>
               <p class="hero-login">Pas encore décidée ? <button class="btn-link" type="button" onClick={essayer}>Essayer la démo</button></p>
             </>
