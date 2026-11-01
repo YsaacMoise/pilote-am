@@ -278,6 +278,8 @@ export function messageFor(code: string): string {
   if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found') || code.includes('invalid-login')) {
     return 'Adresse ou mot de passe incorrect.';
   }
+  if (code.includes('expired-action-code') || code.includes('invalid-action-code')) return 'Ce lien a expiré ou a déjà servi. Demande un nouveau lien depuis l’écran de connexion.';
+  if (code.includes('user-disabled')) return 'Ce compte n’existe plus.';
   if (code.includes('too-many-requests')) return 'Trop d’essais. Attends quelques minutes avant de réessayer.';
   if (code.includes('network-request-failed') || code.includes('unavailable') || code.includes('offline')) return 'Pas de réseau. Réessaie avec une connexion.';
   if (code.includes('requires-recent-login')) return 'Par sécurité, reconnecte-toi puis recommence.';
@@ -312,6 +314,16 @@ export async function signIn(email: string, password: string) {
 export async function resetPassword(email: string) {
   const b = await startCloud();
   try { await b.resetPassword(email.trim()); } catch (e) { throw friendly(e); }
+}
+
+// Lien « nouveau mot de passe » ouvert depuis l'e-mail : pas besoin de session ni de données locales.
+export async function verifyResetCode(code: string): Promise<string> {
+  try { return await (await loadBackend()).verifyResetCode(code); } catch (e) { throw friendly(e); }
+}
+
+export async function confirmReset(code: string, password: string) {
+  if (password.length < MIN_PASSWORD) throw new Error(messageFor('weak-password'));
+  try { await (await loadBackend()).confirmReset(code, password); } catch (e) { throw friendly(e); }
 }
 
 /**

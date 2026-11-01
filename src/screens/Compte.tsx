@@ -10,9 +10,9 @@ const cloud = () => import('../cloud');
  * Formulaire de compte : création, connexion, mot de passe oublié.
  * `onDone` est appelé une fois le compte branché et les données réunies.
  */
-export function AccountForm({ initial = 'create', onDone }: { initial?: 'create' | 'login'; onDone?: () => void }) {
+export function AccountForm({ initial = 'create', initialEmail = '', onDone }: { initial?: 'create' | 'login'; initialEmail?: string; onDone?: () => void }) {
   const [mode, setMode] = useState<'create' | 'login' | 'reset'>(initial);
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(initialEmail);
   const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
