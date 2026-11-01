@@ -3,3 +3,11 @@ dist
 .claude/
 scripts/out/
 *.log
+
+motion/node_modules
+motion/out
+motion/final
+
+motion/node_modules
+motion/out
+motion/final
