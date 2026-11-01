@@ -9,7 +9,7 @@ import { Icon } from '../ui/icons';
 const SCREEN_NAMES: Record<string, string> = {
   aujourdhui: 'Aujourd’hui', carnet: 'Carnet', mois: 'Mois', plus: 'Plus', contrat: 'Contrat', historique: 'Historique',
   controle: 'Contrôle', conges: 'Congés', fin: 'Fin de contrat', fiscal: 'Impôts', sauvegarde: 'Sauvegarde', pilote: 'Pilote',
-  reglages: 'Réglages', regles: 'Règles', installer: 'Installer', bienvenue: 'Accueil',
+  reglages: 'Réglages', regles: 'Règles', installer: 'Installer', bienvenue: 'Accueil', simulateur: 'Simulateur',
 };
 
 export function Pilote() {

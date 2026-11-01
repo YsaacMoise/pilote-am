@@ -20,6 +20,7 @@ import { Sauvegarde } from './screens/Sauvegarde';
 import { Pilote } from './screens/Pilote';
 import { Reglages } from './screens/Reglages';
 import { Regles } from './screens/Regles';
+import { Simulateur } from './screens/Simulateur';
 import { Installer, Welcome } from './screens/Welcome';
 import { Guide } from './screens/Guide';
 import { VIDEOS_PRETES } from './ui/VideoGuide';
@@ -53,14 +54,15 @@ const TABS: { href: string; label: string; icon: IconName; match: (p: string) =>
 export function App() {
   const s = useStore();
   const hash = useHash();
-  const parts = hash.replace(/^#\/?/, '').split('/');
+  // Les paramètres après « ? » (lien de simulation partagé) ne font pas partie du nom de l'écran.
+  const parts = hash.replace(/^#\/?/, '').split('?')[0].split('/');
   const p = parts[0] ?? '';
   useEffect(() => { if (s.ready) logUsage('ecran', p || 'aujourdhui'); }, [p, s.ready]);
   useEffect(() => {
     const title = ({
       '': 'Aujourd’hui', carnet: 'Carnet', mois: 'Mois', plus: 'Plus', contrat: 'Contrat', avenant: 'Avenant', historique: 'Historique',
       controle: 'Contrôle du bulletin', conges: 'Congés', fin: 'Fin de contrat', fiscal: 'Impôts', sauvegarde: 'Sauvegarde',
-      pilote: 'Données du pilote', compte: 'Compte', reglages: 'Réglages', regles: 'Comment l’app calcule', confidentialite: 'Confidentialité', mentions: 'Mentions légales', installer: 'Installer',
+      pilote: 'Données du pilote', compte: 'Compte', reglages: 'Réglages', regles: 'Comment l’app calcule', confidentialite: 'Confidentialité', mentions: 'Mentions légales', installer: 'Installer', simulateur: 'Simuler un accueil',
     } as Record<string, string>)[p] ?? 'Arvela';
     document.title = `${title} · Arvela`;
   }, [p]);
@@ -70,6 +72,7 @@ export function App() {
     // La politique de confidentialité reste lisible avant la création du compte.
     if (p === 'confidentialite') return <><Confidentialite back="#/" /><Toaster /></>;
     if (p === 'mentions') return <><Mentions back="#/" /><Toaster /></>;
+    if (p === 'simulateur') return <><Simulateur back="#/" connecte={false} /><Toaster /></>;
     return <><Welcome /><Toaster /></>;
   }
 
@@ -85,6 +88,7 @@ export function App() {
     case 'controle': screen = <Controle key={hash} cid={parts[1]} month={parts[2]} />; break;
     case 'conges': screen = <Conges />; break;
     case 'fin': screen = <Fin key={hash} id={parts[1]} />; break;
+    case 'simulateur': screen = <Simulateur back="#/plus" connecte />; break;
     case 'fiscal': screen = <Fiscal />; break;
     case 'sauvegarde': screen = <Sauvegarde />; break;
     case 'pilote': screen = <Pilote />; break;

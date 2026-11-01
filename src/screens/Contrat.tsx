@@ -8,6 +8,23 @@ import { euros, hoursLabel } from '../engine/money';
 import type { Avenant, Contract, Plage, Planning, Terms } from '../engine/model';
 import { Banner, CHILD_COLORS, Choices, COLOR_NAMES, DateInput, EuroInput, Gommette, NumberInput, Seg, Switch, TextInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
+import { BROUILLON_CONTRAT } from './Simulateur';
+
+/** Conditions venues du simulateur (lues une seule fois) : planning de journées égales à partir de 8 h. */
+function brouillon(): Partial<Contract> | null {
+  try {
+    const raw = sessionStorage.getItem(BROUILLON_CONTRAT);
+    if (!raw) return null;
+    sessionStorage.removeItem(BROUILLON_CONTRAT);
+    const b = JSON.parse(raw);
+    const n = Math.max(1, Math.min(6, Math.round(b.jours)));
+    const min = Math.round((b.heures * 60) / n);
+    const fin = 8 * 60 + min;
+    const pl: Planning = {};
+    for (let d = 1; d <= n; d++) pl[d] = [{ start: '08:00', end: `${String(Math.floor(fin / 60)).padStart(2, '0')}:${String(fin % 60).padStart(2, '0')}` }];
+    return { planning: pl, yearType: b.yearType, weeks: b.weeks, majoration: b.majoration, rateNet: b.rateNet, entretienJour: b.entretienJour, repasPrix: b.repasPrix, repasParJour: b.repasParJour };
+  } catch { return null; }
+}
 
 function blank(): Contract {
   const t = today();
@@ -18,6 +35,7 @@ function blank(): Contract {
     weeksOff: [], planning: pl, rateNet: ratesAt(t).minConvNet, majoration: 10, entretienJour: 0, repasPrix: 0, repasParJour: 0,
     kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: t, balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 },
     history: [], createdAt: Date.now(),
+    ...(brouillon() ?? {}),
   };
 }
 
