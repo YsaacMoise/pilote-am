@@ -122,7 +122,7 @@ const go = async (p, h, w = 900) => { await p.evaluate((x) => (location.hash = x
     await p.getByRole('button', { name: 'Créer mon compte' }).click();
     await p.getByRole('button', { name: 'Continuer ici pour l’instant' }).click();
     await p.getByLabel('Ton prénom').fill('Sonia');
-    await p.getByRole('button', { name: 'Ajouter mon premier enfant' }).click();
+    await p.getByRole('button', { name: 'Ajouter un enfant que tu accueilles' }).click();
     await p.getByLabel('Prénom de l’enfant').fill('Léo');
     await p.getByLabel('Nom de la famille').fill('Martin');
     await p.getByLabel('Taux horaire net').fill('3,90');

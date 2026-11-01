@@ -57,7 +57,7 @@ async function phone(b, name) {
   await a.shot('01-compte-pret');
   await a.getByRole('button', { name: 'Continuer ici pour l’instant' }).click();
   await a.getByLabel('Ton prénom').fill('Sonia');
-  await a.getByRole('button', { name: 'Ajouter mon premier enfant' }).click();
+  await a.getByRole('button', { name: 'Ajouter un enfant que tu accueilles' }).click();
   await a.getByLabel('Prénom de l’enfant').fill('Lou');
   await a.getByLabel('Nom de la famille').fill('Petit');
   await a.getByLabel('Taux horaire net').fill('3,50');

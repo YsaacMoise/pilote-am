@@ -78,9 +78,9 @@ export function Today() {
 
         {kids.length === 0 && (
           <div class="card empty">
-            <h2>{s.contracts.length ? 'Aucun contrat ce jour-là' : 'Ajoute ton premier enfant'}</h2>
+            <h2>{s.contracts.length ? 'Aucun contrat ce jour-là' : 'Ajoute le premier enfant que tu accueilles'}</h2>
             <p class="muted">Le planning du contrat remplit les journées tout seul. Tu n’auras qu’à noter ce qui change.</p>
-            {!s.contracts.length && <a class="btn btn-primary btn-lg" href="#/contrat/nouveau"><Icon name="plus" />Ajouter un enfant</a>}
+            {!s.contracts.length && <a class="btn btn-primary btn-lg" href="#/contrat/nouveau"><Icon name="plus" />Ajouter un enfant accueilli</a>}
           </div>
         )}
 

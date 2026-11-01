@@ -102,7 +102,7 @@ export function Contrat({ id }: { id?: string }) {
 
   return (
     <>
-      <Topbar title={isNew ? 'Nouvel enfant' : c.child || 'Contrat'} back="#/plus" screen="contrat" />
+      <Topbar title={isNew ? 'Nouvel enfant accueilli' : c.child || 'Contrat'} back="#/plus" screen="contrat" />
       <main>
         {errors.length > 0 && (
           <Banner tone="warn">
@@ -112,7 +112,7 @@ export function Contrat({ id }: { id?: string }) {
         )}
         <section class="card">
           <fieldset>
-            <legend>L’enfant</legend>
+            <legend>L’enfant accueilli</legend>
             <TextInput label="Prénom de l’enfant" value={c.child} onChange={(v) => set({ child: v })} autoComplete="off" />
             <TextInput label="Nom de la famille" hint="Le parent qui t’emploie et déclare sur Pajemploi" value={c.family} onChange={(v) => set({ family: v })} />
             <div class="field">

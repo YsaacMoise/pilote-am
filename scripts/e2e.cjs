@@ -37,7 +37,7 @@ async function run(scheme) {
   await p.getByRole('button', { name: 'Créer mon compte' }).click();
   await p.getByRole('button', { name: 'Continuer ici pour l’instant' }).click();
   await p.getByLabel('Ton prénom').fill('Sonia');
-  await p.getByRole('button', { name: 'Ajouter mon premier enfant' }).click();
+  await p.getByRole('button', { name: 'Ajouter un enfant que tu accueilles' }).click();
 
   // Contrat repris en cours d'année
   await p.getByLabel('Prénom de l’enfant').fill('Lou');

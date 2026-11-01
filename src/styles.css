@@ -791,3 +791,8 @@ h1.h-card { font-size: 25px; }
 .video-li-ico .video-play { width: 34px; height: 34px; box-shadow: none; }
 .video-vue { color: var(--ok); font-weight: 700; }
 .nowrap { white-space: nowrap; }
+
+/* Simulateur : sous-parties de « La famille » */
+.sim-sous { margin-top: 12px; padding-top: 14px; border-top: 1px solid var(--line); font-family: var(--font-display); font-size: 22px; font-weight: 600; }
+.sim-sous:first-of-type { margin-top: 4px; padding-top: 0; border-top: 0; }
+.sim-resume { padding: 10px 14px; border-radius: var(--r-md); background: var(--primary-soft); font-weight: 600; }

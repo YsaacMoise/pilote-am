@@ -56,7 +56,7 @@ const axe = fs.readFileSync(process.env.AXE, 'utf8');
     await q.getByRole('heading', { name: 'Ton compte est prêt' }).waitFor();
     await audit2('accueil, compte prêt');
     await q.getByRole('button', { name: 'Continuer ici pour l’instant' }).click();
-    await q.getByRole('button', { name: 'Ajouter mon premier enfant' }).click();
+    await q.getByRole('button', { name: 'Ajouter un enfant que tu accueilles' }).click();
     await q.evaluate(() => { location.hash = '#/compte'; });
     await q.waitForTimeout(400);
     await audit2('#/compte');
