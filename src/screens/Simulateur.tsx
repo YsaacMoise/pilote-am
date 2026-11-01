@@ -300,6 +300,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
           <fieldset>
             <legend>La famille</legend>
             <p class="hint">Pour l’aide de la CAF (le CMG, complément de libre choix du mode de garde) et le crédit d’impôt.</p>
+            <h3 class="sim-sous">Les parents</h3>
             <Seg label="Le foyer" value={i.foyer} options={[{ v: 'couple', l: 'En couple' }, { v: 'seul', l: 'Parent seul' }]} onChange={(v) => set({ foyer: v })} />
             {i.foyer === 'seul' && <p class="hint">Parent seul : même aide de la CAF qu’un couple aux mêmes revenus, mais versée jusqu’aux 12 ans de l’enfant au lieu de 6 ans.</p>}
             <div class={i.foyer === 'couple' ? 'grid2' : ''}>
@@ -307,10 +308,10 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
               {i.foyer === 'couple' && <SelectStatut label="Votre conjoint" value={i.statutConjoint} onChange={(v) => set({ statutConjoint: v })} />}
             </div>
             {!r.activiteOk && <Banner tone="warn">Pas d’aide de la CAF dans cette situation : {i.foyer === 'couple' ? 'au moins un des deux parents doit travailler ou être dans une situation assimilée, ou les deux doivent être en études ou en service civique' : 'le parent doit travailler, être dans une situation assimilée, en études ou en service civique'}. Exception : l’AAH, l’ASS ou le RSA. Sans aide, la famille paie aussi les cotisations sociales.</Banner>}
-            <Switch label="Résidence alternée" hint="L’enfant vit aussi chez l’autre parent. Chaque parent a sa propre aide de la CAF, calculée sur ses revenus et les heures qu’il paie : faites une simulation par parent. Crédit d’impôt : 875 € par an au plus." checked={i.residenceAlternee} onChange={(v) => set({ residenceAlternee: v })} />
 
+            <h3 class="sim-sous">Les enfants de la famille</h3>
             <div class="field">
-              <span class="label">{i.enfants.length > 1 ? 'Enfants gardés, mêmes horaires' : 'Enfant gardé'}</span>
+              <span class="label">{i.enfants.length > 1 ? 'Enfants confiés à l’assistante maternelle, mêmes horaires' : 'Enfant confié à l’assistante maternelle'}</span>
               {i.enfants.map((naissance, k) => {
                 const e = r.enfants[k];
                 return (
@@ -324,12 +325,21 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
                   </div>
                 );
               })}
-              {i.enfants.length < 4 && <button type="button" class="btn btn-ghost" style={{ alignSelf: 'flex-start' }} onClick={() => set({ enfants: [...i.enfants, naissanceIlYA(d, 36)], enfantsACharge: Math.max(i.enfantsACharge, i.enfants.length + 1) })}><Icon name="plus" />Ajouter un enfant gardé (frère ou sœur)</button>}
-              <span class="hint">Mois et année de naissance. Chaque enfant a son contrat et sa propre aide de la CAF.</span>
+              {i.enfants.length < 4 && <button type="button" class="btn btn-ghost" style={{ alignSelf: 'flex-start' }} onClick={() => set({ enfants: [...i.enfants, naissanceIlYA(d, 36)], enfantsACharge: Math.max(i.enfantsACharge, i.enfants.length + 1) })}><Icon name="plus" />Un frère ou une sœur est aussi confié</button>}
+              <span class="hint">Mois et année de naissance. Chaque enfant confié a son contrat et sa propre aide de la CAF.</span>
             </div>
-            <Stepper label="Enfants à charge dans le foyer, gardés ou non" value={Math.max(i.enfantsACharge, i.enfants.length)} min={i.enfants.length} max={10} onChange={(v) => set({ enfantsACharge: v, enfantsAeeh: Math.min(i.enfantsAeeh, v) })} />
-            <p class="hint">Enfants de moins de 20 ans dont vous assurez l’entretien. Plus il y en a, plus l’aide est élevée.</p>
-            <Stepper label="Dont enfants qui touchent l’AEEH (allocation pour enfant handicapé)" value={i.enfantsAeeh} min={0} max={Math.max(i.enfantsACharge, i.enfants.length)} onChange={(v) => set({ enfantsAeeh: v })} />
+            <Switch label="Résidence alternée" hint="L’enfant vit aussi chez l’autre parent. Chaque parent a sa propre aide de la CAF, calculée sur ses revenus et les heures qu’il paie : faites une simulation par parent. Crédit d’impôt : 875 € par an au plus." checked={i.residenceAlternee} onChange={(v) => set({ residenceAlternee: v })} />
+            <Stepper label="Nombre total d’enfants des parents" value={Math.max(i.enfantsACharge, i.enfants.length)} min={i.enfants.length} max={10} onChange={(v) => set({ enfantsACharge: v, enfantsAeeh: Math.min(i.enfantsAeeh, v) })} />
+            <p class="hint">Tous les enfants de moins de 20 ans à la charge des parents, confiés ou non : {i.enfants.length > 1 ? 'les enfants confiés' : 'l’enfant confié'}, ses frères et sœurs. Pas les enfants de l’assistante maternelle. Plus il y en a, plus l’aide de la CAF est élevée.</p>
+            {(() => {
+              const total = Math.max(i.enfantsACharge, i.enfants.length);
+              const confies = i.enfants.length;
+              return <p class="sim-resume">{total === confies ? (total === 1 ? 'Un seul enfant dans la famille : celui qui est confié.' : `${total} enfants dans la famille, tous confiés à l’assistante maternelle.`) : `${total} enfants dans la famille, dont ${confies} confié${confies > 1 ? 's' : ''} à l’assistante maternelle.`}</p>;
+            })()}
+            <Stepper label="Parmi eux, enfants pour qui les parents touchent l’AEEH" value={i.enfantsAeeh} min={0} max={Math.max(i.enfantsACharge, i.enfants.length)} onChange={(v) => set({ enfantsAeeh: v })} />
+            <p class="hint">AEEH : allocation d’éducation de l’enfant handicapé. Chacun de ces enfants compte comme un enfant de plus pour l’aide de la CAF.</p>
+
+            <h3 class="sim-sous">Les revenus</h3>
 
             <EuroInput label={`Revenu fiscal de référence ${Number(d.slice(0, 4)) - 2} du foyer`} cents={i.revenusAn * 100} onChange={(v) => set({ revenusAn: Math.round((v ?? 0) / 100) })}
               hint={`Sur l’avis d’impôt ${Number(d.slice(0, 4)) - 1}, pour l’année ${Number(d.slice(0, 4)) - 2}. En couple : les deux avis additionnés. Après une séparation : seulement le vôtre. Soit ${euros(r.ressourcesMois * 100)} par mois pour la CAF.`} />
