@@ -288,15 +288,18 @@ describe('la famille réelle (étape 3)', () => {
     expect(r.cmg.taux).toBe(0.000516);
   });
 
-  it('condition d’activité : chacun des deux parents, sauf AAH, ASS ou RSA', () => {
+  it('condition d’activité : un seul parent qui travaille suffit ; sinon les deux en études, ou AAH, ASS, RSA', () => {
     expect(activiteOk('couple', 'travail', 'travail')).toBe(true);
-    expect(activiteOk('couple', 'travail', 'assimile')).toBe(true);
-    expect(activiteOk('couple', 'travail', 'etudes')).toBe(true);
-    expect(activiteOk('couple', 'travail', 'sans')).toBe(false);
+    expect(activiteOk('couple', 'travail', 'sans')).toBe(true); // parent au foyer : droit ouvert
+    expect(activiteOk('couple', 'sans', 'assimile')).toBe(true);
+    expect(activiteOk('couple', 'etudes', 'etudes')).toBe(true);
+    expect(activiteOk('couple', 'etudes', 'sans')).toBe(false);
+    expect(activiteOk('couple', 'sans', 'sans')).toBe(false);
     expect(activiteOk('couple', 'sans', 'aidee')).toBe(true);
     expect(activiteOk('seul', 'sans', 'travail')).toBe(false);
     expect(activiteOk('seul', 'etudes', 'sans')).toBe(true);
-    const r = simuler({ ...base, statutConjoint: 'sans' }, D);
+    expect(simuler({ ...base, statutConjoint: 'sans' }, D).activiteOk).toBe(true);
+    const r = simuler({ ...base, statutVous: 'sans', statutConjoint: 'sans' }, D);
     expect([r.activiteOk, r.cmgTotal, r.cotisationsPrisesEnCharge]).toEqual([false, 0, 0]);
     proche(r.cotisationsReste, 58275);
   });

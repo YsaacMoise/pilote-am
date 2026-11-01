@@ -160,13 +160,19 @@ export const STATUTS: { v: Statut; l: string; sub: string }[] = [
 ];
 
 /**
- * Condition d'activité : le parent seul, ou chacun des deux membres du couple, travaille ou est dans une situation assimilée
- * (études et service civique comptent ici comme une activité). Elle ne s'applique pas si l'un d'eux touche l'AAH, l'ASS ou le RSA.
+ * Condition d'activité (CSS L531-5 I : « le ménage ou la personne seule exerce une activité professionnelle ») :
+ * en couple, il suffit que l'un des deux travaille ou soit dans une situation assimilée (D531-19). Exceptions : les deux
+ * en études ou en service civique ; l'un des deux à l'AAH, l'ASS ou le RSA. Sources concordantes : service-public F39152
+ * (« vous ou votre conjoint devez travailler »), notice du Cerfa 12323 (« si vous ou votre conjoint exercez une activité
+ * professionnelle »), supports CAF de la réforme 2025 (« le demandeur ou le conjoint »), réponse ministérielle n° 32389
+ * (JO 20/07/2004 : « la condition de double activité n'est plus exigée »).
  */
 export function activiteOk(foyer: 'couple' | 'seul', vous: Statut, conjoint: Statut): boolean {
+  const actif = (x: Statut) => x === 'travail' || x === 'assimile';
   if (foyer === 'seul') return vous !== 'sans';
   if (vous === 'aidee' || conjoint === 'aidee') return true;
-  return vous !== 'sans' && conjoint !== 'sans';
+  if (actif(vous) || actif(conjoint)) return true;
+  return vous === 'etudes' && conjoint === 'etudes';
 }
 
 /** Situations qui changent les revenus retenus par la CAF (CSS R532-5 à R532-7) */

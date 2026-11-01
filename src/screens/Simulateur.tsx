@@ -304,7 +304,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
               <SelectStatut label={i.foyer === 'couple' ? 'Vous' : 'Votre situation'} value={i.statutVous} onChange={(v) => set({ statutVous: v })} />
               {i.foyer === 'couple' && <SelectStatut label="Votre conjoint" value={i.statutConjoint} onChange={(v) => set({ statutConjoint: v })} />}
             </div>
-            {!r.activiteOk && <Banner tone="warn">Pas d’aide de la CAF dans cette situation : {i.foyer === 'couple' ? 'chacun des deux parents' : 'le parent'} doit travailler, être dans une situation assimilée, en études ou en service civique. Exception : l’AAH, l’ASS ou le RSA. Sans aide, la famille paie aussi les cotisations sociales.</Banner>}
+            {!r.activiteOk && <Banner tone="warn">Pas d’aide de la CAF dans cette situation : {i.foyer === 'couple' ? 'au moins un des deux parents doit travailler ou être dans une situation assimilée, ou les deux doivent être en études ou en service civique' : 'le parent doit travailler, être dans une situation assimilée, en études ou en service civique'}. Exception : l’AAH, l’ASS ou le RSA. Sans aide, la famille paie aussi les cotisations sociales.</Banner>}
             <Switch label="Résidence alternée" hint="L’enfant vit aussi chez l’autre parent. Chaque parent a sa propre aide de la CAF, calculée sur ses revenus et les heures qu’il paie : faites une simulation par parent. Crédit d’impôt : 875 € par an au plus." checked={i.residenceAlternee} onChange={(v) => set({ residenceAlternee: v })} />
 
             <div class="field">
