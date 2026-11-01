@@ -45,17 +45,17 @@ describe('crédit d’impôt garde d’enfant (CGI 200 quater B)', () => {
 
 describe('simulateur complet', () => {
   const D = '2026-11-01';
-  const base = { ...simulationParDefaut(D), planning: planningRegulier(5, 40), tauxBrut: 510, entretien: 380, revenusAn: 42000 };
+  const base = { ...simulationParDefaut(D), planning: planningRegulier(5, 40), tauxBrut: 509, entretien: 380, revenusAn: 42000 };
   // Fériés du 1er novembre 2026 au 31 octobre 2027 tombant du lundi au vendredi : 11 nov., 25 déc., 1er janv.,
   // lundi de Pâques, Ascension, lundi de Pentecôte, 14 juillet = 7, pondérés par 47 semaines travaillées sur 52.
   const FERIES = (7 * 47) / 52;
 
-  it('cas type : 40 h sur 5 jours, 52 semaines, 5,10 € brut, 1 enfant, 3 500 € de ressources', () => {
+  it('cas type : 40 h sur 5 jours, 52 semaines, 5,09 € brut, 1 enfant, 3 500 € de ressources', () => {
     const r = simuler(base, D);
     expect(r.semaines).toBe(52);
     expect(r.joursSemaine).toBe(5);
     expect(r.heuresMoisMin).toBe(10400); // 173 h 20 payées
-    expect(r.tauxNet).toBe(398); // 5,10 € brut × (1 − 21,88 %)
+    expect(r.tauxNet).toBe(398); // 5,09 € brut, cotisations arrondies une à une (convertisseur Urssaf)
     expect(r.salaire).toBe(68987); // 40 × 52 ÷ 12 × 3,98
     // Entretien seulement les jours d'accueil : 5 × 47 semaines, moins les fériés
     expect(r.feriesAn).toBeCloseTo(FERIES, 6);
@@ -117,7 +117,7 @@ describe('simulateur complet', () => {
 
 describe('accueil jour par jour (étape 2)', () => {
   const D = '2026-11-01';
-  const base = { ...simulationParDefaut(D), tauxBrut: 510, entretien: 0, revenusAn: 42000 };
+  const base = { ...simulationParDefaut(D), tauxBrut: 509, entretien: 0, revenusAn: 42000 };
   const pl = (o: Record<number, [string, string][]>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v.map(([start, end]) => ({ start, end }))]));
 
   it('entretien calculé chaque jour : 2 jours de 11 h et 2 jours de 4 h → 4,79 € et 2,65 €', () => {
@@ -184,7 +184,7 @@ describe('accueil jour par jour (étape 2)', () => {
 // (l'Urssaf arrondit composante par composante).
 describe('comparaison avec le simulateur officiel Urssaf (1er novembre 2026)', () => {
   const d = '2026-11-01';
-  const base = { ...simulationParDefaut(d), planning: planningRegulier(5, 40), tauxBrut: 510, entretien: 380, revenusAn: 42000 };
+  const base = { ...simulationParDefaut(d), planning: planningRegulier(5, 40), tauxBrut: 509, entretien: 380, revenusAn: 42000 };
   const proche = (a: number, b: number, tol = 5) => expect(Math.abs(a - b)).toBeLessThanOrEqual(tol);
 
   it('cotisations : 83,75 % du net + 5 € (Urssaf : 581,73 € pour 688,62 € net ; 2 098,78 € pour 2 500 €)', () => {
@@ -204,7 +204,7 @@ describe('comparaison avec le simulateur officiel Urssaf (1er novembre 2026)', (
     expect(calculCmg(138360, 173, 3500, 1, 0, d).partCotisations).toBe(1);
   });
 
-  it('A : couple, 1 enfant, 40 h, 5,10 € brut → CMG 425,93 €, reste 336,35 €', () => {
+  it('A : couple, 1 enfant, 40 h, 5,09 € brut → CMG 425,93 €, reste 336,35 €', () => {
     const r = simuler(base, d);
     expect(r.entretien).toBe(7241);
     expect(r.cmg.montant).toBe(42593);
@@ -219,8 +219,8 @@ describe('comparaison avec le simulateur officiel Urssaf (1er novembre 2026)', (
     proche(r.reste, 134503);
   });
 
-  it('C : 45 h à 10,90 € brut (8,52 € net) → CMG 881,47 €, cotisations restantes 125,68 €, reste 980,31 €', () => {
-    const r = simuler({ ...base, planning: planningRegulier(5, 45), tauxBrut: 1090, entretien: 392 }, d);
+  it('C : 45 h à 10,89 € brut (8,52 € net) → CMG 881,47 €, cotisations restantes 125,68 €, reste 980,31 €', () => {
+    const r = simuler({ ...base, planning: planningRegulier(5, 45), tauxBrut: 1089, entretien: 392 }, d);
     expect(r.cmg.montant).toBe(88147);
     expect(r.cmg.partCotisations).toBe(0.91);
     proche(r.cotisationsReste, 12568);
@@ -228,7 +228,7 @@ describe('comparaison avec le simulateur officiel Urssaf (1er novembre 2026)', (
   });
 
   it('D : Alsace-Moselle → net 679,47 €, CMG 419,96 €, cotisations 595,20 €', () => {
-    const r = simuler({ ...base, alsaceMoselle: true }, d);
+    const r = simuler({ ...base, alsaceMoselle: true, tauxBrut: 510 }, d); // 5,10 € brut → 3,92 € net en Alsace-Moselle
     expect(r.salaire).toBe(67947);
     expect(r.cmg.montant).toBe(41996);
     proche(r.cotisations, 59520);
@@ -245,7 +245,7 @@ describe('comparaison avec le simulateur officiel Urssaf (1er novembre 2026)', (
 });
 
 describe('durée du travail (CASF L423-21 et L423-22)', () => {
-  const b = { ...simulationParDefaut('2026-11-01'), tauxBrut: 510 };
+  const b = { ...simulationParDefaut('2026-11-01'), tauxBrut: 509 };
   it('au plus 13 h par jour et 2 250 h par an, arrondi au quart d’heure', () => {
     expect(heuresMaxSemaine(5, 47)).toBe(47.75);
     expect(heuresMaxSemaine(3, 47)).toBe(39);
@@ -263,7 +263,7 @@ describe('durée du travail (CASF L423-21 et L423-22)', () => {
 
 describe('la famille réelle (étape 3)', () => {
   const D = '2026-11-01';
-  const base = { ...simulationParDefaut(D), planning: planningRegulier(5, 40), tauxBrut: 510, entretien: 380, revenusAn: 42000 };
+  const base = { ...simulationParDefaut(D), planning: planningRegulier(5, 40), tauxBrut: 509, entretien: 380, revenusAn: 42000 };
   const proche = (a: number, b: number, tol = 5) => expect(Math.abs(a - b)).toBeLessThanOrEqual(tol);
 
   it('deux enfants gardés (18 mois et 4 ans) : un CMG par enfant au taux de 2 enfants (Urssaf : 2 × 481,90 €, reste 560,76 €)', () => {

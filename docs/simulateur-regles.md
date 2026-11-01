@@ -32,8 +32,8 @@ Tests : les 4 exemples chiffrés du communiqué de presse CAF du 15/09/2025 (co�
 ## Assistante maternelle (au 1er juin 2026)
 
 - Salaire minimum conventionnel : 4,20 € brut par heure et par enfant (4,37 € avec le titre AM-AP), soit 3,28 € net (avenant n° 10 du 5 février 2026, étendu le 4 mai 2026 ; fiche DREETS Pays de la Loire du 12/06/2026).
-- Le simulateur se saisit en brut (unité de la convention et du contrat) ; le net horaire est arrondi au centime.
-- Cotisations salariales : 21,88025 % du brut (23,18025 % en Alsace-Moselle) ; net = 78,12 % du brut.
+- Le simulateur se saisit en brut (unité de la convention et du contrat). Le net horaire suit le convertisseur officiel Urssaf : chaque cotisation salariale arrondie au centime avant d'être retirée (vieillesse 6,90 % + 0,40 %, retraite complémentaire 3,15 %, CEG 0,86 %, prévoyance 1,04 % ; CSG 6,80 % + 2,40 % et CRDS 0,50 % sur 98,25 % du brut ; Alsace-Moselle + 1,30 %). Vérifié sur 21 montants : 4,20 € → 3,28 € ; 5,10 € → 3,99 € ; 10,90 € → 8,53 € ; Bas-Rhin 5,10 € → 3,92 €.
+- Cotisations salariales : 21,88025 % du brut (23,18025 % en Alsace-Moselle) ; sert à reconstituer le brut du mois à partir du net déclaré.
 - Cotisations patronales : 43,547 % du brut, plus 5,00 € fixes par mois. Mesurées le 1er novembre 2026 sur le simulateur officiel Urssaf (api.urssaf.fr/paje/anss/v1/simulateur/calculerResteACharge) : total = 83,75 % du net + 5 € (86,86 % en Alsace-Moselle), à 3 centimes près.
 - Réduction de cotisations salariales des heures majorées : 11,31 % de leur brut (CSS L241-17, décret 2019-40), versée à l'AM en plus du net.
 - Durée : 13 h par jour au plus (11 h de repos, CASF L423-21) ; au-delà de 48 h par semaine en moyenne, accord écrit de l'AM, dans la limite de 2 250 h par an tous contrats confondus (CASF L423-22).
@@ -86,10 +86,20 @@ Relecture indépendante du 1er novembre 2026 : 14 remarques, toutes traitées (f
 
 Cinq cas passés au simulateur Urssaf avec les montants produits par notre moteur : CMG et reste à charge identiques au centime ; cotisations à 3 centimes près. Détail dans tests/simulation.test.ts.
 
+## Validation finale (étape 5, 1er novembre 2026)
+
+20 cas (tests/cas-urssaf.ts, tests/urssaf-reference.test.ts) passés au simulateur officiel Urssaf avec les montants mensuels produits par le moteur : couple et parent seul, enfant de 18 mois à 8 ans, fratries de 2 et 3 enfants, Alsace et Moselle, La Réunion, plafond horaire dépassé, revenus de 6 000 à 150 000 €, 1 à 8 enfants à charge, AEEH, année incomplète, planning varié avec repas, petit contrat avec entretien à l'heure, minimum conventionnel avec heures majorées.
+
+- CMG : 18 cas identiques au centime, 2 à 2 centimes. Écart expliqué : le décret arrondit les ressources mensuelles à l'euro, le simulateur Urssaf ne le fait pas (50 000 € ÷ 12 = 4 166,67 €). Le moteur suit le décret.
+- Cotisations : à 3 centimes (l'Urssaf arrondit chaque cotisation). Deux cas avec heures majorées : écart égal à la réduction de 11,31 %, que le moteur compte et que le simulateur Urssaf ignore.
+- Heures majorées dans le CMG : comptées une fois, comme le demande le simulateur Urssaf (« heures complémentaires ou supplémentaires incluses » dans le nombre d'heures du mois).
+- Outre-mer (La Réunion) : mêmes résultats qu'en métropole.
+- Conversion brut → net : identique au convertisseur officiel sur 21 montants.
+
 ## Points ouverts
 
 - Plancher de ressources 2026 (815 ou 821 €) : sans effet au-dessus de 821 € de revenus mensuels.
-- Heures majorées : le texte parle d'« heures rémunérées » ; le simulateur compte chaque heure une fois.
+- Heures majorées : comptées une fois dans les heures du CMG, comme le simulateur Urssaf (confirmé à l'étape 5).
 - Congés payés en année incomplète : la moyenne mensuelle du résumé les répartit sur 12 mois ; le calendrier (étape 4) les montre au mois réel de versement.
 - Congés payés et CMG : depuis janvier 2026 (LFSS 2026), ils ne comptent plus pour le test du plafond horaire ; leur place dans le coût aidé n'est pas documentée.
 - Réduction des heures majorées : traitement exact dans le coût aidé par le CMG non documenté (le simulateur Urssaf ne la calcule pas).
