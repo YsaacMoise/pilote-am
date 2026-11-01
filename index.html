@@ -12,6 +12,10 @@
         }
       })();
     </script>
+ <script>
+      // Version nuit choisie à la main (Réglages ou bouton du site) : appliquée avant l'affichage.
+      try { var t = localStorage.getItem('pam-theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Arvela</title>
     <meta name="description" content="Le carnet de bord de l'assistante maternelle : pointage, carnet de liaison, paie Pajemploi, congés. Données sur le téléphone, avec une copie dans ton compte." />

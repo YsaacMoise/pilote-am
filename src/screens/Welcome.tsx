@@ -9,6 +9,7 @@ import { APERCU_QUOTIDIEN, VIDEOS_PRETES, VideoClip, isIOS } from '../ui/VideoGu
 import { SimApercu } from './SimApercu';
 import { Icon } from '../ui/icons';
 import { LOGIN_HINT } from '../auth-action';
+import { effectiveTheme, setTheme } from '../theme';
 
 /** Adresse laissée par la page « nouveau mot de passe » : la connexion s'ouvre déjà remplie (lue une seule fois). */
 function loginHint(): string {
@@ -179,7 +180,7 @@ export function Welcome() {
       <header class="site-nav">
         <a class="site-brand" href="#/" aria-label="Arvela, accueil">
           <Logo size={36} />
-          <span class="site-brand-text" aria-hidden="true"><span class="site-brand-name">Arvela</span></span>
+          <span class="site-brand-text" aria-hidden="true"><span class="site-brand-name">Arvela</span><span class="site-brand-tag">Maison de gestion et de soin</span></span>
         </a>
         <nav class="site-links" aria-label="Liens">
           <a href="#/simulateur">Simuler un accueil</a>
@@ -188,7 +189,9 @@ export function Welcome() {
         </nav>
         {!signedIn && form !== 'login' && (
           <div class="site-actions">
+            <BoutonNuit class="icon-theme" />
             <button class="btn-link" type="button" onClick={() => ouvrir('login')}>Me connecter</button>
+            {!form && <button class="btn btn-accent btn-sm" type="button" onClick={() => ouvrir('create')}>Créer un compte gratuit</button>}
           </div>
         )}
       </header>
@@ -208,13 +211,13 @@ export function Welcome() {
               <section id="compte" class="hero-form" aria-label="Compte">
                 <AccountForm key={form} initial={form} initialEmail={form === 'login' ? hintEmail : ''} onDone={done} />
               </section>
-              <p class="hero-login">Pas encore décidée ? <button class="btn-link" type="button" onClick={essayer}>Tester avec un exemple</button></p>
+              <p class="hero-login">Pas encore décidée ? <button class="btn-link" type="button" onClick={essayer}>Essayer avec des enfants fictifs</button></p>
             </>
           ) : (
             <>
               <div class="hero-cta">
-                <button class="btn btn-primary btn-lg" type="button" onClick={() => ouvrir('create')}>Créer mon compte gratuit</button>
-                <button class="btn btn-secondary btn-lg" type="button" onClick={essayer}>Tester avec un exemple</button>
+                <button class="btn btn-accent btn-lg" type="button" onClick={() => ouvrir('create')}>Créer mon compte gratuit</button>
+                <button class="btn btn-secondary btn-lg" type="button" onClick={essayer}>Essayer avec des enfants fictifs</button>
               </div>
               <p class="hero-login">Déjà inscrite ? <button class="btn-link" type="button" onClick={() => ouvrir('login')}>Me connecter</button></p>
             </>
@@ -242,12 +245,37 @@ export function Welcome() {
       {video && <Sheet title="Une journée avec Arvela" onClose={() => setVideo(false)}><VideoClip clip="quotidien" autoStart /></Sheet>}
 
       <footer class="site-footer">
-        <Logo size={24} />
+        <div class="footer-lockup" aria-hidden="true">
+          <Logo size={48} />
+          <span class="footer-name">Arvela</span>
+          <span class="footer-tag">Maison de gestion et de soin</span>
+        </div>
+        <nav aria-label="Pied de page">
+          <a href="#/simulateur">Simuler un accueil</a>
+          <a href="#/confidentialite">Confidentialité</a>
+          <a href="#/mentions">Mentions légales</a>
+        </nav>
+        <BoutonNuit class="btn-theme" texte />
         <span class="site-footer-url">arvela.fr</span>
-        <a href="#/confidentialite">Confidentialité</a>
-        <a href="#/mentions">Mentions légales</a>
       </footer>
     </div>
+  );
+}
+
+/** Bouton jour / nuit du site (le même choix que dans Réglages) */
+function BoutonNuit({ class: cls, texte = false }: { class: string; texte?: boolean }) {
+  const [t, setT] = useState(effectiveTheme);
+  useEffect(() => {
+    const f = () => setT(effectiveTheme());
+    window.addEventListener('pam-theme', f);
+    return () => window.removeEventListener('pam-theme', f);
+  }, []);
+  const nuit = t === 'dark';
+  const label = nuit ? 'Passer en version jour' : 'Passer en version nuit';
+  return (
+    <button class={cls} type="button" aria-label={texte ? undefined : label} onClick={() => { setTheme(nuit ? 'light' : 'dark'); logUsage('theme', nuit ? 'jour' : 'nuit'); }}>
+      <Icon name={nuit ? 'sun' : 'moon'} size={20} />{texte && (nuit ? 'Version jour' : 'Version nuit')}
+    </button>
   );
 }
 

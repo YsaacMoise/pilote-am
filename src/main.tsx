@@ -8,6 +8,9 @@ import { hasCloudAccount } from './cloud-state';
 import { authAction } from './auth-action';
 import { MotDePasse } from './screens/MotDePasse';
 import { Parent } from './screens/Parent';
+import { applyTheme } from './theme';
+
+applyTheme();
 
 /** Lien parent « #/p/{id}.{secret} » : la fin du lien, ou null */
 function parentLink(): string | null {
