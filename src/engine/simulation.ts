@@ -62,6 +62,22 @@ export function cotisParams(d: ISODate): CotisParams {
   return p;
 }
 
+/**
+ * Salaire horaire net à partir du brut, comme le convertisseur officiel Urssaf/Pajemploi : chaque cotisation salariale
+ * est arrondie au centime avant d'être retirée (vérifié le 1er novembre 2026 sur 21 montants, dont l'Alsace-Moselle :
+ * 4,20 € → 3,28 € ; 5,10 € → 3,99 € ; 10,90 € → 8,53 € ; 13,00 € → 10,15 € ; Bas-Rhin 5,10 € → 3,92 €).
+ * Vieillesse 6,90 % + 0,40 %, retraite complémentaire 3,15 %, CEG 0,86 %, prévoyance 1,04 % sur le brut ;
+ * CSG 6,80 % + 2,40 % et CRDS 0,50 % sur 98,25 % du brut ; Alsace-Moselle : maladie 1,30 % en plus.
+ */
+export function netHoraire(brut: number, alsaceMoselle: boolean): number {
+  const b = brut / 100;
+  const base = b * 0.9825;
+  const parts = [b * 0.069, b * 0.004, b * 0.0315, b * 0.0086, b * 0.0104, base * 0.068, base * 0.024, base * 0.005];
+  if (alsaceMoselle) parts.push(b * 0.013);
+  const retenues = parts.reduce((t, x) => t + Math.round(x * 100 + 1e-9), 0);
+  return Math.max(0, brut - retenues);
+}
+
 /** Part du net dans le brut, selon le lieu de travail de l'assistante maternelle */
 export function ratioNet(d: ISODate, alsaceMoselle: boolean): number {
   const p = cotisParams(d);
@@ -501,7 +517,7 @@ export function simuler(i: SimInput, d: ISODate): SimResult {
   const tauxSalarial = i.alsaceMoselle ? cp.salarialeAlsaceMoselle : cp.salariale;
   const ratio = 1 - tauxSalarial;
   const tauxBrut = Math.max(0, i.tauxBrut || 0);
-  const tauxNet = Math.round(tauxBrut * ratio);
+  const tauxNet = netHoraire(tauxBrut, i.alsaceMoselle);
 
   const c = { yearType: i.yearType, weeks: semaines, planning, rateNet: tauxNet, majoration } as Contract;
   const salaire = heuresSemMin > 0 ? salaireMensualise(c) : 0;

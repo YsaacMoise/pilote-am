@@ -3,7 +3,7 @@ import { calendrier, levierTarif, selonRevenus, tarifMaxSansDepassement, MOIS_CA
 import { planningRegulier, simuler, simulationParDefaut } from '../src/engine/simulation';
 
 const D = '2026-11-01';
-const base = { ...simulationParDefaut(D), planning: planningRegulier(5, 40), tauxBrut: 510, entretien: 380, revenusAn: 42000, enfants: ['2025-05'], debut: '2026-12' };
+const base = { ...simulationParDefaut(D), planning: planningRegulier(5, 40), tauxBrut: 509, entretien: 380, revenusAn: 42000, enfants: ['2025-05'], debut: '2026-12' };
 
 describe('calendrier mois par mois (étape 4)', () => {
   it('année complète : 24 mois, même montant chaque mois, crédit de 2026 en juillet 2027, avance de 60 % du crédit 2026 en janvier 2028', () => {
