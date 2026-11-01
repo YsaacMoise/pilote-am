@@ -4,9 +4,13 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { SIM_RESSOURCES } from './SimApercu';
 import { logUsage } from '../store';
-import { today } from '../engine/dates';
+import { JOUR_NOMS, today } from '../engine/dates';
+import type { Plage, Planning } from '../engine/model';
 import { euros, hoursLabel } from '../engine/money';
-import { HEURES_MAX_AN, HEURES_SANS_ACCORD, HEURES_MAX_JOUR, ratioNet, simuler, simulationParDefaut, type AgeEnfant, type SimInput } from '../engine/simulation';
+import {
+  HEURES_MAX_AN, HEURES_SANS_ACCORD, HEURES_MAX_JOUR, REPAS_NOMS, REPAS_REGLES, TYPES_REPAS, bornesKm, planningDepuisTexte, planningRegulier,
+  planningVersTexte, ratioNet, simuler, simulationParDefaut, type AgeEnfant, type SimInput, type TypeRepas,
+} from '../engine/simulation';
 import { Banner, Choices, EuroInput, NumberInput, Seg, Stepper, Switch, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { shareText } from '../share';
@@ -19,32 +23,43 @@ const MINIMUM_AM_AP = 437;
 export const BROUILLON_CONTRAT = 'pam-contrat-brouillon';
 
 // Paramètres partageables : l'accueil et le tarif, jamais la situation de la famille.
-const PARTAGE: (keyof SimInput)[] = ['jours', 'heures', 'yearType', 'semainesAbsence', 'majoration', 'tauxBrut', 'alsaceMoselle', 'entretienJour', 'repasPrix', 'repasParJour'];
-
-/** Valeurs admises dans un lien partagé (un lien modifié ne doit pas casser le calcul). */
-const BORNES: Partial<Record<keyof SimInput, [number, number]>> = {
-  jours: [1, 6], heures: [1, 78], semainesAbsence: [1, 30], majoration: [10, 100],
-  tauxBrut: [0, 5000], entretienJour: [0, 5000], repasPrix: [0, 5000], repasParJour: [0, 4],
+// Valeurs admises dans un lien partagé (un lien modifié ne doit pas casser le calcul).
+const NOMBRES: Partial<Record<keyof SimInput, [number, number]>> = {
+  semainesAbsence: [1, 30], majoration: [10, 100], tauxBrut: [0, 5000], entretien: [0, 5000], kmMois: [0, 5000], kmTaux: [0, 200], cv: [3, 8],
 };
+const REPAS_CLES: Record<TypeRepas, string> = { petitDej: 'rpd', dejeuner: 'rdj', gouter: 'rgo', diner: 'rdi' };
 
 function depuisAdresse(base: SimInput): SimInput {
   const q = new URLSearchParams(location.hash.split('?')[1] ?? '');
-  const out: SimInput = { ...base };
-  // Anciens liens (avant novembre 2026) : taux saisi en net, converti en brut.
-  const ancienNet = Number(q.get('tauxNet'));
-  if (q.get('tauxBrut') === null && Number.isFinite(ancienNet) && ancienNet > 0 && ancienNet <= 5000) {
-    out.tauxBrut = Math.round(ancienNet / ratioNet(today(), false));
-  }
-  for (const k of PARTAGE) {
+  const out: SimInput = { ...base, repas: { ...base.repas } };
+  const num = (k: string, min: number, max: number): number | undefined => {
     const v = q.get(k);
-    if (v === null) continue;
-    if (k === 'yearType') { if (v === 'complete' || v === 'incomplete') out.yearType = v; continue; }
-    if (k === 'alsaceMoselle') { out.alsaceMoselle = v === '1'; continue; }
+    if (v === null) return undefined;
     const n = Number(v);
-    if (!Number.isFinite(n)) continue;
-    const [min, max] = BORNES[k] ?? [0, 100000];
-    (out as any)[k] = Math.min(max, Math.max(min, k === 'jours' || k === 'semainesAbsence' || k === 'repasParJour' ? Math.round(n) : n));
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : undefined;
+  };
+  // Planning : nouveau format, sinon anciens liens (jours + heures par semaine)
+  const pl = q.get('pl');
+  const planning = pl ? planningDepuisTexte(pl) : null;
+  if (planning) out.planning = planning;
+  else if (q.get('heures') !== null) out.planning = planningRegulier(num('jours', 1, 6) ?? 5, num('heures', 1, 60) ?? 40);
+  // Anciens liens (avant novembre 2026) : taux saisi en net, converti en brut ; entretien par jour ; un prix de repas.
+  const ancienNet = num('tauxNet', 1, 5000);
+  if (q.get('tauxBrut') === null && ancienNet) out.tauxBrut = Math.round(ancienNet / ratioNet(today(), false));
+  const ancienEntretien = num('entretienJour', 0, 5000);
+  if (ancienEntretien !== undefined) out.entretien = ancienEntretien;
+  const ancienRepas = num('repasPrix', 0, 5000);
+  if (ancienRepas) out.repas.dejeuner = ancienRepas;
+  for (const k of Object.keys(NOMBRES) as (keyof SimInput)[]) {
+    const [min, max] = NOMBRES[k]!;
+    const n = num(k, min, max);
+    if (n !== undefined) (out as any)[k] = k === 'semainesAbsence' || k === 'cv' ? Math.round(n) : n;
   }
+  const yt = q.get('yearType');
+  if (yt === 'complete' || yt === 'incomplete') out.yearType = yt;
+  if (q.get('alsaceMoselle') !== null) out.alsaceMoselle = q.get('alsaceMoselle') === '1';
+  if (q.get('entretienMode') === 'heure') out.entretienMode = 'heure';
+  for (const t of TYPES_REPAS) { const n = num(REPAS_CLES[t], 0, 5000); if (n !== undefined) out.repas[t] = n; }
   // Revenus choisis sur la page d'accueil (lus une seule fois, jamais dans l'adresse)
   try {
     const r = Number(sessionStorage.getItem(SIM_RESSOURCES));
@@ -56,8 +71,43 @@ function depuisAdresse(base: SimInput): SimInput {
 
 function lienPartage(i: SimInput): string {
   const q = new URLSearchParams();
-  for (const k of PARTAGE) q.set(k, typeof i[k] === 'boolean' ? (i[k] ? '1' : '0') : String(i[k]));
+  q.set('pl', planningVersTexte(i.planning));
+  for (const k of ['yearType', 'semainesAbsence', 'majoration', 'tauxBrut', 'entretien', 'entretienMode'] as const) q.set(k, String(i[k]));
+  q.set('alsaceMoselle', i.alsaceMoselle ? '1' : '0');
+  for (const t of TYPES_REPAS) if (i.repas[t] > 0) q.set(REPAS_CLES[t], String(i.repas[t]));
+  if (i.kmMois > 0) { q.set('kmMois', String(i.kmMois)); q.set('kmTaux', String(i.kmTaux)); q.set('cv', String(i.cv)); }
   return `${location.origin}${location.pathname}#/simulateur?${q.toString()}`;
+}
+
+const JOURS_COURTS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+const nomJour = (w: number) => JOUR_NOMS[w - 1];
+const listeJours = (ws: number[]) => ws.map(nomJour).join(', ').replace(/, ([^,]*)$/, ' et $1');
+const memesPlages = (a: Plage[], b: Plage[]) => JSON.stringify(a) === JSON.stringify(b);
+/** Jours cochés (même si l'horaire saisi est encore incomplet) */
+function joursActifs(pl: Planning): number[] {
+  return [1, 2, 3, 4, 5, 6, 7].filter((w) => (pl[w]?.length ?? 0) > 0);
+}
+function horairesIdentiques(pl: Planning): boolean {
+  const js = joursActifs(pl);
+  return js.every((w) => memesPlages(pl[w], pl[js[0]]));
+}
+const prixKm = (milliemes: number) => `${(milliemes / 1000).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })} €`;
+
+/** Une ou deux plages horaires (arrivée, départ) */
+function Plages({ nom, plages, onChange }: { nom: string; plages: Plage[]; onChange: (p: Plage[]) => void }) {
+  return (
+    <>
+      {plages.map((p, k) => (
+        <div class="plan-range">
+          <input class="input num" type="time" aria-label={`${nom}, arrivée${k ? ' (2e plage)' : ''}`} value={p.start} onInput={(e) => onChange(plages.map((x, j) => (j === k ? { ...x, start: (e.target as HTMLInputElement).value } : x)))} />
+          <span aria-hidden="true">à</span>
+          <input class="input num" type="time" aria-label={`${nom}, départ${k ? ' (2e plage)' : ''}`} value={p.end} onInput={(e) => onChange(plages.map((x, j) => (j === k ? { ...x, end: (e.target as HTMLInputElement).value } : x)))} />
+          {k === 1 ? <button type="button" class="icon-btn" aria-label={`Retirer la 2e plage (${nom})`} onClick={() => onChange(plages.slice(0, 1))}><Icon name="x" size={20} /></button> : <span style={{ width: '48px' }} />}
+        </div>
+      ))}
+      {plages.length === 1 && <button type="button" class="btn btn-ghost" style={{ alignSelf: 'flex-start' }} onClick={() => onChange([...plages, { start: '16:30', end: '18:30' }])}><Icon name="plus" />Ajouter une 2e plage</button>}
+    </>
+  );
 }
 
 export function Simulateur({ back, connecte }: { back: string; connecte: boolean }) {
@@ -74,19 +124,42 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
     io.observe(el);
     return () => io.disconnect();
   }, []);
-  const repasFournis = i.repasPrix > 0;
+  const repasFournis = TYPES_REPAS.some((t) => i.repas[t] > 0);
+  const [repasOuverts, setRepasOuverts] = useState(repasFournis);
+  const [kmOuvert, setKmOuvert] = useState(i.kmMois > 0);
+  const [parJour, setParJour] = useState(() => !horairesIdentiques(i.planning));
+  const actifs = joursActifs(i.planning);
+  const modele: Plage[] = actifs.length ? i.planning[actifs[0]] : [{ start: '08:00', end: '17:00' }];
+  const setPlanning = (planning: Planning) => set({ planning });
+  const basculerJour = (w: number) => {
+    const pl: Planning = { ...i.planning };
+    pl[w] = actifs.includes(w) ? [] : structuredClone(modele);
+    setPlanning(pl);
+  };
+  const plagesIdentiques = (p: Plage[]) => {
+    const pl: Planning = {};
+    for (const w of actifs) pl[w] = structuredClone(p);
+    setPlanning(pl);
+  };
+  const entretiens = r.parJour.length ? r.parJour.map((j) => j.entretien) : [0];
+  const entretienMin = Math.min(...entretiens), entretienMax = Math.max(...entretiens);
+  const joursAuMinimum = r.parJour.filter((j) => j.entretien > (i.entretienMode === 'heure' ? Math.round((i.entretien * j.minutes) / 60) : i.entretien)).map((j) => j.jour);
+  const repasParSemaine = (t: TypeRepas) => r.parJour.filter((j) => j.repas.includes(t)).length;
+  const kmAn = i.kmMois * 12;
+  const kmHorsBornes = i.kmMois > 0 && (i.kmTaux * 10 < r.kmBornes.min || i.kmTaux * 10 > r.kmBornes.max);
   const partager = async () => {
     logUsage('simulateur_partage', 'simulateur');
-    const texte = `Simulation d'accueil Arvela : ${hoursLabel(Math.round(r.heuresRetenues * 60))} par semaine sur ${i.jours} jours, ${r.semaines} semaines par an, ${euros(i.tauxBrut)} brut de l'heure (${euros(r.tauxNet)} net).\n`
-      + `À verser chaque mois : ${euros(r.verse)} (salaire ${euros(r.salaire)}, entretien ${euros(r.entretien)}${r.repas ? `, repas ${euros(r.repas)}` : ''}).\n`
+    const texte = `Simulation d'accueil Arvela : ${hoursLabel(r.minutesSemaine)} par semaine sur ${r.joursSemaine} jours, ${r.semaines} semaines par an, ${euros(i.tauxBrut)} brut de l'heure (${euros(r.tauxNet)} net).\n`
+      + `À verser chaque mois : ${euros(r.verse)} (salaire ${euros(r.salaire)}, entretien ${euros(r.entretien)}${r.repas ? `, repas ${euros(r.repas)}` : ''}${r.km ? `, déplacements ${euros(r.km)}` : ''}).\n`
       + `Pour voir l'aide de la CAF, les cotisations et le coût réel avec vos revenus : ${lienPartage(i)}`;
     await shareText(texte);
   };
   const creerContrat = () => {
     try {
+      const prixRepas = TYPES_REPAS.map((t) => i.repas[t]).filter((x) => x > 0);
       sessionStorage.setItem(BROUILLON_CONTRAT, JSON.stringify({
-        jours: i.jours, heures: r.heuresRetenues, yearType: i.yearType, weeks: r.semaines, majoration: i.majoration,
-        rateNet: r.tauxNet, entretienJour: i.entretienJour, repasPrix: i.repasPrix, repasParJour: repasFournis ? i.repasParJour : 0,
+        planning: i.planning, yearType: i.yearType, weeks: r.semaines, majoration: i.majoration, rateNet: r.tauxNet,
+        entretienJour: i.entretienMode === 'jour' ? i.entretien : 0, repasPrix: prixRepas[0] ?? 0, repasParJour: prixRepas.length, kmTaux: r.km > 0 ? i.kmTaux : 0,
       }));
     } catch { /* stockage indisponible : le contrat partira des valeurs par défaut */ }
     logUsage('simulateur_contrat', 'simulateur');
@@ -103,9 +176,34 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
         <section class="card">
           <fieldset>
             <legend>L’accueil</legend>
-            <Stepper label="Jours par semaine" value={i.jours} min={1} max={6} onChange={(v) => set({ jours: v })} />
-            <NumberInput label="Heures par semaine" value={i.heures} min={1} max={r.heuresMax} step={0.5} onChange={(v) => set({ heures: v ?? 0 })} />
-            {r.heuresPlafonnees && <Banner tone="warn">Au plus {hoursLabel(Math.round(r.heuresMax * 60))} par semaine pour ce planning : {HEURES_MAX_JOUR} h par jour (11 h de repos obligatoire) et {nf.format(HEURES_MAX_AN)} h par an. Le calcul retient ce maximum.</Banner>}
+            <Seg label="Horaires" value={parJour ? 'differents' : 'identiques'} options={[{ v: 'identiques', l: 'Les mêmes chaque jour' }, { v: 'differents', l: 'Selon les jours' }]}
+              onChange={(v) => { if (v === 'identiques' && !horairesIdentiques(i.planning)) plagesIdentiques(modele); setParJour(v === 'differents'); }} />
+            {!parJour ? (
+              <>
+                <div class="field">
+                  <span class="label" id="sim-jours">Jours d’accueil</span>
+                  <div class="chips" role="group" aria-labelledby="sim-jours">
+                    {[1, 2, 3, 4, 5, 6, 7].map((w) => (
+                      <button type="button" class="chip" aria-pressed={actifs.includes(w)} aria-label={nomJour(w)} onClick={() => basculerJour(w)}>{JOURS_COURTS[w - 1]}</button>
+                    ))}
+                  </div>
+                </div>
+                {actifs.length > 0 && <Plages nom="Chaque jour" plages={modele} onChange={plagesIdentiques} />}
+              </>
+            ) : (
+              [1, 2, 3, 4, 5, 6, 7].map((w) => {
+                const on = (i.planning[w]?.length ?? 0) > 0;
+                return (
+                  <div class="plan-day">
+                    <Switch label={nomJour(w).replace(/^./, (x) => x.toUpperCase())} checked={on} onChange={(v) => setPlanning({ ...i.planning, [w]: v ? structuredClone(modele) : [] })} />
+                    {on && <Plages nom={nomJour(w)} plages={i.planning[w]} onChange={(p) => setPlanning({ ...i.planning, [w]: p })} />}
+                  </div>
+                );
+              })
+            )}
+            <p class="hint">{r.joursSemaine ? `${hoursLabel(r.minutesSemaine)} par semaine sur ${r.joursSemaine} jour${r.joursSemaine > 1 ? 's' : ''}.` : 'Choisissez au moins un jour d’accueil.'}</p>
+            {r.joursTropLongs.length > 0 && <Banner tone="warn">Plus de {HEURES_MAX_JOUR} h entre l’arrivée et le départ le {listeJours(r.joursTropLongs)} : l’assistante maternelle doit avoir 11 h de repos par jour.</Banner>}
+            {r.depasseAnnuel && <Banner tone="warn">Ce planning dépasse {nf.format(HEURES_MAX_AN)} h par an, même avec l’accord de l’assistante maternelle : {hoursLabel(Math.round(r.heuresMax * 60))} par semaine au plus sur {r.semainesGarde} semaines travaillées.</Banner>}
             {r.accordNecessaire && <Banner tone="info">Plus de {HEURES_SANS_ACCORD} h par semaine : l’assistante maternelle doit donner son accord écrit, et ne pas dépasser {nf.format(HEURES_MAX_AN)} h par an, tous contrats confondus.</Banner>}
             {r.heuresMajMoisMin > 0 && (
               <NumberInput label="Majoration au-delà de 45 h (%)" hint="10 % au moins (convention collective)" value={i.majoration} min={10} max={100} onChange={(v) => set({ majoration: Math.max(10, v ?? 10) })} />
@@ -124,13 +222,34 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             <EuroInput label="Salaire horaire brut" hint={`Soit ${euros(r.tauxNet)} net. Minimum : ${euros(r.minimumBrut)} brut (${euros(MINIMUM_AM_AP)} avec le titre AM-AP).`} cents={i.tauxBrut} onChange={(v) => set({ tauxBrut: v ?? 0 })} />
             {r.sousMinimum && <Banner tone="warn">Ce taux est sous le minimum de la convention collective : {euros(r.minimumBrut)} brut de l’heure depuis le 1er juin 2026.</Banner>}
             <Switch label="L’assistante maternelle travaille en Alsace-Moselle" hint="Bas-Rhin, Haut-Rhin ou Moselle : cotisations plus élevées, donc un net plus bas pour le même brut." checked={i.alsaceMoselle} onChange={(v) => set({ alsaceMoselle: v })} />
-            <EuroInput label="Indemnité d’entretien par jour" hint={`Minimum pour cette journée : ${euros(r.entretienMinimum)}. ${i.entretienJour < r.entretienMinimum ? 'Le minimum est utilisé.' : ''}`} cents={i.entretienJour || undefined} allowEmpty onChange={(v) => set({ entretienJour: v ?? 0 })} />
-            <Switch label="Les repas sont fournis par l’assistante maternelle" checked={repasFournis} onChange={(on) => set({ repasPrix: on ? 350 : 0 })} />
-            {repasFournis && (
-              <div class="grid2">
-                <EuroInput label="Prix d’un repas" cents={i.repasPrix} onChange={(v) => set({ repasPrix: v ?? 0 })} />
-                <Stepper label="Repas par jour" value={i.repasParJour} min={1} max={4} onChange={(v) => set({ repasParJour: v })} />
-              </div>
+            <Seg label="Indemnité d’entretien prévue" value={i.entretienMode} options={[{ v: 'jour', l: 'Par jour' }, { v: 'heure', l: 'Par heure' }]} onChange={(v) => set({ entretienMode: v, entretien: 0 })} />
+            <EuroInput label={i.entretienMode === 'jour' ? 'Montant par jour d’accueil' : 'Montant par heure d’accueil'} allowEmpty cents={i.entretien || undefined} onChange={(v) => set({ entretien: v ?? 0 })}
+              hint={`Minimum légal chaque jour : 0,435 € par heure d’accueil, jamais moins de 2,65 €.${joursAuMinimum.length ? ` Il s’applique le ${listeJours(joursAuMinimum)}.` : ''}`} />
+            <Switch label="L’assistante maternelle fournit des repas" checked={repasOuverts}
+              onChange={(on) => { setRepasOuverts(on); set({ repas: on ? { petitDej: 0, dejeuner: 400, gouter: 0, diner: 0 } : { petitDej: 0, dejeuner: 0, gouter: 0, diner: 0 } }); }} />
+            {repasOuverts && (
+              <>
+                <p class="hint">Prix de chaque repas fourni. Laissez vide ceux que les parents apportent. Chaque repas est compté les jours où l’enfant est là à son heure.</p>
+                <div class="grid2">
+                  {TYPES_REPAS.map((t) => (
+                    <EuroInput label={REPAS_NOMS[t]} allowEmpty cents={i.repas[t] || undefined} onChange={(v) => set({ repas: { ...i.repas, [t]: v ?? 0 } })}
+                      hint={i.repas[t] > 0 ? `${repasParSemaine(t)} par semaine` : REPAS_REGLES[t].replace('les jours où ', 'si ')} />
+                  ))}
+                </div>
+              </>
+            )}
+            <Switch label="L’assistante maternelle transporte l’enfant en voiture" hint="École, activités : indemnités kilométriques à la charge de la famille." checked={kmOuvert}
+              onChange={(on) => { setKmOuvert(on); set(on ? { kmMois: 40, kmTaux: Math.ceil(bornesKm(i.cv, 480).min / 10) } : { kmMois: 0 }); }} />
+            {kmOuvert && (
+              <>
+                <div class="grid2">
+                  <NumberInput label="Kilomètres par mois" value={i.kmMois || undefined} min={0} max={5000} onChange={(v) => set({ kmMois: v ?? 0 })} />
+                  <EuroInput label="Tarif par km" cents={i.kmTaux || undefined} allowEmpty onChange={(v) => set({ kmTaux: v ?? 0 })} />
+                </div>
+                <Stepper label="Puissance fiscale de la voiture" value={i.cv} min={3} max={8} unit={i.cv >= 8 ? 'CV et +' : 'CV'} onChange={(v) => set({ cv: v })} />
+                <p class="hint">Pour {nf.format(kmAn)} km par an : au moins {prixKm(r.kmBornes.min)} par km (barème de l’administration), au plus {prixKm(r.kmBornes.max)} (barème fiscal).</p>
+                {kmHorsBornes && <Banner tone="warn">Ce tarif sort de la fourchette légale : entre {prixKm(r.kmBornes.min)} et {prixKm(r.kmBornes.max)} par km.</Banner>}
+              </>
             )}
           </fieldset>
         </section>
@@ -169,8 +288,9 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             <div class="decl-line"><span class="decl-label"><span>Salaire net mensualisé</span><span class="decl-hint">{hoursLabel(r.heuresMoisMin)} par mois</span></span><span class="decl-value">{euros(r.salaire)}</span></div>
             {r.congesMois > 0 && <div class="decl-line"><span class="decl-label"><span>Congés payés</span><span class="decl-hint">environ {euros(r.congesAnnuels)} par an, répartis ici sur 12 mois</span></span><span class="decl-value">{euros(r.congesMois)}</span></div>}
             {r.reductionHeuresMaj > 0 && <div class="decl-line"><span class="decl-label"><span>Réduction de cotisations des heures majorées</span><span class="decl-hint">11,31 % du brut des heures au-delà de 45 h, versés en plus du salaire</span></span><span class="decl-value">{euros(r.reductionHeuresMaj)}</span></div>}
-            <div class="decl-line"><span class="decl-label"><span>Indemnités d’entretien</span><span class="decl-hint">{euros(r.entretienJourRetenu)} × {r.joursAn} jours d’accueil par an ÷ 12</span></span><span class="decl-value">{euros(r.entretien)}</span></div>
-            {r.repas > 0 && <div class="decl-line"><span class="decl-label"><span>Repas</span><span class="decl-hint">{euros(i.repasPrix)} × {i.repasParJour} par jour d’accueil</span></span><span class="decl-value">{euros(r.repas)}</span></div>}
+            <div class="decl-line"><span class="decl-label"><span>Indemnités d’entretien</span><span class="decl-hint">{entretienMin === entretienMax ? euros(entretienMin) : `de ${euros(entretienMin)} à ${euros(entretienMax)}`} par jour × {r.joursAn} jours d’accueil par an ÷ 12{r.feriesAn > 0 ? `, ${Math.round(r.feriesAn)} jours fériés retirés` : ''}</span></span><span class="decl-value">{euros(r.entretien)}</span></div>
+            {r.repas > 0 && <div class="decl-line"><span class="decl-label"><span>Repas</span><span class="decl-hint">{TYPES_REPAS.filter((t) => r.repasAn[t] > 0).map((t) => `${r.repasAn[t]} ${REPAS_NOMS[t].toLowerCase()}s`).join(', ')} par an ÷ 12</span></span><span class="decl-value">{euros(r.repas)}</span></div>}
+            {r.km > 0 && <div class="decl-line"><span class="decl-label"><span>Indemnités kilométriques</span><span class="decl-hint">{nf.format(i.kmMois)} km × {euros(i.kmTaux)} ; ni l’aide de la CAF ni le crédit d’impôt ne les couvrent</span></span><span class="decl-value">{euros(r.km)}</span></div>}
             <div class="decl-line"><span class="decl-label"><span><b>À verser à l’assistante maternelle</b></span><span class="decl-hint">en moyenne par mois</span></span><span class="decl-value">{euros(r.verse)}</span></div>
             <div class="decl-line"><span class="decl-label"><span>Cotisations sociales</span><span class="decl-hint">parts salariale et patronale, prélevées par Pajemploi</span></span><span class="decl-value">{euros(r.cotisations)}</span></div>
             <div class="decl-line"><span class="decl-label"><span>Prises en charge par la CAF</span><span class="decl-hint">{!r.cmgEligible ? 'aucune : pas d’aide de la CAF pour cet âge' : r.cmg.depassePlafond ? `${Math.round(r.cmg.partCotisations * 100)} % : le coût de l’heure dépasse ${euros(r.cmg.params.plafondHoraire)}` : 'en totalité'}</span></span><span class="decl-value">− {euros(r.cotisationsPrisesEnCharge)}</span></div>

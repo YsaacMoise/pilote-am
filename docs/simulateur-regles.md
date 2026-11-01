@@ -40,6 +40,16 @@ Tests : les 4 exemples chiffrés du communiqué de presse CAF du 15/09/2025 (co�
 - Indemnité d'entretien : 90 % du minimum garanti (4,35 €) pour 9 h, soit 3,92 €, et jamais moins de 2,65 € par jour (CCN art. 114-1).
 - Mensualisation (CCN art. 109.2) : heures hebdomadaires × semaines ÷ 12 ; en année incomplète (46 semaines au plus), les congés payés s'ajoutent au salaire mensualisé (environ 10 % du brut de l'année).
 
+## Accueil jour par jour (étape 2, 1er novembre 2026)
+
+- Planning saisi jour par jour (une ou deux plages), ou mêmes horaires sur les jours cochés. Heures par semaine = somme des plages.
+- Indemnité d'entretien calculée chaque jour : le montant du contrat (par jour, ou par heure × durée du jour), jamais moins que le minimum légal de la journée (0,435 € par heure, 2,65 € au moins ; CCN art. 114.1, CASF D423-7).
+- Jours fériés : ceux des 12 mois qui suivent la simulation, tombant sur un jour d'accueil, pondérés par semaines travaillées ÷ 52 ; retirés des jours d'entretien, de repas et du forfait de 2,65 € du crédit d'impôt (le salaire mensualisé ne change pas). Alsace-Moselle : Vendredi saint et 26 décembre en plus.
+- Repas par type (petit-déjeuner, déjeuner, goûter, dîner), prix libre fixé au contrat (CCN art. 114.2). Compté les jours où l'enfant est présent à l'heure du repas : petit-déjeuner si arrivée à 8 h au plus tard ; déjeuner si présent de 11 h 30 à 12 h 30 ; goûter si présent de 16 h 30 à 17 h ; dîner si départ à 19 h ou après (choix du simulateur).
+- Indemnités kilométriques (CCN art. 113, service-public F12812 vérifié le 17/06/2026) : km par mois × tarif ; tarif entre le barème administratif (0,32 à 0,55 € selon puissance et km par an) et le barème fiscal (0,529 à 0,697 € jusqu'à 5 000 km). Hors coût aidé par le CMG et hors crédit d'impôt.
+- Durée : amplitude de plus de 13 h signalée par jour ; plus de 2 250 h par an signalé ; plus de 48 h par semaine : accord écrit.
+- Les cinq cas de référence Urssaf ont été recalculés avec les fériés retirés et repassés au simulateur officiel : identiques au centime.
+
 ## Choix de calcul du simulateur
 
 - Moyenne mensuelle sur l'année : en année incomplète, les congés payés (≈ 10 % du salaire) sont répartis sur 12 mois dans le coût, l'aide de la CAF et le crédit d'impôt ; l'écran rappelle qu'ils sont réellement versés en juin, au congé principal ou au fil des congés.
