@@ -32,7 +32,7 @@ export function Conges() {
                 <div><b class="num">{k.pris}</b><span>déjà pris</span></div>
                 <div><b class="num">{Math.max(0, k.reste)}</b><span>restants</span></div>
               </div>
-              <p>En cours d’acquisition : <b>{k.enCours.joursADate} jours</b> à ce jour, <b>{k.enCours.jours}</b> au 31 mai{k.enCours.enfantsBonus ? ` (dont ${k.enCours.enfantsBonus} pour tes enfants à charge)` : ''}.</p>
+              <p>En cours d’acquisition : <b>{k.enCours.joursADate} jours</b> à ce jour, <b>{k.enCours.jours}</b> au 31 mai{k.enCours.enfantsBonus ? ` (dont ${k.enCours.enfantsBonus} pour tes propres enfants à charge)` : ''}.</p>
               {k.depassement && <Banner tone="warn">Tu as pris plus de jours que tes droits : les jours en trop sont normalement sans solde.</Banner>}
               <details class="more" style={{ boxShadow: 'none', border: '1px solid var(--line)' }}>
                 <summary>Indemnité estimée pour cette période</summary>

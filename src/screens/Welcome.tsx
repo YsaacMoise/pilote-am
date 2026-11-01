@@ -108,14 +108,14 @@ export function Welcome() {
         <LockupStacked />
         <h1 class="hero-title">Faisons connaissance</h1>
         <TextInput label="Ton prénom" hint="Pour signer les messages aux parents. Facultatif." value={s.settings.amName} onChange={(v) => saveSettings({ amName: v })} autoComplete="given-name" />
-        <Stepper label="Tes enfants de moins de 15 ans" value={s.settings.enfantsACharge} onChange={(v) => saveSettings({ enfantsACharge: v })} max={10} />
-        <p class="hint">Ils te donnent des jours de congés en plus.</p>
+        <Stepper label="Tes propres enfants à charge" value={s.settings.enfantsACharge} onChange={(v) => saveSettings({ enfantsACharge: v })} max={10} />
+        <p class="hint">Tes enfants à toi, pas ceux que tu gardes : moins de 15 ans au 30 avril, ou en situation de handicap quel que soit leur âge, et qui vivent chez toi. Chacun peut te donner 2 jours de congés en plus, sans dépasser 30 jours par an : c’est surtout utile en année incomplète. Juste un nombre, aucun prénom.</p>
         <button class="btn btn-primary btn-lg btn-block" onClick={async () => {
           await saveSettings({ onboarded: true });
           try { const ok = await navigator.storage?.persist?.(); await saveSettings({ persisted: !!ok }); } catch { /* pas grave */ }
           logUsage('onboarding_fini');
           location.hash = '#/contrat/nouveau';
-        }}>Ajouter mon premier enfant</button>
+        }}>Ajouter un enfant que tu accueilles</button>
       </div>
     );
   }

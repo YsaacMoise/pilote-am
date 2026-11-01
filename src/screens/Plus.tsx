@@ -17,7 +17,7 @@ export function Plus() {
       <Topbar title="Plus" screen="plus" />
       <main>
         <section class="stack-sm" aria-labelledby="enf">
-          <h2 id="enf" class="section-title">Les enfants</h2>
+          <h2 id="enf" class="section-title">Les enfants accueillis</h2>
           <div class="list">
             {s.contracts.map((c) => (
               <ListLink
@@ -29,7 +29,7 @@ export function Plus() {
             ))}
             <a class="li" href="#/contrat/nouveau">
               <span class="li-ico"><Icon name="plus" /></span>
-              <span class="li-main"><span class="li-title">Ajouter un enfant</span></span>
+              <span class="li-main"><span class="li-title">Ajouter un enfant accueilli</span></span>
             </a>
           </div>
         </section>
@@ -59,7 +59,7 @@ export function Plus() {
             {!demo && <ListLink href="#/compte" icon="cloud" title="Compte" sub={cloud.email ? `${cloud.email} · ${cloud.verified === false ? 'adresse à confirmer' : statusText(cloud)}` : statusText(cloud)} />}
             <ListLink href="#/sauvegarde" icon="shield" title="Sauvegarde" sub={lastB ? `Dernière le ${new Date(lastB).toLocaleDateString('fr-FR')}` : 'Aucune sauvegarde pour l’instant'} />
             <ListLink href="#/pilote" icon="message" title="Données du pilote" sub="Tes remarques et l’export pseudonymisé" />
-            <ListLink href="#/reglages" icon="settings" title="Réglages" sub="Ton prénom, tes enfants à charge" />
+            <ListLink href="#/reglages" icon="settings" title="Réglages" sub="Ton prénom, tes propres enfants à charge" />
           </div>
         </section>
         <p class="footer-note">Arvela est un outil d’aide, indépendant de l’Urssaf : il ne remplace ni Pajemploi ni un conseil juridique. {cloud.email ? 'Tes données sont sur ce téléphone, avec une copie dans ton compte.' : 'Tout reste sur ce téléphone.'}</p>
