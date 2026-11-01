@@ -43,6 +43,8 @@ export interface Backend {
   waitPending(timeoutMs: number): Promise<boolean>;
   /** Lien parent : écrit le texte chiffré au nom du compte connecté */
   putShare(id: string, d: Omit<SharedDoc, 't'>): Promise<void>;
+  /** Lien parent : identifiants des liens du compte connecté encore en ligne */
+  listShares(): Promise<string[]>;
   /** Lien parent : coupe le lien (le document disparaît) */
   deleteShare(id: string): Promise<void>;
   /** Lien parent, côté parents (sans compte) : suit le document en direct ; null s'il n'existe pas ou plus */

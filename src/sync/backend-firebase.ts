@@ -7,7 +7,7 @@ import {
   signOut, verifyPasswordResetCode,
 } from 'firebase/auth';
 import {
-  collection, deleteDoc, doc, getDocsFromServer, setDoc, initializeFirestore, onSnapshot, persistentLocalCache, persistentMultipleTabManager,
+  collection, deleteDoc, doc, getDocsFromServer, setDoc, initializeFirestore, onSnapshot, memoryLocalCache, persistentLocalCache, persistentMultipleTabManager,
   query, serverTimestamp, Timestamp, waitForPendingWrites, where, writeBatch, type DocumentData,
 } from 'firebase/firestore';
 import { firebaseConfig } from '../firebase-config';
@@ -19,7 +19,9 @@ const app = initializeApp(firebaseConfig);
 const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
 auth.languageCode = 'fr';
 // Cache persistant : les changements faits hors ligne sont gardés et envoyés au retour du réseau, même après fermeture.
-const fs = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+// Page des parents : rien n'est gardé sur leur appareil (cache en mémoire seulement).
+const pageParents = typeof location !== 'undefined' && location.hash.startsWith('#/p/');
+const fs = initializeFirestore(app, { localCache: pageParents ? memoryLocalCache() : persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
 
 const BATCH = 400;
 
@@ -154,6 +156,12 @@ export const backend: Backend = {
     const p = setDoc(doc(fs, 'partages', id), { owner: u.uid, v: d.v, iv: d.iv, salt: d.salt, t: serverTimestamp() });
     p.catch((e) => console.warn('lien parent refusé', e));
     track(p);
+  },
+  async listShares() {
+    const u = auth.currentUser;
+    if (!u) return [];
+    const snap = await getDocsFromServer(query(collection(fs, 'partages'), where('owner', '==', u.uid)));
+    return snap.docs.map((d) => d.id);
   },
   async deleteShare(id) {
     await deleteDoc(doc(fs, 'partages', id));

@@ -74,9 +74,9 @@ export function PartageCard({ cid }: { cid: string }) {
           <div class="stack">
             <p>La page des parents de {c.child} devient vide tout de suite. Tu pourras créer un nouveau lien, avec un nouveau code.</p>
             <button class="btn btn-danger btn-block" disabled={busy} onClick={() => run(async () => {
-              await (await cloud()).cutShare(cid);
+              const fait = await (await cloud()).cutShare(cid);
               setCouper(false);
-              toast('Lien coupé.', undefined, 'ok');
+              toast(fait ? 'Lien coupé.' : 'Lien coupé. La page des parents se fermera dès que le réseau reviendra.', undefined, 'ok');
             })}>{busy ? 'Coupure…' : 'Couper le lien'}</button>
             <button class="btn btn-outline btn-block" onClick={() => setCouper(false)}>Garder le lien</button>
           </div>

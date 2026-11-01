@@ -121,6 +121,8 @@ export interface Settings {
   lastBackup?: number;
   lastAutoCopy?: number;
   lastExport?: Month;
+  /** Liens parents coupés : un autre appareil ou une vieille sauvegarde ne doit pas les rouvrir */
+  liensCoupes?: string[];
   persisted?: boolean;
   onboarded?: boolean;
   /** Écran Aujourd'hui en liste compacte (tous les enfants visibles d'un coup) */

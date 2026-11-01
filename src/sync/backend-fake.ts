@@ -125,6 +125,10 @@ export const backend: Backend = {
     if (!current) throw err('auth/no-current-user');
     await call('/share-put', { id, owner: current.uid, ...d });
   },
+  async listShares() {
+    if (!current) return [];
+    return (await call<{ ids: string[] }>(`/share-list?owner=${current.uid}`)).ids;
+  },
   async deleteShare(id) {
     if (!current) throw err('auth/no-current-user');
     await call('/share-delete', { id, owner: current.uid });

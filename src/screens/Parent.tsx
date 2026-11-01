@@ -1,5 +1,6 @@
 // Page des parents, ouverte par le lien privé de l'AM : la journée de l'enfant en direct et les montants du mois.
-// Aucun compte, aucune donnée gardée sur l'appareil des parents (sauf le code, s'ils le demandent).
+// Aucun compte. Rien n'est gardé sur l'appareil des parents, sauf le code s'ils le demandent
+// (le service en ligne y travaille en mémoire seulement, voir backend-firebase.ts).
 // Vouvoiement partout : ce sont les employeurs de l'AM.
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { open, parseLink } from '../partage/crypto';
@@ -55,7 +56,9 @@ export function Parent({ link }: { link: string }) {
         }
       }, () => setEtat((e) => (e.k === 'ok' ? e : { k: 'reseau' })));
     }).catch(() => setEtat({ k: 'reseau' }));
-    return () => { fini = true; stop?.(); };
+    // Première ouverture sans réseau : le service en ligne attend sans rien dire.
+    const lent = setTimeout(() => setEtat((e) => (e.k === 'chargement' ? { k: 'reseau' } : e)), 12000);
+    return () => { fini = true; stop?.(); clearTimeout(lent); };
   }, [link]);
 
   useEffect(() => {

@@ -107,3 +107,15 @@ describe('chiffrement du lien parent', () => {
     expect(a.v).not.toBe(b.v);
   }, 20000);
 });
+
+describe('le lien parent ne sort jamais dans une sauvegarde', () => {
+  it('sansLiens retire le secret et le code des contrats', async () => {
+    const { sansLiens } = await import('../src/backup');
+    const k = newShare();
+    const d = sansLiens({ contracts: [{ ...c, partage: k }] } as never);
+    const txt = JSON.stringify(d);
+    expect(txt).not.toContain(k.secret);
+    expect(txt).not.toContain(k.code + '"');
+    expect((d.contracts as Contract[])[0].child).toBe('Léo');
+  });
+});

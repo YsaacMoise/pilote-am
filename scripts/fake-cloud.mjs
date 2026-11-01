@@ -79,6 +79,7 @@ createServer(async (req, res) => {
       const sh = shares.get(url.searchParams.get('id'));
       return send(res, 200, { doc: sh ? { v: sh.v, iv: sh.iv, salt: sh.salt, t: sh.t } : null });
     }
+    case '/share-list': return send(res, 200, { ids: [...shares].filter(([, sh]) => sh.owner === url.searchParams.get('owner')).map(([id]) => id) });
     case '/share-put': {
       const prev = shares.get(body.id);
       if (prev && prev.owner !== body.owner) return send(res, 403, { code: 'permission-denied' });

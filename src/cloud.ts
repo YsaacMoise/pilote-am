@@ -5,7 +5,7 @@
 // arrivent en direct et sont rangés dans la base locale.
 import * as db from './db';
 import { PASSWORD_RULE, passwordChecks } from './password';
-import { autoCopy, ctxFor, load, logUsage, putContract, state, subscribe, toast } from './store';
+import { autoCopy, ctxFor, load, logUsage, putContract, saveSettings, state, subscribe, toast } from './store';
 import { buildSnapshot } from './partage/snapshot';
 import { newShare, seal } from './partage/crypto';
 import { cloudInfo, LS, lsGet, lsSet, setCloud } from './cloud-state';
@@ -232,6 +232,7 @@ function attach(u: CloudUser) {
   });
   refreshStatus();
   unsubShares = subscribe(() => scheduleShares());
+  reconciled = false;
   scheduleShares(500);
 }
 
@@ -284,6 +285,12 @@ let shareTimer: ReturnType<typeof setTimeout> | undefined;
 /** Dernier contenu envoyé par lien (sans l'heure), pour ne rien renvoyer d'identique */
 const sentShares = new Map<string, string>();
 let sharing: Promise<void> = Promise.resolve();
+/** Liens en ligne comparés aux contrats une fois par branchement du compte */
+let reconciled = false;
+
+function deleteLater(id: string) {
+  be?.deleteShare(id).catch(() => {});
+}
 
 function scheduleShares(delay = 1500) {
   clearTimeout(shareTimer);
@@ -292,10 +299,18 @@ function scheduleShares(delay = 1500) {
 
 async function pushShares() {
   if (!attached || !be) return;
+  const coupes = new Set(state.settings.liensCoupes ?? []);
   const live = new Set<string>();
   for (const c of state.contracts) {
     const k = c.partage;
     if (!k) continue;
+    if (coupes.has(k.id)) {
+      // Lien coupé ailleurs, revenu avec un contrat envoyé par un autre appareil : on le retire.
+      const { partage: _, ...rest } = c;
+      await putContract(rest);
+      deleteLater(k.id);
+      continue;
+    }
     live.add(k.id);
     const snap = buildSnapshot({ ctx: ctxFor(c), journal: state.journal, amName: state.settings.amName, enfants: state.settings.enfantsACharge ?? 0, now: 0 });
     const same = JSON.stringify(snap);
@@ -308,7 +323,15 @@ async function pushShares() {
   for (const id of [...sentShares.keys()]) {
     if (live.has(id)) continue;
     sentShares.delete(id);
-    await be.deleteShare(id).catch(() => {});
+    deleteLater(id);
+  }
+  // Une fois par branchement : les liens restés en ligne sans contrat (app fermée trop tôt, autre appareil) sont effacés.
+  if (!reconciled) {
+    const enLigne = await be.listShares().catch(() => null);
+    if (enLigne) {
+      reconciled = true;
+      for (const id of enLigne) if (!live.has(id)) deleteLater(id);
+    }
   }
 }
 
@@ -325,16 +348,27 @@ export async function createShare(cid: string) {
   await sharing;
 }
 
-/** Coupe le lien : la page des parents devient vide tout de suite. Il faut du réseau. */
-export async function cutShare(cid: string) {
+/**
+ * Coupe le lien. Renvoie vrai si la page des parents est déjà fermée, faux si l'effacement
+ * attend le réseau (il partira tout seul). Il faut du réseau au départ.
+ */
+export async function cutShare(cid: string): Promise<boolean> {
   const c = state.contracts.find((x) => x.id === cid);
-  if (!c?.partage) return;
+  if (!c?.partage) return true;
   if (!be) throw new Error('Branche d’abord ton compte.');
-  try { await be.deleteShare(c.partage.id); } catch (e) { throw friendly(e); }
-  sentShares.delete(c.partage.id);
-  const { partage: _, ...rest } = c;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Il faut du réseau pour couper le lien.');
+  const id = c.partage.id;
+  const fait = await Promise.race([
+    be.deleteShare(id).then(() => true),
+    new Promise<boolean>((res) => setTimeout(() => res(false), 8000)),
+  ]).catch((e) => { throw friendly(e); });
+  sentShares.delete(id);
+  // Noté dans les réglages (copiés dans le compte) : aucun autre appareil ne pourra le rouvrir.
+  await saveSettings({ liensCoupes: [...(state.settings.liensCoupes ?? []).filter((x) => x !== id), id].slice(-50) });
+  const { partage: _, ...rest } = state.contracts.find((x) => x.id === cid) ?? c;
   await putContract(rest);
   logUsage('lien_parent_coupe', 'contrat');
+  return fait;
 }
 
 // ---------- Actions de l'écran Compte ----------
@@ -450,6 +484,9 @@ export async function deleteAccount(password: string) {
     throw friendly(e);
   }
   for (const k of [LS.linked, LS.last, LS.since, LS.pending]) lsSet(k, null);
+  db.outboxClear();
+  // Les liens parents sont effacés en ligne avec le compte : ils ne doivent pas revenir avec un prochain compte.
+  for (const c of state.contracts) if (c.partage) { const { partage: _, ...rest } = c; await putContract(rest); }
   db.outboxClear();
   logUsage('compte_supprime');
 }

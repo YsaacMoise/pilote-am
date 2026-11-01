@@ -130,6 +130,15 @@ async function axe(p, label) {
   await p.shot('06-coupe');
   assert((await (await fetch(cloud + '/share?id=' + url.split('/p/')[1].split('.')[0])).json()).doc === null, 'plus rien en ligne pour ce lien');
 
+  console.log('\n== Lien resté en ligne sans contrat : effacé au prochain branchement ==');
+  const st = await (await fetch(cloud + '/stats')).json();
+  const owner = Object.keys(st)[0];
+  const orphelin = 'OOOOOOOOOOOOOOOOOOOOOO';
+  await fetch(cloud + '/share-put', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: orphelin, owner, v: 'x', iv: 'x', salt: 'x' }) });
+  await a.reload();
+  await a.waitForTimeout(4000);
+  assert((await (await fetch(cloud + '/share?id=' + orphelin)).json()).doc === null, 'lien orphelin effacé en ligne');
+
   console.log('\n== Lien abîmé ==');
   await p.goto(base + '#/p/abc');
   await p.getByRole('heading', { name: 'Ce lien est incomplet' }).waitFor();

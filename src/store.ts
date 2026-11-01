@@ -262,6 +262,7 @@ export async function listSnapshots(): Promise<Snapshot[]> {
 export async function restoreDump(d: db.Dump) {
   // Avant d'écraser : une copie de sécurité de l'état actuel.
   if (state.contracts.length) await autoCopy(true);
-  await db.replaceAll(d);
+  // Une sauvegarde ancienne peut contenir un lien parent coupé depuis : on ne le rouvre pas.
+  await db.replaceAll({ ...d, contracts: (d.contracts as Contract[]).map(({ partage: _, ...c }) => c) });
   await load();
 }
