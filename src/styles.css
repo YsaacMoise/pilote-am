@@ -546,20 +546,6 @@ h1.h-card { font-size: 25px; }
 .hero-form { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 16px; scroll-margin-top: 16px; }
 .hero-video { display: none; }
 .hero-video .video-frame { max-width: 280px; }
-/* Sur téléphone, la vidéo tient sur une ligne et s'ouvre en plein écran (panneau) */
-.vid-row { display: flex; gap: 14px; align-items: center; width: 100%; padding: 12px; text-align: left; font: inherit; color: var(--ink); cursor: pointer; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); }
-.vid-thumb { flex: none; width: 64px; aspect-ratio: 9 / 16; border-radius: 10px; background: #f7f4ef; border: 3px solid #1e201d; display: grid; place-items: center; }
-.vid-thumb .video-play { width: 34px; height: 34px; }
-.vid-row b { display: block; font-family: var(--font-display); font-size: 21px; font-weight: 600; line-height: 1.1; }
-.vid-row small { display: block; margin-top: 4px; font-size: 14px; color: var(--ink-2); }
-.vid-row .dur { display: block; margin-top: 6px; font-family: var(--font-num); font-size: 12px; letter-spacing: 0.12em; color: var(--ink-2); }
-/* Accès au simulateur depuis l'accueil, sur toutes les tailles d'écran */
-.sim-row { display: flex; gap: 14px; align-items: center; padding: 14px; text-decoration: none; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); }
-.sim-row b { display: block; font-family: var(--font-display); font-size: 21px; font-weight: 600; line-height: 1.1; }
-.sim-row small { display: block; margin-top: 4px; font-size: 14px; color: var(--ink-2); }
-.sim-row > span:nth-child(2) { flex: 1; }
-.sim-ico { flex: none; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--sauge-soft); color: var(--sauge); }
-@media (hover: hover) { .sim-row:hover { box-shadow: var(--shadow-hover); } }
 /* Simulateur : résultat collé en bas pendant la saisie */
 .sim-sticky { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--safe-b) + 12px); z-index: 20; display: flex; align-items: center; gap: 10px; width: calc(100% - 2 * var(--gutter)); max-width: 560px; padding: 12px 16px; border: 0; border-radius: var(--r-md); background: var(--primary); color: var(--primary-ink); font: inherit; cursor: pointer; box-shadow: 0 12px 30px -12px rgb(30 32 29 / 0.5); transition: opacity 0.2s; }
 .sim-sticky.with-tabbar { bottom: calc(var(--tabbar-h) + var(--safe-b) + 12px); }
@@ -584,7 +570,6 @@ h1.h-card { font-size: 25px; }
   .hero-lead { font-size: 18px; }
   .hero-cta .btn { flex: none; }
   .hero-video { display: block; }
-  .vid-row { display: none; }
 }
 
 /* Horaires prévus en JetBrains Mono (charte : « 08h15 → 17h45 ») */
@@ -657,3 +642,38 @@ h1.h-card { font-size: 25px; }
 .share-code { font-family: var(--font-num); font-size: 40px; font-weight: 700; letter-spacing: 0.25em; text-align: center; padding: 8px 0; }
 .share-url { font-family: var(--font-num); font-size: 14px; color: var(--ink-2); background: var(--surface-2); border-radius: 10px; padding: 10px 12px; overflow-wrap: anywhere; }
 .what { margin: 0; padding-left: 20px; }
+
+/* ---------- Accueil : vidéo et simulateur mis en avant ---------- */
+.video-poster.has-img { padding: 0; background: #1e201d; }
+.video-poster.has-img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.video-poster.has-img::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(30 32 29 / 0) 55%, rgb(30 32 29 / 0.55)); }
+.video-poster.has-img .video-play { position: relative; z-index: 1; width: 76px; height: 76px; }
+.video-pill { position: absolute; z-index: 1; left: 50%; bottom: 18px; transform: translateX(-50%); white-space: nowrap; padding: 8px 14px; border-radius: 999px; background: rgb(247 244 239 / 0.95); color: #1e201d; font-size: 14px; font-weight: 600; }
+/* Téléphone : carte vidéo avec une vraie image de l'app, dans le premier écran */
+.vid-card { display: flex; gap: 14px; align-items: center; width: 100%; padding: 10px; text-align: left; font: inherit; color: var(--ink); cursor: pointer; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow-tab); }
+.vid-card-img { position: relative; flex: none; width: 92px; aspect-ratio: 9 / 16; border-radius: 12px; overflow: hidden; border: 3px solid #1e201d; background: #f7f4ef; display: grid; place-items: center; }
+.vid-card-img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.vid-card-img .video-play { position: relative; width: 42px; height: 42px; }
+.vid-card-txt { display: flex; flex-direction: column; gap: 4px; }
+.vid-card-txt b { font-family: var(--font-display); font-size: 23px; font-weight: 600; line-height: 1.1; }
+.vid-card-txt small { font-size: 15px; color: var(--ink-2); }
+@media (hover: hover) { .vid-card:hover { box-shadow: var(--shadow-hover); } }
+@media (min-width: 900px) { .vid-card { display: none; } }
+/* Simulateur en section, avec curseurs et résultat immédiat */
+.sim-apercu { display: grid; gap: 18px; padding: 22px 18px; margin-top: 8px; border-radius: var(--r-md); background: var(--sauge-soft); }
+.sim-apercu h2 { font-size: 30px; line-height: 1.1; margin: 6px 0 8px; }
+.sim-apercu-txt p { margin: 0; color: var(--ink-2); }
+.sim-apercu-box { display: flex; flex-direction: column; gap: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 16px; }
+.sim-sliders { display: flex; flex-direction: column; gap: 14px; }
+.curseur label { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-weight: 600; }
+.curseur output { font-family: var(--font-num); font-size: 17px; white-space: nowrap; }
+.curseur input[type='range'] { width: 100%; min-height: 44px; accent-color: var(--accent); cursor: pointer; }
+.sim-apercu-res { display: flex; flex-direction: column; gap: 4px; background: var(--primary); color: var(--primary-ink); border-radius: var(--r-md); padding: 16px; }
+.sim-apercu-res .total { color: var(--primary-ink); }
+.sim-apercu-res .total small { font-family: var(--font-body, inherit); font-size: 16px; opacity: 0.8; }
+.sim-apercu-res b { font-family: var(--font-num); }
+.sim-apercu .btn svg { margin-left: 6px; }
+@media (min-width: 900px) {
+  .sim-apercu { grid-template-columns: 5fr 7fr; align-items: center; gap: 40px; padding: 36px; margin-top: 24px; }
+  .sim-apercu h2 { font-size: 40px; }
+}

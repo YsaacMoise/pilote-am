@@ -2,6 +2,7 @@
 // Ouvert à tous (sans compte, depuis l'accueil du site) et dans l'app (Plus › Simuler un accueil).
 // Rien n'est envoyé : le calcul se fait sur le téléphone. Le lien partagé ne contient jamais les revenus de la famille.
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { SIM_RESSOURCES } from './SimApercu';
 import { logUsage } from '../store';
 import { today } from '../engine/dates';
 import { euros, hoursLabel } from '../engine/money';
@@ -34,6 +35,12 @@ function depuisAdresse(base: SimInput): SimInput {
     const [min, max] = BORNES[k] ?? [0, 100000];
     (out as any)[k] = Math.min(max, Math.max(min, k === 'jours' || k === 'semainesAbsence' || k === 'repasParJour' ? Math.round(n) : n));
   }
+  // Revenus choisis sur la page d'accueil (lus une seule fois, jamais dans l'adresse)
+  try {
+    const r = Number(sessionStorage.getItem(SIM_RESSOURCES));
+    sessionStorage.removeItem(SIM_RESSOURCES);
+    if (Number.isFinite(r) && r >= 0 && r <= 100000 && r > 0) out.ressourcesMois = Math.round(r);
+  } catch { /* navigation privée */ }
   return out;
 }
 
