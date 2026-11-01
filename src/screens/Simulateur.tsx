@@ -4,14 +4,14 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { SIM_RESSOURCES } from './SimApercu';
 import { logUsage } from '../store';
-import { JOUR_NOMS, today } from '../engine/dates';
+import { JOUR_NOMS, monthLabel, today } from '../engine/dates';
 import type { Plage, Planning } from '../engine/model';
 import { euros, hoursLabel } from '../engine/money';
 import {
-  HEURES_MAX_AN, HEURES_SANS_ACCORD, HEURES_MAX_JOUR, REPAS_NOMS, REPAS_REGLES, TYPES_REPAS, bornesKm, planningDepuisTexte, planningRegulier,
-  planningVersTexte, ratioNet, simuler, simulationParDefaut, type AgeEnfant, type SimInput, type TypeRepas,
+  HEURES_MAX_AN, HEURES_SANS_ACCORD, HEURES_MAX_JOUR, REPAS_NOMS, REPAS_REGLES, SITUATIONS_REVENUS, STATUTS, TYPES_REPAS, bornesKm, naissanceIlYA,
+  planningDepuisTexte, planningRegulier, planningVersTexte, ratioNet, simuler, simulationParDefaut, type SimInput, type SituationRevenus, type Statut, type TypeRepas,
 } from '../engine/simulation';
-import { Banner, Choices, EuroInput, NumberInput, Seg, Stepper, Switch, Topbar } from '../ui/kit';
+import { Banner, EuroInput, NumberInput, Seg, Stepper, Switch, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { shareText } from '../share';
 
@@ -64,7 +64,7 @@ function depuisAdresse(base: SimInput): SimInput {
   try {
     const r = Number(sessionStorage.getItem(SIM_RESSOURCES));
     sessionStorage.removeItem(SIM_RESSOURCES);
-    if (Number.isFinite(r) && r >= 0 && r <= 100000 && r > 0) out.ressourcesMois = Math.round(r);
+    if (Number.isFinite(r) && r > 0 && r <= 1000000) out.revenusAn = Math.round(r);
   } catch { /* navigation privée */ }
   return out;
 }
@@ -91,6 +91,22 @@ function horairesIdentiques(pl: Planning): boolean {
   const js = joursActifs(pl);
   return js.every((w) => memesPlages(pl[w], pl[js[0]]));
 }
+const ageLabel = (mois: number) => (mois < 0 ? 'à naître' : mois < 24 ? `${mois} mois` : `${Math.floor(mois / 12)} ans${mois % 12 ? ` ${mois % 12} mois` : ''}`);
+
+function SelectStatut({ label, value, onChange }: { label: string; value: Statut; onChange: (v: Statut) => void }) {
+  const id = `sim-statut-${label.length}`;
+  const s = STATUTS.find((x) => x.v === value);
+  return (
+    <div class="field">
+      <label for={id}>{label}</label>
+      <select id={id} class="input" value={value} onChange={(e) => onChange((e.target as HTMLSelectElement).value as Statut)}>
+        {STATUTS.map((x) => <option value={x.v}>{x.l}</option>)}
+      </select>
+      {s?.sub && <span class="hint">{s.sub}</span>}
+    </div>
+  );
+}
+
 const prixKm = (milliemes: number) => `${(milliemes / 1000).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })} €`;
 
 /** Une ou deux plages horaires (arrivée, départ) */
@@ -257,13 +273,55 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
         <section class="card">
           <fieldset>
             <legend>La famille</legend>
-            <p class="hint">Pour l’aide de la CAF et le crédit d’impôt. L’aide suppose en principe que les parents travaillent (exceptions : études, AAH, RSA…).</p>
-            <Choices<AgeEnfant> label="Âge de l’enfant accueilli" value={i.age} onChange={(v) => set({ age: v })}
-              options={[{ v: 'moins6', l: 'Moins de 6 ans', sub: 'Au 1er janvier, pour le crédit d’impôt' }, { v: '6a12', l: 'De 6 à 12 ans', sub: 'Aide de la CAF seulement pour un parent seul' }]} />
-            {i.age === '6a12' && <Switch label="Parent seul" checked={i.parentSeul} onChange={(v) => set({ parentSeul: v })} />}
-            <Stepper label="Enfants à charge dans le foyer" value={i.enfantsACharge} min={1} max={10} onChange={(v) => set({ enfantsACharge: v, enfantsAeeh: Math.min(i.enfantsAeeh, v) })} />
-            <Stepper label="Dont enfants qui touchent l’AEEH (allocation pour enfant handicapé)" value={i.enfantsAeeh} min={0} max={i.enfantsACharge} onChange={(v) => set({ enfantsAeeh: v })} />
-            <EuroInput label="Revenus mensuels du foyer, pour la CAF" hint={`Le revenu imposable de ${Number(d.slice(0, 4)) - 2} du foyer (avis d’impôt ${Number(d.slice(0, 4)) - 1}), divisé par 12. Ce n’est ni le salaire reçu chaque mois, ni l’impôt payé.`} cents={i.ressourcesMois * 100} onChange={(v) => set({ ressourcesMois: Math.round((v ?? 0) / 100) })} />
+            <p class="hint">Pour l’aide de la CAF (le CMG, complément de libre choix du mode de garde) et le crédit d’impôt.</p>
+            <Seg label="Le foyer" value={i.foyer} options={[{ v: 'couple', l: 'En couple' }, { v: 'seul', l: 'Parent seul' }]} onChange={(v) => set({ foyer: v })} />
+            {i.foyer === 'seul' && <p class="hint">Parent seul : même aide de la CAF qu’un couple aux mêmes revenus, mais versée jusqu’aux 12 ans de l’enfant au lieu de 6 ans.</p>}
+            <div class={i.foyer === 'couple' ? 'grid2' : ''}>
+              <SelectStatut label={i.foyer === 'couple' ? 'Vous' : 'Votre situation'} value={i.statutVous} onChange={(v) => set({ statutVous: v })} />
+              {i.foyer === 'couple' && <SelectStatut label="Votre conjoint" value={i.statutConjoint} onChange={(v) => set({ statutConjoint: v })} />}
+            </div>
+            {!r.activiteOk && <Banner tone="warn">Pas d’aide de la CAF dans cette situation : {i.foyer === 'couple' ? 'chacun des deux parents' : 'le parent'} doit travailler, être dans une situation assimilée, en études ou en service civique. Exception : l’AAH, l’ASS ou le RSA. Sans aide, la famille paie aussi les cotisations sociales.</Banner>}
+            <Switch label="Résidence alternée" hint="L’enfant vit aussi chez l’autre parent. Chaque parent a sa propre aide de la CAF, calculée sur ses revenus et les heures qu’il paie : faites une simulation par parent. Crédit d’impôt : 875 € par an au plus." checked={i.residenceAlternee} onChange={(v) => set({ residenceAlternee: v })} />
+
+            <div class="field">
+              <span class="label">{i.enfants.length > 1 ? 'Enfants gardés, mêmes horaires' : 'Enfant gardé'}</span>
+              {i.enfants.map((naissance, k) => {
+                const e = r.enfants[k];
+                return (
+                  <div class="stack-sm" style={{ gap: '4px' }}>
+                    <div class="plan-range" style={{ gridTemplateColumns: '1fr auto' }}>
+                      <input class="input num" type="month" aria-label={`Mois de naissance, enfant ${k + 1}`} value={naissance} max={d.slice(0, 7)}
+                        onInput={(ev) => { const v = (ev.target as HTMLInputElement).value; if (/^\d{4}-\d{2}$/.test(v)) set({ enfants: i.enfants.map((x, j) => (j === k ? v : x)) }); }} />
+                      {i.enfants.length > 1 ? <button type="button" class="icon-btn" aria-label={`Retirer l’enfant ${k + 1}`} onClick={() => set({ enfants: i.enfants.filter((_, j) => j !== k) })}><Icon name="x" size={20} /></button> : <span style={{ width: '48px' }} />}
+                    </div>
+                    {e && <span class="hint">{ageLabel(e.ageMois)}. {e.cmgEligible ? `Aide de la CAF jusqu’en ${monthLabel(e.dernierMoisCmg)}` : 'Pas d’aide de la CAF à cet âge'}{e.creditEligible ? `, crédit d’impôt sur les dépenses jusqu’en ${e.derniereAnneeCredit}.` : ', plus de crédit d’impôt.'}</span>}
+                  </div>
+                );
+              })}
+              {i.enfants.length < 4 && <button type="button" class="btn btn-ghost" style={{ alignSelf: 'flex-start' }} onClick={() => set({ enfants: [...i.enfants, naissanceIlYA(d, 36)], enfantsACharge: Math.max(i.enfantsACharge, i.enfants.length + 1) })}><Icon name="plus" />Ajouter un enfant gardé (frère ou sœur)</button>}
+              <span class="hint">Mois et année de naissance. Chaque enfant a son contrat et sa propre aide de la CAF.</span>
+            </div>
+            <Stepper label="Enfants à charge dans le foyer, gardés ou non" value={Math.max(i.enfantsACharge, i.enfants.length)} min={i.enfants.length} max={10} onChange={(v) => set({ enfantsACharge: v, enfantsAeeh: Math.min(i.enfantsAeeh, v) })} />
+            <p class="hint">Enfants de moins de 20 ans dont vous assurez l’entretien. Plus il y en a, plus l’aide est élevée.</p>
+            <Stepper label="Dont enfants qui touchent l’AEEH (allocation pour enfant handicapé)" value={i.enfantsAeeh} min={0} max={Math.max(i.enfantsACharge, i.enfants.length)} onChange={(v) => set({ enfantsAeeh: v })} />
+
+            <EuroInput label={`Revenu fiscal de référence ${Number(d.slice(0, 4)) - 2} du foyer`} cents={i.revenusAn * 100} onChange={(v) => set({ revenusAn: Math.round((v ?? 0) / 100) })}
+              hint={`Sur l’avis d’impôt ${Number(d.slice(0, 4)) - 1}, pour l’année ${Number(d.slice(0, 4)) - 2}. En couple : les deux avis additionnés. Après une séparation : seulement le vôtre. Soit ${euros(r.ressourcesMois * 100)} par mois pour la CAF.`} />
+            <details class="more">
+              <summary>Chômage, RSA, arrêt long ou retraite depuis {Number(d.slice(0, 4)) - 2}</summary>
+              <div class="more-body stack-sm">
+                <p class="hint">La CAF retire une partie des revenus d’activité de la personne concernée : 30 % en cas de chômage indemnisé depuis 2 mois, d’arrêt de plus de 6 mois ou d’arrêt d’activité avec retraite, invalidité ou AAH ; la totalité en cas de chômage non indemnisé ou de RSA.</p>
+                <div class="field">
+                  <label for="sim-situation">Situation actuelle</label>
+                  <select id="sim-situation" class="input" value={i.situationRevenus} onChange={(e) => set({ situationRevenus: (e.target as HTMLSelectElement).value as SituationRevenus })}>
+                    {SITUATIONS_REVENUS.map((x) => <option value={x.v}>{x.l}</option>)}
+                  </select>
+                </div>
+                {i.situationRevenus !== 'aucune' && <EuroInput label={`Ses revenus d’activité de ${Number(d.slice(0, 4)) - 2}, par an`} allowEmpty cents={i.revenusConcernes ? i.revenusConcernes * 100 : undefined} onChange={(v) => set({ revenusConcernes: Math.round((v ?? 0) / 100) })} hint="Salaires ou revenus professionnels de cette personne, compris dans le revenu fiscal ci-dessus." />}
+              </div>
+            </details>
+            <EuroInput label="Autres aides à la garde, par mois" allowEmpty cents={i.autresAides || undefined} onChange={(v) => set({ autresAides: v ?? 0 })}
+              hint="Aide de votre employeur ou de son CSE, de la commune, CESU préfinancés. Elles baissent le reste à payer et le crédit d’impôt." />
           </fieldset>
         </section>
 
@@ -293,12 +351,13 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             {r.km > 0 && <div class="decl-line"><span class="decl-label"><span>Indemnités kilométriques</span><span class="decl-hint">{nf.format(i.kmMois)} km × {euros(i.kmTaux)} ; ni l’aide de la CAF ni le crédit d’impôt ne les couvrent</span></span><span class="decl-value">{euros(r.km)}</span></div>}
             <div class="decl-line"><span class="decl-label"><span><b>À verser à l’assistante maternelle</b></span><span class="decl-hint">en moyenne par mois</span></span><span class="decl-value">{euros(r.verse)}</span></div>
             <div class="decl-line"><span class="decl-label"><span>Cotisations sociales</span><span class="decl-hint">parts salariale et patronale, prélevées par Pajemploi</span></span><span class="decl-value">{euros(r.cotisations)}</span></div>
-            <div class="decl-line"><span class="decl-label"><span>Prises en charge par la CAF</span><span class="decl-hint">{!r.cmgEligible ? 'aucune : pas d’aide de la CAF pour cet âge' : r.cmg.depassePlafond ? `${Math.round(r.cmg.partCotisations * 100)} % : le coût de l’heure dépasse ${euros(r.cmg.params.plafondHoraire)}` : 'en totalité'}</span></span><span class="decl-value">− {euros(r.cotisationsPrisesEnCharge)}</span></div>
-            <div class="decl-line"><span class="decl-label"><span>Aide de la CAF (CMG)</span><span class="decl-hint">{r.cmgEligible ? 'versée chaque mois après la déclaration' : 'pas d’aide pour cet âge, sauf parent seul'}</span></span><span class="decl-value">− {euros(r.cmg.montant)}</span></div>
-            <div class="decl-line"><span class="decl-label"><span><b>Reste à payer</b></span><span class="decl-hint">en moyenne par mois, soit {euros(r.resteHoraire)} de l’heure</span></span><span class="decl-value">{euros(r.reste)}</span></div>
-            <div class="decl-line"><span class="decl-label"><span>Crédit d’impôt</span><span class="decl-hint">{r.creditEligible ? `${euros(r.creditAnnuel)} par an, versé l’année suivante : la première année, tout arrive l’été suivant ; ensuite, avance de 60 % en janvier` : 'enfant de 6 ans ou plus au 1er janvier : pas de crédit'}</span></span><span class="decl-value">− {euros(Math.round(r.creditAnnuel / 12))}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>Prises en charge par la CAF</span><span class="decl-hint">{!r.activiteOk ? 'aucune : condition d’activité non remplie' : !r.cmgEligible ? 'aucune : pas d’aide de la CAF pour cet âge' : r.nbEnfants > 1 && r.cotisationsReste > 0 && !r.cmg.depassePlafond ? 'seulement pour les enfants qui ouvrent droit à l’aide' : r.cmg.depassePlafond ? `${Math.round(r.cmg.partCotisations * 100)} % : le coût de l’heure dépasse ${euros(r.cmg.params.plafondHoraire)}` : 'en totalité'}</span></span><span class="decl-value">− {euros(r.cotisationsPrisesEnCharge)}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>Aide de la CAF (CMG)</span><span class="decl-hint">{!r.activiteOk ? 'condition d’activité non remplie' : !r.cmgEligible ? 'pas d’aide pour cet âge, sauf parent seul' : r.nbEnfants > 1 ? r.enfants.map((e, k) => `enfant ${k + 1} : ${euros(e.cmg)}`).join(' ; ') : 'versée chaque mois après la déclaration'}</span></span><span class="decl-value">− {euros(r.cmgTotal)}</span></div>
+            {r.autresAides > 0 && <div class="decl-line"><span class="decl-label"><span>Autres aides</span><span class="decl-hint">employeur, commune, CESU préfinancés</span></span><span class="decl-value">− {euros(r.autresAides)}</span></div>}
+            <div class="decl-line"><span class="decl-label"><span><b>Reste à payer</b></span><span class="decl-hint">en moyenne par mois, soit {euros(r.resteHoraire)} de l’heure{r.nbEnfants > 1 ? ' par enfant' : ''}</span></span><span class="decl-value">{euros(r.reste)}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>Crédit d’impôt</span><span class="decl-hint">{r.creditEligible ? `${euros(r.creditAnnuel)} par an${i.residenceAlternee ? ' (875 € au plus par enfant en résidence alternée)' : ''}, versé l’année suivante : la première année, tout arrive l’été suivant ; ensuite, avance de 60 % en janvier` : 'enfant de 6 ans ou plus au 1er janvier : pas de crédit'}</span></span><span class="decl-value">− {euros(Math.round(r.creditAnnuel / 12))}</span></div>
           </div>
-          {!r.cmgEligible && <Banner tone="warn">Sans aide de la CAF, la famille paie toutes les cotisations sociales : {euros(r.cotisationsReste)} par mois en plus du salaire. Elles sont comptées dans le reste à payer.</Banner>}
+          {!r.cmgEligible && r.nbEnfants > 0 && <Banner tone="warn">Sans aide de la CAF, la famille paie toutes les cotisations sociales : {euros(r.cotisationsReste)} par mois en plus du salaire. Elles sont comptées dans le reste à payer.</Banner>}
           {r.congesAnnuels > 0 && <Banner tone="info" icon="sun">Moins de 52 semaines : les congés payés sont versés en juin, au congé principal ou au fil des congés. Le mois où ils sont payés, l’aide de la CAF peut être plafonnée.</Banner>}
           {r.cmgEligible && r.cmg.depassePlafond && <Banner tone="warn">Le coût de l’heure ({euros(r.cmg.coutHoraire)}, entretien et repas compris) dépasse {euros(r.cmg.params.plafondHoraire)}. L’aide de la CAF est calculée sur ce plafond, et elle ne prend en charge que {Math.round(r.cmg.partCotisations * 100)} % des cotisations : {euros(r.cotisationsReste)} par mois restent à la famille.</Banner>}
         </section>
@@ -315,7 +374,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             <p>Cotisations : {i.alsaceMoselle ? '23,18' : '21,88'} % du brut pour la part salariale, 43,55 % pour la part patronale, plus 5 € par mois, comme le simulateur officiel de l’Urssaf. La CAF les prend toutes en charge tant que le coût de l’heure reste sous {euros(r.cmg.params.plafondHoraire)} ; au-delà, au prorata.</p>
             <dl class="kv">
               <dt>Revenus retenus (entre {r.cmg.params.plancher} € et {r.cmg.params.plafond} €)</dt><dd>{r.cmg.ressources} €</dd>
-              <dt>Taux d’effort ({i.enfantsACharge} enfant{i.enfantsACharge > 1 ? 's' : ''} à charge)</dt><dd>{(r.cmg.taux * 100).toFixed(4).replace('.', ',')} %</dd>
+              <dt>Taux d’effort ({Math.max(i.enfantsACharge, i.enfants.length)} enfant{Math.max(i.enfantsACharge, i.enfants.length) > 1 ? 's' : ''} à charge{i.enfantsAeeh ? `, dont ${i.enfantsAeeh} AEEH` : ''})</dt><dd>{(r.cmg.taux * 100).toFixed(4).replace('.', ',')} %</dd>
               <dt>Coût de l’heure avant aides</dt><dd>{euros(r.cmg.coutHoraire)}</dd>
               <dt>Ce que la famille paie par heure, après l’aide</dt><dd>{euros(r.resteHoraire)}</dd>
               {r.creditEligible && (<><dt>Dépenses retenues pour l’impôt</dt><dd>{euros(r.depensesAnnuelles)}</dd></>)}

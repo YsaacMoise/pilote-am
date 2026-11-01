@@ -149,7 +149,64 @@ export function creditImpot(netAnnuel: number, joursAnnuels: number, cmgAnnuel: 
   return { depenses, credit: Math.round(Math.min(depenses, CREDIT_PLAFOND_DEPENSES) * CREDIT_TAUX) };
 }
 
-export type AgeEnfant = 'moins6' | '6a12';
+/** Situation de chaque parent du foyer au regard de la condition d'activité (CSS L531-5 I, D531-19 ; service-public F39152) */
+export type Statut = 'travail' | 'assimile' | 'etudes' | 'aidee' | 'sans';
+export const STATUTS: { v: Statut; l: string; sub: string }[] = [
+  { v: 'travail', l: 'Travaille', sub: 'Salarié, indépendant à jour de ses cotisations' },
+  { v: 'assimile', l: 'Situation assimilée', sub: 'Chômage indemnisé, arrêt maladie ou maternité, formation rémunérée' },
+  { v: 'etudes', l: 'Études ou service civique', sub: '' },
+  { v: 'aidee', l: 'AAH, ASS ou RSA', sub: 'RSA avec inscription comme demandeur d’emploi' },
+  { v: 'sans', l: 'Sans activité', sub: '' },
+];
+
+/**
+ * Condition d'activité : le parent seul, ou chacun des deux membres du couple, travaille ou est dans une situation assimilée
+ * (études et service civique comptent ici comme une activité). Elle ne s'applique pas si l'un d'eux touche l'AAH, l'ASS ou le RSA.
+ */
+export function activiteOk(foyer: 'couple' | 'seul', vous: Statut, conjoint: Statut): boolean {
+  if (foyer === 'seul') return vous !== 'sans';
+  if (vous === 'aidee' || conjoint === 'aidee') return true;
+  return vous !== 'sans' && conjoint !== 'sans';
+}
+
+/** Situations qui changent les revenus retenus par la CAF (CSS R532-5 à R532-7) */
+export type SituationRevenus = 'aucune' | 'chomage' | 'sansRevenus' | 'arret' | 'cessation';
+export const SITUATIONS_REVENUS: { v: SituationRevenus; l: string; taux: number }[] = [
+  { v: 'aucune', l: 'Aucune', taux: 0 },
+  { v: 'chomage', l: 'Chômage indemnisé depuis 2 mois ou plus', taux: 0.3 },
+  { v: 'sansRevenus', l: 'Chômage non indemnisé depuis 2 mois, ou RSA', taux: 1 },
+  { v: 'arret', l: 'Arrêt de travail de plus de 6 mois', taux: 0.3 },
+  { v: 'cessation', l: 'Arrêt d’activité avec retraite, invalidité ou AAH', taux: 0.3 },
+];
+
+/** Revenus mensuels retenus : revenu fiscal de référence ÷ 12, après l'abattement ou la neutralisation des revenus d'activité concernés. */
+export function ressourcesRetenues(revenusAn: number, situation: SituationRevenus, revenusConcernes: number): number {
+  const taux = SITUATIONS_REVENUS.find((x) => x.v === situation)?.taux ?? 0;
+  const retire = Math.min(Math.max(0, revenusConcernes), Math.max(0, revenusAn)) * taux;
+  return Math.round((Math.max(0, revenusAn) - retire) / 12);
+}
+
+/** Âge en mois au mois de `d`, à partir d'une naissance « AAAA-MM » */
+export function ageMois(naissance: string, d: ISODate): number {
+  const [y, m] = naissance.split('-').map(Number);
+  return (Number(d.slice(0, 4)) - y) * 12 + (Number(d.slice(5, 7)) - m);
+}
+const moisPlus = (naissance: string, n: number): string => {
+  const [y, m] = naissance.split('-').map(Number);
+  const t = y * 12 + (m - 1) + n;
+  return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`;
+};
+/**
+ * Dernier mois d'aide de la CAF : le mois des 6 ans (des 12 ans pour un parent seul) ; le droit s'arrête le mois civil suivant
+ * celui où une condition n'est plus remplie (service-public F39152, vérifié le 26 juin 2026).
+ */
+export function dernierMoisCmg(naissance: string, seul: boolean): string {
+  return moisPlus(naissance, (seul ? 12 : 6) * 12);
+}
+/** Dernière année de dépenses ouvrant droit au crédit d'impôt : moins de 6 ans au 1er janvier (BOFiP §30). */
+export function derniereAnneeCredit(naissance: string): number {
+  return Number(naissance.slice(0, 4)) + 6;
+}
 
 /** Repas que l'assistante maternelle peut fournir (CCN art. 114.2 : nature, nombre et prix fixés au contrat) */
 export type TypeRepas = 'petitDej' | 'dejeuner' | 'gouter' | 'diner';
@@ -234,12 +291,39 @@ export interface SimInput {
   kmTaux: number;
   cv: number;
   /** Famille */
+  foyer: 'couple' | 'seul';
+  /** Statut de chaque parent du foyer (le conjoint seulement en couple) */
+  statutVous: Statut;
+  statutConjoint: Statut;
+  /** L'enfant vit en résidence alternée : chaque parent est calculé sur sa propre situation, crédit d'impôt divisé par deux */
+  residenceAlternee: boolean;
+  /** Enfants gardés chez cette assistante maternelle, mêmes horaires et même tarif : mois de naissance « AAAA-MM » */
+  enfants: string[];
+  /** Enfants à charge de moins de 20 ans dans le foyer, gardés ou non */
   enfantsACharge: number;
   enfantsAeeh: number;
-  age: AgeEnfant;
-  parentSeul: boolean;
-  /** Ressources mensuelles du foyer (euros) */
-  ressourcesMois: number;
+  /** Revenu fiscal de référence de l'avant-dernière année (euros par an), comme le simulateur Urssaf */
+  revenusAn: number;
+  situationRevenus: SituationRevenus;
+  /** Revenus d'activité de la personne concernée par cette situation (euros par an) */
+  revenusConcernes: number;
+  /** Autres aides à la garde, par mois (centimes) : employeur, CSE, commune, CESU préfinancé */
+  autresAides: number;
+}
+
+export interface EnfantResult {
+  naissance: string;
+  ageMois: number;
+  cmgEligible: boolean;
+  cmg: number;
+  cotisationsPrisesEnCharge: number;
+  cotisationsReste: number;
+  creditEligible: boolean;
+  credit: number;
+  /** Dépenses retenues pour le crédit d'impôt, sur l'année */
+  depenses: number;
+  dernierMoisCmg: string;
+  derniereAnneeCredit: number;
 }
 
 export interface SimResult {
@@ -286,8 +370,20 @@ export interface SimResult {
   cotisationsReste: number;
   /** Coût mensuel moyen avant aides : à verser + cotisations */
   total: number;
+  /** Condition d'activité remplie */
+  activiteOk: boolean;
+  /** Ressources mensuelles retenues avant plancher et plafond (euros) */
+  ressourcesMois: number;
+  /** Détail par enfant gardé ; les montants d'accueil ci-dessus sont les totaux pour tous les enfants */
+  nbEnfants: number;
+  enfants: EnfantResult[];
+  /** Montants pour un seul enfant (le contrat de chaque enfant) */
+  parEnfant: { salaire: number; verse: number; cotisations: number };
+  autresAides: number;
   cmgEligible: boolean;
+  /** Calcul du CMG pour un enfant ; `montant` est celui du premier enfant ouvrant droit (0 sinon) */
   cmg: CmgCalc;
+  cmgTotal: number;
   /** À payer par la famille, en moyenne par mois, après le CMG (cotisations restantes comprises) */
   reste: number;
   /** Ce que la famille paie par heure, après le CMG (centimes) */
@@ -438,29 +534,59 @@ export function simuler(i: SimInput, d: ISODate): SimResult {
   const cotisations = cotisationsDuMois(salaire + congesMois, d, i.alsaceMoselle, reductionHeuresMaj);
 
   // CMG : enfant de moins de 6 ans, ou jusqu'à 12 ans pour un parent seul. Le coût aidé est le net déclaré + entretien + repas.
+  // Chaque enfant a son contrat et sa déclaration : un CMG par enfant, au taux d'effort du nombre total d'enfants à charge
+  // (simulateur Urssaf : 2 enfants gardés → 2 CMG identiques, 5 € de cotisations fixes chacun).
   const cout = salaire + congesMois + entretien + repas;
-  const cmgEligible = i.age === 'moins6' || i.parentSeul;
-  const cmgCalc = calculCmg(cout, heuresMoisMin / 60, i.ressourcesMois, i.enfantsACharge, i.enfantsAeeh, d);
-  const cmg = cmgEligible ? cmgCalc : { ...cmgCalc, montant: 0 };
-  const cotisationsPrisesEnCharge = cmgEligible ? Math.round(cotisations * cmgCalc.partCotisations) : 0;
-  const cotisationsReste = cotisations - cotisationsPrisesEnCharge;
+  const seul = i.foyer === 'seul';
+  const activite = activiteOk(i.foyer, i.statutVous, i.statutConjoint);
+  const ressourcesMois = ressourcesRetenues(i.revenusAn, i.situationRevenus, i.revenusConcernes);
+  const naissances = i.enfants?.length ? i.enfants.slice(0, 4) : [];
+  const n = naissances.length;
+  const enfantsACharge = Math.max(i.enfantsACharge, n);
+  const cmgCalc = calculCmg(cout, heuresMoisMin / 60, ressourcesMois, enfantsACharge, i.enfantsAeeh, d);
+  const plafondCredit = i.residenceAlternee ? CREDIT_PLAFOND_DEPENSES / 2 : CREDIT_PLAFOND_DEPENSES;
+  const annee = Number(d.slice(0, 4));
+  const autresAidesParEnfant = n ? Math.round((i.autresAides || 0) / n) : 0;
+  const enfants: EnfantResult[] = naissances.map((naissance) => {
+    const age = ageMois(naissance, d);
+    const cmgEligible = activite && age <= (seul ? 144 : 72);
+    const cmg = cmgEligible ? cmgCalc.montant : 0;
+    const pec = cmgEligible ? Math.round(cotisations * cmgCalc.partCotisations) : 0;
+    const creditEligible = annee <= derniereAnneeCredit(naissance);
+    const depenses = Math.max(0, (salaire + reductionHeuresMaj) * 12 + congesAnnuels + joursAnExact * CREDIT_FORFAIT_ENTRETIEN_JOUR
+      + (cotisations - pec) * 12 - cmg * 12 - autresAidesParEnfant * 12);
+    const credit = creditEligible ? Math.round(Math.min(depenses, plafondCredit) * CREDIT_TAUX) : 0;
+    return {
+      naissance, ageMois: age, cmgEligible, cmg, cotisationsPrisesEnCharge: pec, cotisationsReste: cotisations - pec,
+      creditEligible, credit, depenses, dernierMoisCmg: dernierMoisCmg(naissance, seul), derniereAnneeCredit: derniereAnneeCredit(naissance),
+    };
+  });
+  const somme = (f: (e: EnfantResult) => number) => enfants.reduce((t, e) => t + f(e), 0);
+  const cmgEligible = enfants.some((e) => e.cmgEligible);
+  const cmgTotal = somme((e) => e.cmg);
+  const cotisationsPrisesEnCharge = somme((e) => e.cotisationsPrisesEnCharge);
+  const cotisationsTotal = cotisations * n;
+  const cotisationsReste = cotisationsTotal - cotisationsPrisesEnCharge;
+  const verse1 = salaire + congesMois + reductionHeuresMaj + entretien + repas;
 
   // Les indemnités kilométriques ne sont ni dans le coût aidé par le CMG, ni dans le crédit d'impôt : à la charge de la famille.
-  const verse = salaire + congesMois + reductionHeuresMaj + entretien + repas + km;
-  const total = verse + cotisations;
-  const reste = verse + cotisationsReste - cmg.montant;
-
-  // Crédit d'impôt : enfant de moins de 6 ans au 1er janvier.
-  const creditEligible = i.age === 'moins6';
-  const { depenses, credit } = creditImpot((salaire + reductionHeuresMaj) * 12 + congesAnnuels, joursAnExact, cmg.montant * 12, cotisationsReste * 12);
-  const creditAnnuel = creditEligible ? credit : 0;
+  const verse = verse1 * n + km;
+  const total = verse + cotisationsTotal;
+  const autresAides = Math.min(i.autresAides || 0, Math.max(0, verse + cotisationsReste - cmgTotal));
+  const reste = verse + cotisationsReste - cmgTotal - autresAides;
+  const creditEligible = enfants.some((e) => e.creditEligible);
+  const creditAnnuel = somme((e) => e.credit);
+  const depenses = enfants.filter((e) => e.creditEligible).reduce((t, e) => t + e.depenses, 0);
 
   return {
     semaines, semainesGarde, joursSemaine, minutesSemaine: heuresSemMin, parJour, feriesAn, heuresMoisMin, heuresMajMoisMin, joursAn, joursMois, repasAn,
-    tauxNet, salaire, congesAnnuels, congesMois, reductionHeuresMaj, entretien, repas, km, kmBornes, verse,
-    cotisations, cotisationsPrisesEnCharge, cotisationsReste, total,
-    cmgEligible, cmg, reste, resteHoraire: heuresMoisMin > 0 ? Math.round(reste / (heuresMoisMin / 60)) : 0,
-    creditEligible, creditAnnuel, depensesAnnuelles: creditEligible ? depenses : 0,
+    tauxNet, salaire: salaire * n, congesAnnuels: congesAnnuels * n, congesMois: congesMois * n, reductionHeuresMaj: reductionHeuresMaj * n,
+    entretien: entretien * n, repas: repas * n, km, kmBornes, verse,
+    cotisations: cotisationsTotal, cotisationsPrisesEnCharge, cotisationsReste, total,
+    activiteOk: activite, ressourcesMois, nbEnfants: n, enfants, parEnfant: { salaire, verse: verse1, cotisations }, autresAides,
+    cmgEligible, cmg: { ...cmgCalc, montant: enfants.find((e) => e.cmgEligible)?.cmg ?? 0 }, cmgTotal,
+    reste, resteHoraire: heuresMoisMin > 0 && n ? Math.round(reste / n / (heuresMoisMin / 60)) : 0,
+    creditEligible, creditAnnuel, depensesAnnuelles: depenses,
     reel: reste - Math.round(creditAnnuel / 12),
     heuresMax, joursTropLongs,
     depasseAnnuel: heuresSemMin / 60 > heuresMax,
@@ -470,6 +596,11 @@ export function simuler(i: SimInput, d: ISODate): SimResult {
   };
 }
 
+/** Mois de naissance d'un enfant qui a `mois` mois au mois de `d` */
+export function naissanceIlYA(d: ISODate, mois: number): string {
+  return moisPlus(d.slice(0, 7), -mois);
+}
+
 /** Valeurs de départ : accueil type au minimum conventionnel. */
 export function simulationParDefaut(d: ISODate): SimInput {
   const r = ratesAt(d);
@@ -477,6 +608,8 @@ export function simulationParDefaut(d: ISODate): SimInput {
     planning: planningRegulier(5, 45), yearType: 'complete', semainesAbsence: 1, majoration: 10,
     tauxBrut: r.minConvBrut, alsaceMoselle: false, entretien: 0, entretienMode: 'jour',
     repas: { petitDej: 0, dejeuner: 0, gouter: 0, diner: 0 }, kmMois: 0, kmTaux: 0, cv: 5,
-    enfantsACharge: 1, enfantsAeeh: 0, age: 'moins6', parentSeul: false, ressourcesMois: 3500,
+    foyer: 'couple', statutVous: 'travail', statutConjoint: 'travail', residenceAlternee: false,
+    enfants: [naissanceIlYA(d, 18)], enfantsACharge: 1, enfantsAeeh: 0,
+    revenusAn: 42000, situationRevenus: 'aucune', revenusConcernes: 0, autresAides: 0,
   };
 }

@@ -50,6 +50,16 @@ Tests : les 4 exemples chiffrés du communiqué de presse CAF du 15/09/2025 (co�
 - Durée : amplitude de plus de 13 h signalée par jour ; plus de 2 250 h par an signalé ; plus de 48 h par semaine : accord écrit.
 - Les cinq cas de référence Urssaf ont été recalculés avec les fériés retirés et repassés au simulateur officiel : identiques au centime.
 
+## La famille réelle (étape 3, 1er novembre 2026)
+
+- Foyer en couple ou parent seul. Parent seul : même formule, CMG jusqu'aux 12 ans (D531-18-1). Vérifié sur le simulateur Urssaf : même montant qu'un couple.
+- Condition d'activité (L531-5 I, D531-19, service-public F39152 vérifié le 26/06/2026) : chaque parent du foyer travaille ou est dans une situation assimilée (indemnités journalières, chômage indemnisé, formation rémunérée), en études ou en service civique ; pas de condition si l'un d'eux touche l'AAH, l'ASS ou le RSA (avec inscription comme demandeur d'emploi). Sinon : pas de CMG, cotisations à la charge de la famille. Point de vigilance : service-public écrit « vous ou votre conjoint devez travailler » ; des guides (mes-allocs, 06/09/2026) écrivent « vous ainsi que votre conjoint ». Le simulateur suit la lecture « chacun des deux », cohérente avec les exceptions de L531-5 (« les deux membres du couple poursuivent des études »). À confirmer par une question écrite à la CAF.
+- Résidence alternée (D531-18-2, depuis le 1er décembre 2025) : chaque parent a son CMG calculé sur sa situation, pas de partage ; crédit d'impôt plafonné à 1 750 € de dépenses (875 € de crédit) par enfant et par parent.
+- Plusieurs enfants gardés chez la même AM, mêmes horaires et même tarif : un contrat et un CMG par enfant, au taux d'effort du nombre total d'enfants à charge ; cotisations (dont 5 € fixes) par enfant. Vérifié sur le simulateur Urssaf : 2 × 481,90 €, reste 560,76 €.
+- Âge : mois de naissance. CMG jusqu'au mois des 6 ans (12 ans pour un parent seul) : le droit s'arrête le mois civil suivant celui où une condition cesse (service-public F39152). Crédit d'impôt : dépenses des années où l'enfant a moins de 6 ans au 1er janvier, donc jusqu'à l'année de ses 6 ans.
+- Revenus : revenu fiscal de référence de l'avant-dernière année (libellé du simulateur Urssaf), ÷ 12, arrondi à l'euro. Situations (R532-5 à R532-7) : 30 % des revenus d'activité de la personne retirés (chômage indemnisé depuis 2 mois, arrêt de plus de 6 mois, cessation d'activité avec retraite, invalidité ou AAH) ; la totalité (chômage non indemnisé depuis 2 mois, RSA).
+- Autres aides à la garde (employeur, CSE, commune, CESU préfinancés) : déduites du reste à payer et des dépenses du crédit d'impôt (BOFiP §135).
+
 ## Choix de calcul du simulateur
 
 - Moyenne mensuelle sur l'année : en année incomplète, les congés payés (≈ 10 % du salaire) sont répartis sur 12 mois dans le coût, l'aide de la CAF et le crédit d'impôt ; l'écran rappelle qu'ils sont réellement versés en juin, au congé principal ou au fil des congés.

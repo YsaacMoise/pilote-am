@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bornesKm, calculCmg, cotisationsDuMois, creditImpot, feriesParJour, heuresMaxSemaine, planningDepuisTexte, planningRegulier, planningVersTexte, repasDuJour, simuler, simulationParDefaut, tauxEffort } from '../src/engine/simulation';
+import { activiteOk, ageMois, bornesKm, dernierMoisCmg, derniereAnneeCredit, naissanceIlYA, ressourcesRetenues, calculCmg, cotisationsDuMois, creditImpot, feriesParJour, heuresMaxSemaine, planningDepuisTexte, planningRegulier, planningVersTexte, repasDuJour, simuler, simulationParDefaut, tauxEffort } from '../src/engine/simulation';
 
 // Exemples officiels : communiqué de presse CAF du 15/09/2025 (coût horaire de référence 4,85 €)
 // et webinaire CAF de septembre 2025. Une date de septembre 2025 sélectionne ces paramètres.
@@ -45,7 +45,7 @@ describe('crédit d’impôt garde d’enfant (CGI 200 quater B)', () => {
 
 describe('simulateur complet', () => {
   const D = '2026-11-01';
-  const base = { ...simulationParDefaut(D), planning: planningRegulier(5, 40), tauxBrut: 510, entretien: 380, ressourcesMois: 3500 };
+  const base = { ...simulationParDefaut(D), planning: planningRegulier(5, 40), tauxBrut: 510, entretien: 380, revenusAn: 42000 };
   // Fériés du 1er novembre 2026 au 31 octobre 2027 tombant du lundi au vendredi : 11 nov., 25 déc., 1er janv.,
   // lundi de Pâques, Ascension, lundi de Pentecôte, 14 juillet = 7, pondérés par 47 semaines travaillées sur 52.
   const FERIES = (7 * 47) / 52;
@@ -78,17 +78,17 @@ describe('simulateur complet', () => {
   });
 
   it('6 à 12 ans en couple : ni aide de la CAF, ni crédit d’impôt ; parent seul : CMG sans crédit', () => {
-    const r = simuler({ ...base, age: '6a12' }, D);
+    const r = simuler({ ...base, enfants: [naissanceIlYA('2026-11-01', 96)] }, D);
     expect(r.cmgEligible).toBe(false);
     expect([r.cmg.montant, r.creditAnnuel]).toEqual([0, 0]);
-    const seul = simuler({ ...base, age: '6a12', parentSeul: true }, D);
+    const seul = simuler({ ...base, enfants: [naissanceIlYA('2026-11-01', 96)], foyer: 'seul' }, D);
     expect(seul.cmg.montant).toBeGreaterThan(0);
     expect(seul.creditAnnuel).toBe(0);
   });
 
   it('année incomplète : 52 − 5 − absences, 46 au plus ; congés payés répartis dans le coût, l’aide et le crédit', () => {
     expect(simuler({ ...base, yearType: 'incomplete', semainesAbsence: 0 }, D).semaines).toBe(46);
-    const r = simuler({ ...base, yearType: 'incomplete', semainesAbsence: 4, ressourcesMois: 1500 }, D);
+    const r = simuler({ ...base, yearType: 'incomplete', semainesAbsence: 4, revenusAn: 18000 }, D);
     expect(r.semaines).toBe(43);
     expect(r.joursAn).toBe(Math.round(5 * 43 - (7 * 43) / 52));
     expect(r.congesMois).toBe(Math.round(r.congesAnnuels / 12));
@@ -117,7 +117,7 @@ describe('simulateur complet', () => {
 
 describe('accueil jour par jour (étape 2)', () => {
   const D = '2026-11-01';
-  const base = { ...simulationParDefaut(D), tauxBrut: 510, entretien: 0, ressourcesMois: 3500 };
+  const base = { ...simulationParDefaut(D), tauxBrut: 510, entretien: 0, revenusAn: 42000 };
   const pl = (o: Record<number, [string, string][]>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v.map(([start, end]) => ({ start, end }))]));
 
   it('entretien calculé chaque jour : 2 jours de 11 h et 2 jours de 4 h → 4,79 € et 2,65 €', () => {
@@ -184,7 +184,7 @@ describe('accueil jour par jour (étape 2)', () => {
 // (l'Urssaf arrondit composante par composante).
 describe('comparaison avec le simulateur officiel Urssaf (1er novembre 2026)', () => {
   const d = '2026-11-01';
-  const base = { ...simulationParDefaut(d), planning: planningRegulier(5, 40), tauxBrut: 510, entretien: 380, ressourcesMois: 3500 };
+  const base = { ...simulationParDefaut(d), planning: planningRegulier(5, 40), tauxBrut: 510, entretien: 380, revenusAn: 42000 };
   const proche = (a: number, b: number, tol = 5) => expect(Math.abs(a - b)).toBeLessThanOrEqual(tol);
 
   it('cotisations : 83,75 % du net + 5 € (Urssaf : 581,73 € pour 688,62 € net ; 2 098,78 € pour 2 500 €)', () => {
@@ -213,7 +213,7 @@ describe('comparaison avec le simulateur officiel Urssaf (1er novembre 2026)', (
   });
 
   it('B : couple, enfant de 6 à 12 ans → aucune aide, 582,75 € de cotisations, reste 1 345,03 €', () => {
-    const r = simuler({ ...base, age: '6a12' }, d);
+    const r = simuler({ ...base, enfants: [naissanceIlYA('2026-11-01', 96)] }, d);
     expect(r.cmg.montant).toBe(0);
     proche(r.cotisationsReste, 58275);
     proche(r.reste, 134503);
@@ -236,7 +236,7 @@ describe('comparaison avec le simulateur officiel Urssaf (1er novembre 2026)', (
   });
 
   it('E : parent seul, 2 enfants à charge, enfant de 6 à 12 ans, déjeuner à 4 € → CMG 706,32 €, reste 132,18 €', () => {
-    const r = simuler({ ...base, repas: { petitDej: 0, dejeuner: 400, gouter: 0, diner: 0 }, ressourcesMois: 1500, enfantsACharge: 2, parentSeul: true, age: '6a12' }, d);
+    const r = simuler({ ...base, repas: { petitDej: 0, dejeuner: 400, gouter: 0, diner: 0 }, revenusAn: 18000, enfantsACharge: 2, foyer: 'seul', enfants: [naissanceIlYA('2026-11-01', 96)] }, d);
     expect(r.repas).toBe(7622);
     expect(r.cmg.montant).toBe(70632);
     expect(r.reste).toBe(13218);
@@ -260,3 +260,78 @@ describe('durée du travail (CASF L423-21 et L423-22)', () => {
     expect(inc.accordNecessaire).toBe(true);
   });
 });
+
+describe('la famille réelle (étape 3)', () => {
+  const D = '2026-11-01';
+  const base = { ...simulationParDefaut(D), planning: planningRegulier(5, 40), tauxBrut: 510, entretien: 380, revenusAn: 42000 };
+  const proche = (a: number, b: number, tol = 5) => expect(Math.abs(a - b)).toBeLessThanOrEqual(tol);
+
+  it('deux enfants gardés (18 mois et 4 ans) : un CMG par enfant au taux de 2 enfants (Urssaf : 2 × 481,90 €, reste 560,76 €)', () => {
+    const r = simuler({ ...base, enfants: [naissanceIlYA(D, 18), naissanceIlYA(D, 48)], enfantsACharge: 2 }, D);
+    expect(r.nbEnfants).toBe(2);
+    expect(r.enfants.map((e) => e.cmg)).toEqual([48190, 48190]);
+    expect(r.cmgTotal).toBe(96380);
+    proche(r.cotisations, 2 * 58275, 10);
+    expect(r.reste).toBe(56076);
+  });
+
+  it('couple : enfant de 18 mois aidé, enfant de 8 ans sans aide et avec ses cotisations', () => {
+    const r = simuler({ ...base, enfants: [naissanceIlYA(D, 18), naissanceIlYA(D, 96)], enfantsACharge: 2 }, D);
+    expect(r.enfants.map((e) => e.cmgEligible)).toEqual([true, false]);
+    expect(r.enfants[1].cmg).toBe(0);
+    proche(r.enfants[1].cotisationsReste, 58275);
+    expect(r.enfants[1].credit).toBe(0);
+  });
+
+  it('enfants à charge jamais moins nombreux que les enfants gardés', () => {
+    const r = simuler({ ...base, enfants: [naissanceIlYA(D, 18), naissanceIlYA(D, 30)], enfantsACharge: 1 }, D);
+    expect(r.cmg.taux).toBe(0.000516);
+  });
+
+  it('condition d’activité : chacun des deux parents, sauf AAH, ASS ou RSA', () => {
+    expect(activiteOk('couple', 'travail', 'travail')).toBe(true);
+    expect(activiteOk('couple', 'travail', 'assimile')).toBe(true);
+    expect(activiteOk('couple', 'travail', 'etudes')).toBe(true);
+    expect(activiteOk('couple', 'travail', 'sans')).toBe(false);
+    expect(activiteOk('couple', 'sans', 'aidee')).toBe(true);
+    expect(activiteOk('seul', 'sans', 'travail')).toBe(false);
+    expect(activiteOk('seul', 'etudes', 'sans')).toBe(true);
+    const r = simuler({ ...base, statutConjoint: 'sans' }, D);
+    expect([r.activiteOk, r.cmgTotal, r.cotisationsPrisesEnCharge]).toEqual([false, 0, 0]);
+    proche(r.cotisationsReste, 58275);
+  });
+
+  it('résidence alternée : crédit d’impôt plafonné à 875 € par parent', () => {
+    expect(simuler(base, D).creditAnnuel).toBe(175000);
+    expect(simuler({ ...base, residenceAlternee: true }, D).creditAnnuel).toBe(87500);
+  });
+
+  it('revenus : revenu fiscal de référence ÷ 12 ; chômage indemnisé −30 % ; chômage non indemnisé ou RSA : revenus d’activité retirés', () => {
+    expect(ressourcesRetenues(42000, 'aucune', 0)).toBe(3500);
+    expect(ressourcesRetenues(42000, 'chomage', 20000)).toBe(3000);
+    expect(ressourcesRetenues(42000, 'sansRevenus', 20000)).toBe(1833);
+    expect(ressourcesRetenues(42000, 'arret', 50000)).toBe(Math.round((42000 - 12600) / 12));
+    expect(simuler({ ...base, situationRevenus: 'chomage', revenusConcernes: 20000 }, D).cmg.ressources).toBe(3000);
+  });
+
+  it('âge : aide jusqu’au mois des 6 ans (12 ans pour un parent seul) ; crédit jusqu’à l’année des 6 ans', () => {
+    expect(dernierMoisCmg('2021-03', false)).toBe('2027-03');
+    expect(dernierMoisCmg('2021-03', true)).toBe('2033-03');
+    expect(ageMois('2020-11', D)).toBe(72);
+    expect(simuler({ ...base, enfants: ['2020-11'] }, D).enfants[0].cmgEligible).toBe(true);
+    expect(simuler({ ...base, enfants: ['2020-10'] }, D).enfants[0].cmgEligible).toBe(false);
+    expect(derniereAnneeCredit('2020-03')).toBe(2026);
+    const r = simuler({ ...base, enfants: ['2020-03'] }, D);
+    expect([r.enfants[0].cmgEligible, r.enfants[0].creditEligible]).toEqual([false, true]);
+  });
+
+  it('autres aides (employeur, commune, CESU préfinancé) : déduites du reste à payer et des dépenses du crédit d’impôt', () => {
+    const petit = { ...base, planning: planningRegulier(3, 20) };
+    const sans = simuler(petit, D);
+    const avec = simuler({ ...petit, autresAides: 5000 }, D);
+    expect(sans.reste - avec.reste).toBe(5000);
+    expect(sans.depensesAnnuelles - avec.depensesAnnuelles).toBe(60000);
+    expect(sans.creditAnnuel - avec.creditAnnuel).toBe(30000);
+  });
+});
+

@@ -8,7 +8,7 @@ import { ratesAt } from '../engine/rates';
 import { logUsage } from '../store';
 import { Icon } from '../ui/icons';
 
-/** Revenus choisis sur l'accueil, repris une fois par le simulateur (jamais mis dans l'adresse) */
+/** Revenu fiscal annuel choisi sur l'accueil, repris une fois par le simulateur (jamais mis dans l'adresse) */
 export const SIM_RESSOURCES = 'pam-sim-ressources';
 
 const nf = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
@@ -22,8 +22,7 @@ export function SimApercu() {
   // La CAF compte le revenu imposable de l'année N-2 (avis d'impôt), divisé par 12.
   const anneeRevenus = Number(d.slice(0, 4)) - 2;
   const [revenusAn, setRevenusAn] = useState(42000);
-  const revenus = Math.round(revenusAn / 12);
-  const r = simuler({ ...simulationParDefaut(d), planning: planningRegulier(5, heures), tauxBrut: taux, ressourcesMois: revenus }, d);
+  const r = simuler({ ...simulationParDefaut(d), planning: planningRegulier(5, heures), tauxBrut: taux, revenusAn }, d);
   const lien = `#/simulateur?jours=5&heures=${heures}&tauxBrut=${taux}`;
 
   return (
@@ -43,11 +42,11 @@ export function SimApercu() {
         <div class="sim-apercu-res" aria-live="polite">
           <span class="summary-label">Reste à payer par la famille</span>
           <span class="total">{euros(r.reste)}<small> / mois</small></span>
-          <span class="summary-sub">À verser {euros(r.verse)}, aide de la CAF −{euros(r.cmg.montant)}{r.cotisationsReste > 0 ? `, cotisations +${euros(r.cotisationsReste)}` : ''}</span>
+          <span class="summary-sub">À verser {euros(r.verse)}, aide de la CAF −{euros(r.cmgTotal)}{r.cotisationsReste > 0 ? `, cotisations +${euros(r.cotisationsReste)}` : ''}</span>
           {r.creditAnnuel > 0 && <span class="summary-sub">Avec le crédit d’impôt : <b>{euros(r.reel)}</b> par mois en réalité</span>}
         </div>
         <a class="btn btn-primary btn-lg btn-block" href={lien} onClick={() => {
-          try { sessionStorage.setItem(SIM_RESSOURCES, String(revenus)); } catch { /* navigation privée */ }
+          try { sessionStorage.setItem(SIM_RESSOURCES, String(revenusAn)); } catch { /* navigation privée */ }
           logUsage('accueil_simulateur');
         }}>Affiner la simulation<Icon name="right" size={20} /></a>
         <p class="hint">Entretien, repas, semaines de congés, enfants à charge : à régler dans le simulateur complet.</p>
