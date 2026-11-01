@@ -330,7 +330,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             </div>
             <Switch label="Résidence alternée" hint="L’enfant vit aussi chez l’autre parent. Chaque parent a sa propre aide de la CAF, calculée sur ses revenus et les heures qu’il paie : faites une simulation par parent. Crédit d’impôt : 875 € par an au plus." checked={i.residenceAlternee} onChange={(v) => set({ residenceAlternee: v })} />
             <Stepper label="Nombre total d’enfants des parents" value={Math.max(i.enfantsACharge, i.enfants.length)} min={i.enfants.length} max={10} onChange={(v) => set({ enfantsACharge: v, enfantsAeeh: Math.min(i.enfantsAeeh, v) })} />
-            <p class="hint">Tous les enfants de moins de 20 ans à la charge des parents, confiés ou non : {i.enfants.length > 1 ? 'les enfants confiés' : 'l’enfant confié'}, ses frères et sœurs. Pas les enfants de l’assistante maternelle. Plus il y en a, plus l’aide de la CAF est élevée.</p>
+            <p class="hint">Tous les enfants de moins de 20 ans à la charge des parents, confiés ou non : {i.enfants.length > 1 ? 'les enfants confiés' : 'l’enfant confié'}, ses frères et sœurs. Plus il y en a, plus l’aide de la CAF est élevée.</p>
             {(() => {
               const total = Math.max(i.enfantsACharge, i.enfants.length);
               const confies = i.enfants.length;
