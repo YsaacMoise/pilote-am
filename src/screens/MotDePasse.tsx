@@ -2,7 +2,9 @@
 // données sur l'appareil (le lien s'ouvre souvent dans Safari, hors de l'app installée, parfois en navigation privée).
 import { useEffect, useState } from 'preact/hooks';
 import { LOGIN_HINT, type AuthAction } from '../auth-action';
-import { confirmReset, MIN_PASSWORD, verifyResetCode } from '../cloud';
+import { confirmReset, verifyResetCode } from '../cloud';
+import { PASSWORD_RULE, passwordChecks } from '../password';
+import { PasswordRules } from '../ui/PasswordRules';
 import { Banner, TextInput } from '../ui/kit';
 import { LockupStacked } from './Welcome';
 
@@ -33,7 +35,7 @@ export function MotDePasse({ action }: { action: AuthAction }) {
     e.preventDefault();
     if (etat.k !== 'form') return;
     setError('');
-    if (pw.length < MIN_PASSWORD) { setError(`Le mot de passe doit faire au moins ${MIN_PASSWORD} caractères.`); return; }
+    if (!passwordChecks(pw).ok) { setError(PASSWORD_RULE); return; }
     setBusy(true);
     try {
       await confirmReset(action.code, pw);
@@ -56,7 +58,8 @@ export function MotDePasse({ action }: { action: AuthAction }) {
           <p class="hint">Pour le compte <strong>{etat.email}</strong>.</p>
           {/* Aide les gestionnaires de mots de passe à ranger le nouveau mot de passe avec la bonne adresse */}
           <input type="email" autoComplete="username" value={etat.email} readOnly hidden />
-          <TextInput label="Nouveau mot de passe" type="password" autoComplete="new-password" value={pw} onChange={setPw} hint={`${MIN_PASSWORD} caractères au moins.`} error={error} />
+          <TextInput label="Nouveau mot de passe" type="password" autoComplete="new-password" value={pw} onChange={setPw} error={error} />
+          <PasswordRules pw={pw} />
           <button class="btn btn-primary btn-lg btn-block" type="submit" disabled={busy}>{busy ? 'Enregistrement…' : 'Enregistrer le mot de passe'}</button>
         </form>
       )}

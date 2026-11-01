@@ -38,21 +38,22 @@ async function phone(b, name) {
   const A = await phone(b, 'A');
   const B = await phone(b, 'B');
   const email = 'sonia@exemple.fr';
-  const pw = 'motdepasse-solide';
+  const pw = 'Motdepasse-solide';
 
   console.log('\n== Téléphone A : création du compte puis premier enfant ==');
   const a = A.p;
   await a.goto(base);
+  await a.getByRole('button', { name: 'Créer mon compte gratuit' }).click();
   await a.getByRole('heading', { name: 'Crée ton compte' }).waitFor();
   await a.getByLabel('Adresse e-mail').fill(email);
   await a.getByLabel('Mot de passe').fill('court');
   await a.getByRole('button', { name: 'Créer mon compte' }).click();
-  await a.getByText('Le mot de passe doit faire au moins 8 caractères.').waitFor();
-  assert(true, 'mot de passe trop court refusé, en français');
+  await a.getByText(/au moins 8 caractères et mélanger 3 types/).waitFor();
+  assert(true, 'mot de passe trop faible refusé, en français');
   await a.getByLabel('Mot de passe').fill(pw);
   await a.getByRole('button', { name: 'Créer mon compte' }).click();
   await a.getByRole('heading', { name: 'Ton compte est prêt' }).waitFor();
-  assert(await a.getByRole('button', { name: /Installer/ }).isVisible(), 'compte créé, bouton Installer proposé ensuite');
+  assert(await a.getByRole('button', { name: 'Installer l’app sur l’écran d’accueil' }).isVisible(), 'compte créé, bouton Installer proposé ensuite');
   await a.shot('01-compte-pret');
   await a.getByRole('button', { name: 'Continuer ici pour l’instant' }).click();
   await a.getByLabel('Ton prénom').fill('Sonia');
@@ -78,7 +79,7 @@ async function phone(b, name) {
   console.log('\n== Téléphone B : connexion, tout revient ==');
   const p2 = B.p;
   await p2.goto(base);
-  await p2.getByRole('button', { name: 'J’ai déjà un compte' }).click();
+  await p2.locator('.hero-login').getByRole('button', { name: 'Me connecter' }).click();
   await p2.getByLabel('Adresse e-mail').fill(email);
   await p2.getByLabel('Mot de passe').fill('mauvais-mot-de-passe');
   await p2.getByRole('button', { name: 'Me connecter' }).click();
