@@ -11,9 +11,10 @@ Formule (D531-18) : CMG = coût mensuel × (1 − revenus mensuels × taux d'eff
 - Coût mensuel C : salaire net + indemnités d'entretien + frais de repas (D531-18 1°). Il est retenu dans la limite du plafond horaire × heures payées.
 - Plafond horaire : 8,00 € (décret), 8,09 € depuis le 1er avril 2026 (revalorisation SMIC ; secondaire : Weblex 30/03/2026 citant l'Urssaf du 24/03/2026, et 8 × 12,02 / 11,88 = 8,09).
 - Coût horaire de référence : 4,85 € (décret), 4,91 € depuis le 1er avril 2026 (mêmes sources ; 4,85 × 12,02 / 11,88 = 4,91).
-- Revenus : ressources mensuelles connues de la CAF (revenus de l'année N-2 ÷ 12), arrondies à l'euro, bornées entre un plancher (815 € en 2025 ; 821 € depuis avril 2026 par le calcul RSA, non publié officiellement) et un plafond de 8 500 €.
+- Revenus : ressources mensuelles connues de la CAF (revenus nets catégoriels de l'année N-2, art. R532-1 à R532-7, en pratique le revenu imposable ÷ 12), arrondies à l'euro, bornées entre un plancher (815 € en 2025 ; 821 € depuis avril 2026 par le calcul RSA, non publié officiellement) et un plafond de 8 500 €.
 - Taux d'effort (assistante maternelle) : 1 enfant à charge 0,0619 % ; 2 : 0,0516 % ; 3 : 0,0413 % ; 4 à 7 : 0,0310 % ; 8 à 10 : 0,0206 %. Chaque enfant ouvrant droit à l'AEEH fait passer au taux immédiatement inférieur.
-- Plus de majoration pour parent seul ni pour l'AAH (intégrées dans la formule). Enfant de 3 à 6 ans : même calcul qu'avant 3 ans (plus de division par deux). Parent seul : CMG ouvert jusqu'aux 12 ans de l'enfant (D531-18-1).
+- Plus de majoration pour parent seul ni pour l'AAH (intégrées dans la formule). Enfant de 3 à 6 ans : même calcul qu'avant 3 ans (plus de division par deux). Parent seul : CMG ouvert jusqu'aux 12 ans de l'enfant (FAQ CAF, service-public F39152, communiqué Cnaf du 14/10/2025).
+- Condition d'activité des parents, avec exceptions (études, AAH, RSA, ASS…) : rappelée à l'écran, non vérifiée par le simulateur.
 - Plus de minimum de 15 % à la charge de la famille.
 - Cotisations : prises en charge à 100 % si la rémunération horaire par enfant ne dépasse pas le plafond horaire ; au-delà, prise en charge réduite au prorata (D531-17 I). L'ancienne condition de 5 SMIC par jour est supprimée.
 
@@ -31,6 +32,15 @@ Tests : les 4 exemples chiffrés du communiqué de presse CAF du 15/09/2025 (co�
 - Net ≈ 78,1 % du brut (ratio des fiches DREETS).
 - Indemnité d'entretien : 90 % du minimum garanti (4,35 €) pour 9 h, soit 3,92 €, et jamais moins de 2,65 € par jour (CCN art. 114-1).
 - Mensualisation (CCN art. 109.2) : heures hebdomadaires × semaines ÷ 12 ; en année incomplète (46 semaines au plus), les congés payés s'ajoutent au salaire mensualisé (environ 10 % du brut de l'année).
+
+## Choix de calcul du simulateur
+
+- Moyenne mensuelle sur l'année : en année incomplète, les congés payés (≈ 10 % du salaire) sont répartis sur 12 mois dans le coût, l'aide de la CAF et le crédit d'impôt ; l'écran rappelle qu'ils sont réellement versés en juin, au congé principal ou au fil des congés.
+- Entretien, repas et forfait de 2,65 € du crédit d'impôt : comptés sur les jours d'accueil réels (année complète : 47 semaines, les 5 semaines de congés de l'assistante maternelle étant payées sans accueil).
+- Journée de 13 h au plus (11 h de repos quotidien).
+- Sans CMG (enfant de 6 à 12 ans d'un couple), les cotisations employeur restent dues : signalées, non chiffrées.
+
+Relecture indépendante du 1er novembre 2026 : 14 remarques, toutes traitées (formule et paramètres du CMG confirmés ; corrections sur les jours d'accueil, les congés payés en année incomplète, les libellés des revenus et de la part horaire, le calendrier du crédit d'impôt, les liens partagés modifiés).
 
 ## Points ouverts
 

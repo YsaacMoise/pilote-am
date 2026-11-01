@@ -49,28 +49,61 @@ describe('simulateur complet', () => {
   it('cas type : 40 h sur 5 jours, 52 semaines, 3,98 € net, 1 enfant, 3 500 € de ressources', () => {
     const r = simuler(base, '2026-11-01');
     expect(r.semaines).toBe(52);
-    expect(r.heuresMoisMin).toBe(10400); // 173 h 20
+    expect(r.heuresMoisMin).toBe(10400); // 173 h 20 payées
     expect(r.salaire).toBe(68987); // 40 × 52 ÷ 12 × 3,98
-    expect(r.joursMois).toBe(22);
-    expect(r.entretien).toBe(8360);
-    expect(r.total).toBe(77347);
+    // Entretien seulement les jours d'accueil : 5 jours × 47 semaines (les 5 semaines de congés de l'AM sans accueil)
+    expect(r.joursAn).toBe(235);
+    expect(r.entretien).toBe(Math.round((380 * 235) / 12));
+    expect(r.total).toBe(r.salaire + r.entretien);
     // 3 500 × 0,0619 % ÷ 4,91 = 44,12 % restent à la famille
-    expect(r.cmg.montant).toBe(Math.round(77347 * (1 - (3500 * 100 * 0.000619) / 491)));
+    expect(r.cmg.montant).toBe(Math.round(r.total * (1 - (3500 * 100 * 0.000619) / 491)));
     expect(r.reste).toBe(r.total - r.cmg.montant);
-    expect(r.creditAnnuel).toBe(175000);
+    expect(r.resteHoraire).toBe(Math.round(r.reste / (10400 / 60)));
+    // Crédit : net annuel + 2,65 € × 235 jours − CMG annuel, plafonné à 1 750 €
+    expect(r.creditAnnuel).toBe(Math.min(175000, Math.round((68987 * 12 + 265 * 235 - r.cmg.montant * 12) / 2)));
   });
 
-  it('enfant de 3 à 6 ans : même calcul ; 6 à 12 ans : CMG seulement pour un parent seul, sans crédit d’impôt', () => {
-    expect(simuler({ ...base, age: '6a12' }, '2026-11-01').cmg.montant).toBe(0);
+  it('paramètres du CMG : 8,00 € et 4,85 € jusqu’au 31 mars 2026, 8,09 € et 4,91 € dès le 1er avril', () => {
+    expect(calculCmg(50000, 100, 2000, 1, 0, '2026-03-31').params.coutReference).toBe(485);
+    expect(calculCmg(50000, 100, 2000, 1, 0, '2026-04-01').params.plafondHoraire).toBe(809);
+  });
+
+  it('ressources sous le plancher : ramenées au plancher', () => {
+    expect(calculCmg(50000, 100, 300, 1, 0, '2026-11-01').ressources).toBe(821);
+  });
+
+  it('6 à 12 ans en couple : ni aide de la CAF, ni crédit d’impôt', () => {
+    const r = simuler({ ...base, age: '6a12' }, '2026-11-01');
+    expect(r.cmgEligible).toBe(false);
+    expect(r.cmg.montant).toBe(0);
+    expect(r.creditAnnuel).toBe(0);
+  });
+
+  it('année incomplète : congés payés répartis dans le coût, l’aide et le crédit', () => {
+    const r = simuler({ ...base, yearType: 'incomplete', semainesAbsence: 4, ressourcesMois: 1500 }, '2026-11-01');
+    expect(r.semaines).toBe(43);
+    expect(r.joursAn).toBe(5 * 43);
+    expect(r.congesMois).toBe(Math.round(r.congesAnnuels / 12));
+    expect(r.total).toBe(r.salaire + r.congesMois + r.entretien + r.repas);
+    const attendu = Math.round(Math.min(350000, r.salaire * 12 + r.congesAnnuels + 265 * r.joursAn - r.cmg.montant * 12) / 2);
+    expect(r.creditAnnuel).toBe(attendu);
+  });
+
+  it('heures vides : rien à payer, pas de crédit négatif ; plus de 13 h par jour : ramené au maximum', () => {
+    const vide = simuler({ ...base, heures: 0 }, '2026-11-01');
+    expect([vide.total, vide.creditAnnuel, vide.reel]).toEqual([0, 0, 0]);
+    const long = simuler({ ...base, jours: 2, heures: 40 }, '2026-11-01');
+    expect(long.heuresPlafonnees).toBe(true);
+    expect(long.heuresMoisMin).toBe(Math.round((26 * 60 * 52) / 12));
+  });
+
+  it('6 à 12 ans : CMG seulement pour un parent seul, sans crédit d’impôt', () => {
     const seul = simuler({ ...base, age: '6a12', parentSeul: true }, '2026-11-01');
     expect(seul.cmg.montant).toBeGreaterThan(0);
     expect(seul.creditAnnuel).toBe(0);
   });
 
-  it('année incomplète : 52 − 5 − absences, 46 semaines au plus, congés payés en plus', () => {
-    const r = simuler({ ...base, yearType: 'incomplete', semainesAbsence: 4 }, '2026-11-01');
-    expect(r.semaines).toBe(43);
-    expect(r.congesAnnuels).toBe(Math.round(r.salaire * 12 * 0.1));
+  it('année incomplète : 52 − 5 − absences, 46 semaines au plus', () => {
     expect(simuler({ ...base, yearType: 'incomplete', semainesAbsence: 0 }, '2026-11-01').semaines).toBe(46);
   });
 

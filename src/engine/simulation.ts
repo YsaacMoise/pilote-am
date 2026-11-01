@@ -3,7 +3,7 @@
 // Montants en centimes entiers. Aucune donnée personnelle : tout est calculé sur le téléphone.
 import type { ISODate } from './dates';
 import type { Contract, Planning } from './model';
-import { joursMensualises, salaireMensualise } from './payroll';
+import { salaireMensualise } from './payroll';
 import { entretienPlancher, ratesAt } from './rates';
 
 /** Paramètres du CMG « emploi direct » d'une assistante maternelle (CSS D531-18, décret 2025-515), datés. */
@@ -118,32 +118,41 @@ export interface SimInput {
 }
 
 export interface SimResult {
+  /** Semaines payées par an (52 en année complète, ≤ 46 sinon) */
   semaines: number;
+  /** Semaines où l'enfant est réellement accueilli (année complète : 52 − 5 semaines de congés de l'AM) */
+  semainesGarde: number;
   /** Heures payées par mois (minutes) */
   heuresMoisMin: number;
   /** Heures au-delà de 45 h par semaine, par mois (minutes) */
   heuresMajMoisMin: number;
+  /** Jours d'accueil par an, et en moyenne par mois */
+  joursAn: number;
   joursMois: number;
   /** Minimum légal d'entretien pour une journée moyenne (centimes) */
   entretienMinimum: number;
   entretienJourRetenu: number;
   salaire: number;
+  /** Année incomplète : congés payés de l'année (≈ 10 % du salaire), et leur moyenne par mois */
+  congesAnnuels: number;
+  congesMois: number;
   entretien: number;
   repas: number;
-  /** À verser chaque mois à l'assistante maternelle (hors congés payés en année incomplète) */
+  /** Coût mensuel moyen : salaire + congés répartis + entretien + repas */
   total: number;
-  /** Année incomplète : congés payés à prévoir sur l'année (≈ 10 % du salaire net de l'année) */
-  congesAnnuels: number;
   cmgEligible: boolean;
   cmg: CmgCalc;
-  /** À payer par la famille chaque mois, après le CMG */
+  /** À payer par la famille, en moyenne par mois, après le CMG */
   reste: number;
+  /** Ce que la famille paie par heure, après le CMG (centimes) */
+  resteHoraire: number;
   creditEligible: boolean;
   creditAnnuel: number;
   depensesAnnuelles: number;
   /** Coût mensuel réel, crédit d'impôt réparti sur 12 mois */
   reel: number;
-  /** Le salaire horaire est sous le minimum conventionnel */
+  /** Heures saisies au-delà du possible (13 h par jour au plus) : ramenées à ce maximum */
+  heuresPlafonnees: boolean;
   sousMinimum: boolean;
   minimumNet: number;
   minimumBrut: number;
@@ -151,57 +160,65 @@ export interface SimResult {
   tauxBrut: number;
 }
 
+/** Durée maximale d'une journée d'accueil (11 h de repos quotidien) */
+export const HEURES_MAX_JOUR = 13;
+
 export function semainesAccueil(i: Pick<SimInput, 'yearType' | 'semainesAbsence'>): number {
   return i.yearType === 'complete' ? 52 : Math.min(46, 52 - 5 - Math.max(1, Math.round(i.semainesAbsence)));
 }
 
-/** Planning régulier équivalent : `jours` journées identiques à partir de 8 h. */
-function planningEquivalent(jours: number, heures: number): Planning {
+/** Planning régulier équivalent : `jours` journées identiques à partir de 7 h. */
+function planningEquivalent(jours: number, minutesSemaine: number): Planning {
   const pl: Planning = {};
-  const n = Math.max(1, Math.min(6, Math.round(jours)));
-  const parJour = Math.round((heures * 60) / n);
-  const fin = 8 * 60 + parJour;
+  const parJour = Math.round(minutesSemaine / jours);
+  const fin = 7 * 60 + parJour;
   const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-  for (let d = 1; d <= n; d++) pl[d] = [{ start: '08:00', end: hhmm(Math.min(fin, 24 * 60 - 1)) }];
+  for (let d = 1; d <= jours; d++) pl[d] = [{ start: '07:00', end: hhmm(fin) }];
   return pl;
 }
 
 export function simuler(i: SimInput, d: ISODate): SimResult {
   const rates = ratesAt(d);
+  const jours = Math.max(1, Math.min(6, Math.round(i.jours) || 1));
+  const heuresMax = jours * HEURES_MAX_JOUR;
+  const heures = Math.max(0, Math.min(heuresMax, i.heures || 0));
   const semaines = semainesAccueil(i);
-  const planning = planningEquivalent(i.jours, i.heures);
-  const c = { yearType: i.yearType, weeks: semaines, planning, rateNet: i.tauxNet, majoration: i.majoration } as Contract;
-  const salaire = salaireMensualise(c);
-  const heuresSemMin = Math.round(i.heures * 60);
+  // Les jours d'accueil réels : en année complète, les 5 semaines de congés de l'AM sont payées mais sans accueil.
+  const semainesGarde = i.yearType === 'complete' ? 47 : semaines;
+  const heuresSemMin = Math.round(heures * 60);
+  const c = { yearType: i.yearType, weeks: semaines, planning: planningEquivalent(jours, heuresSemMin), rateNet: i.tauxNet, majoration: Math.max(10, i.majoration) } as Contract;
+  const salaire = heuresSemMin > 0 ? salaireMensualise(c) : 0;
   const heuresMoisMin = Math.round((heuresSemMin * semaines) / 12);
   const heuresMajMoisMin = Math.round((Math.max(0, heuresSemMin - 45 * 60) * semaines) / 12);
-  const joursMois = joursMensualises(c);
-  const minutesJour = i.jours > 0 ? heuresSemMin / Math.round(i.jours) : 0;
-  const entretienMinimum = entretienPlancher(d, minutesJour);
+  const joursAn = heuresSemMin > 0 ? jours * semainesGarde : 0;
+  const joursMois = joursAn / 12;
+  const entretienMinimum = entretienPlancher(d, heuresSemMin / jours);
   const entretienJourRetenu = Math.max(i.entretienJour, entretienMinimum);
-  const entretien = entretienJourRetenu * joursMois;
-  const repas = i.repasPrix * i.repasParJour * joursMois;
-  const total = salaire + entretien + repas;
+  const entretien = Math.round(entretienJourRetenu * joursMois);
+  const repas = Math.round(i.repasPrix * i.repasParJour * joursMois);
+  // Année incomplète : congés payés en plus du salaire mensualisé (≈ 10 % du salaire de l'année), répartis ici sur 12 mois.
   const congesAnnuels = i.yearType === 'incomplete' ? Math.round(salaire * 12 * 0.1) : 0;
+  const congesMois = Math.round(congesAnnuels / 12);
+  const total = salaire + congesMois + entretien + repas;
 
-  // CMG : enfant de moins de 6 ans, ou de 6 à 12 ans pour un parent seul (D531-18-1).
+  // CMG : enfant de moins de 6 ans, ou jusqu'à 12 ans pour un parent seul.
   const cmgEligible = i.age === 'moins6' || i.parentSeul;
   const cmgCalc = calculCmg(total, heuresMoisMin / 60, i.ressourcesMois, i.enfantsACharge, i.enfantsAeeh, d);
   const cmg = cmgEligible ? cmgCalc : { ...cmgCalc, montant: 0 };
   const reste = total - cmg.montant;
 
-  // Crédit d'impôt : enfant de moins de 6 ans au 1er janvier.
+  // Crédit d'impôt : enfant de moins de 6 ans au 1er janvier ; salaire net de l'année + 2,65 € par jour de garde − CMG.
   const creditEligible = i.age === 'moins6';
-  const joursAnnuels = Math.round(i.jours) * semaines;
-  const { depenses, credit } = creditImpot(salaire * 12 + congesAnnuels, joursAnnuels, cmg.montant * 12);
+  const { depenses, credit } = creditImpot(salaire * 12 + congesAnnuels, joursAn, cmg.montant * 12);
   const creditAnnuel = creditEligible ? credit : 0;
 
   return {
-    semaines, heuresMoisMin, heuresMajMoisMin, joursMois, entretienMinimum, entretienJourRetenu,
-    salaire, entretien, repas, total, congesAnnuels,
-    cmgEligible, cmg, reste,
+    semaines, semainesGarde, heuresMoisMin, heuresMajMoisMin, joursAn, joursMois, entretienMinimum, entretienJourRetenu,
+    salaire, congesAnnuels, congesMois, entretien, repas, total,
+    cmgEligible, cmg, reste, resteHoraire: heuresMoisMin > 0 ? Math.round(reste / (heuresMoisMin / 60)) : 0,
     creditEligible, creditAnnuel, depensesAnnuelles: creditEligible ? depenses : 0,
     reel: reste - Math.round(creditAnnuel / 12),
+    heuresPlafonnees: (i.heures || 0) > heuresMax,
     sousMinimum: i.tauxNet < rates.minConvNet,
     minimumNet: rates.minConvNet, minimumBrut: rates.minConvBrut,
     tauxBrut: Math.round((i.tauxNet * 10000) / rates.netSurBrut),

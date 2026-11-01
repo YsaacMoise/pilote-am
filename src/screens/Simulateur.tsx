@@ -16,6 +16,12 @@ export const BROUILLON_CONTRAT = 'pam-contrat-brouillon';
 // Paramètres partageables : l'accueil et le tarif, jamais la situation de la famille.
 const PARTAGE: (keyof SimInput)[] = ['jours', 'heures', 'yearType', 'semainesAbsence', 'majoration', 'tauxNet', 'entretienJour', 'repasPrix', 'repasParJour'];
 
+/** Valeurs admises dans un lien partagé (un lien modifié ne doit pas casser le calcul). */
+const BORNES: Partial<Record<keyof SimInput, [number, number]>> = {
+  jours: [1, 6], heures: [1, 78], semainesAbsence: [1, 30], majoration: [10, 100],
+  tauxNet: [0, 5000], entretienJour: [0, 5000], repasPrix: [0, 5000], repasParJour: [0, 4],
+};
+
 function depuisAdresse(base: SimInput): SimInput {
   const q = new URLSearchParams(location.hash.split('?')[1] ?? '');
   const out: SimInput = { ...base };
@@ -24,7 +30,9 @@ function depuisAdresse(base: SimInput): SimInput {
     if (v === null) continue;
     if (k === 'yearType') { if (v === 'complete' || v === 'incomplete') out.yearType = v; continue; }
     const n = Number(v);
-    if (Number.isFinite(n) && n >= 0 && n < 100000) (out as any)[k] = n;
+    if (!Number.isFinite(n)) continue;
+    const [min, max] = BORNES[k] ?? [0, 100000];
+    (out as any)[k] = Math.min(max, Math.max(min, k === 'jours' || k === 'semainesAbsence' || k === 'repasParJour' ? Math.round(n) : n));
   }
   return out;
 }
@@ -79,7 +87,8 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
           <fieldset>
             <legend>L’accueil</legend>
             <Stepper label="Jours par semaine" value={i.jours} min={1} max={6} onChange={(v) => set({ jours: v })} />
-            <NumberInput label="Heures par semaine" value={i.heures} min={1} max={70} step={0.5} onChange={(v) => set({ heures: v ?? 0 })} />
+            <NumberInput label="Heures par semaine" value={i.heures} min={1} max={i.jours * 13} step={0.5} onChange={(v) => set({ heures: v ?? 0 })} />
+            {r.heuresPlafonnees && <Banner tone="warn">Au plus 13 h par jour (11 h de repos obligatoire) : le calcul retient {i.jours * 13} h par semaine.</Banner>}
             {r.heuresMajMoisMin > 0 && (
               <NumberInput label="Majoration au-delà de 45 h (%)" hint="10 % au moins (convention collective)" value={i.majoration} min={10} max={100} onChange={(v) => set({ majoration: Math.max(10, v ?? 10) })} />
             )}
@@ -87,7 +96,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             {i.yearType === 'incomplete' && (
               <Stepper label="Semaines sans accueil, en plus des 5 semaines de congés" value={Math.max(1, i.semainesAbsence)} min={1} max={30} onChange={(v) => set({ semainesAbsence: v })} />
             )}
-            <p class="hint">{r.semaines} semaines d’accueil par an, soit {hoursLabel(r.heuresMoisMin)} et {r.joursMois} jours par mois.</p>
+            <p class="hint">{i.yearType === 'complete' ? '52 semaines payées par an, dont 5 de congés de l’assistante maternelle' : `${r.semaines} semaines d’accueil par an, plus les congés payés`}, soit {hoursLabel(r.heuresMoisMin)} payées par mois.</p>
           </fieldset>
         </section>
 
@@ -110,13 +119,13 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
         <section class="card">
           <fieldset>
             <legend>La famille</legend>
-            <p class="hint">Pour l’aide de la CAF et le crédit d’impôt.</p>
+            <p class="hint">Pour l’aide de la CAF et le crédit d’impôt. L’aide suppose en principe que les parents travaillent (exceptions : études, AAH, RSA…).</p>
             <Choices<AgeEnfant> label="Âge de l’enfant accueilli" value={i.age} onChange={(v) => set({ age: v })}
-              options={[{ v: 'moins6', l: 'Moins de 6 ans' }, { v: '6a12', l: 'De 6 à 12 ans', sub: 'Aide de la CAF seulement pour un parent seul' }]} />
+              options={[{ v: 'moins6', l: 'Moins de 6 ans', sub: 'Au 1er janvier, pour le crédit d’impôt' }, { v: '6a12', l: 'De 6 à 12 ans', sub: 'Aide de la CAF seulement pour un parent seul' }]} />
             {i.age === '6a12' && <Switch label="Parent seul" checked={i.parentSeul} onChange={(v) => set({ parentSeul: v })} />}
             <Stepper label="Enfants à charge dans le foyer" value={i.enfantsACharge} min={1} max={10} onChange={(v) => set({ enfantsACharge: v, enfantsAeeh: Math.min(i.enfantsAeeh, v) })} />
             <Stepper label="Dont enfants qui touchent l’AEEH (allocation pour enfant handicapé)" value={i.enfantsAeeh} min={0} max={i.enfantsACharge} onChange={(v) => set({ enfantsAeeh: v })} />
-            <EuroInput label="Revenus nets mensuels du foyer" hint="Ceux que connaît la CAF : les revenus d’il y a deux ans, divisés par 12." cents={i.ressourcesMois * 100} onChange={(v) => set({ ressourcesMois: Math.round((v ?? 0) / 100) })} />
+            <EuroInput label="Revenus mensuels du foyer, pour la CAF" hint="Le revenu imposable de 2024 du foyer (avis d’impôt 2025), divisé par 12. Ce n’est pas le salaire reçu chaque mois." cents={i.ressourcesMois * 100} onChange={(v) => set({ ressourcesMois: Math.round((v ?? 0) / 100) })} />
           </fieldset>
         </section>
 
@@ -139,15 +148,17 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
           <h2 id="sim-d" style={{ marginBottom: '8px' }}>Le détail</h2>
           <div class="decl">
             <div class="decl-line"><span class="decl-label"><span>Salaire net mensualisé</span><span class="decl-hint">{hoursLabel(r.heuresMoisMin)} par mois</span></span><span class="decl-value">{euros(r.salaire)}</span></div>
-            <div class="decl-line"><span class="decl-label"><span>Indemnités d’entretien</span><span class="decl-hint">{euros(r.entretienJourRetenu)} × {r.joursMois} jours</span></span><span class="decl-value">{euros(r.entretien)}</span></div>
-            {r.repas > 0 && <div class="decl-line"><span class="decl-label"><span>Repas</span><span class="decl-hint">{euros(i.repasPrix)} × {i.repasParJour} × {r.joursMois} jours</span></span><span class="decl-value">{euros(r.repas)}</span></div>}
-            <div class="decl-line"><span class="decl-label"><span><b>À verser à l’assistante maternelle</b></span><span class="decl-hint">chaque mois, cotisations prises en charge par la CAF</span></span><span class="decl-value">{euros(r.total)}</span></div>
-            <div class="decl-line"><span class="decl-label"><span>Aide de la CAF (CMG)</span><span class="decl-hint">{r.cmgEligible ? 'versée chaque mois après la déclaration' : 'pas d’aide pour cet âge'}</span></span><span class="decl-value">− {euros(r.cmg.montant)}</span></div>
-            <div class="decl-line"><span class="decl-label"><span><b>Reste à payer chaque mois</b></span></span><span class="decl-value">{euros(r.reste)}</span></div>
-            <div class="decl-line"><span class="decl-label"><span>Crédit d’impôt</span><span class="decl-hint">{r.creditEligible ? `${euros(r.creditAnnuel)} par an, avance de 60 % en janvier` : 'enfant de 6 ans ou plus : pas de crédit'}</span></span><span class="decl-value">− {euros(Math.round(r.creditAnnuel / 12))}</span></div>
+            {r.congesMois > 0 && <div class="decl-line"><span class="decl-label"><span>Congés payés</span><span class="decl-hint">environ {euros(r.congesAnnuels)} par an, répartis ici sur 12 mois</span></span><span class="decl-value">{euros(r.congesMois)}</span></div>}
+            <div class="decl-line"><span class="decl-label"><span>Indemnités d’entretien</span><span class="decl-hint">{euros(r.entretienJourRetenu)} × {r.joursAn} jours d’accueil par an ÷ 12</span></span><span class="decl-value">{euros(r.entretien)}</span></div>
+            {r.repas > 0 && <div class="decl-line"><span class="decl-label"><span>Repas</span><span class="decl-hint">{euros(i.repasPrix)} × {i.repasParJour} par jour d’accueil</span></span><span class="decl-value">{euros(r.repas)}</span></div>}
+            <div class="decl-line"><span class="decl-label"><span><b>À verser à l’assistante maternelle</b></span><span class="decl-hint">{r.cmgEligible ? 'en moyenne par mois ; cotisations prises en charge par la CAF' : 'en moyenne par mois, sans les cotisations (voir plus bas)'}</span></span><span class="decl-value">{euros(r.total)}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>Aide de la CAF (CMG)</span><span class="decl-hint">{r.cmgEligible ? 'versée chaque mois après la déclaration' : 'pas d’aide pour cet âge, sauf parent seul'}</span></span><span class="decl-value">− {euros(r.cmg.montant)}</span></div>
+            <div class="decl-line"><span class="decl-label"><span><b>Reste à payer</b></span><span class="decl-hint">en moyenne par mois, soit {euros(r.resteHoraire)} de l’heure</span></span><span class="decl-value">{euros(r.reste)}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>Crédit d’impôt</span><span class="decl-hint">{r.creditEligible ? `${euros(r.creditAnnuel)} par an, versé l’année suivante : la première année, tout arrive l’été suivant ; ensuite, avance de 60 % en janvier` : 'enfant de 6 ans ou plus au 1er janvier : pas de crédit'}</span></span><span class="decl-value">− {euros(Math.round(r.creditAnnuel / 12))}</span></div>
           </div>
-          {r.congesAnnuels > 0 && <Banner tone="info" icon="sun">Moins de 52 semaines : les congés payés s’ajoutent, environ {euros(r.congesAnnuels)} par an, payés en juin, au congé principal ou au fil des congés.</Banner>}
-          {r.cmg.depassePlafond && <Banner tone="warn">Le coût dépasse {euros(r.cmg.params.plafondHoraire)} de l’heure : l’aide est calculée sur ce plafond, et une partie des cotisations reste à la charge de la famille (non comptée ici).</Banner>}
+          {!r.cmgEligible && <Banner tone="warn">Sans aide de la CAF, les cotisations sociales de l’employeur restent à la charge de la famille. Elles ne sont pas comptées ici : la déclaration Pajemploi les calcule.</Banner>}
+          {r.congesAnnuels > 0 && <Banner tone="info" icon="sun">Moins de 52 semaines : les congés payés sont versés en juin, au congé principal ou au fil des congés. Le mois où ils sont payés, l’aide de la CAF peut être plafonnée.</Banner>}
+          {r.cmg.depassePlafond && <Banner tone="warn">Le coût de l’heure dépasse {euros(r.cmg.params.plafondHoraire)} : l’aide de la CAF est calculée sur ce plafond, et une partie des cotisations peut rester à la charge de la famille (non comptée ici).</Banner>}
         </section>
 
         <div class="btn-row">
@@ -162,8 +173,8 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             <dl class="kv">
               <dt>Revenus retenus (entre {r.cmg.params.plancher} € et {r.cmg.params.plafond} €)</dt><dd>{r.cmg.ressources} €</dd>
               <dt>Taux d’effort ({i.enfantsACharge} enfant{i.enfantsACharge > 1 ? 's' : ''} à charge)</dt><dd>{(r.cmg.taux * 100).toFixed(4).replace('.', ',')} %</dd>
-              <dt>Part de la famille par heure</dt><dd>{euros(r.cmg.participationHoraire)}</dd>
-              <dt>Coût réel de l’heure</dt><dd>{euros(r.cmg.coutHoraire)}</dd>
+              <dt>Coût de l’heure avant aides</dt><dd>{euros(r.cmg.coutHoraire)}</dd>
+              <dt>Ce que la famille paie par heure, après l’aide</dt><dd>{euros(r.resteHoraire)}</dd>
               {r.creditEligible && (<><dt>Dépenses retenues pour l’impôt</dt><dd>{euros(r.depensesAnnuelles)}</dd></>)}
             </dl>
             <p class="hint">Crédit d’impôt : 50 % du salaire net de l’année, plus 2,65 € par jour d’accueil, moins l’aide de la CAF, dans la limite de 1 750 € par enfant. Règles en vigueur au 1er novembre 2026. Le montant exact de l’aide est calculé chaque mois par la CAF à partir de la déclaration Pajemploi.</p>
