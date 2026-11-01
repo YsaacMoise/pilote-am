@@ -196,13 +196,13 @@ export function Welcome() {
               <section id="compte" class="hero-form" aria-label="Compte">
                 <AccountForm key={form} initial={form} onDone={done} />
               </section>
-              <p class="hero-login">Pas encore décidée ? <button class="btn-link" type="button" onClick={essayer}>Essayer sans compte</button></p>
+              <p class="hero-login">Pas encore décidée ? <button class="btn-link" type="button" onClick={essayer}>Essayer la démo</button></p>
             </>
           ) : (
             <>
               <div class="hero-cta">
                 <button class="btn btn-primary btn-lg" type="button" onClick={() => ouvrir('create')}>Créer mon compte gratuit</button>
-                <button class="btn btn-secondary btn-lg" type="button" onClick={essayer}>Essayer sans compte</button>
+                <button class="btn btn-secondary btn-lg" type="button" onClick={essayer}>Essayer la démo</button>
               </div>
               <p class="hero-login">Déjà inscrite ? <button class="btn-link" type="button" onClick={() => ouvrir('login')}>Me connecter</button></p>
             </>
