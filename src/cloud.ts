@@ -5,7 +5,9 @@
 // arrivent en direct et sont rangés dans la base locale.
 import * as db from './db';
 import { PASSWORD_RULE, passwordChecks } from './password';
-import { autoCopy, load, logUsage, state, toast } from './store';
+import { autoCopy, ctxFor, load, logUsage, putContract, state, subscribe, toast } from './store';
+import { buildSnapshot } from './partage/snapshot';
+import { newShare, seal } from './partage/crypto';
 import { cloudInfo, LS, lsGet, lsSet, setCloud } from './cloud-state';
 import { errCode, type Backend, type CloudUser } from './sync/backend';
 import { applyRemote, docId, forRemote, needsChoice, nextSince, planMerge, RESUME_MARGIN_MS, stable, type LocalRecord, type MergeMode, type RemoteDoc } from './sync/plan';
@@ -229,9 +231,14 @@ function attach(u: CloudUser) {
     setCloud({ status: 'error', error: messageFor(errCode(e)) });
   });
   refreshStatus();
+  unsubShares = subscribe(() => scheduleShares());
+  scheduleShares(500);
 }
 
 function detach() {
+  unsubShares?.();
+  unsubShares = null;
+  clearTimeout(shareTimer);
   unlisten?.();
   unlisten = null;
   db.setMirror(null);
@@ -267,6 +274,67 @@ function refreshStatus() {
   if (pending) setCloud({ status: 'pending' });
   else if (!online || fromCache) setCloud({ status: 'offline' });
   else setCloud({ status: 'synced', lastSync: Date.now() });
+}
+
+// ---------- Lien parent ----------
+// Tant que le compte est branché, chaque changement met à jour la page des parents (texte chiffré, voir partage/).
+
+let unsubShares: (() => void) | null = null;
+let shareTimer: ReturnType<typeof setTimeout> | undefined;
+/** Dernier contenu envoyé par lien (sans l'heure), pour ne rien renvoyer d'identique */
+const sentShares = new Map<string, string>();
+let sharing: Promise<void> = Promise.resolve();
+
+function scheduleShares(delay = 1500) {
+  clearTimeout(shareTimer);
+  shareTimer = setTimeout(() => { sharing = sharing.then(pushShares).catch((e) => console.warn('lien parent', e)); }, delay);
+}
+
+async function pushShares() {
+  if (!attached || !be) return;
+  const live = new Set<string>();
+  for (const c of state.contracts) {
+    const k = c.partage;
+    if (!k) continue;
+    live.add(k.id);
+    const snap = buildSnapshot({ ctx: ctxFor(c), journal: state.journal, amName: state.settings.amName, enfants: state.settings.enfantsACharge ?? 0, now: 0 });
+    const same = JSON.stringify(snap);
+    if (sentShares.get(k.id) === same) continue;
+    snap.maj = Date.now();
+    await be.putShare(k.id, await seal(k, snap));
+    sentShares.set(k.id, same);
+  }
+  // Contrat supprimé, ou lien coupé sur un autre appareil : le lien est effacé en ligne aussi.
+  for (const id of [...sentShares.keys()]) {
+    if (live.has(id)) continue;
+    sentShares.delete(id);
+    await be.deleteShare(id).catch(() => {});
+  }
+}
+
+/** Crée le lien parent d'un contrat ; il est envoyé tout de suite (ou au retour du réseau). */
+export async function createShare(cid: string) {
+  const c = state.contracts.find((x) => x.id === cid);
+  if (!c) throw new Error('Contrat introuvable.');
+  if (!attached || !be) throw new Error('Branche d’abord ton compte : le lien passe par lui.');
+  if (c.partage) return;
+  await putContract({ ...c, partage: newShare() });
+  logUsage('lien_parent_cree', 'contrat');
+  scheduleShares(0);
+  await new Promise((r) => setTimeout(r, 20));
+  await sharing;
+}
+
+/** Coupe le lien : la page des parents devient vide tout de suite. Il faut du réseau. */
+export async function cutShare(cid: string) {
+  const c = state.contracts.find((x) => x.id === cid);
+  if (!c?.partage) return;
+  if (!be) throw new Error('Branche d’abord ton compte.');
+  try { await be.deleteShare(c.partage.id); } catch (e) { throw friendly(e); }
+  sentShares.delete(c.partage.id);
+  const { partage: _, ...rest } = c;
+  await putContract(rest);
+  logUsage('lien_parent_coupe', 'contrat');
 }
 
 // ---------- Actions de l'écran Compte ----------

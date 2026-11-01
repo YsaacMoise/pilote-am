@@ -6,6 +6,7 @@ const port = Number(process.argv[2] ?? 4180);
 const users = new Map(); // email -> { uid, password }
 const data = new Map(); // uid -> Map(docId -> doc)
 const verifies = new Map(); // code du lien de confirmation -> email
+const shares = new Map(); // id du lien parent -> { owner, v, iv, salt, t }
 const resets = new Map(); // code du lien -> email (comme le lien d'un e-mail de réinitialisation)
 let clock = Date.now();
 
@@ -69,7 +70,25 @@ createServer(async (req, res) => {
       const u = users.get(body.email);
       if (!u || u.password !== body.password) return send(res, 400, { code: 'auth/invalid-credential' });
       data.delete(u.uid);
+      for (const [id, sh] of shares) if (sh.owner === u.uid) shares.delete(id);
       users.delete(body.email);
+      return send(res, 200, {});
+    }
+    // Lien parent : lisible par qui a l'identifiant, écrit et effacé par le seul compte qui l'a créé
+    case '/share': {
+      const sh = shares.get(url.searchParams.get('id'));
+      return send(res, 200, { doc: sh ? { v: sh.v, iv: sh.iv, salt: sh.salt, t: sh.t } : null });
+    }
+    case '/share-put': {
+      const prev = shares.get(body.id);
+      if (prev && prev.owner !== body.owner) return send(res, 403, { code: 'permission-denied' });
+      shares.set(body.id, { owner: body.owner, v: body.v, iv: body.iv, salt: body.salt, t: ++clock });
+      return send(res, 200, {});
+    }
+    case '/share-delete': {
+      const prev = shares.get(body.id);
+      if (prev && prev.owner !== body.owner) return send(res, 403, { code: 'permission-denied' });
+      shares.delete(body.id);
       return send(res, 200, {});
     }
     case '/write': {
@@ -86,6 +105,7 @@ createServer(async (req, res) => {
     case '/reset-all': {
       users.clear();
       data.clear();
+      shares.clear();
       return send(res, 200, {});
     }
     case '/stats': {

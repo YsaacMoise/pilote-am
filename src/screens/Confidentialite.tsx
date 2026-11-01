@@ -45,6 +45,10 @@ export function Confidentialite({ back = '#/plus' }: { back?: string }) {
           <p>Les fichiers PDF des bulletins sont lus sur ton téléphone et ne sont pas envoyés : seuls les chiffres que tu enregistres sont gardés.</p>
           <h3>Le carnet de liaison</h3>
           <p>Les soins (température, médicament, petite chute) touchent à la santé de l’enfant. Ne les note qu’avec l’accord écrit des parents : le message prêt à envoyer, plus bas, le leur demande. Le carnet ne remplace pas le registre des médicaments que tu dois tenir.</p>
+          <h3>Le lien pour les parents (seulement si tu le crées)</h3>
+          <p>Depuis la fiche d’un enfant, tu peux créer un lien privé pour ses parents. Ils y voient son prénom, ton prénom, les arrivées, départs et absences des 7 derniers jours, le carnet de ces 7 jours, et les montants du mois et du mois précédent. Ni le nom de la famille, ni les autres enfants.</p>
+          <p>Ces informations sont chiffrées sur ton téléphone avant de partir. La copie en ligne (Google Firebase, à Paris) ne peut être lue qu’avec le lien et le code à 4 chiffres que tu donnes de vive voix. Le lien et le code sont gardés dans ton compte, comme le reste de tes données. Le code protège d’un lien transféré par erreur ; il ne résiste pas longtemps à quelqu’un qui aurait le lien et s’acharnerait : ne publie jamais le lien.</p>
+          <p>Couper le lien (ou supprimer le contrat, ou ton compte) efface la copie en ligne tout de suite.</p>
           <h3>La mesure d’usage (seulement si tu l’as allumée)</h3>
           <p>Si tu l’allumes dans Plus › Réglages, l’app envoie à PostHog (serveurs en Europe, à Francfort) le nom des écrans ouverts et des gestes faits (par exemple « arrivée pointée », « mois envoyé »), la version de l’app, un identifiant tiré au hasard, et les caractéristiques techniques que PostHog relève lui-même : modèle de téléphone, système, navigateur, taille d’écran, langue et fuseau horaire. Rien de ce que tu écris ou choisis n’est envoyé, l’écran n’est jamais enregistré, et le projet PostHog est réglé pour ne pas garder l’adresse internet de ton téléphone. Tu peux l’éteindre à tout moment.</p>
           <h3>La dictée</h3>
@@ -56,6 +60,7 @@ export function Confidentialite({ back = '#/plus' }: { back?: string }) {
         <section class="card stack-sm">
           <h2>Combien de temps</h2>
           <p><b>Ton compte et ce que tu saisis :</b> tant que ton compte existe. Si tu supprimes ton compte, la copie en ligne est effacée tout de suite ; Google l’efface de ses sauvegardes sous 180 jours au plus.</p>
+          <p><b>Le lien pour les parents :</b> tant que tu ne le coupes pas. Il est effacé avec le contrat ou le compte.</p>
           <p><b>La mesure d’usage :</b> les événements sont gardés 1 an au plus.</p>
           <p><b>Sur ton téléphone :</b> tant que tu gardes l’app. Tu restes libre de tout effacer.</p>
           <p><b>À la fin du test, le {LEGAL.finTest} :</b> l’éditeur te demande si tu veux continuer. Si tu arrêtes, tu fais d’abord une sauvegarde (Plus › Sauvegarde), puis ta copie en ligne et ta mesure d’usage sont effacées sous 30 jours.</p>

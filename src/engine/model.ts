@@ -82,6 +82,8 @@ export interface Contract {
   balances: StartBalances;
   history: HistoryMonth[];
   createdAt: number;
+  /** Lien privé pour les parents (clés gardées dans le compte de l'AM, jamais en clair en ligne ailleurs) */
+  partage?: { id: string; secret: string; code: string; salt: string; createdAt: number };
 }
 
 export type ChildAbs = 'malade_certif' | 'malade' | 'parents' | 'sans_solde_enfant';

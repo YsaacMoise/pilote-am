@@ -47,6 +47,12 @@ export function useStore(): State {
   return state;
 }
 
+/** Prévient à chaque changement des données (hors écran) ; renvoie la fonction pour arrêter */
+export function subscribe(f: () => void): () => void {
+  subs.add(f);
+  return () => { subs.delete(f); };
+}
+
 export function uid(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }

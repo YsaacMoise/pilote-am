@@ -41,7 +41,16 @@ export interface Backend {
   onPending(cb: (pending: boolean) => void): () => void;
   /** Attend l'envoi des changements en attente ; faux si le délai expire (pas de réseau) */
   waitPending(timeoutMs: number): Promise<boolean>;
+  /** Lien parent : écrit le texte chiffré au nom du compte connecté */
+  putShare(id: string, d: Omit<SharedDoc, 't'>): Promise<void>;
+  /** Lien parent : coupe le lien (le document disparaît) */
+  deleteShare(id: string): Promise<void>;
+  /** Lien parent, côté parents (sans compte) : suit le document en direct ; null s'il n'existe pas ou plus */
+  watchShare(id: string, cb: (d: SharedDoc | null) => void, onError: (e: unknown) => void): () => void;
 }
+
+/** Document du lien parent : texte chiffré, vecteur et sel (voir partage/crypto.ts) */
+export interface SharedDoc { v: string; iv: string; salt: string; /** Heure serveur (ms) */ t: number }
 
 /** Code d'erreur lisible (« auth/wrong-password »…) quel que soit le service */
 export function errCode(e: unknown): string {

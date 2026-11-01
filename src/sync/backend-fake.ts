@@ -87,7 +87,7 @@ export const backend: Backend = {
   async signOut() { setUser(null); },
   async deleteAccount(password) {
     if (!current) throw err('auth/no-current-user');
-    await call('/delete', { email: current.email, password });
+    await call('/delete', { email: current.email, password, uid: current.uid });
     setUser(null);
   },
   async fetchAll(uid) {
@@ -120,6 +120,29 @@ export const backend: Backend = {
     pendSubs.add(cb);
     cb(readQ().length > 0);
     return () => { pendSubs.delete(cb); };
+  },
+  async putShare(id, d) {
+    if (!current) throw err('auth/no-current-user');
+    await call('/share-put', { id, owner: current.uid, ...d });
+  },
+  async deleteShare(id) {
+    if (!current) throw err('auth/no-current-user');
+    await call('/share-delete', { id, owner: current.uid });
+  },
+  watchShare(id, cb, onError) {
+    let stop = false;
+    let last = '';
+    const tick = async () => {
+      if (stop) return;
+      try {
+        const r = await call<{ doc: { v: string; iv: string; salt: string; t: number } | null }>(`/share?id=${encodeURIComponent(id)}`);
+        const k = JSON.stringify(r.doc);
+        if (k !== last) { last = k; cb(r.doc); }
+      } catch (e) { onError(e); }
+      if (!stop) setTimeout(tick, 700);
+    };
+    void tick();
+    return () => { stop = true; };
   },
   async waitPending(timeoutMs) {
     const end = Date.now() + timeoutMs;
