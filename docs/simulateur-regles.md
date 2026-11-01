@@ -53,12 +53,25 @@ Tests : les 4 exemples chiffrés du communiqué de presse CAF du 15/09/2025 (co�
 ## La famille réelle (étape 3, 1er novembre 2026)
 
 - Foyer en couple ou parent seul. Parent seul : même formule, CMG jusqu'aux 12 ans (D531-18-1). Vérifié sur le simulateur Urssaf : même montant qu'un couple.
-- Condition d'activité (L531-5 I, D531-19, service-public F39152 vérifié le 26/06/2026) : chaque parent du foyer travaille ou est dans une situation assimilée (indemnités journalières, chômage indemnisé, formation rémunérée), en études ou en service civique ; pas de condition si l'un d'eux touche l'AAH, l'ASS ou le RSA (avec inscription comme demandeur d'emploi). Sinon : pas de CMG, cotisations à la charge de la famille. Point de vigilance : service-public écrit « vous ou votre conjoint devez travailler » ; des guides (mes-allocs, 06/09/2026) écrivent « vous ainsi que votre conjoint ». Le simulateur suit la lecture « chacun des deux », cohérente avec les exceptions de L531-5 (« les deux membres du couple poursuivent des études »). À confirmer par une question écrite à la CAF.
+- Condition d'activité (L531-5 I : « le ménage ou la personne seule exerce une activité professionnelle » ; D531-19) : en couple, un seul parent qui travaille ou est dans une situation assimilée (indemnités journalières, chômage indemnisé, formation rémunérée) suffit ; sinon les deux en études ou en service civique ; pas de condition si l'un d'eux touche l'AAH, l'ASS ou le RSA (avec démarche d'insertion). Parent seul : il doit travailler, être assimilé, en études ou en service civique. Sources concordantes : service-public F39152 vérifié le 26/06/2026 (« vous ou votre conjoint […] devez travailler », et « vous et votre conjoint » pour les études : contraste voulu), notice du Cerfa 12323 (« si vous ou votre conjoint exercez une activité professionnelle (quelle qu'en soit la durée et quel que soit le salaire ou revenu) »), supports CAF de la réforme de septembre 2025 (« le demandeur ou le conjoint »), réponse ministérielle n° 32389 (JO du 20/07/2004 : « la condition de double activité n'est plus exigée »). Corrigé le 1er novembre 2026 : l'étape 3 exigeait à tort l'activité des deux parents.
 - Résidence alternée (D531-18-2, depuis le 1er décembre 2025) : chaque parent a son CMG calculé sur sa situation, pas de partage ; crédit d'impôt plafonné à 1 750 € de dépenses (875 € de crédit) par enfant et par parent.
 - Plusieurs enfants gardés chez la même AM, mêmes horaires et même tarif : un contrat et un CMG par enfant, au taux d'effort du nombre total d'enfants à charge ; cotisations (dont 5 € fixes) par enfant. Vérifié sur le simulateur Urssaf : 2 × 481,90 €, reste 560,76 €.
 - Âge : mois de naissance. CMG jusqu'au mois des 6 ans (12 ans pour un parent seul) : le droit s'arrête le mois civil suivant celui où une condition cesse (service-public F39152). Crédit d'impôt : dépenses des années où l'enfant a moins de 6 ans au 1er janvier, donc jusqu'à l'année de ses 6 ans.
 - Revenus : revenu fiscal de référence de l'avant-dernière année (libellé du simulateur Urssaf), ÷ 12, arrondi à l'euro. Situations (R532-5 à R532-7) : 30 % des revenus d'activité de la personne retirés (chômage indemnisé depuis 2 mois, arrêt de plus de 6 mois, cessation d'activité avec retraite, invalidité ou AAH) ; la totalité (chômage non indemnisé depuis 2 mois, RSA).
 - Autres aides à la garde (employeur, CSE, commune, CESU préfinancés) : déduites du reste à payer et des dépenses du crédit d'impôt (BOFiP §135).
+
+## Le calendrier (étape 4, 1er novembre 2026)
+
+Moteur : src/engine/calendrier.ts. 24 mois à partir du premier mois du contrat, aux barèmes du jour.
+
+- Adaptation (CCN art. 95, 30 jours au plus) : premier mois payé aux heures réellement faites ; entretien et repas au prorata des jours saisis.
+- Congés payés en année incomplète (CCN art. 102) : 10 % des salaires nets de la période de référence (1er juin → 31 mai ; la première, de l'embauche au 31 mai), versés en juin ou au mois du congé principal (juin à octobre). Le paiement par douzième est interdit (« toute autre modalité est proscrite »). Le maintien de salaire, s'il est plus favorable, n'est pas calculé.
+- CMG du mois des congés : les congés s'ajoutent au coût aidé, hors vérification du plafond horaire (LFSS 2026, art. 100). Hypothèse : aucun texte ne précise si la CAF les retient dans le coût depuis 2026 (Pajemploi : oui en 2025).
+- Fin de l'aide : après le mois des 6 ans (12 ans pour un parent seul) ; ensuite, toutes les cotisations reviennent à la famille.
+- Crédit d'impôt : calculé par année civile et par enfant ; celui de l'année Y versé en juillet Y+1 ; dès la 2e année, avance de 60 % en janvier Y+1 sur le crédit de Y−1, solde en juillet (négatif = trop-perçu remboursé). Service-public F35936.
+- Selon les revenus : coût réel pour 15 000 à 102 000 € de revenu fiscal par an (102 000 € ≈ plafond de 8 500 € par mois).
+- Levier du tarif : écart de salaire net de l'AM et de coût réel de la famille pour +0,10, +0,20, +0,50 € brut de l'heure ; tarif brut maximal avant que le coût horaire (net + entretien + repas) dépasse 8,09 €.
+- Non simulé : congés « au fil des prises », retenue des congés non acquis la première année en année complète, régularisation de fin de contrat, revalorisations futures.
 
 ## Choix de calcul du simulateur
 
@@ -77,6 +90,6 @@ Cinq cas passés au simulateur Urssaf avec les montants produits par notre moteu
 
 - Plancher de ressources 2026 (815 ou 821 €) : sans effet au-dessus de 821 € de revenus mensuels.
 - Heures majorées : le texte parle d'« heures rémunérées » ; le simulateur compte chaque heure une fois.
-- Congés payés en année incomplète : encore répartis sur 12 mois (interdit par la convention, versés en juin, au congé principal ou au fil des congés) ; corrigé à l'étape 4.
+- Congés payés en année incomplète : la moyenne mensuelle du résumé les répartit sur 12 mois ; le calendrier (étape 4) les montre au mois réel de versement.
 - Congés payés et CMG : depuis janvier 2026 (LFSS 2026), ils ne comptent plus pour le test du plafond horaire ; leur place dans le coût aidé n'est pas documentée.
 - Réduction des heures majorées : traitement exact dans le coût aidé par le CMG non documenté (le simulateur Urssaf ne la calcule pas).
