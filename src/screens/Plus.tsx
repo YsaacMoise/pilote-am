@@ -40,6 +40,7 @@ export function Plus() {
             <ListLink href="#/controle" icon="receipt" title="Contrôler un bulletin" sub="Le net, le brut, les heures déclarées" />
             <ListLink href="#/fin" icon="door" title="Fin de contrat" sub="Préavis, indemnités, régularisation" />
             <ListLink href="#/fiscal" icon="chart" title="Impôts" sub="Abattement et revenu imposable estimé" />
+            <ListLink href="#/simulateur" icon="euro" title="Simuler un accueil" sub="Pour une nouvelle famille : coût, aide de la CAF" />
           </div>
         </section>
         <section class="stack-sm" aria-labelledby="donnees">

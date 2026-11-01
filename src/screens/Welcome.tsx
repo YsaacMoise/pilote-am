@@ -181,6 +181,7 @@ export function Welcome() {
           <span class="site-brand-text" aria-hidden="true"><span class="site-brand-name">Arvela</span></span>
         </a>
         <nav class="site-links" aria-label="Liens">
+          <a href="#/simulateur">Simuler un accueil</a>
           <a href="#/confidentialite">Tes données</a>
           <a href="#/mentions">Mentions légales</a>
         </nav>
@@ -232,6 +233,14 @@ export function Welcome() {
           </span>
         </button>
       )}
+      <a class="sim-row" href="#/simulateur" onClick={() => logUsage('accueil_simulateur')}>
+        <span class="sim-ico" aria-hidden="true"><Icon name="euro" /></span>
+        <span>
+          <b>Combien coûte un accueil ?</b>
+          <small>Salaire, aide de la CAF et crédit d’impôt, calculés selon les règles de 2026.</small>
+        </span>
+        <Icon name="right" size={20} />
+      </a>
       </main>
       {video && <Sheet title="Une journée avec Arvela" onClose={() => setVideo(false)}><VideoClip clip="quotidien" autoStart /></Sheet>}
 
