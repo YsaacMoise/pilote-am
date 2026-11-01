@@ -160,7 +160,7 @@ export function Welcome() {
             </div>
           ) : <AccountForm initial="login" initialEmail={hintEmail} onDone={done} />}
         </section>
-        <p class="hero-login center"><button class="btn-link" type="button" onClick={essayer}>Voir un exemple</button></p>
+        <p class="hero-login center"><button class="btn-link" type="button" onClick={essayer}>Essayer avec des enfants fictifs</button></p>
       </main>
     );
   }
