@@ -7,11 +7,11 @@ import {
   signOut, verifyPasswordResetCode,
 } from 'firebase/auth';
 import {
-  collection, doc, getDocsFromServer, initializeFirestore, onSnapshot, persistentLocalCache, persistentMultipleTabManager,
+  collection, deleteDoc, doc, getDocsFromServer, setDoc, initializeFirestore, onSnapshot, memoryLocalCache, persistentLocalCache, persistentMultipleTabManager,
   query, serverTimestamp, Timestamp, waitForPendingWrites, where, writeBatch, type DocumentData,
 } from 'firebase/firestore';
 import { firebaseConfig } from '../firebase-config';
-import type { Backend, CloudUser } from './backend';
+import type { Backend, CloudUser, SharedDoc } from './backend';
 import { docId, isSyncedStore, type RemoteDoc } from './plan';
 import { deviceId } from '../cloud-state';
 
@@ -19,7 +19,9 @@ const app = initializeApp(firebaseConfig);
 const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
 auth.languageCode = 'fr';
 // Cache persistant : les changements faits hors ligne sont gardés et envoyés au retour du réseau, même après fermeture.
-const fs = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+// Page des parents : rien n'est gardé sur leur appareil (cache en mémoire seulement).
+const pageParents = typeof location !== 'undefined' && location.hash.startsWith('#/p/');
+const fs = initializeFirestore(app, { localCache: pageParents ? memoryLocalCache() : persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
 
 const BATCH = 400;
 
@@ -87,6 +89,9 @@ export const backend: Backend = {
     const u = auth.currentUser;
     if (!u?.email) throw Object.assign(new Error('Pas de compte connecté'), { code: 'auth/no-current-user' });
     await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, password));
+    // Liens parents d'abord : ils deviennent inutilisables tout de suite.
+    const liens = await getDocsFromServer(query(collection(fs, 'partages'), where('owner', '==', u.uid)));
+    for (const d of liens.docs) await deleteDoc(d.ref);
     const snap = await getDocsFromServer(col(u.uid));
     for (let i = 0; i < snap.docs.length; i += BATCH) {
       const b = writeBatch(fs);
@@ -142,5 +147,31 @@ export const backend: Backend = {
       waitForPendingWrites(fs).then(() => true),
       new Promise<boolean>((res) => setTimeout(() => res(false), timeoutMs)),
     ]);
+  },
+
+  async putShare(id, d) {
+    const u = auth.currentUser;
+    if (!u) throw Object.assign(new Error('Pas de compte connecté'), { code: 'auth/no-current-user' });
+    // Comme les autres envois : gardé dans la file hors ligne, envoyé au retour du réseau.
+    const p = setDoc(doc(fs, 'partages', id), { owner: u.uid, v: d.v, iv: d.iv, salt: d.salt, t: serverTimestamp() });
+    p.catch((e) => console.warn('lien parent refusé', e));
+    track(p);
+  },
+  async listShares() {
+    const u = auth.currentUser;
+    if (!u) return [];
+    const snap = await getDocsFromServer(query(collection(fs, 'partages'), where('owner', '==', u.uid)));
+    return snap.docs.map((d) => d.id);
+  },
+  async deleteShare(id) {
+    await deleteDoc(doc(fs, 'partages', id));
+  },
+  watchShare(id, cb, onError) {
+    return onSnapshot(doc(fs, 'partages', id), (snap) => {
+      const data = snap.data();
+      if (!data || typeof data.v !== 'string') { if (!snap.metadata.fromCache) cb(null); return; }
+      const t = data.t instanceof Timestamp ? data.t.toMillis() : Date.now();
+      cb({ v: data.v, iv: String(data.iv), salt: String(data.salt), t } satisfies SharedDoc);
+    }, onError);
   },
 };

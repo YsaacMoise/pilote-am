@@ -82,6 +82,8 @@ export interface Contract {
   balances: StartBalances;
   history: HistoryMonth[];
   createdAt: number;
+  /** Lien privé pour les parents (clés gardées dans le compte de l'AM, jamais en clair en ligne ailleurs) */
+  partage?: { id: string; secret: string; code: string; salt: string; createdAt: number };
 }
 
 export type ChildAbs = 'malade_certif' | 'malade' | 'parents' | 'sans_solde_enfant';
@@ -119,6 +121,8 @@ export interface Settings {
   lastBackup?: number;
   lastAutoCopy?: number;
   lastExport?: Month;
+  /** Liens parents coupés : un autre appareil ou une vieille sauvegarde ne doit pas les rouvrir */
+  liensCoupes?: string[];
   persisted?: boolean;
   onboarded?: boolean;
   /** Écran Aujourd'hui en liste compacte (tous les enfants visibles d'un coup) */

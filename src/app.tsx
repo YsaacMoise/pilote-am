@@ -67,6 +67,8 @@ export function App() {
     document.title = `${title} · Arvela`;
   }, [p]);
 
+  // Lien parent ouvert depuis l'app (rare : il s'ouvre d'habitude seul, voir main.tsx)
+  if (p === 'p' && parts[1]) { location.reload(); return null; }
   if (!s.ready) return null;
   if (!s.settings.onboarded && !isDemo()) {
     // La politique de confidentialité reste lisible avant la création du compte.

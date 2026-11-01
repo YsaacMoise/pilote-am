@@ -7,6 +7,13 @@ import { seedDemo } from './demo';
 import { hasCloudAccount } from './cloud-state';
 import { authAction } from './auth-action';
 import { MotDePasse } from './screens/MotDePasse';
+import { Parent } from './screens/Parent';
+
+/** Lien parent « #/p/{id}.{secret} » : la fin du lien, ou null */
+function parentLink(): string | null {
+  const m = /^#\/p\/([^/?]+)/.exec(location.hash);
+  return m ? m[1] : null;
+}
 
 // Android, Chrome et Edge proposent une vraie installation : on garde l'événement pour le bouton « Installer ».
 window.addEventListener('beforeinstallprompt', (e) => {
@@ -18,6 +25,13 @@ window.addEventListener('beforeinstallprompt', (e) => {
 async function start() {
   // Lien « nouveau mot de passe » reçu par e-mail : page seule, sans données locales (marche aussi en navigation privée).
   if (authAction) { render(<MotDePasse action={authAction} />, document.getElementById('app')!); return; }
+  // Lien privé des parents : page seule, sans les données du téléphone ni mesure d'usage.
+  const pl = parentLink();
+  if (pl) {
+    render(<Parent link={pl} />, document.getElementById('app')!);
+    window.addEventListener('hashchange', () => { if (parentLink() !== pl) location.reload(); });
+    return;
+  }
   try {
     if (isDemo()) {
       const cs = await getAll('contracts');

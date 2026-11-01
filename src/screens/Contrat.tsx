@@ -9,6 +9,7 @@ import type { Avenant, Contract, Plage, Planning, Terms } from '../engine/model'
 import { Banner, CHILD_COLORS, Choices, COLOR_NAMES, DateInput, EuroInput, Gommette, NumberInput, Seg, Switch, TextInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { BROUILLON_CONTRAT } from './Simulateur';
+import { PartageCard } from './PartageCard';
 
 /** Conditions venues du simulateur (lues une seule fois) : planning de journées égales à partir de 8 h. */
 function brouillon(): Partial<Contract> | null {
@@ -81,7 +82,10 @@ export function Contrat({ id }: { id?: string }) {
       family: c.family.trim(),
       weeks: c.yearType === 'complete' ? 52 : c.weeks,
       trackedFrom: isNew ? (reprise ? curMonthStart : c.start) : c.trackedFrom < c.start ? c.start : c.trackedFrom,
+      // Le lien parent a pu être créé ou coupé pendant que le formulaire était ouvert : on garde l'état enregistré.
+      partage: state.contracts.find((x) => x.id === c.id)?.partage,
     };
+    if (!toSave.partage) delete toSave.partage;
     const prev = await putContract(toSave);
     logUsage(isNew ? 'contrat_cree' : 'contrat_modifie', 'contrat');
     toast(isNew ? `Contrat de ${toSave.child} créé` : 'Contrat enregistré', prev ? async () => { await putContract(prev); } : async () => { await deleteContract(toSave.id); });
@@ -201,6 +205,7 @@ export function Contrat({ id }: { id?: string }) {
         )}
 
         {!isNew && <AvenantsCard c={c} />}
+        {!isNew && <PartageCard cid={c.id} />}
 
         <button class="btn btn-primary btn-block btn-lg" onClick={save}>{isNew ? (reprise ? 'Enregistrer et reprendre l’historique' : 'Enregistrer le contrat') : 'Enregistrer'}</button>
         {!isNew && (

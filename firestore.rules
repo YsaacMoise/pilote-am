@@ -2,6 +2,8 @@ rules_version = '2';
 
 // Règles de sécurité de la base Arvela (projet arvela-app).
 // Chaque compte ne voit et ne modifie que ses propres données : users/{son uid}/data/...
+// Lien parent : partages/{id} contient un texte chiffré (illisible sans le lien et le code).
+// Lisible par qui connaît l'identifiant, jamais listable ; écrit et effacé par le seul compte qui l'a créé.
 // Tout le reste est fermé.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -21,6 +23,26 @@ service cloud.firestore {
       }
       allow read, delete: if isOwner();
       allow create, update: if isOwner() && validDoc();
+    }
+
+    match /partages/{id} {
+      function validShare() {
+        let d = request.resource.data;
+        return id.matches('^[A-Za-z0-9_-]{16,64}$')
+          && d.keys().hasOnly(['owner', 'v', 'iv', 'salt', 't'])
+          && d.keys().hasAll(['owner', 'v', 'iv', 'salt', 't'])
+          && d.owner == request.auth.uid
+          && d.v is string && d.v.size() > 0 && d.v.size() <= 200000
+          && d.iv is string && d.iv.size() <= 64
+          && d.salt is string && d.salt.size() <= 64
+          && d.t == request.time;
+      }
+      allow get: if true;
+      // Liste seulement de ses propres liens (pour tout effacer à la suppression du compte)
+      allow list: if request.auth != null && resource.data.owner == request.auth.uid;
+      allow create: if request.auth != null && validShare();
+      allow update: if request.auth != null && resource.data.owner == request.auth.uid && validShare();
+      allow delete: if request.auth != null && resource.data.owner == request.auth.uid;
     }
   }
 }

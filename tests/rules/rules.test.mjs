@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
 import {
-  doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, collectionGroup, query, serverTimestamp, Timestamp,
+  doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, collectionGroup, query, where, serverTimestamp, Timestamp,
 } from 'firebase/firestore';
 
 const env = await initializeTestEnvironment({
@@ -15,12 +15,17 @@ const env = await initializeTestEnvironment({
 const alice = env.authenticatedContext('alice').firestore();
 const bob = env.authenticatedContext('bob').firestore();
 const anon = env.unauthenticatedContext().firestore();
+// Lien parent : identifiants de 22 caractères, comme ceux de l'app
+const P0 = 'AAAAAAAAAAAAAAAAAAAAAA';
+const P1 = 'BBBBBBBBBBBBBBBBBBBBBB';
+const lien = (owner = 'alice') => ({ owner, v: 'texte-chiffre', iv: 'iv', salt: 'sel', t: serverTimestamp() });
 const bon = (k = 'c1') => ({ s: 'contracts', k, v: '{"child":"Léo"}', t: serverTimestamp(), d: 'appareil-1' });
 
 // Une donnée existante d'Alice, posée hors règles
 await env.withSecurityRulesDisabled(async (ctx) => {
   await setDoc(doc(ctx.firestore(), 'users/alice/data/contracts~c0'), { s: 'contracts', k: 'c0', v: 'x', t: Timestamp.now() });
   await setDoc(doc(ctx.firestore(), 'users/alice'), { cree: true });
+  await setDoc(doc(ctx.firestore(), `partages/${P0}`), { owner: 'alice', v: 'chiffre', iv: 'iv', salt: 'sel', t: Timestamp.now() });
 });
 
 const cas = [
@@ -51,6 +56,24 @@ const cas = [
   ['25. Horodatage antidaté : refusé', () => assertFails(setDoc(doc(alice, 'users/alice/data/contracts~c3'), { ...bon('c3'), t: Timestamp.fromDate(new Date('2020-01-01')) }))],
   ['26. Identifiant d’appareil de 65 caractères : refusé', () => assertFails(setDoc(doc(alice, 'users/alice/data/contracts~c4'), { ...bon('c4'), d: 'x'.repeat(65) }))],
   ['27. Écriture ailleurs que sous users/{uid}/data : refusée', () => assertFails(setDoc(doc(alice, 'autre/alice'), { a: 1 }))],
+  // Lien parent
+  ['28. Anonyme lit un lien dont il a l’identifiant', () => assertSucceeds(getDoc(doc(anon, `partages/${P0}`)))],
+  ['29. Anonyme liste les liens : refusé', () => assertFails(getDocs(collection(anon, 'partages')))],
+  ['30. Bob liste les liens d’Alice : refusé', () => assertFails(getDocs(query(collection(bob, 'partages'), where('owner', '==', 'alice'))))],
+  ['31. Bob liste tous les liens : refusé', () => assertFails(getDocs(collection(bob, 'partages')))],
+  ['32. Alice liste ses propres liens', () => assertSucceeds(getDocs(query(collection(alice, 'partages'), where('owner', '==', 'alice'))))],
+  ['33. Alice crée un lien', () => assertSucceeds(setDoc(doc(alice, `partages/${P1}`), lien()))],
+  ['34. Alice met à jour son lien', () => assertSucceeds(setDoc(doc(alice, `partages/${P1}`), lien()))],
+  ['35. Anonyme crée un lien : refusé', () => assertFails(setDoc(doc(anon, 'partages/CCCCCCCCCCCCCCCCCCCCCC'), lien()))],
+  ['36. Bob crée un lien au nom d’Alice : refusé', () => assertFails(setDoc(doc(bob, 'partages/CCCCCCCCCCCCCCCCCCCCCC'), lien('alice')))],
+  ['37. Bob écrase le lien d’Alice : refusé', () => assertFails(setDoc(doc(bob, `partages/${P0}`), lien('bob')))],
+  ['38. Bob efface le lien d’Alice : refusé', () => assertFails(deleteDoc(doc(bob, `partages/${P0}`)))],
+  ['39. Anonyme efface un lien : refusé', () => assertFails(deleteDoc(doc(anon, `partages/${P0}`)))],
+  ['40. Lien avec un champ en trop : refusé', () => assertFails(setDoc(doc(alice, 'partages/DDDDDDDDDDDDDDDDDDDDDD'), { ...lien(), child: 'Léo' }))],
+  ['41. Lien de plus de 200 000 caractères : refusé', () => assertFails(setDoc(doc(alice, 'partages/DDDDDDDDDDDDDDDDDDDDDD'), { ...lien(), v: 'x'.repeat(200001) }))],
+  ['42. Lien antidaté : refusé', () => assertFails(setDoc(doc(alice, 'partages/DDDDDDDDDDDDDDDDDDDDDD'), { ...lien(), t: Timestamp.fromDate(new Date('2020-01-01')) }))],
+  ['43. Identifiant de lien trop court : refusé', () => assertFails(setDoc(doc(alice, 'partages/court'), lien()))],
+  ['44. Alice efface son lien', () => assertSucceeds(deleteDoc(doc(alice, `partages/${P0}`)))],
 ];
 
 let ok = 0;

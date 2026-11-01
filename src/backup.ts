@@ -17,8 +17,13 @@ export interface BackupFile {
   data: db.Dump;
 }
 
+/** Le lien parent (secret et code) ne part jamais dans un fichier : qui l'aurait ouvrirait la page des parents. */
+export function sansLiens(d: db.Dump): db.Dump {
+  return { ...d, contracts: (d.contracts as Contract[]).map(({ partage: _, ...c }) => c) };
+}
+
 export async function buildBackup(): Promise<File> {
-  const data = await db.dumpAll();
+  const data = sansLiens(await db.dumpAll());
   const b: BackupFile = { format: FORMAT, version: FORMAT_VERSION, createdAt: new Date().toISOString(), data };
   const name = `pilote-am-sauvegarde-${today()}.json`;
   return new File([JSON.stringify(b)], name, { type: 'application/json' });
