@@ -589,8 +589,7 @@ h1.h-card { font-size: 25px; }
 .hero-meta span + span::before { content: '●'; color: var(--accent); margin-right: 6px; font-size: 9px; vertical-align: 2px; }
 /* Formulaire de compte ouvert à la place des boutons, sans faire défiler la page */
 .hero-form { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 16px; scroll-margin-top: 16px; }
-.hero-video { display: none; }
-.hero-video .video-frame { max-width: 280px; }
+.hero-video { display: block; }
 /* Simulateur : résultat collé en bas pendant la saisie */
 .sim-sticky { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--safe-b) + 12px); z-index: 20; display: flex; align-items: center; gap: 10px; width: calc(100% - 2 * var(--gutter)); max-width: 560px; padding: 12px 16px; border: 0; border-radius: var(--r-md); background: var(--primary); color: var(--primary-ink); font: inherit; cursor: pointer; box-shadow: 0 12px 30px -12px rgb(30 32 29 / 0.5); transition: opacity 0.2s; }
 .sim-sticky.with-tabbar { bottom: calc(var(--tabbar-h) + var(--safe-b) + 12px); }
@@ -621,7 +620,9 @@ h1.h-card { font-size: 25px; }
   .landing .hero-title { font-size: 52px; }
   .hero-lead { font-size: 18px; }
   .hero-cta .btn { flex: none; }
-  .hero-video { display: block; }
+  .apercu-video { flex-direction: column; align-items: center; text-align: center; padding: 18px; max-width: 340px; margin-left: auto; }
+  .apercu-ecran { width: 240px; }
+  .apercu-legende { align-items: center; }
 }
 
 /* Horaires prévus en JetBrains Mono (charte : « 08h15 → 17h45 ») */
@@ -753,3 +754,40 @@ h1.h-card { font-size: 25px; }
 .cal-net { font-family: var(--font-num); font-size: 14px; }
 .cal-ev { color: var(--accent-ink); font-weight: 600; }
 .decl-line.is-current { background: var(--primary-soft); border-radius: 8px; padding-inline: 8px; }
+
+/* ---------- Vidéos au bon moment ---------- */
+/* Affiche dans la charte : vidéo, durée, avec le son */
+.video-affiche {
+  position: absolute; inset: 0; border: 0; cursor: pointer; padding: 28px 22px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center;
+  background: radial-gradient(120% 80% at 50% 0%, #fff 0%, #f7f4ef 60%, #efe7dc 100%); color: #1e201d; font: inherit;
+}
+.video-affiche .logo { color: #1e201d; }
+.video-affiche-eyebrow { font-family: var(--font-num); font-size: 12px; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; color: #9b5733; }
+.video-affiche-titre { font-family: var(--font-display); font-size: 30px; font-weight: 600; line-height: 1.05; max-width: 11em; }
+.video-affiche .video-play { width: 76px; height: 76px; margin-top: 6px; }
+.video-affiche-son { font-size: 13px; color: #686660; }
+@media (hover: hover) { .video-affiche:hover .video-play { transform: scale(1.06); } }
+.video-play { transition: transform 0.15s; }
+/* Fin d'un passage : la vidéo entière, ou revoir */
+.video-fin { position: absolute; inset: auto 0 0 0; padding: 16px; display: flex; flex-direction: column; gap: 8px; background: linear-gradient(180deg, rgb(30 32 29 / 0), rgb(30 32 29 / 0.75) 40%); }
+.video-fin .btn-outline { background: rgb(247 244 239 / 0.95); }
+/* Bulle d'aide posée sur l'écran concerné */
+.aide-video { display: flex; align-items: stretch; gap: 0; align-self: flex-start; max-width: 100%; border: 1px solid var(--accent-soft); background: var(--primary-soft); border-radius: 999px; overflow: hidden; }
+.aide-video-btn { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 14px 4px 5px; border: 0; background: none; font: inherit; font-size: 15px; color: var(--ink); cursor: pointer; text-align: left; }
+.aide-video-btn .video-play { width: 34px; height: 34px; flex: none; box-shadow: none; }
+.aide-video-x { min-width: 44px; border: 0; border-left: 1px solid var(--accent-soft); background: none; font-size: 22px; color: var(--ink-2); cursor: pointer; }
+.foot-aide { display: flex; justify-content: center; }
+/* Page d'accueil : aperçu animé sans le son */
+.apercu-video { display: flex; gap: 16px; align-items: center; width: 100%; padding: 12px; text-align: left; font: inherit; color: var(--ink); cursor: pointer; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow-tab); }
+.apercu-ecran { position: relative; flex: none; width: 128px; aspect-ratio: 9 / 16; border-radius: 18px; overflow: hidden; border: 4px solid #1e201d; background: #f7f4ef; display: grid; place-items: center; }
+.apercu-ecran video, .apercu-ecran img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.apercu-ecran .video-play { position: relative; width: 54px; height: 54px; box-shadow: 0 8px 24px -6px rgb(30 32 29 / 0.5); }
+.apercu-legende { display: flex; flex-direction: column; gap: 6px; }
+.apercu-legende b { font-family: var(--font-display); font-size: 26px; font-weight: 600; line-height: 1.05; }
+.apercu-legende small { font-size: 15px; color: var(--ink-2); }
+@media (hover: hover) { .apercu-video:hover { box-shadow: var(--shadow-hover); } .apercu-video:hover .video-play { transform: scale(1.06); } }
+/* Liste des vidéos */
+.video-li-ico .video-play { width: 34px; height: 34px; box-shadow: none; }
+.video-vue { color: var(--ok); font-weight: 700; }
+.nowrap { white-space: nowrap; }

@@ -6,6 +6,7 @@ import { logUsage, state, toast, useStore } from '../store';
 import { shareText } from '../share';
 import { shareUrl } from '../partage/crypto';
 import { Banner, Sheet } from '../ui/kit';
+import { AideVideo } from '../ui/VideoGuide';
 import { Icon } from '../ui/icons';
 
 const cloud = () => import('../cloud');
@@ -29,6 +30,7 @@ export function PartageCard({ cid }: { cid: string }) {
   return (
     <section class="card stack-sm" aria-labelledby="partage-t">
       <h2 id="partage-t" class="row"><Icon name="users" />Lien pour les parents</h2>
+      <AideVideo id="inviter" />
       {!k && (
         <>
           <p>Les parents de {c.child} suivent sa journée en direct et retrouvent leur déclaration Pajemploi prête à recopier, sans compte ni mot de passe.</p>

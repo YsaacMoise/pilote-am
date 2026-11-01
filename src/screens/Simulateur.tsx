@@ -14,6 +14,7 @@ import {
 import { calendrier, levierTarif, selonRevenus, tarifMaxSansDepassement, type Evenement } from '../engine/calendrier';
 import { Banner, EuroInput, NumberInput, Seg, Stepper, Switch, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
+import { AideVideo } from '../ui/VideoGuide';
 import { shareText } from '../share';
 
 const nf = new Intl.NumberFormat('fr-FR');
@@ -212,6 +213,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
       <main class="sim-main">
         <div class="sim-form">
         <p class="hint">Pour une famille qui emploie une assistante maternelle. Tout est calculé sur ce téléphone : rien n’est envoyé.</p>
+        {connecte && <AideVideo id="simulateur" />}
 
         <section class="card">
           <fieldset>

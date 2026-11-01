@@ -5,6 +5,8 @@ import { dayInfo, type DayInfo } from '../engine/payroll';
 import { AM_ABS_LABEL, CHILD_ABS_LABEL, type AmAbs, type ChildAbs, type Contract, type DayRec, type Presence } from '../engine/model';
 import { hoursLabel } from '../engine/money';
 import { Banner, CHILD_COLORS, Choices, DateInput, Gommette, Sheet, Stepper, Switch, Topbar } from '../ui/kit';
+import { AideVideo, BienvenueDemo } from '../ui/VideoGuide';
+import { isDemo } from '../db';
 import { Icon } from '../ui/icons';
 
 const fmtH = (t: string) => t.replace(/^0(\d)/, '$1').replace(':', ' h ');
@@ -51,6 +53,8 @@ export function Today() {
     <>
       <Topbar title={day === t ? 'Aujourd’hui' : dayLabel(day).replace(/^./, (x) => x.toUpperCase())} sub={day === t ? dayLabel(day) : day < t ? `il y a ${daysBetween(day, t)} jour${daysBetween(day, t) > 1 ? 's' : ''}` : 'à venir'} screen="aujourdhui" />
       <main>
+        {isDemo() && <BienvenueDemo />}
+        <AideVideo id="pointer" />
         <nav aria-label="Choisir le jour" class="daystrip">
           {days.map((d) => {
             const flag = s.contracts.some((c) => dayInfo(ctxFor(c), d).departOublie);

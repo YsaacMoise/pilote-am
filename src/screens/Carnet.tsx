@@ -5,6 +5,7 @@ import { dayInfo } from '../engine/payroll';
 import type { Contract, Journal } from '../engine/model';
 import { Gommette, Sheet, Topbar } from '../ui/kit';
 import { Icon, type IconName } from '../ui/icons';
+import { AideVideo } from '../ui/VideoGuide';
 import { shareText } from '../share';
 
 type Kind = Journal['kind'];
@@ -42,6 +43,7 @@ export function Carnet() {
     <>
       <Topbar title="Carnet" sub={dayLabel(t)} screen="carnet" />
       <main>
+        {kids.length > 0 && <AideVideo id="carnet" />}
         {!kids.length && (
           <div class="card empty">
             <h2>Pas d’enfant aujourd’hui</h2>

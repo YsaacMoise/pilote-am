@@ -12,7 +12,7 @@ import { euros, hoursLabel } from '../engine/money';
 import { Gommette, Switch } from '../ui/kit';
 import { Logo } from '../ui/Logo';
 import { Icon } from '../ui/icons';
-import { VideoClip } from '../ui/VideoGuide';
+import { AideVideo } from '../ui/VideoGuide';
 
 const CODE_KEY = (id: string) => `pam-parent-code-${id}`;
 const KIND: Record<EntreeCarnet['kind'], string> = { repas: 'Repas', sieste: 'Sieste', change: 'Change', humeur: 'Humeur', soin: 'Soin', note: 'Note' };
@@ -97,15 +97,12 @@ export function Parent({ link }: { link: string }) {
         )}
         {etat.k === 'code' && keys && (
           <>
+            <AideVideo id="parents" permanente />
             <SaisieCode secret={keys.secret} doc={etat.doc} onOk={(c, snap, retenir) => {
               code.current = c;
               if (retenir) lsSet(CODE_KEY(keys.id), c);
               setEtat({ k: 'ok', doc: etat.doc, snap });
             }} />
-            <section class="card stack-sm" aria-labelledby="video-p">
-              <h2 id="video-p" class="ph-h2 sm">Comment ça marche</h2>
-              <VideoClip clip="parents" />
-            </section>
           </>
         )}
         <p class="foot">Lien privé, à ne pas transférer.</p>
@@ -194,6 +191,7 @@ function Vue({ snap }: { snap: ParentSnapshot }) {
           <span class="live-dot" aria-hidden="true" />Mis à jour en direct · dernière nouvelle {majJour === jour ? `à ${majHeure}` : `le ${dayLabel(majJour)} à ${majHeure}`}
         </p>
         <p class="foot">Lien privé, à ne pas transférer. {cap(snap.am)} peut le couper à tout moment.</p>
+        <div class="foot-aide"><AideVideo id="parents" permanente /></div>
       </main>
     </div>
   );
