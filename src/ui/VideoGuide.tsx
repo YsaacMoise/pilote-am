@@ -18,9 +18,9 @@ interface ClipInfo { titre: string; duree: string; resume: string; pret: boolean
 /** `pret` : le fichier est dans public/videos/. Une vidéo pas encore prête n'apparaît nulle part. */
 export const CLIPS: Record<Clip, ClipInfo> = {
   quotidien: { titre: 'Une journée avec Arvela', duree: '1 min', pret: true, resume: 'Pointer une arrivée et un départ, noter un repas, envoyer le résumé aux parents, voir ce qui est à déclarer à la fin du mois.' },
-  mois: { titre: 'Ta fin de mois, prête à déclarer', duree: '37 s', pret: true, resume: 'Ce que la famille doit verser, les cases Pajemploi dans l’ordre, l’envoi au parent, le contrôle du bulletin.' },
-  inviter: { titre: 'Inviter les parents', duree: '34 s', pret: true, resume: 'Créer le lien, donner le code de vive voix, envoyer le lien. Ce que les parents voient, et ce qu’ils ne peuvent pas faire.' },
-  simulateur: { titre: 'Simuler un accueil', duree: '34 s', pret: true, resume: 'Le coût réel pour une nouvelle famille, mois par mois, avant de signer.' },
+  mois: { titre: 'Ta fin de mois, prête à déclarer', duree: '47 s', pret: true, resume: 'Ce que la famille doit verser, les cases Pajemploi dans l’ordre, l’envoi au parent, le contrôle du bulletin.' },
+  inviter: { titre: 'Inviter les parents', duree: '41 s', pret: true, resume: 'Créer le lien, donner le code de vive voix, envoyer le lien. Ce que les parents voient, et ce qu’ils ne peuvent pas faire.' },
+  simulateur: { titre: 'Simuler un accueil', duree: '46 s', pret: true, resume: 'Le coût réel pour une nouvelle famille, mois par mois, avant de signer.' },
   parents: { titre: 'Suivre la journée de votre enfant', duree: '45 s', pret: true, resume: 'Ouvrir le lien, taper le code, suivre la journée en direct, retrouver les cases Pajemploi du mois.' },
   installer: { titre: 'Installer l’app', duree: '21 s', pret: true, resume: 'Les gestes pour mettre Arvela sur l’écran d’accueil. Une fois installée, elle marche même sans réseau.' },
 };
