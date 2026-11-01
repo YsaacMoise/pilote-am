@@ -28,9 +28,9 @@ export function SimApercu() {
   return (
     <section class="sim-apercu" aria-labelledby="sim-t">
       <div class="sim-apercu-txt">
-        <span class="eyebrow">Simulateur · règles 2026</span>
-        <h2 id="sim-t">Combien coûte ton accueil à une famille ?</h2>
-        <p>Bouge les curseurs. Le salaire, l’aide de la CAF et le crédit d’impôt sont calculés tout de suite. Pratique pour répondre aux parents que tu rencontres.</p>
+        <span class="eyebrow">Simulateur gratuit · règles 2026</span>
+        <h2 id="sim-t">Le coût réel d’une assistante maternelle pour une famille</h2>
+        <p>Salaire, aide de la CAF et crédit d’impôt, calculés en direct : le reste à payer chaque mois. Pour répondre aux parents que tu rencontres.</p>
       </div>
       <div class="sim-apercu-box">
         <div class="sim-sliders">

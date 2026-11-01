@@ -64,8 +64,12 @@ export function App() {
       controle: 'Contrôle du bulletin', conges: 'Congés', fin: 'Fin de contrat', fiscal: 'Impôts', sauvegarde: 'Sauvegarde',
       pilote: 'Données du pilote', compte: 'Compte', reglages: 'Réglages', regles: 'Comment l’app calcule', confidentialite: 'Confidentialité', mentions: 'Mentions légales', installer: 'Installer', simulateur: 'Simuler un accueil',
     } as Record<string, string>)[p] ?? 'Arvela';
-    document.title = `${title} · Arvela`;
-  }, [p]);
+    // Avant le compte, c'est le site public : titres pensés pour les moteurs de recherche.
+    const site = s.ready && !s.settings.onboarded && !isDemo();
+    if (site && p === 'simulateur') document.title = 'Simulateur du coût d’une assistante maternelle · Arvela';
+    else if (site && p !== 'confidentialite' && p !== 'mentions') document.title = 'Arvela · L’app des assistantes maternelles';
+    else document.title = `${title} · Arvela`;
+  }, [p, s.ready, s.settings.onboarded]);
 
   // Lien parent ouvert depuis l'app (rare : il s'ouvre d'habitude seul, voir main.tsx)
   if (p === 'p' && parts[1]) { location.reload(); return null; }
