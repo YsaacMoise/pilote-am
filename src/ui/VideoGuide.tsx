@@ -4,7 +4,7 @@
 // Fichiers dans public/videos/ : arvela-quotidien, arvela-installer-iphone, arvela-installer-android (.mp4 H.264 + .vtt).
 // Fabriquées avec Remotion (projet arvela-motion) ; voix Google AI Studio, musique Lyria (app Gemini), sons d'interface maison.
 // Ils ne sont pas mis en cache hors ligne (trop lourds) : une vidéo ne se charge que si on appuie sur Lecture.
-import { useRef, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { Logo } from './Logo';
 
 export type Clip = 'quotidien' | 'installer';
@@ -23,9 +23,11 @@ export function isIOS(): boolean {
 }
 const systemeDetecte = (): Systeme => (/Android/i.test(navigator.userAgent) ? 'android' : 'iphone');
 
-export function VideoClip({ clip }: { clip: Clip }) {
+/** `autoStart` : lance la lecture dès l'ouverture (vidéo ouverte d'un geste, dans un panneau). Si le navigateur refuse, les commandes restent visibles. */
+export function VideoClip({ clip, autoStart = false }: { clip: Clip; autoStart?: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);
-  const [started, setStarted] = useState(false);
+  const [started, setStarted] = useState(autoStart);
+  useEffect(() => { if (autoStart) ref.current?.play().catch(() => {}); }, []);
   const [sys, setSys] = useState<Systeme>(systemeDetecte);
   const c = CLIPS[clip];
   const fichier = clip === 'installer' ? `arvela-installer-${sys}` : 'arvela-quotidien';
