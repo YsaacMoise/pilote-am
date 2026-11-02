@@ -1,0 +1,44 @@
+{
+ "source": "Mesuré par scripts/reperes.py depuis voix/aide-pointer.json — ne pas modifier à la main",
+ "fichier": "voix/aide-pointer.wav",
+ "duree": 7.28,
+ "mots": {
+  "arrive": 0.58,
+  "arrivee": 1.82,
+  "soir": 2.68,
+  "depart": 3.26,
+  "oubli": 4.3,
+  "modifier": 5.44,
+  "corriges": 6.44,
+  "heure": 6.84,
+  "fin": 6.94
+ },
+ "phrases": [
+  {
+   "texte": "Un enfant arrive ?",
+   "debut": 0.259,
+   "fin": 0.86
+  },
+  {
+   "texte": "Touche Arrivée.",
+   "debut": 1.28,
+   "fin": 2.0
+  },
+  {
+   "texte": "Le soir, Départ.",
+   "debut": 2.62,
+   "fin": 3.5
+  },
+  {
+   "texte": "Un oubli, une erreur ?",
+   "debut": 4.14,
+   "fin": 5.32
+  },
+  {
+   "texte": "Modifier, et tu corriges l'heure.",
+   "debut": 5.44,
+   "fin": 6.94
+  }
+ ],
+ "a_ecouter": []
+}

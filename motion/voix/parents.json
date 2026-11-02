@@ -1,0 +1,34 @@
+{
+ "id": "parents",
+ "usage": "Vidéo des parents, sur leur page « Comment ça marche ». Public : un parent qui a reçu le lien, souvent au travail.",
+ "outil": "Google AI Studio, page Generate speech",
+ "modele": "Gemini 3.8 Flash TTS",
+ "voix": "Nika",
+ "style": "Voix française douce et posée, rassurante, qui vouvoie un parent au travail. Chaleureuse et sincère, jamais commerciale. Débit naturel, ni lent ni pressé. Une petite pause avant « Il dort depuis midi quarante ».",
+ "texte": "Midi quarante. Vous êtes au travail, et vous pensez à Adam. Vous ouvrez le lien de Sonia. Il dort depuis midi quarante. Il a bien mangé. Ce lien est privé : le code, Sonia vous le donne de vive voix. Et à la fin du mois, vos cases Pajemploi sont prêtes. Vous n'avez plus qu'à les recopier.",
+ "fichier": "public/voix/parents.wav",
+ "reperes": {
+  "quarante": "quarante",
+  "travail": "travail",
+  "pensez": "pensez",
+  "ouvrez": "ouvrez",
+  "lien": "lien",
+  "dort": "dort",
+  "quarante2": {
+   "mot": "quarante",
+   "n": 2
+  },
+  "mange": "mangé",
+  "prive": "privé",
+  "code": "code",
+  "voix": "voix",
+  "fin": "fin",
+  "cases": "cases",
+  "pretes": "prêtes",
+  "recopier": "recopier",
+  "finRecopier": {
+   "mot": "recopier",
+   "bord": "fin"
+  }
+ }
+}

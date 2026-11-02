@@ -1,0 +1,66 @@
+{
+ "source": "Mesuré par scripts/reperes.py depuis voix/parents.json — ne pas modifier à la main",
+ "fichier": "voix/parents.wav",
+ "duree": 21.52,
+ "mots": {
+  "quarante": 0.68,
+  "travail": 2.26,
+  "pensez": 3.48,
+  "ouvrez": 5.18,
+  "lien": 5.64,
+  "dort": 7.16,
+  "quarante2": 8.6,
+  "mange": 9.98,
+  "prive": 12.24,
+  "code": 13.32,
+  "voix": 15.14,
+  "fin": 16.52,
+  "cases": 17.62,
+  "pretes": 18.98,
+  "recopier": 20.74,
+  "finRecopier": 21.14
+ },
+ "phrases": [
+  {
+   "texte": "Midi quarante.",
+   "debut": 0.277,
+   "fin": 0.98
+  },
+  {
+   "texte": "Vous êtes au travail, et vous pensez à Adam.",
+   "debut": 1.62,
+   "fin": 4.18
+  },
+  {
+   "texte": "Vous ouvrez le lien de Sonia.",
+   "debut": 4.88,
+   "fin": 6.3
+  },
+  {
+   "texte": "Il dort depuis midi quarante.",
+   "debut": 7.02,
+   "fin": 8.86
+  },
+  {
+   "texte": "Il a bien mangé.",
+   "debut": 9.58,
+   "fin": 10.36
+  },
+  {
+   "texte": "Ce lien est privé : le code, Sonia vous le donne de vive voix.",
+   "debut": 11.32,
+   "fin": 15.42
+  },
+  {
+   "texte": "Et à la fin du mois, vos cases Pajemploi sont prêtes.",
+   "debut": 16.24,
+   "fin": 19.3
+  },
+  {
+   "texte": "Vous n'avez plus qu'à les recopier.",
+   "debut": 19.82,
+   "fin": 21.14
+  }
+ ],
+ "a_ecouter": []
+}
