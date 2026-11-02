@@ -3,7 +3,7 @@ import { Audio } from '@remotion/media';
 import { Frame } from './components/Frame';
 import { Galets } from './components/Galets';
 import { C, F, s } from './theme';
-import voix from '../public/voix/essais.json';
+import voix from '../public/voix/accueil-journee.reperes.json';
 import E from '../public/ecrans/essais/essais.json';
 
 // Deux essais de 10 secondes, ton chaleureux et doux, voix Nika :
@@ -20,6 +20,8 @@ const fade = (t: number, a: number, b: number, e = ease) => interpolate(t, [a, b
 const SW = 390;
 const SH = 844;
 const img = (n: string) => staticFile(`ecrans/essais/${n}.png`);
+// Couleur de la charte avec une transparence (les teintes suivent l'app)
+const rgba = (hex: string, a: number) => `rgba(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(',')},${a})`;
 
 // ---------- Briques d'écran (coordonnées de l'écran du téléphone, 390 × 844) ----------
 const Full: React.FC<{ n: string; o?: number; dx?: number; dy?: number }> = ({ n, o = 1, dx = 0, dy = 0 }) =>
@@ -65,14 +67,14 @@ const Insert: React.FC<{ before: string; after: string; top: number; h: number; 
 };
 
 // Feuille qui monte : voile sombre sur l'écran, puis le panneau de la capture « feuille ouverte » glisse du bas
-const SHEET_TOP: Record<string, number> = { 'a-repas': 55, 'a-sommeil': 24 };
+const SHEET_TOP: Record<string, number> = { 'a-repas': R.aRepasFeuille.top, 'a-sommeil': R.aSommeilFeuille.top };
 const Sheet: React.FC<{ n: string; t: number; up: number; down: number }> = ({ n, t, up, down }) => {
   const k = fade(t, up, up + 0.34) * (1 - fade(t, down, down + 0.28, Easing.bezier(0.5, 0, 0.75, 0)));
   if (k <= 0.001) return null;
   const top = SHEET_TOP[n];
   return (
     <>
-      <div style={{ position: 'absolute', inset: 0, background: `rgba(30,32,29,${0.45 * Math.min(1, k * 1.4)})` }} />
+      <div style={{ position: 'absolute', inset: 0, background: rgba(C.ink, 0.45 * Math.min(1, k * 1.4)) }} />
       <div style={{ position: 'absolute', left: 0, top: top + (1 - k) * (SH - top), width: SW, height: SH - top, overflow: 'hidden', borderRadius: '20px 20px 0 0' }}>
         <Img src={img(n)} style={{ position: 'absolute', left: 0, top: -top, width: SW }} />
       </div>
@@ -101,7 +103,7 @@ const Halo: React.FC<{ t: number; from: number; to: number; r: Rect; pad?: numbe
   if (k <= 0.001) return null;
   const pulse = 0.5 + 0.5 * Math.sin((t - from) * 5);
   return (
-    <div style={{ position: 'absolute', left: r.left - pad, top: r.top - pad, width: r.w + pad * 2, height: r.h + pad * 2, borderRadius: 14, border: `2.5px solid ${C.accent}`, boxShadow: `0 0 ${10 + pulse * 10}px rgba(200,125,85,${0.35 + pulse * 0.2})`, background: `rgba(239,213,193,${0.18 * k})`, opacity: k }} />
+    <div style={{ position: 'absolute', left: r.left - pad, top: r.top - pad, width: r.w + pad * 2, height: r.h + pad * 2, borderRadius: 14, border: `2.5px solid ${C.accent}`, boxShadow: `0 0 ${10 + pulse * 10}px ${rgba(C.accent, 0.35 + pulse * 0.2)}`, background: rgba(C.accentSoft, 0.18 * k), opacity: k }} />
   );
 };
 
@@ -151,7 +153,7 @@ const Signature: React.FC<{ t: number; at: number; fin: number }> = ({ t, at, fi
   if (k <= 0) return null;
   const out = fade(t, fin - 0.35, fin, Easing.linear);
   return (
-    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', background: `rgba(247,244,239,${0.86 * k})`, opacity: 1 - out }}>
+    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', background: rgba(C.bg, 0.86 * k), opacity: 1 - out }}>
       <div style={{ translate: `0 ${(1 - k) * 40}px`, opacity: k, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <Galets size={190} start={s(at)} />
         <div style={{ fontFamily: F.display, fontWeight: 600, fontSize: 84, letterSpacing: '0.18em', marginTop: 26, color: C.ink }}>ARVELA</div>
@@ -249,8 +251,8 @@ export const EssaiDeuxTelephones: React.FC = () => {
           const k = fade(t, direct - 0.3, direct + 0.1);
           if (k <= 0) return null;
           const w = ((t - direct) * 1.4) % 1;
-          const y = R.p2carte.top + R.p2carte.h + 22;
-          return <div style={{ position: 'absolute', left: 70, top: y - 14, width: 28, height: 28, borderRadius: 14, border: `2.5px solid ${C.ok}`, scale: String(0.6 + w * 1.6), opacity: k * (1 - w) }} />;
+          const d = R.p2direct;
+          return <div style={{ position: 'absolute', left: d.x - 14, top: d.y - 14, width: 28, height: 28, borderRadius: 14, border: `2.5px solid ${C.ok}`, scale: String(0.6 + w * 1.6), opacity: k * (1 - w) }} />;
         })()}
       </>
     );
@@ -266,7 +268,7 @@ export const EssaiDeuxTelephones: React.FC = () => {
       const u = Math.max(0, k - lag);
       const x = interpolate(u, [0, 1], [x0, x1]);
       const y = interpolate(u, [0, 1], [y0, y1]) - Math.sin(u * Math.PI) * 260;
-      return <div key={i} style={{ position: 'absolute', left: x - 17 + i * 3, top: y - 17 + i * 3, width: 34 - i * 6, height: 34 - i * 6, borderRadius: 20, background: C.accent, opacity: (1 - i * 0.35) * Math.min(1, k * 6, (1 - k) * 8), boxShadow: i === 0 ? '0 8px 20px -6px rgba(155,87,51,0.6)' : 'none' }} />;
+      return <div key={i} style={{ position: 'absolute', left: x - 17 + i * 3, top: y - 17 + i * 3, width: 34 - i * 6, height: 34 - i * 6, borderRadius: 20, background: C.accent, opacity: (1 - i * 0.35) * Math.min(1, k * 6, (1 - k) * 8), boxShadow: i === 0 ? `0 8px 20px -6px ${rgba(C.accentInk, 0.6)}` : 'none' }} />;
     });
     return <>{pts}</>;
   };
@@ -285,7 +287,7 @@ export const EssaiDeuxTelephones: React.FC = () => {
   return (
     <Frame>
       {/* Fond : deux halos doux qui respirent */}
-      <AbsoluteFill style={{ background: `radial-gradient(circle at ${30 + Math.sin(t * 0.5) * 6}% 62%, rgba(239,213,193,0.75), rgba(247,244,239,0) 46%), radial-gradient(circle at ${72 - Math.sin(t * 0.4) * 6}% 58%, rgba(94,113,101,0.16), rgba(247,244,239,0) 44%)` }} />
+      <AbsoluteFill style={{ background: `radial-gradient(circle at ${30 + Math.sin(t * 0.5) * 6}% 62%, ${rgba(C.accentSoft, 0.75)}, ${rgba(C.bg, 0)} 46%), radial-gradient(circle at ${72 - Math.sin(t * 0.4) * 6}% 58%, ${rgba(C.sauge, 0.16)}, ${rgba(C.bg, 0)} 44%)` }} />
       <AbsoluteFill style={{ transformOrigin: `${fx}px ${fy}px`, transform: `scale(${zoom}) translateX(${(540 - fx) * (zoom - 1) / zoom}px)` }}>
         <div style={{ position: 'absolute', inset: 0, translate: `0 ${enter(0) * 1200}px`, opacity: 1 - 0.55 * fade(t, parents - 0.4, parents + 0.4, inOut) * (1 - fade(t, sigAt - 0.3, sigAt + 0.2)) }}>
           <PhoneBox cx={xAM} top={top} S={S}>{am}</PhoneBox>
@@ -311,14 +313,14 @@ const cB = (k: string) => M[k] - OFF_B;
 export const DUREE_B = cB('finDoux') + 2.7;
 
 const mix = (a: string, b: string, k: number) => {
-  const p = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const p = (h: string) => (h.startsWith('#') ? [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)) : (h.match(/\d+/g) ?? []).slice(0, 3).map(Number));
   const A = p(a), B = p(b);
   return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * k)).join(',')})`;
 };
-// Couleur du ciel selon le moment de la journée (0 aube, 1 midi, 2 après-midi)
+// Couleur du ciel selon le moment de la journée (0 aube, 1 midi, 2 après-midi), tirée des couleurs de l'app
 const ciel = (m: number) => {
-  const haut = ['#F2D6C2', '#F6EEE3', '#EFD3BD'];
-  const bas = ['#F7F0E8', '#F7F4EF', '#F6E9DE'];
+  const haut = [mix(C.bg, C.accentSoft, 0.75), mix(C.bg, C.accentSoft, 0.3), mix(C.bg, C.accentSoft, 0.85)];
+  const bas = [mix(C.bg, C.accentSoft, 0.2), C.bg, mix(C.bg, C.accentSoft, 0.35)];
   const i = Math.min(1, Math.floor(m)), k = m - i;
   return [mix(haut[i], haut[i + 1], k), mix(bas[i], bas[i + 1], k)];
 };
@@ -402,7 +404,7 @@ export const EssaiJournee: React.FC = () => {
   return (
     <Frame>
       <AbsoluteFill style={{ background: `linear-gradient(180deg, ${haut} 0%, ${bas} 62%)` }} />
-      <div style={{ position: 'absolute', left: sx - 260, top: sy - 260, width: 520, height: 520, borderRadius: 260, background: 'radial-gradient(circle, rgba(232,170,120,0.5) 0%, rgba(232,170,120,0.2) 38%, rgba(232,170,120,0) 70%)' }} />
+      <div style={{ position: 'absolute', left: sx - 260, top: sy - 260, width: 520, height: 520, borderRadius: 260, background: `radial-gradient(circle, ${rgba(C.accent, 0.42)} 0%, ${rgba(C.accent, 0.16)} 38%, ${rgba(C.accent, 0)} 70%)` }} />
       <Heure t={t} etapes={[{ at: huit - 0.15, h: '8 h 00' }, { at: push + 0.1, h: '11 h 50' }, { at: tapSommeil - 0.35, h: '12 h 40' }]} />
       <Caption t={t} blocs={blocs} y={276} size={66} />
       <div style={{ position: 'absolute', inset: 0, transformOrigin: '540px 1200px', transform: `scale(${drift})`, translate: `0 ${phoneIn * 1300}px` }}>

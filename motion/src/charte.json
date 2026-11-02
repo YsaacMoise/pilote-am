@@ -1,0 +1,108 @@
+{
+ "source": "Généré par motion/scripts/charte.mjs depuis src/styles.css et src/ui/Logo.tsx — ne pas modifier à la main",
+ "couleurs": {
+  "bg": "#f7f4ef",
+  "surface": "#ffffff",
+  "surface-2": "#eae4dc",
+  "ink": "#1e201d",
+  "ink-2": "#686660",
+  "line": "#e2dbd0",
+  "line-strong": "#857f76",
+  "primary": "#1e201d",
+  "primary-ink": "#f7f4ef",
+  "primary-soft": "#f6eae2",
+  "primary-press": "#3a3c37",
+  "accent": "#c87d55",
+  "accent-large": "#bf7650",
+  "accent-ink": "#9b5733",
+  "accent-soft": "#efd5c1",
+  "sauge": "#5e7165",
+  "sauge-soft": "#eef1ee",
+  "ok-line": "#c5dfd0",
+  "warn-line": "#f3d9b9",
+  "danger-line": "#f1c9ca",
+  "ok": "#2e6f4e",
+  "ok-soft": "#ebf3ee",
+  "warn": "#94540f",
+  "warn-soft": "#fdf3e7",
+  "danger": "#a8383b",
+  "danger-soft": "#fbecec",
+  "scrim": "rgb(30 32 29 / 0.45)"
+ },
+ "familles": {
+  "body": "'Plus Jakarta Sans Variable', -apple-system, system-ui, sans-serif",
+  "display": "'Cormorant Garamond', Georgia, 'Times New Roman', serif",
+  "num": "'JetBrains Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace"
+ },
+ "polices": [
+  {
+   "famille": "Cormorant Garamond",
+   "style": "normal",
+   "poids": "600",
+   "fichier": "cormorant-garamond-latin-600-normal.woff2"
+  },
+  {
+   "famille": "Cormorant Garamond",
+   "style": "normal",
+   "poids": "700",
+   "fichier": "cormorant-garamond-latin-700-normal.woff2"
+  },
+  {
+   "famille": "Cormorant Garamond",
+   "style": "italic",
+   "poids": "400",
+   "fichier": "cormorant-garamond-latin-400-italic.woff2"
+  },
+  {
+   "famille": "Plus Jakarta Sans Variable",
+   "style": "normal",
+   "poids": "200 800",
+   "fichier": "plus-jakarta-sans-latin-wght-normal.woff2"
+  },
+  {
+   "famille": "JetBrains Mono Variable",
+   "style": "normal",
+   "poids": "100 800",
+   "fichier": "jetbrains-mono-latin-wght-normal.woff2"
+  }
+ ],
+ "logo": {
+  "viewBox": "0 0 120 120",
+  "elements": [
+   {
+    "tag": "rect",
+    "attrs": {
+     "x": "33",
+     "y": "18",
+     "width": "20",
+     "height": "78",
+     "rx": "10",
+     "transform": "rotate(19 43 57)",
+     "fill": "currentColor"
+    }
+   },
+   {
+    "tag": "rect",
+    "attrs": {
+     "x": "67",
+     "y": "18",
+     "width": "20",
+     "height": "78",
+     "rx": "10",
+     "transform": "rotate(-19 77 57)",
+     "fill": "currentColor",
+     "opacity": "0.88"
+    }
+   },
+   {
+    "tag": "circle",
+    "attrs": {
+     "cx": "60",
+     "cy": "73",
+     "r": "11.5",
+     "fill": "var(--accent)"
+    }
+   }
+  ]
+ }
+}

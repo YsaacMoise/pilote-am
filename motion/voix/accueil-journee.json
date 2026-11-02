@@ -1,0 +1,15 @@
+{
+ "id": "accueil-journee",
+ "usage": "Vidéo d'accueil « Une journée avec Arvela » et essais A et B. Public : assistante maternelle qui découvre Arvela.",
+ "outil": "Google AI Studio, page Generate speech",
+ "modele": "Gemini 3.8 Flash TTS",
+ "voix": "Nika",
+ "style": "Voix française chaleureuse et douce, avec le sourire, comme une amie assistante maternelle qui raconte une belle journée. Débit naturel et fluide, un peu enjoué, jamais lent. Pauses courtes entre les phrases. Jamais commercial, jamais robotique.",
+ "texte": "Huit heures. Adam arrive. Un geste, et c'est noté. Il a bien mangé. Il s'endort, tout doux. Et ses parents le voient, en direct. Le soir, plus rien à recopier. Ton mois se calcule tout seul, prêt à déclarer. Arvela. Le carnet de bord des assistantes maternelles.",
+ "fichier": "public/voix/accueil-journee.wav",
+ "reperes": {
+  "huit": "huit", "arrive": "arrive", "geste": "geste", "note": "noté", "mange": "mangé", "endort": "endort", "doux": "doux",
+  "parents": "parents", "voient": "voient", "direct": "direct",
+  "finDirect": { "mot": "direct", "bord": "fin" }, "finDoux": { "mot": "doux", "bord": "fin" }
+ }
+}

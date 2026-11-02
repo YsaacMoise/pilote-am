@@ -1,0 +1,41 @@
+{
+ "source": "Mesuré par scripts/reperes.py depuis voix/accueil-journee.json — ne pas modifier à la main",
+ "fichier": "voix/accueil-journee.wav",
+ "duree": 18.28,
+ "mots": {
+  "huit": 0.304,
+  "arrive": 1.4,
+  "geste": 2.48,
+  "note": 3.34,
+  "mange": 4.62,
+  "endort": 5.78,
+  "doux": 6.82,
+  "parents": 7.86,
+  "voient": 8.28,
+  "direct": 8.94,
+  "finDirect": 9.18,
+  "finDoux": 7.06
+ },
+ "a_ecouter": [
+  {
+   "attendu": "recopier",
+   "entendu": "recopié.",
+   "vers": 11.42
+  },
+  {
+   "attendu": "mois",
+   "entendu": "moins",
+   "vers": 12.46
+  },
+  {
+   "attendu": "arvela",
+   "entendu": "Arvelin,",
+   "vers": 15.4
+  },
+  {
+   "attendu": "maternelles",
+   "entendu": "paternelles.",
+   "vers": 17.44
+  }
+ ]
+}
