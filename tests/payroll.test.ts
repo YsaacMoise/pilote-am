@@ -804,3 +804,48 @@ describe('saisie simplifiée des congés à la reprise (31 octobre 2026)', () =>
     expect(monthBase(makeCtx(c, [], leaves, '2027-01-15'), '2026-12').retenue).toBe(0);
   });
 });
+
+describe('audit C-017 : point de départ du préavis et inaptitude (art. 120, avenant n° 10)', () => {
+  // Contrat du 5 janvier 2026 : 9 mois d'ancienneté au 30 octobre 2026.
+  const ctx9 = () => makeCtx(contract({ start: '2026-01-05', trackedFrom: '2026-01-05' }), [], [], '2026-12-31');
+  it('le préavis part de la première présentation de la lettre recommandée, pas de l’envoi ni de l’annonce', () => {
+    // Envoi le 30/10, présentée le 03/11 : 15 jours calendaires du 03/11 au 17/11.
+    const f = finDeContrat(ctx9(), '2026-10-30', 'retrait', 0, '2026-11-03');
+    expect(f.preavisLabel).toBe('15 jours calendaires');
+    expect(f.preavisFin).toBe('2026-11-17');
+    // L'ancienneté reste appréciée à l'envoi.
+    expect(f.ancienneteMois).toBe(9);
+  });
+  it('remise en main propre : le préavis part du jour de la remise', () => {
+    const f = finDeContrat(ctx9(), '2026-10-30', 'retrait', 0, '2026-10-30');
+    expect(f.preavisFin).toBe('2026-11-13');
+  });
+  it('un mois de préavis compté depuis la présentation', () => {
+    const c = contract({ start: '2025-01-06', trackedFrom: '2025-01-06' });
+    const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-28', 'demission', 0, '2026-10-31');
+    expect(f.preavisLabel).toBe('1 mois');
+    expect(f.preavisFin).toBe('2026-11-30');
+  });
+  it('une date de présentation antérieure à l’envoi est ignorée', () => {
+    expect(finDeContrat(ctx9(), '2026-10-30', 'retrait', 0, '2026-10-20').preavisFin).toBe('2026-11-13');
+  });
+  it('démission avant 3 mois : pas de préavis ; retrait avant 3 mois : 8 jours', () => {
+    const mk = () => makeCtx(contract({ start: '2026-09-01', trackedFrom: '2026-09-01' }), [], [], '2026-12-31');
+    const d = finDeContrat(mk(), '2026-10-28', 'demission', 0, '2026-10-30');
+    expect(d.preavisFin).toBe('2026-10-28');
+    expect(d.preavisLabel).toMatch(/Pas de préavis/);
+    expect(finDeContrat(mk(), '2026-10-28', 'retrait', 0, '2026-10-30').preavisFin).toBe('2026-11-06');
+  });
+  it('inaptitude professionnelle : 2/80e dès 9 mois, rien avant, sans préavis', () => {
+    const f = finDeContrat(ctx9(), '2026-10-30', 'inaptitude_pro', 0, '2026-11-03');
+    expect(f.indemniteRupture).toBe(Math.round((f.totalBrut * 2) / 80));
+    expect(f.dernierJour).toBe('2026-10-30');
+    const court = finDeContrat(makeCtx(contract({ start: '2026-05-04', trackedFrom: '2026-05-04' }), [], [], '2026-12-31'), '2026-10-30', 'inaptitude_pro');
+    expect(court.indemniteRupture).toBe(0);
+  });
+  it('inaptitude sans lien avec le travail : 1/80e dès 9 mois, sans préavis', () => {
+    const f = finDeContrat(ctx9(), '2026-10-30', 'inaptitude');
+    expect(f.indemniteRupture).toBe(Math.round(f.totalBrut / 80));
+    expect(f.dernierJour).toBe('2026-10-30');
+  });
+});
