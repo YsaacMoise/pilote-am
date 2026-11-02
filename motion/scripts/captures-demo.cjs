@@ -62,6 +62,7 @@ terminer((async () => {
 
   await etape('Plus → Simuler un accueil', async () => {
     await allerA(p, '#/plus', 900);
+    await p.locator('a.li', { hasText: 'Simuler un accueil' }).evaluate((e) => e.scrollIntoView({ block: 'center' })); await p.waitForTimeout(300);
     await shot('s-plus');
     J.sTabPlus = await rect(p.locator('.tabbar a').nth(3));
     J.sLien = await rect(p.locator('a.li', { hasText: 'Simuler un accueil' }));

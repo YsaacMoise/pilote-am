@@ -1,27 +1,29 @@
 // Vidéos en motion design, au format téléphone (9:16), montrées au moment où elles servent :
-//  - page d'accueil : un aperçu animé sans le son, qui ouvre « Une journée avec Arvela » (1 min) ;
-//  - dans l'app : une bulle « ▶ Comment… » sur l'écran concerné, qui lance le passage utile (10 à 45 s),
+//  - page d'accueil : un aperçu animé sans le son, qui ouvre « Une journée avec Arvela » (21 s) ;
+//  - dans l'app : une bulle « ▶ Comment… » sur l'écran concerné, qui lance une aide courte (9 à 11 s),
 //    puis disparaît une fois la vidéo vue ou la bulle fermée ; elle reste à portée dans « Ça coince » (en haut de l'écran) ;
 //  - Plus › Vidéos : toutes les vidéos, avec « Déjà vue ».
-// Fichiers dans public/videos/ (.mp4 H.264 + .vtt). Fabriqués avec Remotion (motion/) ; voix Google AI Studio (Nika).
+// Fichiers dans public/videos/ (.mp4 H.264 + .vtt). Fabriqués avec Remotion (motion/, « node scripts/videos.mjs ») ; voix Google AI Studio (Nika).
 // Pas de mise en cache hors ligne (trop lourd) : une vidéo ne se charge que si on appuie sur Lecture.
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { logUsage, toast } from '../store';
 import { Sheet } from './kit';
 import { Logo } from './Logo';
 
-export type Clip = 'quotidien' | 'installer' | 'parents' | 'mois' | 'inviter' | 'simulateur';
+export type Clip = 'quotidien' | 'pointer' | 'carnet' | 'installer' | 'parents' | 'mois' | 'inviter' | 'simulateur';
 type Systeme = 'iphone' | 'android';
 
 interface ClipInfo { titre: string; duree: string; resume: string; pret: boolean }
 
 /** `pret` : le fichier est dans public/videos/. Une vidéo pas encore prête n'apparaît nulle part. */
 export const CLIPS: Record<Clip, ClipInfo> = {
-  quotidien: { titre: 'Une journée avec Arvela', duree: '1 min', pret: true, resume: 'Pointer une arrivée et un départ, noter un repas, envoyer le résumé aux parents, voir ce qui est à déclarer à la fin du mois.' },
-  mois: { titre: 'Ta fin de mois, prête à déclarer', duree: '47 s', pret: true, resume: 'Ce que la famille doit verser, les cases Pajemploi dans l’ordre, l’envoi au parent, le contrôle du bulletin.' },
-  inviter: { titre: 'Inviter les parents', duree: '41 s', pret: true, resume: 'Créer le lien, donner le code de vive voix, envoyer le lien. Ce que les parents voient, et ce qu’ils ne peuvent pas faire.' },
-  simulateur: { titre: 'Simuler un accueil', duree: '46 s', pret: true, resume: 'Le coût réel pour une nouvelle famille, mois par mois, avant de signer.' },
-  parents: { titre: 'Suivre la journée de votre enfant', duree: '45 s', pret: true, resume: 'Ouvrir le lien, taper le code, suivre la journée en direct, retrouver les cases Pajemploi du mois.' },
+  quotidien: { titre: 'Une journée avec Arvela', duree: '21 s', pret: true, resume: 'Une journée d’accueil notée d’un geste, vue en direct par les parents, et le mois calculé tout seul.' },
+  pointer: { titre: 'Pointer une arrivée et un départ', duree: '9 s', pret: true, resume: 'Arrivée le matin, Départ le soir, Modifier pour corriger une heure.' },
+  carnet: { titre: 'Noter dans le carnet', duree: '10 s', pret: true, resume: 'Choisir l’enfant, noter un repas, le sommeil et le réveil : l’heure s’ajoute toute seule.' },
+  mois: { titre: 'Ta fin de mois, prête à déclarer', duree: '10 s', pret: true, resume: 'Les cases Pajemploi dans l’ordre, et l’envoi des montants au parent.' },
+  inviter: { titre: 'Inviter les parents', duree: '10 s', pret: true, resume: 'Créer le lien, l’envoyer, donner le code de vive voix.' },
+  simulateur: { titre: 'Simuler un accueil', duree: '11 s', pret: true, resume: 'Une famille appelle : son coût réel, aides de la CAF comprises, envoyé en un geste.' },
+  parents: { titre: 'Suivre la journée de votre enfant', duree: '24 s', pret: true, resume: 'Ouvrir le lien, taper le code, suivre la journée en direct, copier les cases Pajemploi du mois.' },
   installer: { titre: 'Installer l’app', duree: '21 s', pret: true, resume: 'Les gestes pour mettre Arvela sur l’écran d’accueil. Une fois installée, elle marche même sans réseau.' },
 };
 
@@ -31,12 +33,11 @@ export const VIDEOS_PRETES = true;
 /** Aides au bon moment : un passage d'une vidéo, ou une vidéo entière, rattaché à un écran. */
 export interface Aide { clip: Clip; label: string; duree: string; debut?: number; fin?: number }
 export const AIDES: Record<string, Aide | null> = {
-  // Passages de « Une journée avec Arvela » (repères des sous-titres)
-  pointer: { clip: 'quotidien', debut: 15.0, fin: 30.2, label: 'Comment pointer', duree: '15 s' },
-  carnet: { clip: 'quotidien', debut: 30.2, fin: 39.6, label: 'Comment noter dans le carnet', duree: '10 s' },
+  pointer: { clip: 'pointer', label: 'Comment pointer', duree: CLIPS.pointer.duree },
+  carnet: { clip: 'carnet', label: 'Comment noter dans le carnet', duree: CLIPS.carnet.duree },
   mois: CLIPS.mois.pret
     ? { clip: 'mois', label: 'Déclarer ton mois', duree: CLIPS.mois.duree }
-    : { clip: 'quotidien', debut: 39.6, fin: 49.0, label: 'Préparer la déclaration', duree: '10 s' },
+    : { clip: 'quotidien', label: 'Préparer la déclaration', duree: CLIPS.quotidien.duree },
   inviter: CLIPS.inviter.pret
     ? { clip: 'inviter', label: 'Comment inviter les parents', duree: CLIPS.inviter.duree }
     : { clip: 'parents', label: 'Ce que voient les parents', duree: CLIPS.parents.duree },
@@ -210,7 +211,7 @@ export function ApercuVideo() {
   const anime = !reduireMouvement();
   return (
     <>
-      <button class="apercu-video" type="button" aria-label="Voir la vidéo : Une journée avec Arvela (1 minute, avec le son)" onClick={() => { setOpen(true); logUsage('accueil_video'); }}>
+      <button class="apercu-video" type="button" aria-label={`Voir la vidéo : Une journée avec Arvela (${CLIPS.quotidien.duree}, avec le son)`} onClick={() => { setOpen(true); logUsage('accueil_video'); }}>
         <span class="apercu-ecran">
           {anime
             ? <video src="./videos/arvela-apercu.mp4" poster="./videos/arvela-apercu.jpg" muted autoPlay loop playsInline preload="auto" aria-hidden="true" tabIndex={-1} />
@@ -218,9 +219,9 @@ export function ApercuVideo() {
           <Lecture taille={30} />
         </span>
         <span class="apercu-legende">
-          <span class="eyebrow">Vidéo · 1 minute · avec le son</span>
+          <span class="eyebrow">Vidéo · {CLIPS.quotidien.duree} · avec le son</span>
           <b>Voir Arvela en action</b>
-          <small>Pointer une arrivée, noter un repas, retrouver le mois prêt à déclarer.</small>
+          <small>Une journée notée d’un geste, vue en direct par les parents, et le mois prêt à déclarer.</small>
         </span>
       </button>
       {open && <VideoSheet clip="quotidien" onClose={() => setOpen(false)} />}
@@ -232,7 +233,7 @@ export function ApercuVideo() {
 export function ListeVideos({ pourParents = false }: { pourParents?: boolean }) {
   const e = useVues();
   const [open, setOpen] = useState<Clip | null>(null);
-  const ordre: Clip[] = pourParents ? ['parents'] : ['quotidien', 'mois', 'inviter', 'simulateur', 'installer', 'parents'];
+  const ordre: Clip[] = pourParents ? ['parents'] : ['quotidien', 'pointer', 'carnet', 'mois', 'inviter', 'simulateur', 'installer', 'parents'];
   return (
     <div class="list">
       {ordre.filter((k) => CLIPS[k].pret).map((k) => (
@@ -256,7 +257,7 @@ export function nbVideos(): { total: number; vues: number } {
   return { total: prets.length, vues: prets.filter((k) => v.includes(k)).length };
 }
 
-/** Démonstration : à la première ouverture, une minute pour tout voir (une seule fois). */
+/** Démonstration : à la première ouverture, une courte vidéo pour tout voir (une seule fois). */
 export function BienvenueDemo() {
   const CLE_DEMO = 'pam-demo-video';
   const [open, setOpen] = useState(() => { try { return !localStorage.getItem(CLE_DEMO); } catch { return false; } });
@@ -265,7 +266,7 @@ export function BienvenueDemo() {
   return (
     <Sheet title="Bienvenue dans la démonstration" onClose={fermer}>
       <div class="stack">
-        <p>Trois enfants fictifs, une semaine déjà remplie. Une minute pour voir l’essentiel, ou explore seule.</p>
+        <p>Trois enfants fictifs, une semaine déjà remplie. Une courte vidéo pour voir l’essentiel, ou explore seule.</p>
         <VideoClip clip="quotidien" />
         <button class="btn btn-outline btn-lg btn-block" type="button" onClick={fermer}>Explorer seule</button>
       </div>

@@ -19,6 +19,7 @@ const APP = path.resolve(MOTION, '..');
 const conf = JSON.parse(fs.readFileSync(path.join(MOTION, 'videos.json'), 'utf8'));
 const args = process.argv.slice(2);
 const sansRendu = args.includes('--sans-rendu');
+const dejaRendu = args.includes('--deja-rendu'); // finitions seulement (planche, boucle, affiches, sous-titres)
 const demandees = args.filter((a) => !a.startsWith('--'));
 const videos = demandees.length ? conf.videos.filter((v) => demandees.includes(v.id)) : conf.videos;
 if (!videos.length) { console.error(`Vidéo inconnue : ${demandees.join(', ')}. Vidéos connues : ${conf.videos.map((v) => v.id).join(', ')}`); process.exit(1); }
@@ -65,7 +66,7 @@ titre('Charte lue dans l’app');
 lancer('node', ['scripts/charte.mjs']);
 
 // 2 et 3. App et captures
-const scenarios = [...new Set(videos.flatMap((v) => v.captures))];
+const scenarios = dejaRendu ? [] : [...new Set(videos.flatMap((v) => v.captures))];
 if (scenarios.length) {
   titre('Construction de l’app (avec le faux service en ligne)');
   const build = path.join(MOTION, '.build/app-fake');
@@ -97,10 +98,20 @@ if (!sansRendu) {
   for (const v of videos) {
     titre(`Rendu : ${v.id}`);
     const brut = `out/raw-${v.id}.mp4`;
-    lancer('npx', ['remotion', 'render', v.composition, brut, '--concurrency=2', '--log=error', ...(NAVIGATEUR ? [`--browser-executable=${NAVIGATEUR}`] : [])]);
-    lancer('bash', ['scripts/final.sh', brut, v.sortie]);
+    if (!dejaRendu) {
+      lancer('npx', ['remotion', 'render', v.composition, brut, '--concurrency=2', '--log=error', ...(NAVIGATEUR ? [`--browser-executable=${NAVIGATEUR}`] : [])]);
+      lancer('bash', ['scripts/final.sh', brut, v.sortie]);
+    }
     const d = Number(spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', v.sortie], { cwd: MOTION }).stdout.toString());
     lancer('ffmpeg', ['-v', 'error', '-y', '-i', v.sortie, '-vf', `fps=8/${d},scale=270:-1,tile=8x1`, '-frames:v', '1', `out/controle-${v.id}.png`]);
+    // Dérivés : boucle muette de l'écran d'accueil (et son image), affiche
+    if (v.apercu) {
+      const a = v.apercu;
+      lancer('ffmpeg', ['-v', 'error', '-y', '-ss', String(a.de), '-t', String(a.duree), '-i', v.sortie, '-an', '-vf', `scale=${a.largeur}:-2`, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', a.fichier]);
+      lancer('ffmpeg', ['-v', 'error', '-y', '-ss', String(a.de), '-i', v.sortie, '-frames:v', '1', '-vf', `scale=${a.largeur}:-2`, '-q:v', '4', a.fichier.replace(/\.mp4$/, '.jpg')]);
+    }
+    if (v.affiche) lancer('ffmpeg', ['-v', 'error', '-y', '-ss', String(v.affiche.a), '-i', v.sortie, '-frames:v', '1', '-vf', 'scale=540:-2', '-q:v', '4', v.affiche.fichier]);
+    if (v.sortie.endsWith('.mp4') && v.voix.length) lancer('python3', ['scripts/sous-titres.py', v.sortie, v.sortie.replace(/\.mp4$/, '.vtt'), ...v.voix]);
   }
 }
 
