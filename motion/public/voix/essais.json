@@ -1,0 +1,8 @@
+{
+ "fichier": "voix/essais-nika.wav",
+ "estime": true,
+ "mots": {
+  "huit": 0.25, "arrive": 1.15, "geste": 2.35, "note": 3.25, "mange": 4.35, "endort": 5.45, "doux": 6.35,
+  "parents": 7.35, "voient": 7.85, "direct": 8.55, "finDirect": 9.05, "finDoux": 6.85
+ }
+}
