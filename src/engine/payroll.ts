@@ -591,6 +591,8 @@ function mergeParts(m: Month, parts: MonthBase[], cuts: ISODate[]): MonthBase {
   r.divisorMin = last.divisorMin;
   r.paidFraction = 1;
   r.heuresNormales = Math.round((r.normalesMin ?? 0) / 60);
+  // Parts fractionnaires des jours mensualisés (C-003) : arrondies une seule fois, au jour le plus proche.
+  r.joursActivite = Math.round(r.joursActivite - 1e-9);
   r.segments = parts.map((p, i) => ({ from: i === 0 ? firstDay(m) : cuts[i - 1], salaireMens: p.salaireMens, base: p.base }));
   r.alerts.unshift(`Avenant au ${cuts.map((d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`).join(', ')} : le salaire du mois est calculé au prorata de chaque période.`);
   return r;
@@ -693,7 +695,13 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   r.normalesMin = (r.mensuelMin - majContrat) * fraction;
   r.heuresNormales = Math.round(r.normalesMin / 60);
   r.majContratMin = Math.round(majContrat * fraction);
-  if (startsOrEndsInMonth) r.joursActivite = actDays + r.extraDays;
+  // Jours d'activité. Entrée ou sortie dans le mois : jours réellement prévus et payés. Sinon jours mensualisés, moins
+  // les jours retenus. Avenant en cours de mois (C-003) : la coupure ne doit pas changer la case ; chaque période
+  // reçoit sa part des jours mensualisés de ses propres conditions (jours prévus de la période ÷ jours prévus du mois),
+  // la somme est arrondie dans mergeParts.
+  const entreeSortie = c.start > from || (!!c.end && c.end < to);
+  if (entreeSortie) r.joursActivite = actDays + r.extraDays;
+  else if (startsOrEndsInMonth) r.joursActivite = Math.max(0, (joursMensualises(c) * (fullDays ? segDays / fullDays : 0)) - dedDays) + r.extraDays;
   else r.joursActivite = Math.max(0, joursMensualises(c) - dedDays) + r.extraDays;
   if (cpSansDroits) {
     r.alerts.push(`${dayCountLabel(cpSansDroits)} de congés pris au-delà de tes droits acquis : retenu${cpSansDroits > 1 ? 's' : ''} comme congés sans solde. Si ton solde de congés au début du suivi est faux, corrige-le dans le contrat ; si les parents ont accepté par écrit des congés par anticipation, signale-le avec « Ça coince ».`);

@@ -39,7 +39,7 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 |---|---|---|---|
 | C-001 | Critique | Corrigé | voir plus haut |
 | C-002 | Critique | Corrigé | voir plus haut |
-| C-003 | Élevé | Ouvert, pendant le test | Jours d'activité à l'avenant ; sans effet tant qu'il n'y a pas d'avenant |
+| C-003 | Élevé | Corrigé | Avenant en cours de mois : chaque période reçoit sa part des jours mensualisés de ses propres conditions (jours prévus de la période ÷ jours prévus du mois), somme arrondie une fois ; jours retenus déduits ; entrée ou sortie dans le mois : jours réellement prévus, inchangé (`computeRange`, `mergeParts`, src/engine/payroll.ts). Avenant de taux seul : 22 jours en novembre 2026 avec ou sans avenant (avant : 20). Le prorata par période est une convention de l'app, **à faire valider** (annexe C). Tests « audit C-003 » : 3 des 4 échouent sur l'ancien code |
 | C-004 | Critique | Corrigé | voir plus haut ; acquisition pendant un arrêt maladie (2 jours par mois, loi d'avril 2024) : l'app compte 2,5, écart en faveur de l'AM, à corriger avant phase 2 |
 | C-005 | Moyen | Partiel | Les fériés chômés payés comptent désormais dans les heures dues (C-006). Prorata : validation humaine (cas 5) |
 | C-006 | Élevé | Corrigé | Art. 111 appliqué en entier. Effets à valider : fériés chômés payés comptés comme heures dues dans la régularisation ; prorata d'entrée et de sortie quand un férié tombe hors de la période |

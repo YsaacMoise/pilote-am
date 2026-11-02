@@ -849,3 +849,32 @@ describe('audit C-017 : point de départ du préavis et inaptitude (art. 120, av
     expect(f.dernierJour).toBe('2026-10-30');
   });
 });
+
+describe('audit C-003 : un avenant en cours de mois ne change pas les jours d’activité', () => {
+  it('avenant de taux au 16 novembre : 22 jours mensualisés, comme sans avenant', () => {
+    const sans = contract({ start: '2026-01-05', trackedFrom: '2026-01-05' });
+    const avec = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', avenants: [{ id: 'a1', from: '2026-11-16', changes: { rateNet: 400 } }] });
+    const a = monthBase(makeCtx(sans, [], [], '2026-12-15'), '2026-11');
+    const b = monthBase(makeCtx(avec, [], [], '2026-12-15'), '2026-11');
+    expect(a.joursActivite).toBe(22);
+    expect(b.segments?.length).toBe(2);
+    expect(b.joursActivite).toBe(22);
+  });
+  it('avenant de planning au 15 octobre (5 jours → 4 jours) : jours mensualisés proratisés par période', () => {
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05',
+      avenants: [{ id: 'a1', from: '2026-10-15', changes: { planning: week('08:00', '17:00', [1, 2, 3, 4]) } }] });
+    const r = monthBase(makeCtx(c, [], [], '2026-11-15'), '2026-10');
+    // Avant : 22 jours mensualisés × 10/22 jours ouvrés d'octobre ; après : 18 (4 × 52 ÷ 12 = 17,33 → 18) × 9/17
+    // (17 lundis à jeudis en octobre 2026, dont 9 à partir du 15). 10 + 9,53 = 19,53 → 20.
+    expect(r.joursActivite).toBe(20);
+  });
+  it('avenant en cours de mois avec un jour retenu : un jour de moins', () => {
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', avenants: [{ id: 'a1', from: '2026-11-16', changes: { rateNet: 400 } }] });
+    const days = [rec('2026-11-20', { abs: 'sans_solde_enfant' })];
+    expect(monthBase(makeCtx(c, days, [], '2026-12-15'), '2026-11').joursActivite).toBe(21);
+  });
+  it('entrée dans le mois : jours réellement prévus, inchangé', () => {
+    const c = contract({ start: '2026-11-16', trackedFrom: '2026-11-16' });
+    expect(monthBase(makeCtx(c, [], [], '2026-12-15'), '2026-11').joursActivite).toBe(11);
+  });
+});
