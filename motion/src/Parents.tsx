@@ -3,6 +3,7 @@ import { Frame } from './components/Frame';
 import { blocsDepuisPhrases, Caption, cl, ease, fade, Halo, inOut, mix, Musique, PhoneBox, Piste, Rect, rgba, Sfx, Shot, Signature, SH, Tap, Voix } from './components/ecran';
 import { C, F } from './theme';
 import VP from '../public/voix/parents.reperes.json';
+import VSig from '../public/voix/signature-parents.reperes.json';
 import JJ from '../public/ecrans/journee/journee.json';
 
 // « Suivre la journée de votre enfant » — pour le parent qui a reçu le lien, souvent au travail, loin de son enfant.
@@ -15,8 +16,10 @@ const J = JJ as unknown as Record<string, Rect> & { code: string };
 const M = VP.mots as Record<string, number>;
 const A = 0.5;
 const c = (k: string) => M[k] + A;
-export const DUREE_PARENTS = c('finRecopier') + 2.8;
-const PISTES: Piste[] = [{ fichier: VP.fichier, at: A }];
+const SIG_AT = c('finRecopier') + 0.5; // la signature apparaît
+const SIG_VOIX = SIG_AT + 0.4; // puis elle est dite
+export const DUREE_PARENTS = SIG_VOIX + VSig.mots.fin + 1.0;
+const PISTES: Piste[] = [{ fichier: VP.fichier, at: A }, { fichier: VSig.fichier, at: SIG_VOIX }];
 
 // Écran de veille d'un téléphone (générique, sans marque)
 const Veille: React.FC<{ o: number }> = ({ o }) => (
@@ -36,7 +39,7 @@ export const Parents: React.FC = () => {
   const { fps } = useVideoConfig();
   const t = frame / fps;
   const fin = DUREE_PARENTS;
-  const sigAt = c('finRecopier') + 0.5;
+  const sigAt = SIG_AT;
 
   const pensez = c('pensez'), ouvrez = c('ouvrez'), dort = c('dort'), mange = c('mange'), prive = c('prive'), code = c('code'), finMois = c('fin'), cases = c('cases'), recopier = c('recopier');
   const allume = ouvrez - 0.2; // le téléphone sort de veille

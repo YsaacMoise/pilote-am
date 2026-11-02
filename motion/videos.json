@@ -32,7 +32,8 @@
     "journee"
    ],
    "voix": [
-    "parents"
+    "parents",
+    "signature-parents"
    ],
    "sortie": "../public/videos/arvela-parents.mp4",
    "affiche": {
@@ -47,7 +48,8 @@
     "journee"
    ],
    "voix": [
-    "aide-pointer"
+    "aide-pointer",
+    "signature"
    ],
    "sortie": "../public/videos/arvela-pointer.mp4"
   },
@@ -58,7 +60,8 @@
     "demo"
    ],
    "voix": [
-    "aide-carnet"
+    "aide-carnet",
+    "signature"
    ],
    "sortie": "../public/videos/arvela-carnet.mp4"
   },
@@ -69,7 +72,8 @@
     "demo"
    ],
    "voix": [
-    "aide-mois"
+    "aide-mois",
+    "signature"
    ],
    "sortie": "../public/videos/arvela-mois.mp4"
   },
@@ -80,7 +84,8 @@
     "journee"
    ],
    "voix": [
-    "aide-inviter"
+    "aide-inviter",
+    "signature"
    ],
    "sortie": "../public/videos/arvela-inviter.mp4"
   },
@@ -91,7 +96,8 @@
     "demo"
    ],
    "voix": [
-    "aide-simulateur"
+    "aide-simulateur",
+    "signature"
    ],
    "sortie": "../public/videos/arvela-simulateur.mp4"
   }

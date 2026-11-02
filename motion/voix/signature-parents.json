@@ -1,0 +1,18 @@
+{
+ "id": "signature-parents",
+ "usage": "Signature de fin de la vidéo des parents.",
+ "outil": "Google AI Studio, page Generate speech",
+ "modele": "Gemini 3.8 Flash TTS",
+ "voix": "Nika",
+ "style": "Voix française douce et posée, rassurante, avec le sourire. Articuler nettement « Arvela » (ar-vé-la). Débit naturel.",
+ "texte": "Arvela. Le carnet de liaison avec votre assistante maternelle.",
+ "fichier": "public/voix/signature-parents.wav",
+ "reperes": {
+  "arvela": "arvela",
+  "carnet": "carnet",
+  "fin": {
+   "mot": "maternelle",
+   "bord": "fin"
+  }
+ }
+}

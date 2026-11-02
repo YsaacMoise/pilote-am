@@ -1,6 +1,6 @@
 import { AbsoluteFill, Easing, interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
 import { Frame } from './components/Frame';
-import { Band, blocsDepuisPhrases, Bulle, Caption, cl, Cross, ease, fade, Halo, inOut, kf, mix, Musique, Phrase, PhoneBox, Piste, Push, Rect, rgba, Sfx, Sheet, Shot, Tap, Voix } from './components/ecran';
+import { Band, blocsDepuisPhrases, Bulle, Caption, cl, Cross, ease, fade, Halo, inOut, kf, mix, Musique, Phrase, PhoneBox, Piste, Push, Rect, rgba, Sfx, Sheet, Shot, Signature, Tap, Voix } from './components/ecran';
 import { C, F } from './theme';
 import VPo from '../public/voix/aide-pointer.reperes.json';
 import VCa from '../public/voix/aide-carnet.reperes.json';
@@ -9,6 +9,7 @@ import VIn from '../public/voix/aide-inviter.reperes.json';
 import VSi from '../public/voix/aide-simulateur.reperes.json';
 import JJ from '../public/ecrans/journee/journee.json';
 import DD from '../public/ecrans/demo/demo.json';
+import VSig from '../public/voix/signature.reperes.json';
 
 // Aides courtes, ouvertes depuis « Ça coince » quand l'assistante maternelle bloque, l'écran devant elle.
 // Pas de logo, pas d'introduction : l'écran à taille réelle, le doigt, une idée. Chaque aide garde son accent :
@@ -20,21 +21,24 @@ const D = DD as unknown as Record<string, Rect> & { mLignes: Rect[]; texteMois: 
 type Voix = { fichier: string; mots: Record<string, number>; phrases: Phrase[] };
 const A = 0.45; // la voix commence
 const finVoix = (v: Voix) => (v.mots.finRecopier ?? v.mots.finLien ?? v.mots.fin);
-const dureeAide = (v: Voix) => A + finVoix(v) + 1.3;
+// Après la voix : la signature (logo, « Arvela. Le carnet de bord des assistantes maternelles. », dite)
+const sigAt = (v: Voix) => A + finVoix(v) + 0.5;
+const dureeAide = (v: Voix) => sigAt(v) + 0.35 + VSig.mots.fin + 0.9;
 
 // Cadre commun : fond calme, sous-titres en haut, téléphone à taille quasi réelle, petite étiquette d'heure
 const S = 1.9;
 const TOP = 268;
 const Cadre: React.FC<{ v: Voix; t: number; fin: number; ecran: React.ReactNode; dessus?: React.ReactNode; heure?: { at: number; h: string }[]; italique?: string[]; sons?: React.ReactNode }> = ({ v, t, fin, ecran, dessus, heure = [], italique = [], sons }) => {
   const { fps } = useVideoConfig();
-  const pistes: Piste[] = [{ fichier: v.fichier, at: A }];
+  const pistes: Piste[] = [{ fichier: v.fichier, at: A }, { fichier: VSig.fichier, at: sigAt(v) + 0.35 }];
   const entree = interpolate(t, [0, 0.5], [1, 0], { ...cl, easing: ease });
-  const sortie = fade(t, fin - 0.5, fin, Easing.linear);
+  const sig = sigAt(v);
+  const sortie = fade(t, sig - 0.2, sig + 0.4, Easing.linear);
   const h = [...heure].reverse().find((x) => t >= x.at);
   return (
     <Frame>
       <AbsoluteFill style={{ background: `linear-gradient(180deg, ${mix(C.bg, C.accentSoft, 0.25)} 0%, ${C.bg} 40%)` }} />
-      <Caption t={t} blocs={blocsDepuisPhrases(v.phrases, A, { italique, finDernier: fin })} y={44} size={58} gauche={50} droite={50} />
+      <Caption t={t} blocs={blocsDepuisPhrases(v.phrases, A, { italique, finDernier: sigAt(v) })} y={44} size={58} gauche={50} droite={50} />
       <div style={{ position: 'absolute', inset: 0, translate: `0 ${entree * 160}px`, opacity: (1 - entree) * (1 - sortie) }}>
         <PhoneBox cx={540} top={TOP} S={S}>{ecran}</PhoneBox>
         {h && (
@@ -42,7 +46,9 @@ const Cadre: React.FC<{ v: Voix; t: number; fin: number; ecran: React.ReactNode;
         )}
         {dessus}
       </div>
-      <Voix p={pistes[0]} />
+      <Signature t={t} at={sig} fin={fin} phrase="Le carnet de bord des assistantes maternelles" />
+      {pistes.map((p, i) => <Voix key={i} p={p} />)}
+      <Sfx at={sig + 0.2} name="chime" volume={0.3} />
       <Musique fichier="musique/patterns-in-the-grain.mp3" depart={6} fin={fin} pistes={pistes} niveau={0.13} fps={fps} />
       {sons}
     </Frame>
