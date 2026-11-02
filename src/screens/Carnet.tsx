@@ -1,10 +1,10 @@
 import { useState } from 'preact/hooks';
 import { activeContracts, addJournal, deleteJournal, logUsage, toast, uid, updateJournal, useStore, ctxFor } from '../store';
-import { addDays, dayLabel, nowHHMM, today, type ISODate } from '../engine/dates';
+import { addDays, dayLabel, minutes, nowHHMM, today, type ISODate } from '../engine/dates';
 import { dayInfo } from '../engine/payroll';
 import type { Contract, Journal } from '../engine/model';
 import {
-  KIND_LABEL, insecable, detailBiberon, detailSieste, detailTemperature, estFievre, hh, parseMl, parseTemperature, resumeJour,
+  KIND_LABEL, dureeLabel, insecable, detailBiberon, detailSieste, detailTemperature, estFievre, hh, parseMl, parseTemperature, resumeJour,
   siesteEnCours, temperatureLabel, type Kind,
 } from '../engine/carnet';
 import { Gommette, Sheet, Topbar } from '../ui/kit';
@@ -17,12 +17,18 @@ import { de } from '../engine/texte';
 const OPT_BIBERON = 'Biberon';
 const OPT_TEMPERATURE = 'Prise de température';
 
-const KINDS: { k: Kind; l: string; icon: IconName; options: string[] }[] = [
+// Soin : les gestes, puis les petits incidents à signaler aux parents
+const SOIN_GROUPES = [
+  { titre: 'Soins donnés', options: [OPT_TEMPERATURE, 'Médicament donné (ordonnance)', 'Lavage de nez', 'Crème appliquée', 'Plaie désinfectée'] },
+  { titre: 'Petits incidents', options: ['Petite chute', 'Bosse ou bleu', 'Morsure ou griffure', 'Vomissement', 'Saignement de nez'] },
+];
+
+const KINDS: { k: Kind; l: string; icon: IconName; options: string[]; groupes?: { titre: string; options: string[] }[] }[] = [
   { k: 'repas', l: 'Repas', icon: 'meal', options: ['A tout mangé', 'A bien mangé', 'A un peu mangé', 'N’a pas mangé', OPT_BIBERON, 'Goûter pris'] },
   { k: 'sieste', l: 'Sommeil', icon: 'moon', options: ['Sieste rapide (moins de 15 min)', 'Endormissement rapide', 'Endormissement difficile', 'Sommeil calme', 'Sommeil agité', 'Réveils pendant la sieste', 'N’a pas dormi'] },
   { k: 'change', l: 'Change', icon: 'couche', options: ['Couche mouillée', 'Selles', 'Pot / toilettes', 'Change complet'] },
   { k: 'humeur', l: 'Humeur', icon: 'smile', options: ['De bonne humeur', 'Calme', 'Grognon', 'Triste', 'A beaucoup joué', 'A beaucoup pleuré'] },
-  { k: 'soin', l: 'Soin', icon: 'pansement', options: [OPT_TEMPERATURE, 'Médicament donné (ordonnance)', 'Petite chute', 'Crème appliquée', 'Lavage de nez'] },
+  { k: 'soin', l: 'Soin', icon: 'pansement', options: SOIN_GROUPES.flatMap((g) => g.options), groupes: SOIN_GROUPES },
   { k: 'note', l: 'Note libre', icon: 'edit', options: [] },
 ];
 const kindDef = (k: Kind) => KINDS.find((x) => x.k === k)!;
@@ -47,6 +53,13 @@ export function Carnet() {
   const plusAncien = addDays(t, -JOURS_HISTORIQUE);
   // Sommeil commencé et pas terminé (un seul enfant, aujourd'hui) : la fiche propose alors le réveil
   const dort = c && !all && estAuj ? [...entries].reverse().find(siesteEnCours) : undefined;
+  // Tous les enfants qui dorment en ce moment, quel que soit l'enfant choisi : le réveil est toujours en haut
+  const dormeurs = estAuj
+    ? kids.flatMap((k) => {
+      const e = s.journal.filter((j) => j.cid === k.id && j.date === t && siesteEnCours(j)).sort((a, b) => b.time.localeCompare(a.time))[0];
+      return e ? [{ k, e }] : [];
+    })
+    : [];
 
   async function sendSummary(c: Contract) {
     const r = await shareText(summaryText(c, jour, entries));
@@ -86,6 +99,20 @@ export function Carnet() {
             <Icon name="right" />
           </button>
         </nav>
+        {dormeurs.length > 0 && (
+          <section class="dodo" aria-label="En train de dormir">
+            {dormeurs.map(({ k, e }) => {
+              const depuis = Math.max(0, minutes(nowHHMM()) - minutes(e.time));
+              return (
+                <div class="dodo-ligne">
+                  <span class="dodo-ico"><Icon name="moon" /></span>
+                  <span class="dodo-txt"><b>{k.child} dort</b><span>depuis {hh(e.time)}{depuis > 0 ? ` · ${dureeLabel(depuis)}` : ''}</span></span>
+                  <button class="btn btn-primary btn-sm" aria-label={`Réveil ${de(k.child)} maintenant`} onClick={() => reveil(e)}>Réveil</button>
+                </div>
+              );
+            })}
+          </section>
+        )}
         {!kids.length && (
           <div class="card empty">
             <h2>Pas d’enfant ce jour-là</h2>
@@ -114,7 +141,7 @@ export function Carnet() {
         )}
         {c && (
           <>
-            <QuickButtons label={`Ajouter au carnet ${de(c.child)}`} dort={dort} onPick={(k) => setSheet({ kind: k })} />
+            <QuickButtons label={`Ajouter au carnet ${de(c.child)}`} onPick={(k) => setSheet({ kind: k })} />
             <section class="card stack" aria-labelledby="tl-title">
               <div class="spread">
                 <h2 id="tl-title">La journée {de(c.child)}</h2>
@@ -136,9 +163,6 @@ export function Carnet() {
                         {e.temp !== undefined && estFievre(e.temp) && <span class="tag warn tl-tag">Fièvre</span>}
                       </button>
                       <span class="tl-actions">
-                        {siesteEnCours(e) && estAuj && (
-                          <button class="btn btn-secondary btn-sm" aria-label={`Réveil ${de(c.child)} maintenant`} onClick={() => reveil(e)}>Réveil</button>
-                        )}
                         <button class="icon-btn ph-no-capture" aria-label={`Supprimer la note de ${hh(e.time)}`} onClick={async () => { const u = await deleteJournal(e.id); toast('Note supprimée', u); }}>
                           <Icon name="trash" size={20} />
                         </button>
@@ -172,14 +196,13 @@ function cap(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function QuickButtons({ label, dort, onPick }: { label: string; dort?: Journal; onPick: (k: (typeof KINDS)[number]) => void }) {
+function QuickButtons({ label, onPick }: { label: string; onPick: (k: (typeof KINDS)[number]) => void }) {
   return (
     <section aria-label={label} class="quick">
       {KINDS.map((k) => (
         <button onClick={() => onPick(k)}>
           <span class="q-ico"><Icon name={k.icon} /></span>
           {k.l}
-          {k.k === 'sieste' && dort && <span class="q-sub">Dort depuis {hh(dort.time)}</span>}
         </button>
       ))}
     </section>
@@ -309,9 +332,8 @@ function EntrySheet({ cs, kind, date, edit, ouverte, onClose }: {
           </div>
           {reveilInvalide && <p class="hint warn" role="alert">L’heure du réveil doit être après l’endormissement ({hh(ouverte.time)}).</p>}
           <button class="btn btn-secondary btn-block" disabled={!heureReveil || reveilInvalide} onClick={() => reveiller(heureReveil)}>Enregistrer le réveil</button>
-          <p class="hint">Pour noter autre chose sur son sommeil, choisis ci-dessous.</p>
         </>
-      ) : (
+      ) : (sommeil && !edit && estAuj) ? null : (
         <div class="spread">
           <label for="jr-time" class="label">{sommeil && edit ? 'Endormissement' : 'Heure'}</label>
           <input id="jr-time" class="input num" style={{ width: '140px' }} type="time" value={time} onInput={(e) => setTime((e.target as HTMLInputElement).value)} />
@@ -332,38 +354,44 @@ function EntrySheet({ cs, kind, date, edit, ouverte, onClose }: {
       )}
 
       {sommeil && !edit && !ouverte && estAuj && (
-        <button class="btn btn-primary btn-block btn-lg" disabled={!time} onClick={() => save({ sommeil: true, detail: detailSieste(time) }, 'carnet_endormissement')}>
-          {cs.length > 1 ? 'S’endorment' : 'S’endort'} {time === maintenant ? 'maintenant' : `à ${hh(time)}`}
-        </button>
+        <>
+          <button class="btn btn-primary btn-block btn-lg" onClick={() => saveAt(maintenant, { sommeil: true, detail: detailSieste(maintenant) }, 'carnet_endormissement')}>
+            <Icon name="moon" />{cs.length > 1 ? 'Ils s’endorment maintenant' : 'S’endort maintenant'}
+          </button>
+          <p class="hint center">Au réveil, touche <b>Réveil</b> en haut du carnet : la durée se calcule seule.</p>
+        </>
       )}
 
-      {sommeil && !edit && (estAuj ? (
+
+      {edit && biberon && champBiberon}
+      {edit && thermo && champTemperature}
+      {texteLibre && !ouverte && kind.options.length > 0 && (
+        (kind.groupes ?? [{ titre: '', options: kind.options }]).map((g) => (
+          <div class="choices" role="group" aria-label={g.titre || undefined}>
+            {g.titre && <span class="choices-titre">{g.titre}</span>}
+            {g.options.map((o) => {
+              const champ = !edit && o === OPT_BIBERON ? champBiberon : !edit && o === OPT_TEMPERATURE ? champTemperature : null;
+              if (!champ) return <button class="choice" aria-pressed={edit?.detail === o} onClick={() => save({ detail: o }, 'carnet_' + kind.k)}>{o}</button>;
+              return (
+                <>
+                  <button class="choice" aria-expanded={ouvert === o} onClick={() => setOuvert(ouvert === o ? null : o)}>{o}</button>
+                  {ouvert === o && <div class="choice-champ">{champ}</div>}
+                </>
+              );
+            })}
+          </div>
+        ))
+      )}
+      {sommeil && !edit && !ouverte && (estAuj ? (
         <details class="more">
           <summary>Noter un sommeil déjà terminé</summary>
           <div class="more-body">{passe}</div>
         </details>
-      ) : {passe})}
-
-      {edit && biberon && champBiberon}
-      {edit && thermo && champTemperature}
-      {texteLibre && kind.options.length > 0 && (
-        <div class="choices">
-          {kind.options.map((o) => {
-            const champ = !edit && o === OPT_BIBERON ? champBiberon : !edit && o === OPT_TEMPERATURE ? champTemperature : null;
-            if (!champ) return <button class="choice" aria-pressed={edit?.detail === o} onClick={() => save({ detail: o }, 'carnet_' + kind.k)}>{o}</button>;
-            return (
-              <>
-                <button class="choice" aria-expanded={ouvert === o} onClick={() => setOuvert(ouvert === o ? null : o)}>{o}</button>
-                {ouvert === o && <div class="choice-champ">{champ}</div>}
-              </>
-            );
-          })}
-        </div>
-      )}
+      ) : passe)}
       {kind.k === 'soin' && (
         <p class="hint">Un médicament se note aussi dans ton registre des médicaments (nom, dose, heure, ordonnance, autorisation écrite des parents) : ce carnet ne le remplace pas. Un accident grave se déclare sans délai à la PMI de ton département.</p>
       )}
-      {texteLibre && (
+      {texteLibre && !ouverte && (
         <>
           <div class="field">
             <label for="jr-text">{edit ? 'Texte de la note' : kind.options.length || sommeil || biberon || thermo ? 'Ou écris un détail' : 'Ta note'}</label>

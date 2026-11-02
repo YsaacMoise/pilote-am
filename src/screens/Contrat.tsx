@@ -120,18 +120,21 @@ export function Contrat({ id }: { id?: string }) {
             <TextInput label="Nom de la famille" hint="Le parent qui t’emploie et déclare sur Pajemploi" value={c.family} onChange={(v) => set({ family: v })} />
             <div class="field">
               <span class="label" id="col-l">Sa couleur</span>
-              <div class="chips" style={{ flexWrap: 'wrap' }} role="radiogroup" aria-labelledby="col-l">
+              <div class="couleurs" role="radiogroup" aria-labelledby="col-l">
                 {CHILD_COLORS.map((_, i) => {
                   // Toutes prises (plus de 8 enfants en cours) : on laisse choisir librement.
                   const par = prises.size < CHILD_COLORS.length ? prises.get(i) : undefined;
                   return (
-                    <button class="chip" role="radio" aria-checked={c.color === i} disabled={!!par && c.color !== i} onClick={() => set({ color: i })} aria-label={par ? `${COLOR_NAMES[i]}, déjà prise par ${par}` : COLOR_NAMES[i]}>
-                      <Gommette name={c.child || '?'} color={i} size="sm" />
-                      <span style={{ fontSize: '15px' }}>{par ? par : COLOR_NAMES[i]}</span>
+                    <button class="couleur" role="radio" aria-checked={c.color === i} disabled={!!par && c.color !== i} onClick={() => set({ color: i })} aria-label={par ? `${COLOR_NAMES[i]}, déjà prise par ${par}` : COLOR_NAMES[i]}>
+                      <Gommette name={par ?? (c.child || '?')} color={i} />
                     </button>
                   );
                 })}
               </div>
+              <span class="hint">
+                <b>{COLOR_NAMES[c.color % CHILD_COLORS.length]}</b>
+                {prises.size > 0 && prises.size < CHILD_COLORS.length && ` · grisées : déjà prises par ${[...new Set(prises.values())].join(', ')}`}
+              </span>
               {prises.get(c.color % CHILD_COLORS.length) && prises.size < CHILD_COLORS.length && (
                 <span class="hint warn">Même couleur que {prises.get(c.color % CHILD_COLORS.length)} : choisis-en une libre pour les distinguer d’un coup d’œil.</span>
               )}

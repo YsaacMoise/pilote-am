@@ -71,20 +71,21 @@ async function run(scheme) {
   await tl('Température 38,4 °C').waitFor();
   assert(await p.locator('.tl-item .tag', { hasText: 'Fièvre' }).isVisible(), 'température notée, fièvre signalée');
 
-  // Sommeil en cours (démonstration : endormi à 12h40) : le bouton le dit, la fiche propose le réveil
+  // Sommeil en cours (démonstration : endormi à 12h40) : un bandeau en haut du carnet, avec le réveil
   const btnSommeil = p.getByRole('region', { name: /^Ajouter au carnet d/ }).getByRole('button', { name: /^Sommeil/ });
-  assert(/Dort depuis 12h40/.test(await btnSommeil.textContent()), 'bouton Sommeil : « Dort depuis 12h40 »');
-  await btnSommeil.click();
-  await p.locator('dialog').getByText('Dort depuis 12h40').waitFor();
-  await shot('04-fiche-reveil');
-  await p.getByRole('button', { name: 'Réveil maintenant' }).click();
+  const dodo = p.getByRole('region', { name: 'En train de dormir' });
+  assert(/Adam dort.*depuis 12h40/.test(await dodo.textContent()), 'bandeau « Adam dort depuis 12h40 » en haut du carnet');
+  await p.evaluate(() => window.scrollTo(0, 0));
+  await shot('00-bandeau-dodo');
+  await dodo.getByRole('button', { name: /^Réveil d/ }).click();
   await tl('12h40 à 15h30 (2 h 50)').waitFor();
-  assert(await toastHas(/Réveil noté à 15h30/), 'réveil en un geste, durée calculée');
+  assert(await toastHas(/Réveil noté à 15h30/), 'réveil en un geste depuis le bandeau, durée calculée');
+  assert(!(await dodo.count()), 'plus personne ne dort : le bandeau disparaît');
 
   // Choix rapide : sieste de moins de 15 minutes
   await btnSommeil.click();
   await p.getByRole('button', { name: /endort maintenant/ }).waitFor();
-  assert(true, 'plus de sommeil en cours : « S’endort maintenant » proposé');
+  assert(await p.locator('dialog').getByText('Au réveil, touche').isVisible(), 'la fiche dit où se trouve le réveil');
   await shot('04b-fiche-sommeil');
   await p.getByRole('button', { name: 'Sieste rapide (moins de 15 min)' }).click();
   await tl('Sieste rapide (moins de 15 min)').waitFor();
@@ -105,7 +106,7 @@ async function run(scheme) {
   await btnSommeil.click();
   await p.getByRole('button', { name: /endort maintenant/ }).click();
   await tl('Dort depuis 15h30').waitFor();
-  assert(await tl('Dort depuis 15h30').getByRole('button', { name: /^Réveil d/ }).isVisible(), 'endormissement en un geste, bouton Réveil sur la ligne');
+  assert(/Adam dort.*depuis 15h30/.test(await dodo.textContent()), 'endormissement en un geste, le bandeau réapparaît');
   await p.evaluate(() => window.scrollTo(0, 0));
   await shot('01-carnet');
 
