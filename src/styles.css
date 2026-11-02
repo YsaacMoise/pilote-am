@@ -526,6 +526,12 @@ dialog.sheet[open] { animation: sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 .dodo-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
 .dodo-txt span { color: var(--ink-2); font-size: 15px; }
 .dodo-ligne .btn { flex: none; }
+.oublis { display: flex; flex-direction: column; gap: 8px; }
+.oubli-ligne { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 14px; border-radius: var(--r-md); background: var(--warn-soft); border: 1px solid var(--warn-line); }
+.oubli-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.oubli-txt b { color: var(--warn); }
+.oubli-txt span { color: var(--ink); font-size: 15px; }
+.oubli-ligne .btn { flex: none; }
 .quick .q-sub { font-size: 12.5px; font-weight: 600; color: var(--accent-ink); line-height: 1.2; text-align: center; white-space: nowrap; margin-top: -4px; }
 .sommeil-etat { display: flex; align-items: center; gap: 10px; margin: 0; padding: 12px 14px; border-radius: var(--r-btn); background: var(--sauge-soft); color: var(--ink); }
 .sommeil-etat svg { color: var(--sauge); flex: none; }
@@ -824,10 +830,12 @@ h1.h-card { font-size: 25px; }
 .aide-video-btn { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 14px 4px 5px; border: 0; background: none; font: inherit; font-size: 15px; color: var(--ink); cursor: pointer; text-align: left; }
 .aide-video-btn .video-play { width: 34px; height: 34px; flex: none; box-shadow: none; }
 .aide-video-x { min-width: 44px; border: 0; border-left: 1px solid var(--accent-soft); background: none; font-size: 22px; color: var(--ink-2); cursor: pointer; }
-/* Vidéo déjà vue ou bulle fermée : une ligne discrète, lisible (contraste AA), qu'on peut toujours relancer */
-.aide-video.discret { border-color: var(--line); background: transparent; }
-.aide-video.discret .aide-video-btn { color: var(--ink-2); font-size: 14px; gap: 8px; padding: 2px 14px 2px 6px; }
-.aide-video.discret .video-play { width: 28px; height: 28px; background: var(--surface-2); color: var(--ink-2); }
+/* « Ça coince » : la vidéo de l'écran d'abord, puis la remarque */
+.coince-video { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 14px 8px 8px; border: 1px solid var(--accent-soft); background: var(--primary-soft); border-radius: var(--r-md); font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.coince-video .video-play { width: 40px; height: 40px; flex: none; box-shadow: none; }
+.coince-video > span:last-child { display: flex; flex-direction: column; line-height: 1.3; }
+.coince-video > span:last-child span { font-size: 15px; color: var(--ink-2); }
+.coince-guide { align-self: flex-start; display: inline-flex; align-items: center; min-height: 44px; color: var(--accent-ink); font-weight: 600; }
 .foot-aide { display: flex; justify-content: center; }
 /* Page d'accueil : aperçu animé sans le son */
 .apercu-video { display: flex; gap: 16px; align-items: center; width: 100%; padding: 12px; text-align: left; font: inherit; color: var(--ink); cursor: pointer; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow-tab); }

@@ -6,6 +6,7 @@ import { addDays, monthOf, addMonths, type ISODate, type Month } from '../engine
 import { dayInfo, inContract, type Ctx } from '../engine/payroll';
 import { computeMonth, declarationLines } from '../engine/month';
 import { CHILD_ABS_LABEL, type Journal, type Plage, type Presence } from '../engine/model';
+import { detailReveilOublie, reveilOublie } from '../engine/carnet';
 
 export const SNAPSHOT_VERSION = 1;
 /** Jours de carnet et de présences envoyés (aujourd'hui compris) */
@@ -112,7 +113,7 @@ export function buildSnapshot(o: { ctx: Ctx; journal: Journal[]; amName: string;
   const carnet = o.journal
     .filter((j) => j.cid === c.id && j.date >= from && j.date <= t)
     .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
-    .map((j) => ({ date: j.date, time: j.time, kind: j.kind, detail: j.detail }));
+    .map((j) => ({ date: j.date, time: j.time, kind: j.kind, detail: reveilOublie(j, t) ? detailReveilOublie(j.time) : j.detail }));
   const cur = monthOf(t);
   const mois = [addMonths(cur, -1), cur].map((m) => moisParent(ctx, m, o.enfants)).filter((x): x is MoisParent => !!x);
   return { v: SNAPSHOT_VERSION, child: c.child, color: c.color, am, maj: o.now, today: t, jours, carnet, mois };

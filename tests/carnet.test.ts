@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Journal } from '../src/engine/model';
 import {
-  insecable, detailBiberon, detailSieste, detailTemperature, dureeLabel, estFievre, minutesSieste, parseMl, parseTemperature, resumeJour, siesteEnCours, sommeilTotal,
+  insecable, reveilOublie, detailReveilOublie, detailBiberon, detailSieste, detailTemperature, dureeLabel, estFievre, minutesSieste, parseMl, parseTemperature, resumeJour, siesteEnCours, sommeilTotal,
 } from '../src/engine/carnet';
 
 const j = (o: Partial<Journal>): Journal => ({ id: 'x', cid: 'c1', date: '2026-11-02', time: '12:00', kind: 'note', detail: '', ...o });
@@ -112,5 +112,19 @@ describe('français : élision devant un prénom', () => {
   });
   it('résumé : « La journée d’Adam »', () => {
     expect(resumeJour({ enfant: 'Adam', jour: 'lundi 2 novembre', notes: [] }).split('\n')[0]).toBe('Bonjour ! La journée d’Adam, lundi 2 novembre :');
+  });
+});
+
+describe('carnet : réveil oublié', () => {
+  const ouvert = j({ date: '2026-11-01', time: '13:10', kind: 'sieste', sommeil: true, detail: 'Dort depuis 13h10' });
+  it('sommeil d’un jour passé jamais terminé', () => {
+    expect(reveilOublie(ouvert, '2026-11-02')).toBe(true);
+    expect(reveilOublie({ ...ouvert, date: '2026-11-02' }, '2026-11-02')).toBe(false);
+    expect(reveilOublie({ ...ouvert, fin: '14:00' }, '2026-11-02')).toBe(false);
+    expect(detailReveilOublie('13:10')).toBe('Endormissement à 13h10, réveil non noté');
+  });
+  it('résumé d’un jour terminé : pas « en cours »', () => {
+    const t = resumeJour({ enfant: 'Rose', jour: 'dimanche 1 novembre', notes: [ouvert], jourTermine: true });
+    expect(t).toContain('Sommeil (endormissement à 13h10, réveil non noté)');
   });
 });
