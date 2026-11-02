@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { listSnapshots, logUsage, restoreDump, saveSettings, toast, useStore, type Snapshot } from '../store';
 import { buildBackup, checkBackup, type BackupFile } from '../backup';
 import { shareFile } from '../share';
-import { Banner, Sheet, Topbar } from '../ui/kit';
+import { Banner, Sheet, Topbar, useErreurAffichee } from '../ui/kit';
 import { Icon } from '../ui/icons';
 
 export function Sauvegarde() {
@@ -11,6 +11,7 @@ export function Sauvegarde() {
   const [pending, setPending] = useState<{ backup: BackupFile; summary: string } | null>(null);
   const [pendingSnap, setPendingSnap] = useState<Snapshot | null>(null);
   const [err, setErr] = useState('');
+  useErreurAffichee('restauration', !!err);
   const [persist, setPersist] = useState<boolean | null>(null);
   useEffect(() => {
     listSnapshots().then(setSnaps).catch(() => {});

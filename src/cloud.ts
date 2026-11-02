@@ -5,7 +5,7 @@
 // arrivent en direct et sont rangés dans la base locale.
 import * as db from './db';
 import { PASSWORD_RULE, passwordChecks } from './password';
-import { autoCopy, ctxFor, load, logUsage, putContract, saveSettings, state, subscribe, toast } from './store';
+import { autoCopy, ctxFor, load, logErreur, logUsage, putContract, saveSettings, state, subscribe, toast } from './store';
 import { buildSnapshot } from './partage/snapshot';
 import { newShare, seal } from './partage/crypto';
 import { cloudInfo, LS, lsGet, lsSet, messageRefus, setCloud } from './cloud-state';
@@ -172,6 +172,8 @@ export function onRejected(code: string, docs: Array<{ s: db.SyncedStore; k: str
   db.outboxKeep(docs);
   // Lien parent refusé : il sera renvoyé en entier au prochain essai.
   sentShares.clear();
+  // C-101 : noté une fois par bandeau affiché, pas à chaque lot refusé. Le code d'erreur ne part pas.
+  if (!cloudInfo().refus) logErreur('envoi_refuse');
   setCloud({ refus: messageRefus(code) });
 }
 

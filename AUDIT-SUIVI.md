@@ -96,7 +96,7 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 | C-091 | Moyen | Corrigé | Orientation libre |
 | C-092 | Moyen | Ouvert, avant phase 2 | |
 | C-100 | Élevé | Partiel | Démonstration et visiteurs n'envoient plus rien ; reste : exclure les deux sessions de l'audit (C-146) |
-| C-101 | Moyen | Partiel | Version jointe ; événements d'erreur et de correction : pendant le test. Organisation PostHog « Marelo » à renommer (Action YKM) |
+| C-101 | Moyen | Partiel | Version jointe. Événements ajoutés (src/usage-events.ts), noms fixes seulement, jamais de texte saisi, d'heure ni d'identifiant, et rien ne part sans accord (analytics.ts) : `annulation_arrivee` / `annulation_depart` (bouton Annuler juste après un pointage), `heure_corrigee` / `heure_corrigee_apres_coup` (heure déjà pointée changée ou effacée), `erreur_<famille>` avec le nom d'écran (champ refusé, départ avant l'arrivée, dates d'absence, contrat ou avenant incomplet, sauvegarde refusée, envoi refusé par le serveur). Tests tests/usage-events.test.ts. Reste : organisation PostHog « Marelo » à renommer (Action YKM) |
 | C-110 | Élevé | Corrigé à la publication | |
 | C-111 | Moyen | Corrigé | Redirection côté page vers arvela.fr (hors chemins /__/ de Firebase Auth) |
 | C-112 | Moyen | Partiel | Échec sans clé, versions figées, règles testées avant publication. Protection de la branche main et publication des règles par le workflow : Action YKM |

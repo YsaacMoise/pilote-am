@@ -6,7 +6,7 @@ import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, terms
 import { ratesAt } from '../engine/rates';
 import { euros, hoursLabel } from '../engine/money';
 import { TERM_KEYS, type Avenant as Av, type Contract, type Planning, type Terms } from '../engine/model';
-import { Banner, Choices, DateInput, EuroInput, NumberInput, Seg, Topbar } from '../ui/kit';
+import { Banner, Choices, DateInput, EuroInput, NumberInput, Seg, Topbar, useErreurAffichee } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { PlanDay, avenantSummary } from './Contrat';
 
@@ -34,6 +34,7 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
   });
   const [signe, setSigne] = useState(existing?.signe ?? '');
   const [errors, setErrors] = useState<string[]>([]);
+  useErreurAffichee('avenant_incomplet', errors.length > 0);
   if (!c || !t) return (<><Topbar title="Avenant" back="#/plus" screen="avenant" /><main><Banner tone="warn">Contrat introuvable.</Banner></main></>);
 
   const before = base(date)!;

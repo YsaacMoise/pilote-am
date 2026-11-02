@@ -3,7 +3,13 @@ import { useEffect, useId, useRef, useState } from 'preact/hooks';
 import { Icon, type IconName } from './icons';
 import { Logo } from './Logo';
 import { AIDE_PAR_ECRAN, aideEcran, VideoSheet } from './VideoGuide';
-import { onToast, type ToastMsg, addFeedback, toast, logUsage } from '../store';
+import { onToast, type ToastMsg, addFeedback, toast, logUsage, logErreur } from '../store';
+import type { ErreurCode } from '../usage-events';
+
+/** Note l'erreur (C-101) chaque fois qu'elle apparaît à l'écran, pas à chaque affichage */
+export function useErreurAffichee(code: ErreurCode, visible: boolean) {
+  useEffect(() => { if (visible) logErreur(code); }, [visible]);
+}
 import { centsToInput, parseEuros } from '../engine/money';
 
 // Les deux premières sont celles des enfants de la charte (Terre d'Argile, Sauge Minérale), puis des tons de terre voisins.
@@ -173,6 +179,7 @@ export function Banner({ tone = 'info', icon, children }: { tone?: 'info' | 'war
 }
 
 export function Field({ label, hint, error, children, id }: { label: string; hint?: string; error?: string; id: string; children: ComponentChildren }) {
+  useErreurAffichee('saisie', !!error);
   return (
     <div class="field">
       <label for={id}>{label}</label>

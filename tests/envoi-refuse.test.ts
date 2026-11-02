@@ -76,6 +76,11 @@ describe('audit C-023 : envoi refusé par le serveur', () => {
 
     fake.rejected!('permission-denied', [{ s: 'contracts', k: 'c1' }, { s: 'days', k: 'c1|2026-11-02' }]);
     expect(cloudInfo().refus).toMatch(/pas copiés dans ton compte/);
+    // C-101 : un seul événement par bandeau, sans le code d'erreur.
+    const { state } = await import('../src/store');
+    fake.rejected!('permission-denied', [{ s: 'contracts', k: 'c1' }]);
+    expect(state.usage.filter((u) => u.ev === 'erreur_envoi_refuse')).toHaveLength(1);
+    expect(state.usage.some((u) => /permission/.test(JSON.stringify(u)))).toBe(false);
     // Gardées dans la file d'attente du téléphone : rien n'est perdu.
     expect(db.outboxRead()).toEqual([{ s: 'contracts', k: 'c1' }, { s: 'days', k: 'c1|2026-11-02' }]);
 

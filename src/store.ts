@@ -4,6 +4,7 @@ import * as db from './db';
 import type { AmLeave, Bulletin, Contract, DayRec, Journal, Settings } from './engine/model';
 import { makeCtx, type Ctx } from './engine/payroll';
 import { today } from './engine/dates';
+import { ecranDe, evErreur, type ErreurCode } from './usage-events';
 
 export interface Feedback { id: string; ts: number; screen: string; text: string }
 export interface Usage { id: string; ts: number; ev: string; screen?: string }
@@ -220,6 +221,12 @@ export function logUsage(ev: string, screen?: string) {
   state.usage.push(u);
   db.put('usage', u).catch(() => {});
   import('./analytics').then((a) => a.track(ev, screen)).catch(() => {});
+}
+
+/** Erreur affichée (C-101) : nom d'événement fixe et écran courant, jamais le texte du message ni la saisie. */
+export function logErreur(code: ErreurCode) {
+  const h = typeof location === 'undefined' ? '' : location.hash;
+  logUsage(evErreur(code), ecranDe(h));
 }
 
 // ---------- Contexte de calcul ----------
