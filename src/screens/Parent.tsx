@@ -16,7 +16,7 @@ import { AideVideo } from '../ui/VideoGuide';
 import { insecable } from '../engine/carnet';
 
 const CODE_KEY = (id: string) => `pam-parent-code-${id}`;
-const KIND: Record<EntreeCarnet['kind'], string> = { repas: 'Repas', sieste: 'Sieste', change: 'Change', humeur: 'Humeur', soin: 'Soin', note: 'Note' };
+const KIND: Record<EntreeCarnet['kind'], string> = { repas: 'Repas', sieste: 'Sommeil', change: 'Change', humeur: 'Humeur', soin: 'Soin', note: 'Note' };
 
 const h = (t: string) => t.replace(':', 'h');
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

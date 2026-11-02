@@ -6,10 +6,11 @@ import { entretienPlancher, ratesAt } from '../engine/rates';
 import { soldesDeDepart } from '../engine/conges';
 import { euros, hoursLabel } from '../engine/money';
 import type { Avenant, Contract, Plage, Planning, Terms } from '../engine/model';
-import { Banner, CHILD_COLORS, Choices, COLOR_NAMES, DateInput, EuroInput, Gommette, NumberInput, Seg, Switch, TextInput, Topbar } from '../ui/kit';
+import { Banner, CHILD_COLORS, Choices, COLOR_NAMES, couleurLibre, couleursPrises, DateInput, EuroInput, Gommette, NumberInput, Seg, Switch, TextInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { BROUILLON_CONTRAT } from './Simulateur';
 import { PartageCard } from './PartageCard';
+import { de } from '../engine/texte';
 
 /** Conditions venues du simulateur (lues une seule fois) : son planning, ou des journées égales à partir de 8 h (anciennes versions). */
 function brouillon(): Partial<Contract> | null {
@@ -40,7 +41,7 @@ function blank(): Contract {
   const pl: Planning = {};
   for (let d = 1; d <= 5; d++) pl[d] = [{ start: '08:30', end: '17:30' }];
   return {
-    id: uid(), child: '', family: '', color: state.contracts.length % CHILD_COLORS.length, start: t, yearType: 'complete', weeks: 52,
+    id: uid(), child: '', family: '', color: couleurLibre(couleursPrises(state.contracts, '', t)), start: t, yearType: 'complete', weeks: 52,
     weeksOff: [], planning: pl, rateNet: ratesAt(t).minConvNet, majoration: 10, entretienJour: 0, repasPrix: 0, repasParJour: 0,
     kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: t, balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 },
     history: [], createdAt: Date.now(),
@@ -54,6 +55,8 @@ export function Contrat({ id }: { id?: string }) {
   const [c, setC] = useState<Contract>(() => (existing ? structuredClone(existing) : blank()));
   const [errors, setErrors] = useState<string[]>([]);
   const set = (p: Partial<Contract>) => setC({ ...c, ...p });
+  // Couleurs des autres enfants en cours de contrat : une couleur = un enfant
+  const prises = couleursPrises(state.contracts, c.id, today());
   const isNew = !existing;
   const curMonthStart = firstDay(monthOf(today()));
   const reprise = c.start < curMonthStart;
@@ -96,7 +99,7 @@ export function Contrat({ id }: { id?: string }) {
     if (!toSave.partage) delete toSave.partage;
     const prev = await putContract(toSave);
     logUsage(isNew ? 'contrat_cree' : 'contrat_modifie', 'contrat');
-    toast(isNew ? `Contrat de ${toSave.child} créé` : 'Contrat enregistré', prev ? async () => { await putContract(prev); } : async () => { await deleteContract(toSave.id); });
+    toast(isNew ? `Contrat ${de(toSave.child)} créé` : 'Contrat enregistré', prev ? async () => { await putContract(prev); } : async () => { await deleteContract(toSave.id); });
     location.hash = isNew && reprise ? `#/historique/${toSave.id}` : '#/plus';
   }
 
@@ -118,13 +121,20 @@ export function Contrat({ id }: { id?: string }) {
             <div class="field">
               <span class="label" id="col-l">Sa couleur</span>
               <div class="chips" style={{ flexWrap: 'wrap' }} role="radiogroup" aria-labelledby="col-l">
-                {CHILD_COLORS.map((_, i) => (
-                  <button class="chip" role="radio" aria-checked={c.color === i} onClick={() => set({ color: i })} aria-label={COLOR_NAMES[i]}>
-                    <Gommette name={c.child || '?'} color={i} size="sm" />
-                    <span style={{ fontSize: '15px' }}>{COLOR_NAMES[i]}</span>
-                  </button>
-                ))}
+                {CHILD_COLORS.map((_, i) => {
+                  // Toutes prises (plus de 8 enfants en cours) : on laisse choisir librement.
+                  const par = prises.size < CHILD_COLORS.length ? prises.get(i) : undefined;
+                  return (
+                    <button class="chip" role="radio" aria-checked={c.color === i} disabled={!!par && c.color !== i} onClick={() => set({ color: i })} aria-label={par ? `${COLOR_NAMES[i]}, déjà prise par ${par}` : COLOR_NAMES[i]}>
+                      <Gommette name={c.child || '?'} color={i} size="sm" />
+                      <span style={{ fontSize: '15px' }}>{par ? par : COLOR_NAMES[i]}</span>
+                    </button>
+                  );
+                })}
               </div>
+              {prises.get(c.color % CHILD_COLORS.length) && prises.size < CHILD_COLORS.length && (
+                <span class="hint warn">Même couleur que {prises.get(c.color % CHILD_COLORS.length)} : choisis-en une libre pour les distinguer d’un coup d’œil.</span>
+              )}
             </div>
           </fieldset>
         </section>
@@ -222,7 +232,7 @@ export function Contrat({ id }: { id?: string }) {
             <button class="btn btn-danger btn-block" onClick={async () => {
               const undo = await deleteContract(c.id);
               location.hash = '#/plus';
-              toast(`Contrat de ${c.child} supprimé`, undo);
+              toast(`Contrat ${de(c.child)} supprimé`, undo);
             }}><Icon name="trash" />Supprimer ce contrat</button>
           </>
         )}

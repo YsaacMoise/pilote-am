@@ -16,6 +16,9 @@ describe('mesure d’usage : pseudonymisation avant envoi', () => {
     expect(pseudonymise('Léonard reste Léonard')).toBe('Léonard reste Léonard');
     expect(pseudonymise('Malade, avec certificat : 713,81 €')).toBe('Malade, avec certificat : 713,81 €');
     expect(pseudonymise('Connectée : sonia.dupont@example.com')).toBe('Connectée : e-mail masqué');
+    // Prénom élidé (« d’Adam ») : masqué aussi
+    state.contracts = [{ id: 'd', child: 'Adam', family: 'Petit', createdAt: 1 } as any];
+    expect(pseudonymise("La journée d’Adam, arrivée d'Adam")).toBe("La journée d’Enfant 1, arrivée d'Enfant 1");
   });
 });
 

@@ -11,14 +11,19 @@ import { Gommette, Sheet, Topbar } from '../ui/kit';
 import { Icon, type IconName } from '../ui/icons';
 import { AideVideo } from '../ui/VideoGuide';
 import { shareText } from '../share';
+import { de } from '../engine/texte';
+
+// Choix qui ouvrent une case à remplir (la quantité ou la température)
+const OPT_BIBERON = 'Biberon';
+const OPT_TEMPERATURE = 'Prise de température';
 
 const KINDS: { k: Kind; l: string; icon: IconName; options: string[] }[] = [
-  { k: 'repas', l: 'Repas', icon: 'meal', options: ['A tout mangé', 'A bien mangé', 'A un peu mangé', 'N’a pas mangé', 'Goûter pris'] },
-  { k: 'sieste', l: 'Sieste', icon: 'moon', options: ['Pas de sieste'] },
-  { k: 'change', l: 'Change', icon: 'drop', options: ['Couche mouillée', 'Selles', 'Pot / toilettes', 'Change complet'] },
+  { k: 'repas', l: 'Repas', icon: 'meal', options: ['A tout mangé', 'A bien mangé', 'A un peu mangé', 'N’a pas mangé', OPT_BIBERON, 'Goûter pris'] },
+  { k: 'sieste', l: 'Sommeil', icon: 'moon', options: ['Sieste rapide (moins de 15 min)', 'Endormissement rapide', 'Endormissement difficile', 'Sommeil calme', 'Sommeil agité', 'Réveils pendant la sieste', 'N’a pas dormi'] },
+  { k: 'change', l: 'Change', icon: 'couche', options: ['Couche mouillée', 'Selles', 'Pot / toilettes', 'Change complet'] },
   { k: 'humeur', l: 'Humeur', icon: 'smile', options: ['De bonne humeur', 'Calme', 'Grognon', 'Triste', 'A beaucoup joué', 'A beaucoup pleuré'] },
-  { k: 'soin', l: 'Soin', icon: 'heart', options: ['Médicament donné (ordonnance)', 'Petite chute', 'Crème appliquée', 'Lavage de nez'] },
-  { k: 'note', l: 'Note libre', icon: 'note', options: [] },
+  { k: 'soin', l: 'Soin', icon: 'pansement', options: [OPT_TEMPERATURE, 'Médicament donné (ordonnance)', 'Petite chute', 'Crème appliquée', 'Lavage de nez'] },
+  { k: 'note', l: 'Note libre', icon: 'edit', options: [] },
 ];
 const kindDef = (k: Kind) => KINDS.find((x) => x.k === k)!;
 
@@ -40,6 +45,8 @@ export function Carnet() {
   const targets: Contract[] = all ? present : c ? [c] : [];
   const entries = c ? s.journal.filter((j) => j.cid === c.id && j.date === jour).sort((a, b) => a.time.localeCompare(b.time)) : [];
   const plusAncien = addDays(t, -JOURS_HISTORIQUE);
+  // Sommeil commencé et pas terminé (un seul enfant, aujourd'hui) : la fiche propose alors le réveil
+  const dort = c && !all && estAuj ? [...entries].reverse().find(siesteEnCours) : undefined;
 
   async function sendSummary(c: Contract) {
     const r = await shareText(summaryText(c, jour, entries));
@@ -102,15 +109,15 @@ export function Carnet() {
         {all && (
           <>
             <QuickButtons label="Ajouter au carnet de tous les enfants présents" onPick={(k) => setSheet({ kind: k })} />
-            <p class="muted">La note s’ajoute au carnet de {present.map((k) => k.child).join(', ')}. Pour voir ou envoyer la journée d’un enfant, touche son prénom.</p>
+            <p class="muted">La note s’ajoute au carnet {de(present.map((k) => k.child).join(', '))}. Pour voir ou envoyer la journée d’un enfant, touche son prénom.</p>
           </>
         )}
         {c && (
           <>
-            <QuickButtons label={`Ajouter au carnet de ${c.child}`} onPick={(k) => setSheet({ kind: k })} />
+            <QuickButtons label={`Ajouter au carnet ${de(c.child)}`} dort={dort} onPick={(k) => setSheet({ kind: k })} />
             <section class="card stack" aria-labelledby="tl-title">
               <div class="spread">
-                <h2 id="tl-title">La journée de {c.child}</h2>
+                <h2 id="tl-title">La journée {de(c.child)}</h2>
                 <span class="muted small">{entries.length} note{entries.length > 1 ? 's' : ''}</span>
               </div>
               {entries.length === 0 ? (
@@ -130,7 +137,7 @@ export function Carnet() {
                       </button>
                       <span class="tl-actions">
                         {siesteEnCours(e) && estAuj && (
-                          <button class="btn btn-secondary btn-sm" aria-label={`Réveil de ${c.child} maintenant`} onClick={() => reveil(e)}>Réveil</button>
+                          <button class="btn btn-secondary btn-sm" aria-label={`Réveil ${de(c.child)} maintenant`} onClick={() => reveil(e)}>Réveil</button>
                         )}
                         <button class="icon-btn ph-no-capture" aria-label={`Supprimer la note de ${hh(e.time)}`} onClick={async () => { const u = await deleteJournal(e.id); toast('Note supprimée', u); }}>
                           <Icon name="trash" size={20} />
@@ -153,6 +160,7 @@ export function Carnet() {
           kind={sheet.kind}
           date={jour}
           edit={sheet.edit}
+          ouverte={!sheet.edit && sheet.kind.k === 'sieste' ? dort : undefined}
           onClose={() => setSheet(null)}
         />
       )}
@@ -164,13 +172,14 @@ function cap(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function QuickButtons({ label, onPick }: { label: string; onPick: (k: (typeof KINDS)[number]) => void }) {
+function QuickButtons({ label, dort, onPick }: { label: string; dort?: Journal; onPick: (k: (typeof KINDS)[number]) => void }) {
   return (
     <section aria-label={label} class="quick">
       {KINDS.map((k) => (
         <button onClick={() => onPick(k)}>
           <span class="q-ico"><Icon name={k.icon} /></span>
           {k.l}
+          {k.k === 'sieste' && dort && <span class="q-sub">Dort depuis {hh(dort.time)}</span>}
         </button>
       ))}
     </section>
@@ -180,25 +189,47 @@ function QuickButtons({ label, onPick }: { label: string; onPick: (k: (typeof KI
 /** Champs de la fiche : ce qui est saisi, pas encore enregistré */
 type Saisie = Pick<Journal, 'detail' | 'sommeil' | 'fin' | 'ml' | 'temp'>;
 
-function EntrySheet({ cs, kind, date, edit, onClose }: {
-  cs: Contract[]; kind: (typeof KINDS)[number]; date: ISODate; edit?: Journal; onClose: () => void;
+function EntrySheet({ cs, kind, date, edit, ouverte, onClose }: {
+  cs: Contract[]; kind: (typeof KINDS)[number]; date: ISODate; edit?: Journal; ouverte?: Journal; onClose: () => void;
 }) {
+  const maintenant = nowHHMM();
+  const estAuj = date === today();
   const sommeil = kind.k === 'sieste' && (!edit || !!edit.sommeil);
   const biberon = kind.k === 'repas' && (!edit || edit.ml !== undefined);
   const thermo = kind.k === 'soin' && (!edit || edit.temp !== undefined);
   const texteLibre = !edit || (!edit.sommeil && edit.ml === undefined && edit.temp === undefined);
 
-  const [time, setTime] = useState(edit?.time ?? nowHHMM());
+  const [time, setTime] = useState(edit?.time ?? maintenant);
   const [fin, setFin] = useState(edit?.fin ?? '');
+  // Sommeil déjà terminé (saisi après coup) et réveil à une autre heure
+  const [debutPasse, setDebutPasse] = useState('');
+  const [finPasse, setFinPasse] = useState('');
+  const [heureReveil, setHeureReveil] = useState(maintenant);
+  // Choix « Biberon » ou « Prise de température » touché : sa case s'ouvre sous le choix
+  const [ouvert, setOuvert] = useState<string | null>(null);
   const [ml, setMl] = useState(edit?.ml !== undefined ? String(edit.ml) : '');
   const [temp, setTemp] = useState(edit?.temp !== undefined ? temperatureLabel(edit.temp).replace(' °C', '') : '');
   const [text, setText] = useState(edit && texteLibre ? edit.detail : '');
 
   const finInvalide = !!fin && fin <= time;
+  const passeInvalide = !!debutPasse && !!finPasse && finPasse <= debutPasse;
+  const reveilInvalide = !!ouverte && heureReveil <= ouverte.time;
+
+  async function reveiller(heure: string) {
+    if (!ouverte || heure <= ouverte.time) return;
+    const undo = await updateJournal({ ...ouverte, fin: heure, detail: detailSieste(ouverte.time, heure) });
+    logUsage('carnet_reveil', 'carnet');
+    onClose();
+    toast(`Réveil noté à ${hh(heure)}`, undo);
+  }
   const mlOk = parseMl(ml);
   const tempOk = parseTemperature(temp);
 
   async function save(saisie: Saisie, usage: string) {
+    return saveAt(time, saisie, usage);
+  }
+
+  async function saveAt(time: string, saisie: Saisie, usage: string) {
     const base = { sommeil: undefined, fin: undefined, ml: undefined, temp: undefined };
     if (edit) {
       const undo = await updateJournal({ ...edit, ...base, ...saisie, time });
@@ -218,48 +249,22 @@ function EntrySheet({ cs, kind, date, edit, onClose }: {
     toast(`Ajouté au carnet à ${hh(time)}${who}`, async () => { for (const u of undos) await u(); });
   }
 
-  const names = cs.map((c) => c.child).join(', ');
-  return (
-    <Sheet title={edit ? `Modifier : ${KIND_LABEL[kind.k].toLowerCase()}, ${names}` : `${kind.l}, ${names}`} onClose={onClose}>
-      <div class="spread">
-        <label for="jr-time" class="label">{sommeil ? 'Endormissement' : 'Heure'}</label>
-        <input id="jr-time" class="input num" style={{ width: '140px' }} type="time" value={time} onInput={(e) => setTime((e.target as HTMLInputElement).value)} />
-      </div>
-
-      {sommeil && (
-        <>
-          <div class="spread">
-            <label for="jr-fin" class="label">Réveil <span class="muted small">(vide si la sieste continue)</span></label>
-            <input id="jr-fin" class="input num" style={{ width: '140px' }} type="time" value={fin} onInput={(e) => setFin((e.target as HTMLInputElement).value)} />
-          </div>
-          {finInvalide && <p class="hint warn" role="alert">L’heure du réveil doit être après l’endormissement.</p>}
-          <button
-            class="btn btn-primary btn-block btn-lg"
-            disabled={!time || finInvalide}
-            onClick={() => save({ sommeil: true, fin: fin || undefined, detail: detailSieste(time, fin || undefined) }, fin ? 'carnet_sieste' : 'carnet_endormissement')}
-          >
-            {edit ? 'Enregistrer' : fin ? 'Enregistrer la sieste' : 'Noter l’endormissement'}
-          </button>
-        </>
-      )}
-
-      {biberon && (
+  const champBiberon = (
         <div class="field">
           <label for="jr-ml">Biberon, quantité bue (ml)</label>
           <div class="row">
-            <input id="jr-ml" class="input num" style={{ width: '140px' }} type="number" inputMode="numeric" min={1} max={500} step={10} value={ml} placeholder="180" onInput={(e) => setMl((e.target as HTMLInputElement).value)} />
+            <input id="jr-ml" autoFocus={!edit} class="input num" style={{ width: '140px' }} type="number" inputMode="numeric" min={1} max={500} step={10} value={ml} placeholder="180" onInput={(e) => setMl((e.target as HTMLInputElement).value)} />
             <button class="btn btn-secondary" aria-label={edit ? undefined : 'Ajouter le biberon'} disabled={!mlOk} onClick={() => save({ ml: mlOk!, detail: detailBiberon(mlOk!) }, 'carnet_biberon')}>
               {edit ? 'Enregistrer' : 'Ajouter'}
             </button>
           </div>
         </div>
-      )}
-
-      {thermo && (
+  );
+  const champTemperature = (
         <div class="field">
           <label for="jr-temp">Température (°C)</label>
           <div class="row">
-            <input id="jr-temp" class="input num" style={{ width: '140px' }} type="text" inputMode="decimal" value={temp} placeholder="37,5" onInput={(e) => setTemp((e.target as HTMLInputElement).value)} />
+            <input id="jr-temp" autoFocus={!edit} class="input num" style={{ width: '140px' }} type="text" inputMode="decimal" value={temp} placeholder="37,5" onInput={(e) => setTemp((e.target as HTMLInputElement).value)} />
             <button class="btn btn-secondary" aria-label={edit ? undefined : 'Ajouter la température'} disabled={!tempOk} onClick={() => save({ temp: tempOk!, detail: detailTemperature(tempOk!) }, 'carnet_temperature')}>
               {edit ? 'Enregistrer' : 'Ajouter'}
             </button>
@@ -267,11 +272,92 @@ function EntrySheet({ cs, kind, date, edit, onClose }: {
           {temp.trim() !== '' && !tempOk && <span class="hint">Entre une température entre 34 et 43 °C, par exemple 38,2.</span>}
           {tempOk !== undefined && estFievre(tempOk) && <span class="hint warn">38 °C ou plus : c’est de la fièvre. Préviens les parents.</span>}
         </div>
+  );
+
+  // Sommeil déjà terminé : début et fin, saisis après coup (seul moyen pour un jour passé)
+  const passe = (
+    <div class="stack-sm">
+      <div class="spread">
+        <label for="jr-debut" class="label">Endormissement</label>
+        <input id="jr-debut" class="input num" style={{ width: '140px' }} type="time" value={debutPasse} onInput={(e) => setDebutPasse((e.target as HTMLInputElement).value)} />
+      </div>
+      <div class="spread">
+        <label for="jr-fin-passe" class="label">Réveil</label>
+        <input id="jr-fin-passe" class="input num" style={{ width: '140px' }} type="time" value={finPasse} onInput={(e) => setFinPasse((e.target as HTMLInputElement).value)} />
+      </div>
+      {passeInvalide && <p class="hint warn" role="alert">L’heure du réveil doit être après l’endormissement.</p>}
+      <button
+        class={`btn btn-block ${estAuj ? 'btn-secondary' : 'btn-primary btn-lg'}`}
+        disabled={!debutPasse || !finPasse || passeInvalide}
+        onClick={() => { saveAt(debutPasse, { sommeil: true, fin: finPasse, detail: detailSieste(debutPasse, finPasse) }, 'carnet_sommeil_passe'); }}
+      >
+        Enregistrer le sommeil
+      </button>
+    </div>
+  );
+
+  const names = cs.map((c) => c.child).join(', ');
+  return (
+    <Sheet title={edit ? `Modifier : ${KIND_LABEL[kind.k].toLowerCase()}, ${names}` : `${kind.l}, ${names}`} onClose={onClose}>
+      {ouverte ? (
+        <>
+          <p class="sommeil-etat"><Icon name="moon" /><b>Dort depuis {hh(ouverte.time)}</b></p>
+          <button class="btn btn-primary btn-block btn-lg" disabled={maintenant <= ouverte.time} onClick={() => reveiller(maintenant)}>Réveil maintenant</button>
+          <div class="spread">
+            <label for="jr-reveil" class="label">Ou réveil à</label>
+            <input id="jr-reveil" class="input num" style={{ width: '140px' }} type="time" value={heureReveil} onInput={(e) => setHeureReveil((e.target as HTMLInputElement).value)} />
+          </div>
+          {reveilInvalide && <p class="hint warn" role="alert">L’heure du réveil doit être après l’endormissement ({hh(ouverte.time)}).</p>}
+          <button class="btn btn-secondary btn-block" disabled={!heureReveil || reveilInvalide} onClick={() => reveiller(heureReveil)}>Enregistrer le réveil</button>
+          <p class="hint">Pour noter autre chose sur son sommeil, choisis ci-dessous.</p>
+        </>
+      ) : (
+        <div class="spread">
+          <label for="jr-time" class="label">{sommeil && edit ? 'Endormissement' : 'Heure'}</label>
+          <input id="jr-time" class="input num" style={{ width: '140px' }} type="time" value={time} onInput={(e) => setTime((e.target as HTMLInputElement).value)} />
+        </div>
       )}
 
+      {sommeil && edit && (
+        <>
+          <div class="spread">
+            <label for="jr-fin" class="label">Réveil <span class="muted small">(vide s’il dort encore)</span></label>
+            <input id="jr-fin" class="input num" style={{ width: '140px' }} type="time" value={fin} onInput={(e) => setFin((e.target as HTMLInputElement).value)} />
+          </div>
+          {finInvalide && <p class="hint warn" role="alert">L’heure du réveil doit être après l’endormissement.</p>}
+          <button class="btn btn-primary btn-block btn-lg" disabled={!time || finInvalide} onClick={() => save({ sommeil: true, fin: fin || undefined, detail: detailSieste(time, fin || undefined) }, 'carnet_sommeil')}>
+            Enregistrer
+          </button>
+        </>
+      )}
+
+      {sommeil && !edit && !ouverte && estAuj && (
+        <button class="btn btn-primary btn-block btn-lg" disabled={!time} onClick={() => save({ sommeil: true, detail: detailSieste(time) }, 'carnet_endormissement')}>
+          {cs.length > 1 ? 'S’endorment' : 'S’endort'} {time === maintenant ? 'maintenant' : `à ${hh(time)}`}
+        </button>
+      )}
+
+      {sommeil && !edit && (estAuj ? (
+        <details class="more">
+          <summary>Noter un sommeil déjà terminé</summary>
+          <div class="more-body">{passe}</div>
+        </details>
+      ) : {passe})}
+
+      {edit && biberon && champBiberon}
+      {edit && thermo && champTemperature}
       {texteLibre && kind.options.length > 0 && (
         <div class="choices">
-          {kind.options.map((o) => <button class="choice" aria-pressed={edit?.detail === o} onClick={() => save({ detail: o }, 'carnet_' + kind.k)}>{o}</button>)}
+          {kind.options.map((o) => {
+            const champ = !edit && o === OPT_BIBERON ? champBiberon : !edit && o === OPT_TEMPERATURE ? champTemperature : null;
+            if (!champ) return <button class="choice" aria-pressed={edit?.detail === o} onClick={() => save({ detail: o }, 'carnet_' + kind.k)}>{o}</button>;
+            return (
+              <>
+                <button class="choice" aria-expanded={ouvert === o} onClick={() => setOuvert(ouvert === o ? null : o)}>{o}</button>
+                {ouvert === o && <div class="choice-champ">{champ}</div>}
+              </>
+            );
+          })}
         </div>
       )}
       {kind.k === 'soin' && (
