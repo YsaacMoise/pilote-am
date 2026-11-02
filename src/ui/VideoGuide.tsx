@@ -1,6 +1,6 @@
 // Vidéos en motion design, au format téléphone (9:16), montrées au moment où elles servent :
 //  - page d'accueil : un aperçu animé sans le son, qui ouvre « Une journée avec Arvela » (21 s) ;
-//  - dans l'app : une bulle « ▶ Comment… » sur l'écran concerné, qui lance une aide courte (9 à 11 s),
+//  - dans l'app : une bulle « ▶ Comment… » sur l'écran concerné, qui lance une aide courte (13 à 15 s),
 //    puis disparaît une fois la vidéo vue ou la bulle fermée ; elle reste à portée dans « Ça coince » (en haut de l'écran) ;
 //  - Plus › Vidéos : toutes les vidéos, avec « Déjà vue ».
 // Fichiers dans public/videos/ (.mp4 H.264 + .vtt). Fabriqués avec Remotion (motion/, « node scripts/videos.mjs ») ; voix Google AI Studio (Nika).
@@ -18,12 +18,12 @@ interface ClipInfo { titre: string; duree: string; resume: string; pret: boolean
 /** `pret` : le fichier est dans public/videos/. Une vidéo pas encore prête n'apparaît nulle part. */
 export const CLIPS: Record<Clip, ClipInfo> = {
   quotidien: { titre: 'Une journée avec Arvela', duree: '21 s', pret: true, resume: 'Une journée d’accueil notée d’un geste, vue en direct par les parents, et le mois calculé tout seul.' },
-  pointer: { titre: 'Pointer une arrivée et un départ', duree: '9 s', pret: true, resume: 'Arrivée le matin, Départ le soir, Modifier pour corriger une heure.' },
-  carnet: { titre: 'Noter dans le carnet', duree: '11 s', pret: true, resume: 'Choisir l’enfant, noter un repas, le sommeil et le réveil : l’heure s’ajoute toute seule.' },
-  mois: { titre: 'Ta fin de mois, prête à déclarer', duree: '10 s', pret: true, resume: 'Les cases Pajemploi dans l’ordre, et l’envoi des montants au parent.' },
-  inviter: { titre: 'Inviter les parents', duree: '11 s', pret: true, resume: 'Créer le lien, l’envoyer, donner le code de vive voix.' },
-  simulateur: { titre: 'Simuler un accueil', duree: '11 s', pret: true, resume: 'Une famille appelle : son coût réel, aides de la CAF comprises, envoyé en un geste.' },
-  parents: { titre: 'Suivre la journée de votre enfant', duree: '25 s', pret: true, resume: 'Ouvrir le lien, taper le code, suivre la journée en direct, copier les cases Pajemploi du mois.' },
+  pointer: { titre: 'Pointer une arrivée et un départ', duree: '13 s', pret: true, resume: 'Arrivée le matin, Départ le soir, Modifier pour corriger une heure.' },
+  carnet: { titre: 'Noter dans le carnet', duree: '14 s', pret: true, resume: 'Choisir l’enfant, noter un repas, le sommeil et le réveil : l’heure s’ajoute toute seule.' },
+  mois: { titre: 'Ta fin de mois, prête à déclarer', duree: '14 s', pret: true, resume: 'Les cases Pajemploi dans l’ordre, et l’envoi des montants au parent.' },
+  inviter: { titre: 'Inviter les parents', duree: '14 s', pret: true, resume: 'Créer le lien, l’envoyer, donner le code de vive voix.' },
+  simulateur: { titre: 'Simuler un accueil', duree: '15 s', pret: true, resume: 'Une famille appelle : son coût réel, aides de la CAF comprises, envoyé en un geste.' },
+  parents: { titre: 'Suivre la journée de votre enfant', duree: '28 s', pret: true, resume: 'Ouvrir le lien, taper le code, suivre la journée en direct, copier les cases Pajemploi du mois.' },
   installer: { titre: 'Installer l’app', duree: '21 s', pret: true, resume: 'Les gestes pour mettre Arvela sur l’écran d’accueil. Une fois installée, elle marche même sans réseau.' },
 };
 
