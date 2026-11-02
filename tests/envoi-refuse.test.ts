@@ -119,10 +119,11 @@ describe('audit C-023 : envoi refusé par le serveur', () => {
     const cloud = await import('../src/cloud');
     const db = await import('../src/db');
     const putRaw = db.putRaw as unknown as ReturnType<typeof vi.fn>;
+    localStorage.setItem('pam-cloud-since', '5000');
     fake.rejected!('permission-denied', [{ s: 'contracts', k: 'c2' }]);
     putRaw.mockClear();
-    // Firestore remet la version du serveur, vue par l'écoute.
-    fake.listenCb!([{ s: 'contracts', k: 'c2', v: JSON.stringify({ id: 'c2', child: 'Ancienne' }), t: Date.now() }], { fromCache: false, maxT: Date.now() });
+    // Firestore remet la version du serveur, déjà connue (heure serveur antérieure au refus), vue par l'écoute.
+    fake.listenCb!([{ s: 'contracts', k: 'c2', v: JSON.stringify({ id: 'c2', child: 'Ancienne' }), t: 4000 }], { fromCache: false, maxT: 5000 });
     await new Promise((r) => setTimeout(r, 20));
     expect(putRaw).not.toHaveBeenCalled();
     // Une fois le renvoi confirmé, les versions du serveur sont de nouveau rangées.
@@ -142,5 +143,43 @@ describe('audit C-023 : envoi refusé par le serveur', () => {
     fake.listenCb!([{ s: 'kv', k: 'settings', v: JSON.stringify({ k: 'settings', v: { liensCoupes: ['x'] } }), t: Date.now() + 5 }], { fromCache: false, maxT: Date.now() + 5 });
     await new Promise((r) => setTimeout(r, 20));
     expect(putRaw).toHaveBeenCalled();
+  });
+
+  it('plusieurs appareils : une version plus récente faite ailleurs gagne et le changement refusé ne repart pas', async () => {
+    const db = await import('../src/db');
+    const putRaw = db.putRaw as unknown as ReturnType<typeof vi.fn>;
+    localStorage.setItem('pam-cloud-since', '1000');
+    fake.rejected!('permission-denied', [{ s: 'journal', k: 'j9' }]);
+    putRaw.mockClear();
+    // Version déjà connue, remise après le refus : ignorée.
+    fake.listenCb!([{ s: 'journal', k: 'j9', v: JSON.stringify({ id: 'j9', txt: 'avant' }), t: 900 }], { fromCache: false, maxT: 1000 });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(putRaw).not.toHaveBeenCalled();
+    expect(db.outboxRead().some((x) => x.k === 'j9')).toBe(true);
+    // Version écrite plus tard sur un autre appareil : rangée, retirée de la file d'envoi, et jamais en silence.
+    const { onToast } = await import('../src/store');
+    const messages: string[] = [];
+    const off = onToast((t) => { if (t) messages.push(t.text); });
+    fake.listenCb!([{ s: 'journal', k: 'j9', v: JSON.stringify({ id: 'j9', txt: 'autre appareil' }), t: 2000 }], { fromCache: false, maxT: 2000 });
+    await new Promise((r) => setTimeout(r, 20));
+    off();
+    expect(putRaw).toHaveBeenCalled();
+    expect(db.outboxRead().some((x) => x.k === 'j9')).toBe(false);
+    expect(messages.join(' ')).toMatch(/copies automatiques/);
+  });
+  it('seconde relecture : au branchement, les changements en attente sont protégés des versions déjà connues', async () => {
+    const cloud = await import('../src/cloud');
+    const db = await import('../src/db');
+    const putRaw = db.putRaw as unknown as ReturnType<typeof vi.fn>;
+    // Démarrage avec un changement resté dans la file (refusé avant la fermeture de l'app).
+    localStorage.setItem('pam-cloud-since', '3000');
+    db.outboxKeep([{ s: 'leaves', k: 'l1' }]);
+    fake.waitOk = false;
+    await cloud.retryRejected(); // relance le branchement, qui lit la file
+    fake.waitOk = true;
+    putRaw.mockClear();
+    fake.listenCb!([{ s: 'leaves', k: 'l1', v: JSON.stringify({ id: 'l1' }), t: 2500 }], { fromCache: false, maxT: 3000 });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(putRaw).not.toHaveBeenCalled();
   });
 });

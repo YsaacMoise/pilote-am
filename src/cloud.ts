@@ -173,18 +173,23 @@ async function doLink(u: CloudUser, mode?: MergeMode) {
 /** Envoi refusé par le serveur : clés gardées, bandeau affiché. Exporté pour les tests. */
 let refusN = 0;
 /**
- * Clés refusées par le serveur, pas encore renvoyées avec succès. Après un refus, Firestore remet la version du
- * serveur : elle ne doit pas écraser le changement du téléphone, qui sera renvoyé (le téléphone gagne, comme pour
- * les changements faits hors connexion). Les réglages ne sont jamais protégés : ils sont toujours fusionnés.
- * La protection tombe avec le bandeau (renvoi confirmé, déconnexion, nouvelle connexion) (C-023).
+ * Clés refusées par le serveur, pas encore renvoyées avec succès, avec l'heure serveur la plus récente déjà vue au
+ * moment du refus. Après un refus, Firestore remet la version du serveur : cette version, déjà connue (heure ≤ cette
+ * limite), n'écrase pas le changement du téléphone, qui sera renvoyé. Une version plus récente vient d'un autre
+ * appareil : elle est rangée et le changement refusé n'est plus renvoyé par-dessus. Les réglages ne sont jamais
+ * protégés : ils sont toujours fusionnés. La protection tombe avec le bandeau (C-023).
  */
-const protegees = new Set<string>();
+const protegees = new Map<string, number>();
 /** Suppression du compte en cours : un refus tardif ne doit ni remplir la file ni afficher de bandeau */
 let suppression = false;
 export function onRejected(code: string, docs: Array<{ s: db.SyncedStore; k: string }>) {
   if (suppression) return;
   db.outboxKeep(docs);
-  for (const d of docs) if (!(d.s === 'kv' && d.k === 'settings')) protegees.add(docId(d.s, d.k));
+  const vu = Number(lsGet(LS.since) ?? 0);
+  for (const d of docs) {
+    const id = docId(d.s, d.k);
+    if (!(d.s === 'kv' && d.k === 'settings') && !protegees.has(id)) protegees.set(id, vu);
+  }
   // Personne n'est connecté : les clés attendent la prochaine connexion, sans bandeau ni événement.
   if (!user) return;
   refusN++;
@@ -264,6 +269,13 @@ function attach(u: CloudUser): Promise<void> {
   const set = state.settings;
   sharedSettings = stable(forRemote('kv', 'settings', { k: 'settings', v: set }));
   const waiting = db.outboxRead();
+  // Changements pas encore confirmés en ligne (refusés, ou faits avant la connexion) : une version du serveur déjà
+  // connue ne les écrase pas ; une plus récente passe, avec copie (voir receive). Seconde relecture, point 2.
+  const vuAttach = Number(lsGet(LS.since) ?? 0);
+  for (const { s, k } of waiting) {
+    const id = docId(s, k);
+    if (!(s === 'kv' && k === 'settings') && !protegees.has(id)) protegees.set(id, vuAttach);
+  }
   db.outboxClear();
   db.setMirror(mirror);
   attached = true;
@@ -305,8 +317,20 @@ let reloadTimer: ReturnType<typeof setTimeout> | undefined;
 async function receive(docs: RemoteDoc[]) {
   if (!docs.length) return;
   let changed = false;
+  let copieFaite = false, remplace = false;
   for (const d of docs) {
-    if (protegees.has(docId(d.s, d.k))) continue;
+    const id = docId(d.s, d.k);
+    const limite = protegees.get(id);
+    if (limite !== undefined) {
+      // Version déjà connue (remise par Firestore après le refus) : le changement du téléphone sera renvoyé.
+      if (d.t <= limite) continue;
+      // Version plus récente, d'un autre appareil : elle gagne et le changement refusé ne repart pas par-dessus,
+      // mais il n'est jamais perdu en silence : copie automatique du téléphone d'abord, puis message.
+      protegees.delete(id);
+      if (!copieFaite) { await autoCopy(true).catch(() => {}); copieFaite = true; }
+      db.outboxDrop([{ s: d.s, k: d.k }]);
+      remplace = true;
+    }
     const cur = await db.get(d.s, d.k);
     const act = applyRemote(cur, d);
     if (d.s === 'kv' && d.k === 'settings' && d.v !== null) sharedSettings = stable(forRemote('kv', 'settings', JSON.parse(d.v)));
@@ -319,6 +343,9 @@ async function receive(docs: RemoteDoc[]) {
     else if (act.op === 'del') { await db.delRaw(d.s, d.k); changed = true; }
   }
   lsSet(LS.since, String(nextSince(Number(lsGet(LS.since) ?? 0), docs)));
+  if (remplace) {
+    toast('Une version plus récente, faite sur un autre appareil, a remplacé un changement qui n’avait pas pu partir. Ta version est gardée dans Sauvegarde, copies automatiques.', undefined, 'warn');
+  }
   if (changed) {
     clearTimeout(reloadTimer);
     reloadTimer = setTimeout(() => { void load(); }, 300);
