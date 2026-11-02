@@ -13,6 +13,8 @@ Seconde relecture contradictoire du 31/10/2026 (commit 70f70c4) : réponse « ou
 
 Contrôle indépendant des fuites du 31/10/2026 (Chrome, faux serveur PostHog) : deux défauts trouvés et corrigés (envois repris après extinction, identifiant de contrat dans les adresses) ; parcours rejoué.
 
+Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé**. Le calcul comptait dans les 45 h les heures prévues de toutes les absences, ce qui majorait à tort des heures en plus. Règle appliquée (fonction `minutesSeuil45`, src/engine/payroll.ts) : comptent les jours d'accueil, les absences de l'enfant payées (art. 99 : le travail commence et finit aux heures prévues) et les congés payés de l'AM (Cass. soc. 10 sept. 2025, n° 23-14.455) ; ne comptent pas les jours retenus, les autres absences de l'AM et les fériés chômés (art. 96-4 « heures de travail effectuées », art. 47 ; Cass. soc. 1er déc. 2004 et 4 avr. 2012). Les heures en plus sous le seuil restent payées au taux du contrat. Tests « seuil des 45 h » dans tests/payroll.test.ts : 4 des 8 échouent sur l'ancien code, tous passent sur le nouveau.
+
 ## Les 12 lignes « bloquant installation »
 
 | Constat | Statut | Preuve |
