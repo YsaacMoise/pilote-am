@@ -19,11 +19,11 @@ interface ClipInfo { titre: string; duree: string; resume: string; pret: boolean
 export const CLIPS: Record<Clip, ClipInfo> = {
   quotidien: { titre: 'Une journée avec Arvela', duree: '21 s', pret: true, resume: 'Une journée d’accueil notée d’un geste, vue en direct par les parents, et le mois calculé tout seul.' },
   pointer: { titre: 'Pointer une arrivée et un départ', duree: '9 s', pret: true, resume: 'Arrivée le matin, Départ le soir, Modifier pour corriger une heure.' },
-  carnet: { titre: 'Noter dans le carnet', duree: '10 s', pret: true, resume: 'Choisir l’enfant, noter un repas, le sommeil et le réveil : l’heure s’ajoute toute seule.' },
+  carnet: { titre: 'Noter dans le carnet', duree: '11 s', pret: true, resume: 'Choisir l’enfant, noter un repas, le sommeil et le réveil : l’heure s’ajoute toute seule.' },
   mois: { titre: 'Ta fin de mois, prête à déclarer', duree: '10 s', pret: true, resume: 'Les cases Pajemploi dans l’ordre, et l’envoi des montants au parent.' },
-  inviter: { titre: 'Inviter les parents', duree: '10 s', pret: true, resume: 'Créer le lien, l’envoyer, donner le code de vive voix.' },
+  inviter: { titre: 'Inviter les parents', duree: '11 s', pret: true, resume: 'Créer le lien, l’envoyer, donner le code de vive voix.' },
   simulateur: { titre: 'Simuler un accueil', duree: '11 s', pret: true, resume: 'Une famille appelle : son coût réel, aides de la CAF comprises, envoyé en un geste.' },
-  parents: { titre: 'Suivre la journée de votre enfant', duree: '24 s', pret: true, resume: 'Ouvrir le lien, taper le code, suivre la journée en direct, copier les cases Pajemploi du mois.' },
+  parents: { titre: 'Suivre la journée de votre enfant', duree: '25 s', pret: true, resume: 'Ouvrir le lien, taper le code, suivre la journée en direct, copier les cases Pajemploi du mois.' },
   installer: { titre: 'Installer l’app', duree: '21 s', pret: true, resume: 'Les gestes pour mettre Arvela sur l’écran d’accueil. Une fois installée, elle marche même sans réseau.' },
 };
 
