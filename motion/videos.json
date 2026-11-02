@@ -1,0 +1,107 @@
+{
+ "note": "Liste des vidéos fabriquées par « node scripts/videos.mjs ». Pour chaque vidéo : la composition Remotion, les scénarios de capture et les fiches voix dont elle dépend, et le fichier produit.",
+ "videos": [
+  {
+   "id": "quotidien",
+   "composition": "Accueil",
+   "captures": [
+    "journee",
+    "demo"
+   ],
+   "voix": [
+    "accueil-journee",
+    "accueil-soir",
+    "signature"
+   ],
+   "sortie": "../public/videos/arvela-quotidien.mp4",
+   "apercu": {
+    "fichier": "../public/videos/arvela-apercu.mp4",
+    "de": 1.2,
+    "duree": 6.5,
+    "largeur": 360
+   },
+   "affiche": {
+    "fichier": "../public/videos/arvela-quotidien.jpg",
+    "a": 4.6
+   }
+  },
+  {
+   "id": "parents",
+   "composition": "Parents",
+   "captures": [
+    "journee"
+   ],
+   "voix": [
+    "parents"
+   ],
+   "sortie": "../public/videos/arvela-parents.mp4",
+   "affiche": {
+    "fichier": "../public/videos/arvela-parents.jpg",
+    "a": 10.6
+   }
+  },
+  {
+   "id": "pointer",
+   "composition": "AidePointer",
+   "captures": [
+    "journee"
+   ],
+   "voix": [
+    "aide-pointer"
+   ],
+   "sortie": "../public/videos/arvela-pointer.mp4"
+  },
+  {
+   "id": "carnet",
+   "composition": "AideCarnet",
+   "captures": [
+    "demo"
+   ],
+   "voix": [
+    "aide-carnet"
+   ],
+   "sortie": "../public/videos/arvela-carnet.mp4"
+  },
+  {
+   "id": "mois",
+   "composition": "AideMois",
+   "captures": [
+    "demo"
+   ],
+   "voix": [
+    "aide-mois"
+   ],
+   "sortie": "../public/videos/arvela-mois.mp4"
+  },
+  {
+   "id": "inviter",
+   "composition": "AideInviter",
+   "captures": [
+    "journee"
+   ],
+   "voix": [
+    "aide-inviter"
+   ],
+   "sortie": "../public/videos/arvela-inviter.mp4"
+  },
+  {
+   "id": "simulateur",
+   "composition": "AideSimulateur",
+   "captures": [
+    "demo"
+   ],
+   "voix": [
+    "aide-simulateur"
+   ],
+   "sortie": "../public/videos/arvela-simulateur.mp4"
+  }
+ ],
+ "captures": {
+  "journee": {
+   "script": "scripts/captures-journee.cjs"
+  },
+  "demo": {
+   "script": "scripts/captures-demo.cjs"
+  }
+ }
+}

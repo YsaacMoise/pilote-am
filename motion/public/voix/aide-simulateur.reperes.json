@@ -1,0 +1,53 @@
+{
+ "source": "Mesuré par scripts/reperes.py depuis voix/aide-simulateur.json — ne pas modifier à la main",
+ "fichier": "voix/aide-simulateur.wav",
+ "duree": 9.6,
+ "mots": {
+  "famille": 0.36,
+  "appelle": 0.72,
+  "place": 1.24,
+  "simulateur": 2.3,
+  "horaires": 3.68,
+  "tarif": 4.2,
+  "voit": 5.24,
+  "cout": 5.58,
+  "caf": 6.86,
+  "envoies": 7.86,
+  "geste": 8.96,
+  "fin": 9.34
+ },
+ "phrases": [
+  {
+   "texte": "Une famille t'appelle pour une place ?",
+   "debut": 0.274,
+   "fin": 1.52
+  },
+  {
+   "texte": "Ouvre le simulateur.",
+   "debut": 1.94,
+   "fin": 2.86
+  },
+  {
+   "texte": "Entre les horaires et ton tarif.",
+   "debut": 3.12,
+   "fin": 4.58
+  },
+  {
+   "texte": "Elle voit son coût réel, avec les aides de la CAF.",
+   "debut": 5.0,
+   "fin": 7.16
+  },
+  {
+   "texte": "Et tu lui envoies le résultat, d'un seul geste.",
+   "debut": 7.52,
+   "fin": 9.34
+  }
+ ],
+ "a_ecouter": [
+  {
+   "attendu": "cout",
+   "entendu": "cours",
+   "vers": 5.58
+  }
+ ]
+}

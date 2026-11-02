@@ -1,0 +1,27 @@
+{
+ "id": "aide-simulateur",
+ "usage": "Aide du simulateur. Public : l'assistante maternelle qu'une famille appelle pour une place.",
+ "outil": "Google AI Studio, page Generate speech",
+ "modele": "Gemini 3.8 Flash TTS",
+ "voix": "Nika",
+ "style": "Voix française claire et souriante, comme une collègue qui montre un geste en passant. Débit vif et naturel, phrases courtes, pauses brèves. Jamais commercial, jamais robotique.",
+ "texte": "Une famille t'appelle pour une place ? Ouvre le simulateur. Entre les horaires et ton tarif. Elle voit son coût réel, avec les aides de la CAF. Et tu lui envoies le résultat, d'un seul geste.",
+ "fichier": "public/voix/aide-simulateur.wav",
+ "reperes": {
+  "famille": "famille",
+  "appelle": "appelle",
+  "place": "place",
+  "simulateur": "simulateur",
+  "horaires": "horaires",
+  "tarif": "tarif",
+  "voit": "voit",
+  "cout": "coût",
+  "caf": "caf",
+  "envoies": "envoies",
+  "geste": "geste",
+  "fin": {
+   "mot": "geste",
+   "bord": "fin"
+  }
+ }
+}

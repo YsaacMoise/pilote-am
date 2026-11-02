@@ -116,7 +116,7 @@ export const Accroche: React.FC<{ cfg: AccrocheCfg }> = ({ cfg }) => {
                         {b.texte}
                       </div>
                     )}
-                    <div style={{ marginTop: 10, textAlign: i % 2 ? 'right' : 'left', fontFamily: F.body, fontWeight: 500, fontSize: 28, color: C.muted, opacity: t >= b.t ? k : 0 }}>Parent de Léo · {i ? '17h48' : '17h46'}</div>
+                    <div style={{ marginTop: 10, textAlign: i % 2 ? 'right' : 'left', fontFamily: F.body, fontWeight: 500, fontSize: 28, color: C.muted, opacity: t >= b.t ? k : 0 }}>Parent d’Adam · {i ? '17h48' : '17h46'}</div>
                   </div>
                 );
               })}

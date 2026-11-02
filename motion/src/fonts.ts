@@ -1,12 +1,8 @@
 import { loadFont } from '@remotion/fonts';
 import { staticFile } from 'remotion';
+import charte from './charte.json';
 
-export const fontsReady = Promise.all([
-  loadFont({ family: 'Cormorant Garamond', url: staticFile('fonts/cormorant-garamond-latin-500-normal.woff2'), weight: '500' }),
-  loadFont({ family: 'Cormorant Garamond', url: staticFile('fonts/cormorant-garamond-latin-600-normal.woff2'), weight: '600' }),
-  loadFont({ family: 'Cormorant Garamond', url: staticFile('fonts/cormorant-garamond-latin-700-normal.woff2'), weight: '700' }),
-  loadFont({ family: 'Cormorant Garamond', url: staticFile('fonts/cormorant-garamond-latin-400-italic.woff2'), weight: '400', style: 'italic' }),
-  loadFont({ family: 'Cormorant Garamond', url: staticFile('fonts/cormorant-garamond-latin-500-italic.woff2'), weight: '500', style: 'italic' }),
-  loadFont({ family: 'Plus Jakarta Sans', url: staticFile('fonts/plus-jakarta-sans-latin-wght-normal.woff2'), weight: '200 800' }),
-  loadFont({ family: 'JetBrains Mono', url: staticFile('fonts/jetbrains-mono-latin-wght-normal.woff2'), weight: '100 800' }),
-]);
+// Les polices de l'app (copiées par scripts/charte.mjs), sous les mêmes noms de famille que dans l'app.
+export const fontsReady = Promise.all(
+  charte.polices.map((p) => loadFont({ family: p.famille, url: staticFile(`fonts/${p.fichier}`), weight: p.poids, style: p.style })),
+);

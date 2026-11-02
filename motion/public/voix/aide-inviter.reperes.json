@@ -1,0 +1,35 @@
+{
+ "source": "Mesuré par scripts/reperes.py depuis voix/aide-inviter.json — ne pas modifier à la main",
+ "fichier": "voix/aide-inviter.wav",
+ "duree": 9.12,
+ "mots": {
+  "plus": 0.5,
+  "fiche": 1.9,
+  "cree": 3.24,
+  "lien": 3.6,
+  "envoie": 4.34,
+  "code": 5.68,
+  "voix": 6.8,
+  "jamais": 7.68,
+  "ecrit": 7.98,
+  "finLien": 8.68
+ },
+ "phrases": [
+  {
+   "texte": "Dans Plus, ouvre la fiche de l'enfant et crée le lien.",
+   "debut": 0.327,
+   "fin": 3.78
+  },
+  {
+   "texte": "Envoie-le aux parents.",
+   "debut": 4.34,
+   "fin": 5.02
+  },
+  {
+   "texte": "Le code, donne-le de vive voix : il n'est jamais écrit dans le lien.",
+   "debut": 5.5,
+   "fin": 8.68
+  }
+ ],
+ "a_ecouter": []
+}

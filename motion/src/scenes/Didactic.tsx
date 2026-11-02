@@ -47,23 +47,23 @@ function layers(t: number): Layer[] {
   add('carnet-note', 20.42, 24.75);
   add('mois', 24.75, 27.3);
   add('mois-long', 27.3, 34.35, { scroll: kf(t, [[27.4, 0], [29.6, 470], [30.6, 470], [31.8, 1020]]), tabbarFrom: 'mois' });
-  add('plus-long', 34.35, 41, { scroll: kf(t, [[38.1, 0], [38.9, 560]]), tabbarFrom: 'plus' });
+  add('plus-long', 34.35, 41, { scroll: kf(t, [[38.1, 0], [39.0, 950]]), tabbarFrom: 'plus' });
   return L;
 }
 
 // Cercles de repère avec leur étiquette, en coordonnées d'écran
 type Mark = { r: R; from: number; to: number; label?: string; below?: boolean; right?: boolean; scrollOf?: (t: number) => number };
 const scrollMois = (t: number) => kf(t, [[27.4, 0], [29.6, 470], [30.6, 470], [31.8, 1020]]);
-const scrollPlus = (t: number) => kf(t, [[38.1, 0], [38.9, 560]]);
+const scrollPlus = (t: number) => kf(t, [[38.1, 0], [39.0, 950]]);
 const MARKS: Mark[] = [
   { r: { left: 64, top: 470, w: 196, h: 54 }, from: 2.7, to: 5.3, label: 'Horaires prévus', below: true },
   { r: rect('arrivee'), from: 5.6, to: 6.5, label: 'Arrivée' },
-  { r: { left: 60, top: 655, w: 120, h: 34 }, from: 6.75, to: 7.7, label: 'L’heure est notée', below: true },
+  { r: rect('tagArrivee', 5), from: 6.75, to: 7.7, label: 'L’heure est notée', below: true },
   { r: rect('depart'), from: 7.95, to: 8.8, label: 'Départ' },
   { r: { left: T.annuler.left - 8, top: T.annuler.top - 4, w: T.annuler.w + 16, h: T.annuler.h + 8 }, from: 10.3, to: 12.0, label: 'Annuler' },
   { r: rect('modifier'), from: 12.6, to: 14.0, label: 'Modifier' },
   { r: rect('chipInes', 4), from: 16.2, to: 16.95, label: 'L’enfant', below: true },
-  { r: { left: 10, top: 127, w: 370, h: 100 }, from: 17.6, to: 19.25, label: 'Repas · Sieste · Change', below: true },
+  { r: rect('tuiles', 6), from: 17.6, to: 19.25, label: 'Repas · Sommeil · Change', below: true },
   { r: rect('ligneNote'), from: 20.75, to: 22.4, label: 'L’heure s’ajoute seule', below: true },
   { r: rect('envoyerResume'), from: 22.2, to: 23.0, label: 'Envoyer aux parents' },
   { r: rect('total', 4), from: 25.2, to: 27.2, label: 'À verser par la famille', below: true },
@@ -107,7 +107,7 @@ export const Didactic: React.FC = () => {
   // Caméra : point de l'écran (fx, fy) placé en (540, cy) avec un zoom z
   const z = kf(t, [[0, 1], [2.4, 1], [5.4, 1.32], [7.6, 1.32], [7.9, 1.25], [9.6, 1.25], [10.2, 1.18], [12.0, 1.18], [12.6, 1.3], [14.1, 1.3], [14.6, 1], [16.0, 1], [16.5, 1.25], [20.6, 1.25], [21.0, 1.3], [22.2, 1.3], [22.6, 1.15], [24.4, 1.15], [24.8, 1], [25.2, 1.12], [27.3, 1.12], [27.8, 1], [34.2, 1], [34.6, 1.08], [39.4, 1.08], [39.9, 0.6]]);
   const fx = kf(t, [[0, 195], [5.4, 195]]);
-  const fy = kf(t, [[0, 422], [2.4, 422], [5.4, 540], [7.6, 540], [7.9, 330], [9.6, 330], [10.2, 640], [12.0, 640], [12.6, 560], [14.1, 560], [14.6, 422], [16.0, 422], [16.5, 260], [20.6, 260], [21.0, 420], [22.2, 420], [22.6, 470], [24.4, 470], [24.8, 422], [25.2, 330], [27.3, 330], [27.8, 422], [34.2, 422], [34.6, 440], [39.4, 440], [39.9, 422]]);
+  const fy = kf(t, [[0, 422], [2.4, 422], [5.4, 540], [7.6, 540], [7.9, 330], [9.6, 330], [10.2, 640], [12.0, 640], [12.6, 600], [14.1, 600], [14.6, 422], [16.0, 422], [16.5, 300], [20.6, 300], [21.0, 484], [22.2, 484], [22.6, 534], [24.4, 534], [24.8, 422], [25.2, 330], [27.3, 330], [27.8, 422], [34.2, 422], [34.6, 440], [39.4, 440], [39.9, 422]]);
   const cy = kf(t, [[0, 1085], [39.4, 1085], [39.9, 760]]);
   const enter = interpolate(t, [-0.2, 0.75], [1, 0], { ...cl, easing: out });
   const leave = interpolate(t, [39.5, 40.0], [1, 0], cl);

@@ -162,6 +162,7 @@ async function run(scheme) {
   await p.locator('dialog').getByLabel(/^Réveil/).fill('14:30');
   await p.getByRole('button', { name: 'Enregistrer', exact: true }).click();
   await toastHas(/Note modifiée/);
+  await oubli.waitFor({ state: 'detached', timeout: 3000 }).catch(() => {}); // laisser le carnet se redessiner
   assert(!(await oubli.count()), 'réveil corrigé : l’alerte disparaît');
   assert(!(await tl('Calme').count()), 'retour à aujourd’hui : la note de la veille reste à la veille');
   assert(await p.getByRole('button', { name: 'Jour suivant' }).isDisabled(), 'pas de jour futur');
