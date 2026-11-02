@@ -72,7 +72,8 @@ async function onUser(u: CloudUser | null) {
     return;
   }
   user = u;
-  setCloud({ email: u.email ?? undefined, verified: u.verified });
+  // Nouvelle connexion : les clés refusées repartent avec la file d'attente, l'ancien bandeau n'a plus lieu d'être.
+  setCloud({ email: u.email ?? undefined, verified: u.verified, refus: undefined });
   try {
     if (lsGet(LS.linked) === u.uid) attach(u);
     else await link(u);
@@ -168,21 +169,40 @@ async function doLink(u: CloudUser, mode?: MergeMode) {
 // téléphone (renvoyées au prochain branchement ou au prochain essai) et un bandeau le dit, sur tous les écrans.
 
 /** Envoi refusé par le serveur : clés gardées, bandeau affiché. Exporté pour les tests. */
+let refusN = 0;
+/** Suppression du compte en cours : un refus tardif ne doit ni remplir la file ni afficher de bandeau */
+let suppression = false;
 export function onRejected(code: string, docs: Array<{ s: db.SyncedStore; k: string }>) {
+  if (suppression) return;
   db.outboxKeep(docs);
-  // Lien parent refusé : il sera renvoyé en entier au prochain essai.
-  sentShares.clear();
+  // Personne n'est connecté : les clés attendent la prochaine connexion, sans bandeau ni événement.
+  if (!user) return;
+  refusN++;
+  // Lien parent refusé (aucun document de données) : il sera renvoyé en entier au prochain essai.
+  if (!docs.length) sentShares.clear();
   // C-101 : noté une fois par bandeau affiché, pas à chaque lot refusé. Le code d'erreur ne part pas.
   if (!cloudInfo().refus) logErreur('envoi_refuse');
   setCloud({ refus: messageRefus(code) });
 }
 
-/** Bouton « Réessayer » du bandeau : relance la copie, qui renvoie d'abord les changements refusés. */
-export function retryRejected() {
-  if (!user) return;
-  setCloud({ refus: undefined });
-  if (attached) attach(user);
-  else void link(user).catch(() => {});
+/**
+ * Bouton « Réessayer » du bandeau : relance la copie, qui renvoie d'abord les changements refusés.
+ * Le bandeau ne disparaît que si tout est parti sans nouveau refus (relecture contradictoire, point 5).
+ */
+export async function retryRejected(): Promise<boolean> {
+  if (!user || !be) return false;
+  const avant = refusN;
+  try {
+    if (attached) await attach(user);
+    else await link(user);
+  } catch { return false; }
+  await new Promise((r) => setTimeout(r, 0));
+  const ok = await be.waitPending(20000);
+  // Les renvois document par document d'un lot refusé partent juste après : on attend aussi leur réponse.
+  await new Promise((r) => setTimeout(r, 50));
+  const ok2 = ok && await be.waitPending(20000);
+  if (ok2 && refusN === avant) { setCloud({ refus: undefined }); return true; }
+  return false;
 }
 
 // ---------- Copie en direct ----------
@@ -229,7 +249,7 @@ const mirror: db.Mirror = {
 };
 
 /** Lance la copie en direct, après avoir envoyé ce qui a changé pendant qu'elle ne tournait pas. */
-function attach(u: CloudUser) {
+function attach(u: CloudUser): Promise<void> {
   detach();
   const set = state.settings;
   sharedSettings = stable(forRemote('kv', 'settings', { k: 'settings', v: set }));
@@ -237,13 +257,13 @@ function attach(u: CloudUser) {
   db.outboxClear();
   db.setMirror(mirror);
   attached = true;
-  void (async () => {
+  const renvoi = (async () => {
     for (const { s, k } of waiting) {
       const v = await db.get(s, k);
       if (v === undefined) enqueue(s, k, null);
       else enqueue(s, k, stable(forRemote(s, k, v)));
     }
-  })();
+  })().catch((e) => console.warn(e));
   const since = Math.max(0, Number(lsGet(LS.since) ?? 0) - RESUME_MARGIN_MS);
   let chain = Promise.resolve();
   unlisten = be!.listen(u.uid, since, (docs, meta) => {
@@ -258,6 +278,7 @@ function attach(u: CloudUser) {
   unsubShares = subscribe(() => scheduleShares());
   reconciled = false;
   scheduleShares(500);
+  return renvoi;
 }
 
 function detach() {
@@ -496,9 +517,11 @@ export async function signOut(force = false): Promise<boolean> {
 export async function deleteAccount(password: string) {
   const b = await startCloud();
   detach();
+  suppression = true;
   try {
     await b.deleteAccount(password);
   } catch (e) {
+    suppression = false;
     // Une partie des données en ligne a pu être effacée : on refait une réunion complète, qui renvoie le téléphone.
     if (user) {
       lsSet(LS.linked, null);
@@ -512,5 +535,7 @@ export async function deleteAccount(password: string) {
   // Les liens parents sont effacés en ligne avec le compte : ils ne doivent pas revenir avec un prochain compte.
   for (const c of state.contracts) if (c.partage) { const { partage: _, ...rest } = c; await putContract(rest); }
   db.outboxClear();
+  setCloud({ refus: undefined });
+  suppression = false;
   logUsage('compte_supprime');
 }

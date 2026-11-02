@@ -119,13 +119,21 @@ export const backend: Backend = {
     const me = deviceId();
     for (let i = 0; i < docs.length; i += BATCH) {
       const b = writeBatch(fs);
-      for (const d of docs.slice(i, i + BATCH)) {
-        b.set(doc(col(uid), docId(d.s, d.k)), { s: d.s, k: d.k, v: d.v, t: serverTimestamp(), d: me });
-      }
+      const lot = docs.slice(i, i + BATCH);
+      const data = (d: Omit<RemoteDoc, 't'>) => ({ s: d.s, k: d.k, v: d.v, t: serverTimestamp(), d: me });
+      for (const d of lot) b.set(doc(col(uid), docId(d.s, d.k)), data(d));
       // Hors ligne, la promesse n'aboutit qu'au retour du réseau : on ne l'attend pas, la file est gardée par Firestore.
       const p = b.commit();
-      const lot = docs.slice(i, i + BATCH).map((d) => ({ s: d.s, k: d.k }));
-      p.catch((e) => rejected(e, lot));
+      p.catch((e) => {
+        if (lot.length === 1) { rejected(e, [{ s: lot[0].s, k: lot[0].k }]); return; }
+        // Un lot est refusé en entier pour un seul document invalide : on renvoie chaque document seul,
+        // et seuls ceux qui sont refusés à leur tour sont remontés (relecture contradictoire, point 4).
+        const refuses: Array<{ s: RemoteDoc['s']; k: string }> = [];
+        let derniere: unknown = e;
+        const seuls = Promise.all(lot.map((d) => setDoc(doc(col(uid), docId(d.s, d.k)), data(d)).catch((x) => { refuses.push({ s: d.s, k: d.k }); derniere = x; })));
+        track(seuls);
+        void seuls.then(() => { if (refuses.length) rejected(derniere, refuses); });
+      });
       track(p);
     }
   },

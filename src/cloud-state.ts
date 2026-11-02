@@ -21,7 +21,8 @@ export interface CloudInfo {
   /** Message lisible si quelque chose bloque */
   error?: string;
   /**
-   * Un envoi a été refusé par le serveur (C-023) : message à afficher en bandeau jusqu'à un nouvel essai réussi.
+   * Un envoi a été refusé par le serveur (C-023) : message à afficher en bandeau jusqu'à un nouvel essai réussi
+   * (bouton « Réessayer ») ou une nouvelle connexion.
    * Les changements concernés restent sur le téléphone et sont renvoyés au prochain essai.
    */
   refus?: string;

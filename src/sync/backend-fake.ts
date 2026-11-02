@@ -51,7 +51,8 @@ async function flush() {
         await call('/write', { ...q[0], d: deviceId() });
       } catch (e) {
         const code = errCode(e);
-        if (code.includes('network')) throw e;
+        // Seuls les refus définitifs sortent de la file ; le reste (réseau, serveur indisponible) est réessayé.
+        if (!/permission-denied|invalid-argument|resource-exhausted|failed-precondition/.test(code)) throw e;
         // Refus du serveur (comme Firestore) : l'envoi sort de la file et le refus est remonté (C-023).
         const lot = q[0].docs.map((d) => ({ s: d.s, k: d.k }));
         rejSubs.forEach((f) => f(code, lot));

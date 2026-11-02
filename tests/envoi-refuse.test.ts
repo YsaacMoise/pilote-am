@@ -20,6 +20,8 @@ const fake = vi.hoisted(() => {
     rejected: null as null | ((code: string, docs: Array<{ s: string; k: string }>) => void),
     userCb: null as null | ((u: unknown) => void),
     writes: [] as Array<Array<{ s: string; k: string; v: string | null }>>,
+    waitOk: true,
+    refuseNext: false,
   };
   return s;
 });
@@ -30,12 +32,15 @@ vi.mock('../src/sync/backend-firebase', () => ({
     onUser(cb: (u: unknown) => void) { fake.userCb = cb; return () => {}; },
     onPending(cb: (p: boolean) => void) { cb(false); return () => {}; },
     onRejected(cb: (code: string, docs: Array<{ s: string; k: string }>) => void) { fake.rejected = cb; return () => {}; },
-    async write(_uid: string, docs: Array<{ s: string; k: string; v: string | null }>) { fake.writes.push(docs); },
+    async write(_uid: string, docs: Array<{ s: string; k: string; v: string | null }>) {
+      fake.writes.push(docs);
+      if (fake.refuseNext) { fake.refuseNext = false; fake.rejected?.('permission-denied', docs.map((d) => ({ s: d.s, k: d.k }))); }
+    },
     listen() { return () => {}; },
     async listShares() { return []; },
     async deleteShare() {},
     async putShare() {},
-    async waitPending() { return true; },
+    async waitPending() { return fake.waitOk; },
     async signOut() {},
   },
 }));
@@ -86,10 +91,26 @@ describe('audit C-023 : envoi refusé par le serveur', () => {
 
     // « Réessayer » : le bandeau disparaît et les deux documents repartent.
     fake.writes = [];
-    cloud.retryRejected();
-    await new Promise((r) => setTimeout(r, 10));
+    expect(await cloud.retryRejected()).toBe(true);
     expect(cloudInfo().refus).toBeUndefined();
     expect(db.outboxRead()).toEqual([]);
     expect(fake.writes.flat().map((d) => `${d.s}|${d.k}`).sort()).toEqual(['contracts|c1', 'days|c1|2026-11-02']);
+  });
+
+  it('relecture contradictoire : le bandeau reste si l’envoi repart sans réponse (hors ligne) ou est refusé à nouveau', async () => {
+    const cloud = await import('../src/cloud');
+    const { cloudInfo } = await import('../src/cloud-state');
+    fake.rejected!('permission-denied', [{ s: 'contracts', k: 'c1' }]);
+    fake.waitOk = false;
+    expect(await cloud.retryRejected()).toBe(false);
+    expect(cloudInfo().refus).toBeTruthy();
+    fake.waitOk = true;
+    // Hors ligne, les changements renvoyés attendent dans la file de Firestore ; ici on remet la clé pour le test.
+    (await import('../src/db')).outboxKeep([{ s: 'contracts', k: 'c1' }]);
+    fake.refuseNext = true;
+    expect(await cloud.retryRejected()).toBe(false);
+    expect(cloudInfo().refus).toBeTruthy();
+    expect(await cloud.retryRejected()).toBe(true);
+    expect(cloudInfo().refus).toBeUndefined();
   });
 });

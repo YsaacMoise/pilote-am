@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { logUsage, useStore } from './store';
+import { logUsage, toast, useStore } from './store';
 import { isDemo, setDemo, deleteDatabase } from './db';
 import { Toaster } from './ui/kit';
 import { Icon, type IconName } from './ui/icons';
@@ -35,7 +35,7 @@ function RefusBanner() {
     <div class="sync-banner" role="alert">
       <Icon name="alert" size={20} />
       <p>{c.refus}</p>
-      <button type="button" onClick={() => { void import('./cloud').then((m) => m.retryRejected()); }}>Réessayer</button>
+      <button type="button" onClick={() => { void import('./cloud').then((m) => m.retryRejected()).then((ok) => { if (!ok) toast('Pas encore envoyé. Vérifie le réseau, puis réessaie.'); }).catch(() => {}); }}>Réessayer</button>
     </div>
   );
 }
