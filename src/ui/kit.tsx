@@ -7,11 +7,11 @@ import { onToast, type ToastMsg, addFeedback, toast, logUsage, logErreur } from 
 import type { ErreurCode } from '../usage-events';
 
 /** Note l'erreur (C-101) chaque fois qu'elle apparaît à l'écran, pas à chaque affichage */
-export function useErreurAffichee(code: ErreurCode, visible: boolean) {
+export function useErreurAffichee(code: ErreurCode, visible: boolean, pendantFrappe = false) {
   useEffect(() => {
     if (!visible) return;
-    // Champ en cours de frappe (« , » dans un montant) : noté seulement si l'erreur reste affichée 2 secondes.
-    if (code !== 'saisie') { logErreur(code); return; }
+    if (!pendantFrappe) { logErreur(code); return; }
+    // Erreur vérifiée pendant la frappe (« , » au début d'un montant) : notée seulement si elle reste 2 secondes.
     const t = setTimeout(() => logErreur(code), 2000);
     return () => clearTimeout(t);
   }, [visible]);
@@ -184,8 +184,9 @@ export function Banner({ tone = 'info', icon, children }: { tone?: 'info' | 'war
   );
 }
 
-export function Field({ label, hint, error, children, id }: { label: string; hint?: string; error?: string; id: string; children: ComponentChildren }) {
-  useErreurAffichee('saisie', !!error);
+export function Field({ label, hint, error, children, id, pendantFrappe }: { label: string; hint?: string; error?: string; id: string; children: ComponentChildren; pendantFrappe?: boolean }) {
+  // Erreur renvoyée après « Valider » (TextInput) : notée tout de suite ; montants et nombres : vérifiés pendant la frappe.
+  useErreurAffichee('saisie', !!error, pendantFrappe);
   return (
     <div class="field">
       <label for={id}>{label}</label>
@@ -221,7 +222,7 @@ export function EuroInput({ label, cents, onChange, hint, allowEmpty }: { label:
     if (cents == null ? txt !== '' && !allowEmpty : cur !== cents) setTxt(cents == null ? '' : centsToInput(cents));
   }, [cents]);
   return (
-    <Field label={label} hint={hint} error={err} id={id}>
+    <Field label={label} hint={hint} error={err} id={id} pendantFrappe>
       <div class="input-euro">
         <input
           id={id} class="input num" inputMode="decimal" value={txt} aria-invalid={err ? 'true' : undefined}
@@ -245,7 +246,7 @@ export function NumberInput({ label, value, onChange, hint, min = 0, max, step =
   const [txt, setTxt] = useState(value == null ? '' : String(value).replace('.', ','));
   const [err, setErr] = useState('');
   return (
-    <Field label={label} hint={hint} error={err} id={id}>
+    <Field label={label} hint={hint} error={err} id={id} pendantFrappe>
       <input
         id={id} class="input num" inputMode={step < 1 ? 'decimal' : 'numeric'} value={txt} aria-invalid={err ? 'true' : undefined}
         aria-describedby={[hint && `${id}-h`, err && `${id}-e`].filter(Boolean).join(' ') || undefined}
