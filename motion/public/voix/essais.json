@@ -1,8 +1,9 @@
 {
  "fichier": "voix/essais-nika.wav",
- "estime": true,
+ "estime": false,
+ "source": "Instants mesurés par scripts/mots.py (Whisper) et silencedetect pour la première attaque",
  "mots": {
-  "huit": 0.25, "arrive": 1.15, "geste": 2.35, "note": 3.25, "mange": 4.35, "endort": 5.45, "doux": 6.35,
-  "parents": 7.35, "voient": 7.85, "direct": 8.55, "finDirect": 9.05, "finDoux": 6.85
+  "huit": 0.32, "arrive": 1.3, "geste": 2.4, "note": 3.3, "mange": 4.5, "endort": 5.6, "doux": 6.76,
+  "parents": 7.62, "voient": 8.28, "direct": 8.88, "finDirect": 9.18, "finDoux": 7.06
  }
 }

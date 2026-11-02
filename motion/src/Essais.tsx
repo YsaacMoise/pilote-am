@@ -33,13 +33,19 @@ const Band: React.FC<{ n: string; y0: number; y1: number; dy?: number; o?: numbe
 );
 
 // Première ligne d'une carte vide : le texte d'attente laisse la place à la ligne
-const Swap: React.FC<{ before: string; after: string; y0: number; p: number }> = ({ before, after, y0, p }) => (
-  <>
-    <Full n={before} o={p >= 1 ? 0 : 1} />
-    <Band n={after} y0={0} y1={y0} o={p > 0 ? 1 : 0} />
-    <Band n={after} y0={y0} y1={SH} o={inOut(p)} dy={(1 - ease(p)) * 14} />
-  </>
-);
+const Swap: React.FC<{ before: string; after: string; y0: number; dh: number; p: number }> = ({ before, after, y0, dh, p }) => {
+  if (p <= 0) return <Full n={before} />;
+  if (p >= 1) return <Full n={after} />;
+  const e = inOut(p);
+  // Avant et après restent alignés pendant le fondu : le bas de la carte descend de dh, sans image fantôme
+  return (
+    <>
+      <Band n={after} y0={0} y1={y0} />
+      <Band n={before} y0={y0} y1={SH} dy={e * dh} o={1 - e} />
+      <Band n={after} y0={y0} y1={SH} dy={-(1 - e) * dh} o={e} />
+    </>
+  );
+};
 
 // Une nouvelle ligne s'insère : le haut reste, la ligne s'ouvre, le bas descend (vraies captures avant / après)
 const Insert: React.FC<{ before: string; after: string; top: number; h: number; p: number }> = ({ before, after, top, h, p }) => {
@@ -58,11 +64,20 @@ const Insert: React.FC<{ before: string; after: string; top: number; h: number; 
   );
 };
 
-// Feuille qui monte (capture « feuille ouverte » par-dessus l'écran)
+// Feuille qui monte : voile sombre sur l'écran, puis le panneau de la capture « feuille ouverte » glisse du bas
+const SHEET_TOP: Record<string, number> = { 'a-repas': 55, 'a-sommeil': 24 };
 const Sheet: React.FC<{ n: string; t: number; up: number; down: number }> = ({ n, t, up, down }) => {
-  const k = fade(t, up, up + 0.32) * (1 - fade(t, down, down + 0.26, inOut));
+  const k = fade(t, up, up + 0.34) * (1 - fade(t, down, down + 0.28, Easing.bezier(0.5, 0, 0.75, 0)));
   if (k <= 0.001) return null;
-  return <Img src={img(n)} style={{ position: 'absolute', left: 0, top: (1 - k) * 380, width: SW, opacity: Math.min(1, k * 1.6) }} />;
+  const top = SHEET_TOP[n];
+  return (
+    <>
+      <div style={{ position: 'absolute', inset: 0, background: `rgba(30,32,29,${0.45 * Math.min(1, k * 1.4)})` }} />
+      <div style={{ position: 'absolute', left: 0, top: top + (1 - k) * (SH - top), width: SW, height: SH - top, overflow: 'hidden', borderRadius: '20px 20px 0 0' }}>
+        <Img src={img(n)} style={{ position: 'absolute', left: 0, top: -top, width: SW }} />
+      </div>
+    </>
+  );
 };
 
 // Doigt qui touche
@@ -155,7 +170,7 @@ const Sfx: React.FC<{ at: number; name: string; volume?: number }> = ({ at, name
 
 const Bande: React.FC<{ off: number; from: string; to: string; fin: number; taps: number[]; pops: number[]; envois?: number[] }> = ({ off, from, to, fin, taps, pops, envois = [] }) => {
   const { fps } = useVideoConfig();
-  const a = M[from] - 0.35;
+  const a = Math.max(0, M[from] - 0.35);
   const b = M[to] + 0.45;
   return (
     <>
@@ -202,11 +217,11 @@ export const EssaiDeuxTelephones: React.FC = () => {
 
   // Écran assistante maternelle
   const am = (() => {
-    const insert1 = fade(t, rowAM1, rowAM1 + 0.45, Easing.linear);
+    const insert1 = fade(t, rowAM1, rowAM1 + 0.35, Easing.linear);
     const swap2 = fade(t, rowAM2 - 0.05, rowAM2 + 0.25, Easing.linear);
     return (
       <>
-        {swap2 < 1 && <Swap before="a-carnet-0" after="a-carnet-1" y0={R.aLigne1.top - 6} p={insert1} />}
+        {swap2 < 1 && <Swap before="a-carnet-0" after="a-carnet-1" y0={R.aLigne1.top - 6} dh={R.aCarte1.h - R.aCarte0.h} p={insert1} />}
         <Full n="a-carnet-2" o={swap2} />
         <Sheet n="a-repas" t={t} up={tapRepas + 0.05} down={tapBien + 0.12} />
         <Sheet n="a-sommeil" t={t} up={tapSommeil + 0.05} down={tapEndort + 0.12} />
@@ -346,7 +361,7 @@ export const EssaiJournee: React.FC = () => {
 
   const ecran = (() => {
     const pk = fade(t, push, push + 0.42, inOut);
-    const ins = fade(t, rowAM1, rowAM1 + 0.45, Easing.linear);
+    const ins = fade(t, rowAM1, rowAM1 + 0.35, Easing.linear);
     const swap2 = fade(t, rowAM2 - 0.05, rowAM2 + 0.25, Easing.linear);
     const arr = fade(t, tapArr + 0.06, tapArr + 0.3, Easing.linear);
     return (
@@ -361,7 +376,7 @@ export const EssaiJournee: React.FC = () => {
         )}
         {pk > 0 && (
           <div style={{ position: 'absolute', inset: 0, translate: `${(1 - pk) * SW}px 0` }}>
-            {swap2 < 1 && <Swap before="a-carnet-0" after="a-carnet-1" y0={R.aLigne1.top - 6} p={ins} />}
+            {swap2 < 1 && <Swap before="a-carnet-0" after="a-carnet-1" y0={R.aLigne1.top - 6} dh={R.aCarte1.h - R.aCarte0.h} p={ins} />}
             <Full n="a-carnet-2" o={swap2} />
             <Sheet n="a-repas" t={t} up={tapRepas + 0.05} down={tapBien + 0.12} />
             <Sheet n="a-sommeil" t={t} up={tapSommeil + 0.05} down={tapEndort + 0.12} />
