@@ -2,6 +2,7 @@
 import * as db from './db';
 import { addDays, addMonths, firstDay, monthOf, today, weekday } from './engine/dates';
 import type { AmLeave, Contract, DayRec, Journal, Planning } from './engine/model';
+import { detailSieste } from './engine/carnet';
 
 function week(days: number[], plages: { start: string; end: string }[]): Planning {
   const p: Planning = {};
@@ -64,7 +65,7 @@ export async function seedDemo() {
   const journal: Journal[] = weekday(t) <= 5 ? [
     { id: 'demo-j1', cid: leo.id, date: t, time: '09:30', kind: 'humeur', detail: 'De bonne humeur' },
     { id: 'demo-j2', cid: leo.id, date: t, time: '11:45', kind: 'repas', detail: 'A bien mangé' },
-    { id: 'demo-j3', cid: leo.id, date: t, time: '12:40', kind: 'sieste', detail: 'Endormissement' },
+    { id: 'demo-j3', cid: leo.id, date: t, time: '12:40', kind: 'sieste', sommeil: true, detail: detailSieste('12:40') },
   ] : [];
   await db.replaceAll({
     kv: [{ k: 'settings', v: { amName: 'Sonia', enfantsACharge: 1, onboarded: true, lastBackup: Date.now() - 9 * 86400000 } }],

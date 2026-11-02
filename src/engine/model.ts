@@ -147,7 +147,16 @@ export interface Journal {
   date: ISODate;
   time: string;
   kind: 'repas' | 'sieste' | 'change' | 'humeur' | 'soin' | 'note';
+  /** Texte lu par les parents et par le résumé (recalculé à partir des champs précis quand il y en a) */
   detail: string;
+  /** Sieste : période de sommeil commencée à `time` (terminée quand `fin` est rempli) */
+  sommeil?: boolean;
+  /** Sieste : heure du réveil (HH:MM) */
+  fin?: string;
+  /** Repas : quantité du biberon en ml */
+  ml?: number;
+  /** Soin : température en °C (une décimale) */
+  temp?: number;
 }
 
 export const CHILD_ABS_LABEL: Record<ChildAbs, string> = {

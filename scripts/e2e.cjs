@@ -105,11 +105,50 @@ async function run(scheme) {
   await p.getByLabel('Ta note').fill('A dessiné un soleil');
   await p.getByRole('button', { name: 'Ajouter la note' }).click();
   await p.locator('.tl-item', { hasText: 'soleil' }).waitFor();
+  // Biberon en ml
+  await p.getByRole('button', { name: 'Repas' }).click();
+  await p.getByLabel('Biberon, quantité bue (ml)').fill('180');
+  await p.getByRole('button', { name: 'Ajouter le biberon' }).click();
+  await p.locator('.tl-item', { hasText: 'Biberon de 180 ml' }).waitFor();
+  assert(true, 'carnet : biberon noté en ml');
+  // Température : fièvre signalée
+  await p.getByRole('button', { name: 'Soin' }).click();
+  await p.getByLabel('Température (°C)').fill('38,4');
+  await p.getByText('c’est de la fièvre').waitFor();
+  await p.getByRole('button', { name: 'Ajouter la température' }).click();
+  await p.locator('.tl-item', { hasText: 'Température 38,4 °C' }).waitFor();
+  assert(await p.locator('.tl-item .tag', { hasText: 'Fièvre' }).isVisible(), 'carnet : température notée, fièvre signalée');
+  // Sieste avec heures de début et de fin
+  await p.getByRole('button', { name: 'Sieste' }).click();
+  await p.locator('dialog').getByLabel('Endormissement').fill('13:10');
+  await p.locator('dialog').getByLabel(/^Réveil/).fill('15:05');
+  await p.getByRole('button', { name: 'Enregistrer la sieste' }).click();
+  await p.locator('.tl-item', { hasText: '13h10 à 15h05 (1 h 55)' }).waitFor();
+  assert(true, 'carnet : sieste avec durée calculée');
+  // Modifier une note
+  await p.getByRole('button', { name: /^Modifier la note de/ }).filter({ hasText: 'soleil' }).click();
+  await p.getByLabel('Texte de la note').fill('A dessiné un grand soleil');
+  await p.getByRole('button', { name: 'Enregistrer' }).click();
+  await p.locator('.tl-item', { hasText: 'grand soleil' }).waitFor();
+  assert(await toastHas(/Note modifiée/), 'carnet : note modifiée sans la recréer');
   await shot('05-carnet');
   await p.getByRole('button', { name: 'Envoyer le résumé aux parents' }).click();
   assert(await toastHas(/Résumé copié/), 'résumé copié (pas de feuille de partage dans Chromium)');
   const clip = await p.evaluate(() => navigator.clipboard.readText().catch(() => ''));
-  if (clip) assert(clip.includes('A bien mangé') && clip.includes('Lou'), 'résumé du jour contient le repas');
+  if (clip) {
+    assert(clip.includes('A bien mangé') && clip.includes('Lou'), 'résumé du jour contient le repas');
+    const l = clip.split('\n');
+    assert(l.findIndex((x) => x.startsWith('Soins :')) < l.findIndex((x) => x.startsWith('Repas :')), 'résumé : les soins avant les repas');
+    assert(clip.includes('Sieste : 1 h 55 en tout'), 'résumé : total de sieste');
+  }
+  // Historique : jour précédent, puis retour
+  await p.getByRole('button', { name: 'Jour précédent' }).click();
+  await p.getByRole('button', { name: 'Revenir à aujourd’hui' }).waitFor();
+  assert(!(await p.locator('.tl-item', { hasText: 'grand soleil' }).count()), 'historique : la veille n’affiche pas les notes du jour');
+  await shot('05b-carnet-veille');
+  await p.getByRole('button', { name: 'Revenir à aujourd’hui' }).click();
+  await p.locator('.tl-item', { hasText: 'grand soleil' }).waitFor();
+  assert(true, 'historique : retour à aujourd’hui');
 
   // Mois
   await p.getByRole('link', { name: 'Mois' }).click();
