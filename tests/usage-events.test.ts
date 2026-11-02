@@ -67,3 +67,16 @@ describe('audit C-101 : erreur affichée', () => {
     expect(before_send({ event: 'erreur_saisie', properties: { ecran: 'contrat' } })?.event).toBe('erreur_saisie');
   });
 });
+
+describe('audit C-101, relecture contradictoire', () => {
+  it('heures du formulaire égales au planning, arrivée pointée à l’heure : pas de correction', () => {
+    // Arrivée pointée à 08:00, départ pas encore pointé ; le formulaire montre 08:00–17:00 (planning).
+    expect(heureCorrigee([{ a: '08:00' }], [{ a: '08:00', d: '17:00' }])).toBe(false);
+  });
+  it('deux plages, seule celle de l’après-midi pointée, matin vidé : pas de correction', () => {
+    expect(heureCorrigee([{}, { a: '13:30' }], [{ a: '', d: '' }, { a: '13:30', d: '17:00' }])).toBe(false);
+  });
+  it('absence posée sur une journée pointée : correction', () => {
+    expect(heureCorrigee([{ a: '08:05' }], [])).toBe(true);
+  });
+});

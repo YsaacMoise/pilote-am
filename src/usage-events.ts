@@ -11,6 +11,7 @@ export type ErreurCode =
   | 'contrat_incomplet' // contrat refusé à l'enregistrement
   | 'avenant_incomplet' // avenant refusé à l'enregistrement
   | 'restauration' // fichier de sauvegarde refusé
+  | 'compte' // création de compte ou connexion refusée
   | 'envoi_refuse'; // envoi refusé par le serveur (C-023)
 
 export function evErreur(code: ErreurCode): string {

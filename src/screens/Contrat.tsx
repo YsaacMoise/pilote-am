@@ -1,12 +1,12 @@
 import { useState } from 'preact/hooks';
-import { deleteContract, logUsage, putContract, state, toast, uid, useStore } from '../store';
+import { deleteContract, logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
 import { addMonthsToDate, deMois, firstDay, mondayOf, monthOf, shortDate, today, JOUR_NOMS, type Month } from '../engine/dates';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, semainesSansAccueilAnnee, termsAt, weeklyMinutes } from '../engine/payroll';
 import { entretienPlancher, ratesAt } from '../engine/rates';
 import { soldesDeDepart } from '../engine/conges';
 import { euros, hoursLabel } from '../engine/money';
 import type { Avenant, Contract, Plage, Planning, Terms } from '../engine/model';
-import { Banner, CHILD_COLORS, Choices, COLOR_NAMES, couleurLibre, couleursPrises, DateInput, EuroInput, Gommette, NumberInput, Seg, Switch, TextInput, Topbar, useErreurAffichee } from '../ui/kit';
+import { Banner, CHILD_COLORS, Choices, COLOR_NAMES, couleurLibre, couleursPrises, DateInput, EuroInput, Gommette, NumberInput, Seg, Switch, TextInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { BROUILLON_CONTRAT } from './Simulateur';
 import { PartageCard } from './PartageCard';
@@ -54,7 +54,6 @@ export function Contrat({ id }: { id?: string }) {
   const existing = id ? state.contracts.find((c) => c.id === id) : undefined;
   const [c, setC] = useState<Contract>(() => (existing ? structuredClone(existing) : blank()));
   const [errors, setErrors] = useState<string[]>([]);
-  useErreurAffichee('contrat_incomplet', errors.length > 0);
   const set = (p: Partial<Contract>) => setC({ ...c, ...p });
   // Couleurs des autres enfants en cours de contrat : une couleur = un enfant
   const prises = couleursPrises(state.contracts, c.id, today());
@@ -86,6 +85,8 @@ export function Contrat({ id }: { id?: string }) {
     if (c.end && c.end < c.start) errs.push('La date de fin est avant le début.');
     if (c.repasParents === undefined) errs.push('Indique qui fournit les repas de l’enfant.');
     setErrors(errs);
+    // C-101 : chaque enregistrement refusé est noté (relecture contradictoire : le deuxième refus passait inaperçu).
+    if (errs.length) logErreur('contrat_incomplet');
     if (errs.length) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const toSave: Contract = {
       ...c,

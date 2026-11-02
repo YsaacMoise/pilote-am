@@ -1,12 +1,12 @@
 // Avenant : nouvelles conditions du contrat à partir du 1er d'un mois.
 import { useState } from 'preact/hooks';
-import { logUsage, putContract, state, toast, uid, useStore } from '../store';
+import { logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
 import { addMonths, firstDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, termsAt, weeklyMinutes } from '../engine/payroll';
 import { ratesAt } from '../engine/rates';
 import { euros, hoursLabel } from '../engine/money';
 import { TERM_KEYS, type Avenant as Av, type Contract, type Planning, type Terms } from '../engine/model';
-import { Banner, Choices, DateInput, EuroInput, NumberInput, Seg, Topbar, useErreurAffichee } from '../ui/kit';
+import { Banner, Choices, DateInput, EuroInput, NumberInput, Seg, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { PlanDay, avenantSummary } from './Contrat';
 
@@ -34,7 +34,6 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
   });
   const [signe, setSigne] = useState(existing?.signe ?? '');
   const [errors, setErrors] = useState<string[]>([]);
-  useErreurAffichee('avenant_incomplet', errors.length > 0);
   if (!c || !t) return (<><Topbar title="Avenant" back="#/plus" screen="avenant" /><main><Banner tone="warn">Contrat introuvable.</Banner></main></>);
 
   const before = base(date)!;
@@ -56,6 +55,8 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
     if (wk <= 0) errs.push('Le planning est vide.');
     for (let d = 1; d <= 7; d++) for (const p of t!.planning[d] ?? []) if (p.end <= p.start) errs.push('Une heure de fin est avant le début.');
     setErrors(errs);
+    // C-101 : chaque enregistrement refusé est noté (relecture contradictoire : le deuxième refus passait inaperçu).
+    if (errs.length) logErreur('avenant_incomplet');
     if (errs.length) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const av: Av = { id: existing?.id ?? uid(), from: date, ...(signe ? { signe } : {}), changes };
     const next: Contract = { ...c!, avenants: [...others, av].sort((a, b) => (a.from < b.from ? -1 : 1)) };

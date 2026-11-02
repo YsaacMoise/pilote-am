@@ -292,7 +292,9 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
     });
     logUsage('journee_modifiee', 'aujourdhui');
     // C-101 : heure déjà pointée puis changée (le jour même ou après coup). Ni l'heure ni l'écart ne partent.
-    const apres = abs !== 'none' ? undefined : samePlan || future ? undefined : pres.filter((p) => p.a).map((p) => ({ a: p.a, d: p.d || undefined }));
+    // Heures effectives, plage par plage (sans filtrer, pour garder les index) : celles du formulaire, qui valent
+    // le planning quand rien n'a changé (relecture contradictoire : faux « heure corrigée » quand samePlan).
+    const apres = abs !== 'none' ? [] : pres;
     if (heureCorrigee(rec?.pres, apres)) logUsage(evCorrection(day, today()), 'aujourdhui');
     onClose();
     toast(`Journée ${de(c.child)} enregistrée`, undo);

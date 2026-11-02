@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { cloudInfo, statusLine, useCloud, type CloudStatus } from '../cloud-state';
 import { toast, useStore } from '../store';
-import { Banner, Sheet, TextInput, Topbar } from '../ui/kit';
+import { Banner, Sheet, TextInput, Topbar, useErreurAffichee } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { PasswordRules } from '../ui/PasswordRules';
 
@@ -18,6 +18,7 @@ export function AccountForm({ initial = 'create', initialEmail = '', onDone }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
+  useErreurAffichee('compte', !!error);
 
   const submit = async (e: Event) => {
     e.preventDefault();
