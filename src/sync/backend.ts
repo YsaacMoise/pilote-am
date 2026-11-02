@@ -37,6 +37,11 @@ export interface Backend {
   write(uid: string, docs: Array<Omit<RemoteDoc, 't'>>): Promise<void>;
   /** Écoute les documents modifiés après `since` (ms). Les échos des écritures de ce téléphone sont filtrés. */
   listen(uid: string, since: number, cb: (docs: RemoteDoc[], meta: ListenMeta) => void, onError: (e: unknown) => void): () => void;
+  /**
+   * Prévient quand le serveur refuse définitivement un envoi (droits, document invalide, quota…) : code d'erreur
+   * et documents concernés (vide pour un lien parent). Hors ligne n'est pas un refus : l'envoi attend le réseau (C-023).
+   */
+  onRejected(cb: (code: string, docs: Array<{ s: RemoteDoc['s']; k: string }>) => void): () => void;
   /** Prévient quand des changements de ce téléphone attendent ou non d'être envoyés */
   onPending(cb: (pending: boolean) => void): () => void;
   /** Attend l'envoi des changements en attente ; faux si le délai expire (pas de réseau) */

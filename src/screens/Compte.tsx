@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { cloudInfo, statusText, useCloud, type CloudStatus } from '../cloud-state';
+import { cloudInfo, statusLine, useCloud, type CloudStatus } from '../cloud-state';
 import { toast, useStore } from '../store';
 import { Banner, Sheet, TextInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
@@ -134,7 +134,7 @@ export function Compte() {
           <>
             <section class="card stack-sm">
               <p class="row"><Icon name="user" /><strong>{c.email}</strong></p>
-              <Banner tone={TONE[c.status]} icon={c.status === 'synced' ? 'cloud' : undefined}>{statusText(c)}</Banner>
+              <Banner tone={c.refus ? 'warn' : TONE[c.status]} icon={c.status === 'synced' && !c.refus ? 'cloud' : undefined}>{statusLine(c)}</Banner>
               {c.status !== 'choice' && <p class="hint">Chaque changement est rangé sur le téléphone puis copié dans ton compte dès qu’il y a du réseau. Sur un autre appareil, connecte-toi avec la même adresse pour tout retrouver.</p>}
             </section>
             {c.verified === false && <ConfirmAddress email={c.email!} />}

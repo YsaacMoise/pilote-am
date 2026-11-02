@@ -8,7 +8,7 @@ import { PASSWORD_RULE, passwordChecks } from './password';
 import { autoCopy, ctxFor, load, logUsage, putContract, saveSettings, state, subscribe, toast } from './store';
 import { buildSnapshot } from './partage/snapshot';
 import { newShare, seal } from './partage/crypto';
-import { cloudInfo, LS, lsGet, lsSet, setCloud } from './cloud-state';
+import { cloudInfo, LS, lsGet, lsSet, messageRefus, setCloud } from './cloud-state';
 import { errCode, type Backend, type CloudUser } from './sync/backend';
 import { applyRemote, docId, forRemote, needsChoice, nextSince, planMerge, RESUME_MARGIN_MS, stable, type LocalRecord, type MergeMode, type RemoteDoc } from './sync/plan';
 
@@ -34,6 +34,7 @@ export function startCloud(): Promise<Backend> {
       const b = await loadBackend();
       be = b;
       b.onPending((p) => { pending = p; refreshStatus(); });
+      b.onRejected(onRejected);
       b.onUser((u) => { void onUser(u); });
       window.addEventListener('online', () => {
         if (user && lsGet(LS.linked) !== user.uid && cloudInfo().status !== 'choice') void link(user).catch(() => {});
@@ -64,9 +65,10 @@ function nextLink(): Promise<void> {
 async function onUser(u: CloudUser | null) {
   if (!u) {
     // Déconnexion (voulue ou non) : la copie s'arrête, les changements suivants sont notés dans la file d'attente.
+    // Les clés d'un envoi refusé restent dans cette file : elles repartent à la reconnexion.
     detach();
     user = null;
-    setCloud({ status: 'off', email: undefined, verified: undefined, lastSync: undefined });
+    setCloud({ status: 'off', email: undefined, verified: undefined, lastSync: undefined, refus: undefined });
     return;
   }
   user = u;
@@ -159,6 +161,26 @@ async function doLink(u: CloudUser, mode?: MergeMode) {
   }
   // La file d'attente (changements d'avant et de pendant la réunion) est renvoyée par attach : sans risque, c'est la valeur actuelle du téléphone.
   attach(u);
+}
+
+// ---------- Envois refusés (C-023) ----------
+// Un envoi refusé par le serveur n'est plus perdu en silence : les clés sont notées dans la file d'attente du
+// téléphone (renvoyées au prochain branchement ou au prochain essai) et un bandeau le dit, sur tous les écrans.
+
+/** Envoi refusé par le serveur : clés gardées, bandeau affiché. Exporté pour les tests. */
+export function onRejected(code: string, docs: Array<{ s: db.SyncedStore; k: string }>) {
+  db.outboxKeep(docs);
+  // Lien parent refusé : il sera renvoyé en entier au prochain essai.
+  sentShares.clear();
+  setCloud({ refus: messageRefus(code) });
+}
+
+/** Bouton « Réessayer » du bandeau : relance la copie, qui renvoie d'abord les changements refusés. */
+export function retryRejected() {
+  if (!user) return;
+  setCloud({ refus: undefined });
+  if (attached) attach(user);
+  else void link(user).catch(() => {});
 }
 
 // ---------- Copie en direct ----------

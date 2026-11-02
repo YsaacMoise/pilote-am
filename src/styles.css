@@ -233,6 +233,16 @@ main {
 }
 .demo-banner > span { font-family: var(--font-num); font-size: 12px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; }
 .demo-banner + .app .topbar { padding-top: 8px; }
+/* Envoi refusé par le serveur (C-023) : même place que le bandeau de démonstration, ton d'alerte */
+.sync-banner {
+  background: var(--warn-soft); color: var(--ink); border-bottom: 1px solid var(--warn-line);
+  padding: calc(var(--safe-t) + 6px) var(--gutter) 6px;
+  display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600;
+}
+.sync-banner > svg { color: var(--warn); flex: none; }
+.sync-banner p { margin: 0; flex: 1; min-width: 0; }
+.sync-banner + .app .topbar { padding-top: 8px; }
+.sync-banner button { flex: none; min-height: 44px; padding: 0 14px; border-radius: var(--r-btn); border: 1.5px solid currentColor; background: transparent; color: inherit; font-weight: 700; }
 .demo-banner button { margin-left: auto; min-height: 44px; padding: 0 14px; border-radius: var(--r-btn); border: 1.5px solid #1e201d; background: transparent; color: #1e201d; font-weight: 700; }
 
 /* ---------- Boutons ---------- */

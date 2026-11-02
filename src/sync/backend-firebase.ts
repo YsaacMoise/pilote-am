@@ -11,7 +11,7 @@ import {
   query, serverTimestamp, Timestamp, waitForPendingWrites, where, writeBatch, type DocumentData,
 } from 'firebase/firestore';
 import { firebaseConfig } from '../firebase-config';
-import type { Backend, CloudUser, SharedDoc } from './backend';
+import { errCode, type Backend, type CloudUser, type SharedDoc } from './backend';
 import { docId, isSyncedStore, type RemoteDoc } from './plan';
 import { deviceId } from '../cloud-state';
 
@@ -38,6 +38,16 @@ function track(p: Promise<unknown>) {
 }
 // Au démarrage, des changements d'une session précédente peuvent attendre encore le réseau.
 track(waitForPendingWrites(fs));
+
+// Envois refusés par le serveur (C-023) : Firestore ne rejette la promesse d'un envoi que pour un refus définitif
+// (règles, document invalide, quota), jamais pour une absence de réseau. Le refus est remonté au lieu d'être perdu.
+type Rejected = (code: string, docs: Array<{ s: RemoteDoc['s']; k: string }>) => void;
+const rejSubs = new Set<Rejected>();
+function rejected(e: unknown, docs: Array<{ s: RemoteDoc['s']; k: string }>) {
+  console.warn('envoi refusé', e);
+  const code = errCode(e);
+  rejSubs.forEach((f) => f(code, docs));
+}
 
 function toRemote(data: DocumentData): RemoteDoc | null {
   if (!isSyncedStore(data.s) || typeof data.k !== 'string') return null;
@@ -114,7 +124,8 @@ export const backend: Backend = {
       }
       // Hors ligne, la promesse n'aboutit qu'au retour du réseau : on ne l'attend pas, la file est gardée par Firestore.
       const p = b.commit();
-      p.catch((e) => console.warn('envoi refusé', e));
+      const lot = docs.slice(i, i + BATCH).map((d) => ({ s: d.s, k: d.k }));
+      p.catch((e) => rejected(e, lot));
       track(p);
     }
   },
@@ -137,6 +148,10 @@ export const backend: Backend = {
       cb(docs, { fromCache: snap.metadata.fromCache, maxT });
     }, onError);
   },
+  onRejected(cb) {
+    rejSubs.add(cb);
+    return () => { rejSubs.delete(cb); };
+  },
   onPending(cb) {
     pendSubs.add(cb);
     cb(inflight > 0);
@@ -154,7 +169,7 @@ export const backend: Backend = {
     if (!u) throw Object.assign(new Error('Pas de compte connecté'), { code: 'auth/no-current-user' });
     // Comme les autres envois : gardé dans la file hors ligne, envoyé au retour du réseau.
     const p = setDoc(doc(fs, 'partages', id), { owner: u.uid, v: d.v, iv: d.iv, salt: d.salt, t: serverTimestamp() });
-    p.catch((e) => console.warn('lien parent refusé', e));
+    p.catch((e) => rejected(e, []));
     track(p);
   },
   async listShares() {
