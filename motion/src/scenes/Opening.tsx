@@ -21,9 +21,9 @@ const WORDS = [
 ];
 // Le « relevé » à recompter : lignes qui défilent vite dans une carte
 const LIGNES = [
-  ['Heures normales', '186 h'], ['Jours d’activité', '21 j'], ['Heures majorées', '11 h 02'], ['Absence enfant', '−1 j'],
-  ['Indemnités d’entretien', '78,75 €'], ['Repas fournis', '12 × 4,70 €'], ['Congés acquis', '2,5 j'], ['Heures complémentaires', '+0h30'],
-  ['Salaire net', '713,81 €'], ['Jours fériés', '1 j'], ['Indemnités km', '0,26 €/km'], ['Régularisation', '1/12e'],
+  ['Heures normales', '186 h'], ['Jours d’activité', '21 j'], ['Heures majorées', '10 h 20'], ['Absence enfant', '−1 j'],
+  ['Indemnités d’entretien', '78,76 €'], ['Repas fournis', '12 × 4,70 €'], ['Congés acquis', '2,5 j'], ['Heures complémentaires', '+0h30'],
+  ['Salaire net', '713,68 €'], ['Jours fériés', '1 j'], ['Indemnités km', '0,26 €/km'], ['Régularisation', '1/12e'],
 ];
 
 export const Opening: React.FC = () => {

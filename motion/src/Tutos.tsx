@@ -56,7 +56,7 @@ const MOIS_TUTO: TutoCfg = {
     { from: 26.6, to: 31.9, n: '06', name: 'Le bulletin', title: 'Vérifié pour toi.' },
   ],
   bulles: [
-    { from: 18.8, to: 21.5, kind: 'message', titre: 'Message au parent', y: 430, lignes: ['Bonjour, voici les éléments à déclarer sur Pajemploi pour Léo, octobre 2026 :', '• Heures normales : 186 h', '• Jours d’activité : 21', '• Salaire net : 713,81 €', '• Indemnités d’entretien : 82,88 €'] },
+    { from: 18.8, to: 21.5, kind: 'message', titre: 'Message au parent', y: 430, lignes: ['Bonjour, voici les éléments à déclarer sur Pajemploi pour Adam, octobre 2026 :', '• Heures normales : 186 h', '• Jours d’activité : 21', '• Salaire net : 713,56 €', '• Indemnités d’entretien : 82,88 €'] },
   ],
   cam: [
     [1.4, 1, 422], [3.5, 1, 422], [3.95, 1.32, 320], [8.2, 1.32, 320], [8.7, 1, 422],
@@ -100,7 +100,7 @@ const INV_TUTO: TutoCfg = {
     { img: 'i-contrat-code-long', from: 24.9, to: 99, scroll: SI, tabbar: 'i-plus', trans: 'retour' },
   ],
   marks: [
-    { r: pad(T.iPJour, 4), from: 2.9, to: 4.7, label: 'La journée de Léo, en direct', below: true },
+    { r: pad(T.iPJour, 4), from: 2.9, to: 4.7, label: 'La journée d’Adam, en direct', below: true },
     { r: pad(T.iLeo, 2), from: 5.6, to: 6.95, label: 'La fiche de l’enfant', below: true },
     { r: pad(T.iCreer), from: 7.8, to: 8.65, label: 'Créer le lien', scroll: SI },
     { r: pad(T.iCode, 4), from: 9.1, to: 11.3, label: 'Code à 4 chiffres', below: true, scroll: SI },
@@ -127,7 +127,7 @@ const INV_TUTO: TutoCfg = {
     { from: 24.9, to: 28.8, n: '05', name: 'À tout moment', title: 'Tu gardes la main.' },
   ],
   bulles: [
-    { from: 15.1, to: 17.25, kind: 'message', titre: 'Message aux parents de Léo', y: 430, lignes: ['Bonjour, voici le lien pour suivre la journée de Léo et retrouver la déclaration Pajemploi du mois :', 'arvela.fr/#/p/…', 'Je vous donne le code à 4 chiffres de vive voix.'] },
+    { from: 15.1, to: 17.25, kind: 'message', titre: 'Message aux parents d’Adam', y: 430, lignes: ['Bonjour, voici le lien pour suivre la journée d’Adam et retrouver la déclaration Pajemploi du mois :', 'arvela.fr/#/p/…', 'Je vous donne le code à 4 chiffres de vive voix.'] },
     { from: 23.3, to: 24.85, kind: 'pastille', y: 1700, lignes: ['Lecture seule : rien à modifier'] },
   ],
   cam: [

@@ -3,9 +3,12 @@ const { chromium } = require('playwright');
 // Demande : le site construit servi sur :4173 (vite preview) et, pour « inviter », une version VITE_FAKE_CLOUD=http://localhost:4180 servie sur :4175 avec scripts/fake-cloud.mjs.
 const fs = require('fs');
 const OUT = '/home/claude/pilote-am/motion/public/ecrans/';
+// Sites servis à la racine : démonstration (BASE) et version avec le faux service en ligne (BASE_FAKE, pour « inviter »).
+const BASE = process.env.BASE || 'http://localhost:4173/';
+const BASE_FAKE = process.env.BASE_FAKE || 'http://localhost:4175/';
 const J = {}; // rects par écran
 const which = process.argv[2] || 'all';
-const HIDE = `.demo-banner{display:none!important} .toast-wrap{display:none!important}`;
+const HIDE = `.demo-banner{display:none!important} .toast-wrap{display:none!important} .aide-video{display:none!important}`;
 async function phone(br, clock) {
   const ctx = await br.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'fr-FR', timezoneId: 'Europe/Paris', serviceWorkers: 'block' });
   await ctx.clock.setFixedTime(new Date(clock));
@@ -34,8 +37,10 @@ async function long(p, n) {
   await p.evaluate(() => { [...document.querySelectorAll('style')].slice(-1)[0].remove(); });
 }
 async function demo(p) {
-  await p.goto('http://localhost:4173/'); await p.waitForTimeout(700);
+  await p.goto(BASE); await p.waitForTimeout(700);
   await p.getByText('Essayer avec des enfants fictifs').first().click(); await p.waitForTimeout(2200);
+  const seule = p.getByRole('button', { name: 'Explorer seule' });
+  if (await seule.isVisible().catch(() => false)) { await seule.click(); await p.waitForTimeout(400); }
   await css(p);
 }
 const go = async (p, h, w = 900) => { await p.evaluate((x) => (location.hash = x), h); await p.waitForTimeout(w); await p.evaluate(() => scrollTo(0, 0)); };
@@ -61,7 +66,7 @@ const go = async (p, h, w = 900) => { await p.evaluate((x) => (location.hash = x
     await p.getByRole('link', { name: 'Contrôler le bulletin' }).click(); await p.waitForTimeout(900); await p.evaluate(() => scrollTo(0, 0));
     await shot(p, 'm-controle');
     J.mCtrlForm = await R(p, p.locator('fieldset', { has: p.locator('legend', { hasText: 'Le bulletin' }) }));
-    for (const [l, v] of [['Salaire net', '713,81'], ['Salaire brut', '913,97'], ['Heures normales', '186'], ['Jours d’activité', '21'], ['Indemnités d’entretien', '82,88']]) await p.getByLabel(l, { exact: true }).fill(v);
+    for (const [l, v] of [['Salaire net', '713,56'], ['Salaire brut', '913,65'], ['Heures normales', '186'], ['Jours d’activité', '21'], ['Indemnités d’entretien', '82,88']]) await p.getByLabel(l, { exact: true }).fill(v);
     await p.locator('h1').click(); await p.waitForTimeout(700);
     await long(p, 'm-controle-long');
     J.mCtrlRes = await R(p, p.locator('section[aria-labelledby="res"]'));
@@ -112,18 +117,18 @@ const go = async (p, h, w = 900) => { await p.evaluate((x) => (location.hash = x
     await ctx.close();
   }
   if (which === 'all' || which === 'inviter') {
-    const B = 'http://localhost:4175/';
+    const B = BASE_FAKE;
     await fetch('http://localhost:4180/reset-all', { method: 'POST' });
     const { ctx, p } = await phone(br, '2026-11-04T08:12:00+01:00');
     await p.goto(B);
     await p.getByRole('button', { name: 'Créer mon compte gratuit' }).click();
     await p.getByLabel('Adresse e-mail').fill('sonia@exemple.fr');
-    await p.getByLabel('Mot de passe').fill('Motdepasse-solide');
-    await p.getByRole('button', { name: 'Créer mon compte' }).click();
+    await p.getByLabel('Mot de passe', { exact: true }).fill('Motdepasse-solide1');
+    await p.getByRole('button', { name: 'Créer mon compte', exact: true }).click();
     await p.getByRole('button', { name: 'Continuer ici pour l’instant' }).click();
     await p.getByLabel('Ton prénom').fill('Sonia');
     await p.getByRole('button', { name: 'Ajouter un enfant que tu accueilles' }).click();
-    await p.getByLabel('Prénom de l’enfant').fill('Léo');
+    await p.getByLabel('Prénom de l’enfant').fill('Adam');
     await p.getByLabel('Nom de la famille').fill('Martin');
     await p.getByLabel('Taux horaire net').fill('3,90');
     await p.getByRole('radio', { name: /^Les parents/ }).click();
@@ -136,17 +141,18 @@ const go = async (p, h, w = 900) => { await p.evaluate((x) => (location.hash = x
     const carnet = async (h, btn, choix) => {
       await ctx.clock.setFixedTime(new Date('2026-11-04T' + h + ':00+01:00'));
       await go(p, '#/carnet', 600);
-      await p.getByRole('region', { name: 'Ajouter au carnet de Léo' }).getByRole('button', { name: btn }).click();
+      if (btn === 'Réveil') { await p.getByRole('region', { name: 'En train de dormir' }).getByRole('button', { name: /^Réveil/ }).click(); await p.waitForTimeout(400); return; }
+      await p.getByRole('region', { name: 'Ajouter au carnet d’Adam' }).getByRole('button', { name: btn }).click();
       await p.getByRole('button', { name: choix }).click(); await p.waitForTimeout(400);
     };
     await carnet('11:50', 'Repas', 'A tout mangé');
-    await carnet('12:40', 'Sieste', 'Endormissement');
-    await carnet('14:55', 'Sieste', 'Réveil');
+    await carnet('12:40', 'Sommeil', /endort maintenant/);
+    await carnet('14:55', 'Réveil');
     await ctx.clock.setFixedTime(new Date('2026-11-04T16:20:00+01:00'));
     await go(p, '#/plus'); await shot(p, 'i-plus');
     J.iTabPlus = await R(p, p.locator('.tabbar a').nth(3), true);
-    J.iLeo = await R(p, p.locator('a.li', { hasText: 'Léo' }), true);
-    await p.locator('a.li', { hasText: 'Léo' }).first().click(); await p.waitForTimeout(900);
+    J.iLeo = await R(p, p.locator('a.li', { hasText: 'Adam' }), true);
+    await p.locator('a.li', { hasText: 'Adam' }).first().click(); await p.waitForTimeout(900);
     await p.evaluate(() => scrollTo(0, 0)); await shot(p, 'i-contrat');
     const card = p.locator('section[aria-labelledby="partage-t"]');
     await card.scrollIntoViewIfNeeded();
@@ -174,12 +180,13 @@ const go = async (p, h, w = 900) => { await p.evaluate((x) => (location.hash = x
     await q.waitForTimeout(500); await shot(q, 'i-p-code');
     J.iPCode = await R(q, q.getByLabel('Code', { exact: true }), true);
     await q.getByLabel('Code', { exact: true }).fill(J.code);
-    await q.getByRole('heading', { name: 'Léo' }).waitFor({ timeout: 8000 }); await q.waitForTimeout(600);
+    await q.getByRole('heading', { name: 'Adam' }).waitFor({ timeout: 8000 }); await q.waitForTimeout(600);
     await shot(q, 'i-p-auj');
     J.iPJour = await R(q, q.locator('.card').filter({ hasText: 'Arrivée' }).first(), true);
     J.iPArr = await R(q, q.getByText('Arrivée', { exact: true }).first(), true);
     J.iPRepas = await R(q, q.getByText('Repas', { exact: true }).first(), true);
-    J.iPReveil = await R(q, q.getByText('Réveil', { exact: true }).first(), true);
+    // Dernière ligne du carnet de la journée (le sommeil, réveil compris) : bas du repère « Le carnet »
+    J.iPReveil = await R(q, q.getByText('Sommeil', { exact: true }).first(), true);
     J.iPMoisTab = await R(q, q.getByRole('tab', { name: 'Ce mois' }), true);
     await q.getByRole('tab', { name: 'Ce mois' }).click();
     await q.getByRole('heading', { name: 'Votre déclaration Pajemploi' }).waitFor(); await q.waitForTimeout(500);

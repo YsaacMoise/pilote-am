@@ -1,7 +1,13 @@
-#!/bin/bash
-# Version finale pour le site : limiteur (aucun écrêtage), volume normalisé à −16 LUFS, vidéo H.264 allégée, lecture rapide.
-in=$1; out=$2
-ffmpeg -y -loglevel error -i "$in" -c:v libx264 -preset slow -crf 23 -pix_fmt yuv420p -movflags +faststart \
-  -af "alimiter=limit=0.8:level=false,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000" -c:a aac -b:a 128k "$out.tmp.mp4" && mv "$out.tmp.mp4" "$out"
-ffprobe -v error -show_entries format=duration,size -of csv=p=0 "$out"
-ffmpeg -nostats -i "$out" -af ebur128=peak=true -f null - 2>&1 | grep -E "^\s+(I:|Peak:)" | tr -s ' ' | tr '\n' ' '; echo
+#!/usr/bin/env bash
+# Finition d'une vidéo rendue par Remotion, avant de la publier dans public/videos/ :
+# volume ramené à -16 LUFS (niveau des vidéos web), crêtes limitées, H.264 allégé, lecture qui démarre tout de suite.
+# Usage : scripts/final.sh out/raw-Mois.mp4 ../public/videos/arvela-mois.mp4
+set -euo pipefail
+in="$1"
+out="$2"
+ffmpeg -y -v error -i "$in" \
+  -af "loudnorm=I=-16:TP=-1.5:LRA=11,alimiter=limit=0.89" \
+  -c:v libx264 -preset veryfast -crf 24 -profile:v high -pix_fmt yuv420p -movflags +faststart \
+  -c:a aac -b:a 128k -ar 48000 \
+  "$out"
+echo "ok : $out"
