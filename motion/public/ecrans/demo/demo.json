@@ -1,0 +1,289 @@
+{
+ "mTabMois": {
+  "left": 195,
+  "top": 780,
+  "w": 98,
+  "h": 64,
+  "x": 244,
+  "y": 812
+ },
+ "mTotal": {
+  "left": 16,
+  "top": 209,
+  "w": 358,
+  "h": 198,
+  "x": 195,
+  "y": 308
+ },
+ "mDecl": {
+  "left": 16,
+  "top": 423,
+  "w": 358,
+  "h": 900,
+  "x": 195,
+  "y": 873
+ },
+ "mLignes": [
+  {
+   "left": 33,
+   "top": 646,
+   "w": 324,
+   "h": 111,
+   "x": 195,
+   "y": 702,
+   "texte": "Heures normales"
+  },
+  {
+   "left": 33,
+   "top": 757,
+   "w": 324,
+   "h": 48,
+   "x": 195,
+   "y": 781,
+   "texte": "Jours d’activité"
+  },
+  {
+   "left": 33,
+   "top": 805,
+   "w": 324,
+   "h": 90,
+   "x": 195,
+   "y": 850,
+   "texte": "Jours de congés payés"
+  },
+  {
+   "left": 33,
+   "top": 894,
+   "w": 324,
+   "h": 90,
+   "x": 195,
+   "y": 939,
+   "texte": "Heures complémentaires"
+  },
+  {
+   "left": 33,
+   "top": 984,
+   "w": 324,
+   "h": 111,
+   "x": 195,
+   "y": 1040,
+   "texte": "Heures majorées"
+  },
+  {
+   "left": 33,
+   "top": 1094,
+   "w": 324,
+   "h": 48,
+   "x": 195,
+   "y": 1118,
+   "texte": "Salaire net"
+  },
+  {
+   "left": 33,
+   "top": 1142,
+   "w": 324,
+   "h": 69,
+   "x": 195,
+   "y": 1177,
+   "texte": "Indemnités d’entretien"
+  },
+  {
+   "left": 33,
+   "top": 1211,
+   "w": 324,
+   "h": 48,
+   "x": 195,
+   "y": 1235,
+   "texte": "Frais de repas"
+  },
+  {
+   "left": 33,
+   "top": 1259,
+   "w": 324,
+   "h": 47,
+   "x": 195,
+   "y": 1283,
+   "texte": "Frais kilométriques"
+  }
+ ],
+ "mEnvoyer": {
+  "left": 16,
+  "top": 1339,
+  "w": 358,
+  "h": 56,
+  "x": 195,
+  "y": 1367
+ },
+ "mHauteur": 2021,
+ "texteMois": "Bonjour, voici les éléments à déclarer sur Pajemploi pour Adam, octobre 2026 :\n\n• Heures normales : 186 h\n• Jours d’activité : 21\n• Jours de congés payés : 0\n• Heures complémentaires : 42 min\n• Heures majorées : 10 h 20\n• Salaire net : 713,56 €\n• Indemnités d’entretien : 78,75 €\n• Frais de repas : 57,00 €\n• Frais kilométriques : 0,00 €\n\nDétail du salaire net :\n• Salaire mensualisé : 744,90 €\n• Retenue pour absence : −33,86 €\n• Heures complémentaires : 2,52 €\n\nTotal à me verser : 849,31 €\n\nCalcul fait avec l’application Arvela, outil d’aide indépendant de l’Urssaf : la déclaration Pajemploi fait foi.\n\nMerci ! Sonia",
+ "sTabPlus": {
+  "left": 293,
+  "top": 780,
+  "w": 98,
+  "h": 64,
+  "x": 342,
+  "y": 812
+ },
+ "sLien": {
+  "left": 17,
+  "top": 790,
+  "w": 356,
+  "h": 91,
+  "x": 195,
+  "y": 836
+ },
+ "sArrivee": {
+  "left": 33,
+  "top": 409,
+  "w": 124,
+  "h": 48,
+  "x": 95,
+  "y": 433
+ },
+ "sDepart": {
+  "left": 179,
+  "top": 409,
+  "w": 124,
+  "h": 48,
+  "x": 241,
+  "y": 433
+ },
+ "sTarif": {
+  "left": 33,
+  "top": 847,
+  "w": 324,
+  "h": 48,
+  "x": 195,
+  "y": 871
+ },
+ "sResultat": {
+  "left": 16,
+  "top": 3778,
+  "w": 358,
+  "h": 198,
+  "x": 195,
+  "y": 3877
+ },
+ "sDetail": {
+  "left": 16,
+  "top": 3991,
+  "w": 358,
+  "h": 837,
+  "x": 195,
+  "y": 4410
+ },
+ "sEnvoyer": {
+  "left": 16,
+  "top": 8232,
+  "w": 358,
+  "h": 56,
+  "x": 195,
+  "y": 8260
+ },
+ "sHauteur": 8518,
+ "texteSim": "Simulation d'accueil Arvela : 45 h par semaine sur 5 jours, 52 semaines par an, 4,20 € brut de l'heure (3,28 € net).\nÀ verser chaque mois : 714,30 € (salaire 639,60 €, entretien 74,70 €).\nPour voir l'aide de la CAF, les cotisations et le coût réel avec vos revenus : http://127.0.0.1:4175/#/simulateur?pl=1%3A0800-1700%2C2%3A0800-1700%2C3%3A0800-1700%2C4%3A0800-1700%2C5%3A0800-1700&yearType=complete&semainesAbsence=1&majoration=10&tauxBrut=420&entretien=0&entretienMode=jour&alsaceMoselle=0&debut=2026-11",
+ "cRose": {
+  "left": 332,
+  "top": 135,
+  "w": 103,
+  "h": 44,
+  "x": 384,
+  "y": 157
+ },
+ "cRepas": {
+  "left": 16,
+  "top": 197,
+  "w": 113,
+  "h": 88,
+  "x": 73,
+  "y": 241
+ },
+ "cSommeil": {
+  "left": 139,
+  "top": 197,
+  "w": 113,
+  "h": 88,
+  "x": 196,
+  "y": 241
+ },
+ "cRepasFeuille": {
+  "left": 0,
+  "top": 55,
+  "w": 390,
+  "h": 789,
+  "x": 195,
+  "y": 450
+ },
+ "cToutMange": {
+  "left": 16,
+  "top": 206,
+  "w": 358,
+  "h": 56,
+  "x": 195,
+  "y": 234
+ },
+ "cCarte0": {
+  "left": 16,
+  "top": 399,
+  "w": 358,
+  "h": 139,
+  "x": 195,
+  "y": 469
+ },
+ "cLigne1": {
+  "left": 33,
+  "top": 457,
+  "w": 324,
+  "h": 64,
+  "x": 195,
+  "y": 489
+ },
+ "cHeure1": {
+  "left": 33,
+  "top": 477,
+  "w": 56,
+  "h": 23,
+  "x": 61,
+  "y": 489
+ },
+ "cSommeilFeuille": {
+  "left": 0,
+  "top": 24,
+  "w": 390,
+  "h": 820,
+  "x": 195,
+  "y": 434
+ },
+ "cEndort": {
+  "left": 16,
+  "top": 109,
+  "w": 358,
+  "h": 56,
+  "x": 195,
+  "y": 137
+ },
+ "cDodo": {
+  "left": 16,
+  "top": 133,
+  "w": 358,
+  "h": 66,
+  "x": 195,
+  "y": 166
+ },
+ "cReveil": {
+  "left": 286,
+  "top": 144,
+  "w": 75,
+  "h": 44,
+  "x": 324,
+  "y": 166
+ },
+ "cReveil2": {
+  "left": 286,
+  "top": 144,
+  "w": 75,
+  "h": 44,
+  "x": 324,
+  "y": 166
+ }
+}

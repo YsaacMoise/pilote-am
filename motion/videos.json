@@ -1,10 +1,36 @@
 {
  "note": "Liste des vidéos fabriquées par « node scripts/videos.mjs ». Pour chaque vidéo : la composition Remotion, les scénarios de capture et les fiches voix dont elle dépend, et le fichier produit.",
  "videos": [
-  { "id": "essai-A", "composition": "EssaiA", "captures": ["essais"], "voix": ["accueil-journee"], "sortie": "out/essai-A.mp4" },
-  { "id": "essai-B", "composition": "EssaiB", "captures": ["essais"], "voix": ["accueil-journee"], "sortie": "out/essai-B.mp4" }
+  {
+   "id": "essai-A",
+   "composition": "EssaiA",
+   "captures": [
+    "journee"
+   ],
+   "voix": [
+    "accueil-journee"
+   ],
+   "sortie": "out/essai-A.mp4"
+  },
+  {
+   "id": "essai-B",
+   "composition": "EssaiB",
+   "captures": [
+    "journee",
+    "demo"
+   ],
+   "voix": [
+    "accueil-journee"
+   ],
+   "sortie": "out/essai-B.mp4"
+  }
  ],
  "captures": {
-  "essais": { "script": "scripts/captures-essais.cjs", "app": "fake" }
+  "journee": {
+   "script": "scripts/captures-journee.cjs"
+  },
+  "demo": {
+   "script": "scripts/captures-demo.cjs"
+  }
  }
 }

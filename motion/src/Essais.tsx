@@ -4,7 +4,7 @@ import { Frame } from './components/Frame';
 import { Galets } from './components/Galets';
 import { C, F, s } from './theme';
 import voix from '../public/voix/accueil-journee.reperes.json';
-import E from '../public/ecrans/essais/essais.json';
+import E from '../public/ecrans/journee/journee.json';
 
 // Deux essais de 10 secondes, ton chaleureux et doux, voix Nika :
 // A « Deux téléphones » : chaque geste de l'assistante maternelle arrive chez les parents.
@@ -19,7 +19,7 @@ const inOut = Easing.bezier(0.65, 0, 0.35, 1);
 const fade = (t: number, a: number, b: number, e = ease) => interpolate(t, [a, b], [0, 1], { ...cl, easing: e });
 const SW = 390;
 const SH = 844;
-const img = (n: string) => staticFile(`ecrans/essais/${n}.png`);
+const img = (n: string) => staticFile(`ecrans/journee/${n}.png`);
 // Couleur de la charte avec une transparence (les teintes suivent l'app)
 const rgba = (hex: string, a: number) => `rgba(${[1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(',')},${a})`;
 

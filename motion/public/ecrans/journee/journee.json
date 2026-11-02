@@ -1,0 +1,414 @@
+{
+ "iTabPlus": {
+  "left": 293,
+  "top": 780,
+  "w": 98,
+  "h": 64,
+  "x": 342,
+  "y": 812
+ },
+ "iAdam": {
+  "left": 17,
+  "top": 105,
+  "w": 356,
+  "h": 68,
+  "x": 195,
+  "y": 139
+ },
+ "iCarte0": {
+  "left": 16,
+  "top": 276,
+  "w": 358,
+  "h": 471,
+  "x": 195,
+  "y": 512
+ },
+ "iCreer": {
+  "left": 33,
+  "top": 674,
+  "w": 324,
+  "h": 56,
+  "x": 195,
+  "y": 702
+ },
+ "iCarte1": {
+  "left": 16,
+  "top": 366,
+  "w": 358,
+  "h": 516,
+  "x": 195,
+  "y": 624
+ },
+ "iCode": {
+  "left": 33,
+  "top": 449,
+  "w": 324,
+  "h": 76,
+  "x": 195,
+  "y": 487
+ },
+ "iEnvoyer": {
+  "left": 33,
+  "top": 650,
+  "w": 324,
+  "h": 56,
+  "x": 195,
+  "y": 678
+ },
+ "texteLien": "Bonjour, voici le lien pour suivre la journée d’Adam et retrouver la déclaration Pajemploi du mois : http://127.0.0.1:4175/#/p/2_VM0lBgd39EONR4oXx86w.wC9VLX9fVGSIQYja-KV8WQ\nJe vous donne le code à 4 chiffres de vive voix.\nSonia",
+ "code": "7524",
+ "pCode": {
+  "left": 33,
+  "top": 268,
+  "w": 220,
+  "h": 70,
+  "x": 143,
+  "y": 303
+ },
+ "aArrivee": {
+  "left": 38,
+  "top": 229,
+  "w": 170,
+  "h": 56,
+  "x": 123,
+  "y": 257
+ },
+ "aCarteAuj": {
+  "left": 16,
+  "top": 145,
+  "w": 358,
+  "h": 157,
+  "x": 195,
+  "y": 224
+ },
+ "aTagArrivee": {
+  "left": 38,
+  "top": 229,
+  "w": 131,
+  "h": 30,
+  "x": 104,
+  "y": 244
+ },
+ "p0carte": {
+  "left": 16,
+  "top": 158,
+  "w": 358,
+  "h": 138,
+  "x": 195,
+  "y": 227
+ },
+ "p0ligne": {
+  "left": 33,
+  "top": 211,
+  "w": 324,
+  "h": 68,
+  "x": 195,
+  "y": 245
+ },
+ "p0direct": {
+  "left": 47,
+  "top": 317,
+  "w": 8,
+  "h": 8,
+  "x": 51,
+  "y": 321
+ },
+ "aChipAdam": null,
+ "aTuiles": {
+  "left": 16,
+  "top": 133,
+  "w": 358,
+  "h": 186,
+  "x": 195,
+  "y": 226
+ },
+ "aRepas": {
+  "left": 16,
+  "top": 133,
+  "w": 113,
+  "h": 88,
+  "x": 73,
+  "y": 177
+ },
+ "aSommeil": {
+  "left": 139,
+  "top": 133,
+  "w": 113,
+  "h": 88,
+  "x": 196,
+  "y": 177
+ },
+ "aCarte0": {
+  "left": 16,
+  "top": 335,
+  "w": 358,
+  "h": 126,
+  "x": 195,
+  "y": 398
+ },
+ "aRepasFeuille": {
+  "left": 0,
+  "top": 55,
+  "w": 390,
+  "h": 789,
+  "x": 195,
+  "y": 450
+ },
+ "aBienMange": {
+  "left": 16,
+  "top": 270,
+  "w": 358,
+  "h": 56,
+  "x": 195,
+  "y": 298
+ },
+ "aCarte1": {
+  "left": 16,
+  "top": 335,
+  "w": 358,
+  "h": 139,
+  "x": 195,
+  "y": 405
+ },
+ "aLigne1": {
+  "left": 33,
+  "top": 393,
+  "w": 324,
+  "h": 64,
+  "x": 195,
+  "y": 425
+ },
+ "p1carte": {
+  "left": 16,
+  "top": 158,
+  "w": 358,
+  "h": 213,
+  "x": 195,
+  "y": 265
+ },
+ "p1ligne": {
+  "left": 33,
+  "top": 286,
+  "w": 324,
+  "h": 68,
+  "x": 195,
+  "y": 320
+ },
+ "p1direct": {
+  "left": 51,
+  "top": 392,
+  "w": 8,
+  "h": 8,
+  "x": 55,
+  "y": 396
+ },
+ "aSommeilFeuille": {
+  "left": 0,
+  "top": 24,
+  "w": 390,
+  "h": 820,
+  "x": 195,
+  "y": 434
+ },
+ "aEndort": {
+  "left": 16,
+  "top": 109,
+  "w": 358,
+  "h": 56,
+  "x": 195,
+  "y": 137
+ },
+ "aCarte2": {
+  "left": 16,
+  "top": 417,
+  "w": 358,
+  "h": 206,
+  "x": 195,
+  "y": 520
+ },
+ "aLigne2": {
+  "left": 33,
+  "top": 540,
+  "w": 324,
+  "h": 66,
+  "x": 195,
+  "y": 573
+ },
+ "aDodo": {
+  "left": 16,
+  "top": 133,
+  "w": 358,
+  "h": 66,
+  "x": 195,
+  "y": 166
+ },
+ "aReveil": {
+  "left": 286,
+  "top": 144,
+  "w": 75,
+  "h": 44,
+  "x": 324,
+  "y": 166
+ },
+ "p2carte": {
+  "left": 16,
+  "top": 158,
+  "w": 358,
+  "h": 288,
+  "x": 195,
+  "y": 302
+ },
+ "p2ligne": {
+  "left": 33,
+  "top": 361,
+  "w": 324,
+  "h": 68,
+  "x": 195,
+  "y": 395
+ },
+ "p2direct": {
+  "left": 50,
+  "top": 467,
+  "w": 8,
+  "h": 8,
+  "x": 54,
+  "y": 471
+ },
+ "p2prive": {
+  "left": 16,
+  "top": 494,
+  "w": 358,
+  "h": 39,
+  "x": 195,
+  "y": 514
+ },
+ "pMoisTab": {
+  "left": 197,
+  "top": 95,
+  "w": 172,
+  "h": 44,
+  "x": 283,
+  "y": 117
+ },
+ "pTotal": {
+  "left": 16,
+  "top": 158,
+  "w": 358,
+  "h": 177,
+  "x": 195,
+  "y": 247
+ },
+ "pDecl": {
+  "left": 16,
+  "top": 349,
+  "w": 358,
+  "h": 912,
+  "x": 195,
+  "y": 805
+ },
+ "pCopier": {
+  "left": 313,
+  "top": 480,
+  "w": 44,
+  "h": 44,
+  "x": 335,
+  "y": 502
+ },
+ "aCarte3": {
+  "left": 16,
+  "top": 335,
+  "w": 358,
+  "h": 206,
+  "x": 195,
+  "y": 438
+ },
+ "aLigne3": {
+  "left": 33,
+  "top": 458,
+  "w": 324,
+  "h": 66,
+  "x": 195,
+  "y": 491
+ },
+ "aDepart": {
+  "left": 38,
+  "top": 273,
+  "w": 170,
+  "h": 56,
+  "x": 123,
+  "y": 301
+ },
+ "aTagDepart": {
+  "left": 175,
+  "top": 229,
+  "w": 134,
+  "h": 30,
+  "x": 242,
+  "y": 244
+ },
+ "aModifier": {
+  "left": 38,
+  "top": 309,
+  "w": 319,
+  "h": 48,
+  "x": 198,
+  "y": 333
+ },
+ "aModifierFeuille": {
+  "left": 0,
+  "top": 24,
+  "w": 390,
+  "h": 820,
+  "x": 195,
+  "y": 434
+ },
+ "aHeureDepart": {
+  "left": 200,
+  "top": 662,
+  "w": 174,
+  "h": 50,
+  "x": 287,
+  "y": 687
+ },
+ "aCarteSoir": {
+  "left": 16,
+  "top": 335,
+  "w": 358,
+  "h": 206,
+  "x": 195,
+  "y": 438
+ },
+ "aResume": {
+  "left": 16,
+  "top": 556,
+  "w": 358,
+  "h": 56,
+  "x": 195,
+  "y": 584
+ },
+ "texteResume": "Bonjour ! La journée d’Adam, mercredi 4 novembre :\n\nArrivée 08h00, départ 17h30\nSommeil : 2 h 15 en tout (12h40 à 14h55)\nRepas : A bien mangé (11h50)\n\nBonne soirée !",
+ "pSoircarte": {
+  "left": 16,
+  "top": 158,
+  "w": 358,
+  "h": 384,
+  "x": 195,
+  "y": 350
+ },
+ "pSoirligne": {
+  "left": 33,
+  "top": 457,
+  "w": 324,
+  "h": 68,
+  "x": 195,
+  "y": 491
+ },
+ "pSoirdirect": {
+  "left": 50,
+  "top": 562,
+  "w": 8,
+  "h": 8,
+  "x": 54,
+  "y": 566
+ }
+}
