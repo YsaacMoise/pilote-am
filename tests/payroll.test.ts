@@ -160,6 +160,73 @@ describe('heures complémentaires et majorées (art. 96 et 110)', () => {
   });
 });
 
+describe('seuil des 45 h selon les absences de la semaine (art. 96-4, 99 ; Cass. soc. 10/09/2025)', () => {
+  // Contrat 45 h (8 h–17 h, lundi au vendredi). Semaine du lundi 5 octobre 2026.
+  // Lundi : absence ; mardi à vendredi : départ à 18 h, soit 1 h en plus par jour (4 h dans la semaine).
+  const plus4h = ['2026-10-06', '2026-10-07', '2026-10-08', '2026-10-09'].map((d) => rec(d, { pres: [{ a: '08:00', d: '18:00' }] }));
+  const semaine = (recs: DayRec[], leaves: AmLeave[] = [], over: Partial<Contract> = {}) =>
+    monthBase(makeCtx(contract(over), recs, leaves, '2026-11-15'), '2026-10');
+
+  it('absence voulue par les parents : le jour compte, les 4 h sont majorées', () => {
+    const b = semaine([rec('2026-10-05', { abs: 'parents' }), ...plus4h]);
+    expect(b.complMin).toBe(0);
+    expect(b.majMin).toBe(240);
+  });
+  it('enfant malade sans certificat (payé) : le jour compte, les 4 h sont majorées', () => {
+    const b = semaine([rec('2026-10-05', { abs: 'malade' }), ...plus4h]);
+    expect(b.majMin).toBe(240);
+  });
+  it('enfant malade avec certificat, jour retenu : le jour ne compte pas, les 4 h sont au taux du contrat', () => {
+    const b = semaine([rec('2026-10-05', { abs: 'malade_certif' }), ...plus4h]);
+    expect(b.deductedDays).toBe(1);
+    expect(b.complMin).toBe(240);
+    expect(b.majMin).toBe(0);
+  });
+  it('absence sans solde de l’enfant : le jour ne compte pas', () => {
+    const b = semaine([rec('2026-10-05', { abs: 'sans_solde_enfant' }), ...plus4h]);
+    expect(b.complMin).toBe(240);
+    expect(b.majMin).toBe(0);
+  });
+  it('congés payés de l’AM avec droits acquis : le jour compte (Cass. soc. 10/09/2025)', () => {
+    const cp: AmLeave[] = [{ id: 'l', type: 'cp', from: '2026-10-05', to: '2026-10-05' }];
+    const b = semaine(plus4h, cp, { balances: { cpRestants: 10, cpEnCours: 0, maladieDeduits: 0 } });
+    expect(b.majMin).toBe(240);
+  });
+  it('AM malade, événement familial, sans solde : le jour ne compte pas', () => {
+    for (const type of ['am_malade', 'am_enfant_malade', 'evenement', 'sans_solde'] as const) {
+      const b = semaine(plus4h, [{ id: 'l', type, from: '2026-10-05', to: '2026-10-05' }]);
+      expect(b.complMin, type).toBe(240);
+      expect(b.majMin, type).toBe(0);
+    }
+  });
+  it('férié chômé (mercredi 11 novembre 2026) : le jour ne compte pas', () => {
+    const recs = ['2026-11-09', '2026-11-10', '2026-11-12', '2026-11-13'].map((d) => rec(d, { pres: [{ a: '08:00', d: '18:00' }] }));
+    const b = monthBase(makeCtx(contract(), recs, [], '2026-12-15'), '2026-11');
+    expect(b.complMin).toBe(240);
+    expect(b.majMin).toBe(0);
+    expect(b.base).toBe(68250); // férié payé : salaire maintenu
+  });
+  it('cas réel : 45 h à 7,45 € net, 5 absences des parents en octobre 2026, 1 h en plus chaque jour de présence', () => {
+    const absents = ['2026-10-02', '2026-10-07', '2026-10-14', '2026-10-21', '2026-10-28'];
+    const jours: string[] = [];
+    for (let d = 1; d <= 31; d++) {
+      const iso = `2026-10-${String(d).padStart(2, '0')}`;
+      const wd = new Date(iso + 'T12:00:00Z').getUTCDay();
+      if (wd >= 1 && wd <= 5) jours.push(iso);
+    }
+    expect(jours.length).toBe(22);
+    const recs = jours.map((d) => absents.includes(d) ? rec(d, { abs: 'parents' }) : rec(d, { pres: [{ a: '08:00', d: '18:00' }] }));
+    const b = monthBase(makeCtx(contract({ rateNet: 745, entretienJour: 422 }), recs, [], '2026-11-15'), '2026-10');
+    expect(b.heuresNormales).toBe(195);
+    expect(b.joursActivite).toBe(22);
+    expect(b.majMin).toBe(17 * 60);
+    expect(b.complMin).toBe(0);
+    expect(b.majAmount).toBe(13932); // 17 × 7,45 × 1,10 = 139,315 → 139,32 €
+    expect(b.net).toBe(145275 + 13932); // 1 592,07 €
+    expect(b.entretien).toBe(17 * 435); // journées de 10 h : plancher 4,35 € > 4,22 € du contrat
+  });
+});
+
 describe('jours fériés (art. 47)', () => {
   it('1er mai travaillé : +100 %', () => {
     const ctx = makeCtx(contract(), [rec('2026-05-01', { ferieTravaille: true })], [], '2026-06-01');

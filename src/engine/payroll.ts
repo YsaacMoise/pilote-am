@@ -317,13 +317,41 @@ export function contractYearIndex(c: Contract, d: ISODate): number {
   return i;
 }
 
-/** Heures complémentaires et majorées, calculées par semaine (art. 96 et 110) */
+/**
+ * Minutes prévues d'un jour qui comptent dans le seuil des 45 h de la semaine.
+ * Art. 96-4 : sont majorées les « heures de travail effectuées au-delà de 45 heures de travail par semaine ».
+ * Art. 99 : le travail commence et finit aux heures prévues, même si l'enfant arrive plus tard ou part plus tôt.
+ * Comptent donc : les jours d'accueil (heures prévues entières), les absences de l'enfant payées (l'AM reste
+ * à disposition : absence voulue par les parents, maladie sans certificat, maladie avec certificat au-delà
+ * des limites de l'art. 105), et les congés payés de l'AM (Cass. soc. 10 sept. 2025, n° 23-14.455).
+ * Ne comptent pas : les jours retenus sur le salaire (maladie avec certificat retenue, absence sans solde,
+ * congés pris sans droits), les absences de l'AM autres que les congés payés (dont l'événement familial),
+ * et les jours fériés chômés (art. 47 ; Cass. soc. 1er déc. 2004 et 4 avr. 2012).
+ */
+export function minutesSeuil45(ctx: Ctx, d: ISODate): number {
+  const di = dayInfo(ctx, d);
+  if (di.plannedMin <= 0) return 0;
+  switch (di.kind) {
+    case 'present':
+    case 'prevu':
+      return di.plannedMin;
+    case 'absent':
+      return di.deducted ? 0 : di.plannedMin;
+    case 'am':
+      return di.amLeave === 'cp' && !di.cpSansDroits ? di.plannedMin : 0;
+    default:
+      return 0;
+  }
+}
+
+/** Heures complémentaires et majorées, calculées par semaine civile (art. 96-4 et 110) */
 export function weekOvertime(ctx: Ctx, monday: ISODate): Map<ISODate, { compl: number; maj: number }> {
   return memo(ctx, 'wk' + monday, () => {
     const out = new Map<ISODate, { compl: number; maj: number }>();
-    // Base de la semaine : heures prévues dans le contrat cette semaine-là (hors semaines sans accueil, hors contrat).
+    // Base de la semaine : heures prévues qui comptent comme heures de travail (voir minutesSeuil45).
+    // Les heures en plus sous ce seuil sont payées au taux du contrat ; seules celles au-delà de 45 h sont majorées.
     let cum = 0;
-    for (let i = 0; i < 7; i++) cum += plannedPlages(ctx.c, addDays(monday, i)).reduce((s, p) => s + plageMin(p), 0);
+    for (let i = 0; i < 7; i++) cum += minutesSeuil45(ctx, addDays(monday, i));
     for (let i = 0; i < 7; i++) {
       const d = addDays(monday, i);
       const di = dayInfo(ctx, d);
