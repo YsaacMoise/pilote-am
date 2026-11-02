@@ -118,22 +118,25 @@ async function run(scheme) {
   await p.locator('.tl-item', { hasText: 'soleil' }).waitFor();
   // Biberon en ml
   await p.getByRole('button', { name: 'Repas' }).click();
+  await p.getByRole('button', { name: 'Biberon', exact: true }).click();
   await p.getByLabel('Biberon, quantité bue (ml)').fill('180');
   await p.getByRole('button', { name: 'Ajouter le biberon' }).click();
   await p.locator('.tl-item', { hasText: 'Biberon de 180 ml' }).waitFor();
   assert(true, 'carnet : biberon noté en ml');
   // Température : fièvre signalée
   await p.getByRole('button', { name: 'Soin' }).click();
+  await p.getByRole('button', { name: 'Prise de température' }).click();
   await p.getByLabel('Température (°C)').fill('38,4');
   await p.getByText('c’est de la fièvre').waitFor();
   await p.getByRole('button', { name: 'Ajouter la température' }).click();
   await p.locator('.tl-item', { hasText: 'Température 38,4 °C' }).waitFor();
   assert(await p.locator('.tl-item .tag', { hasText: 'Fièvre' }).isVisible(), 'carnet : température notée, fièvre signalée');
   // Sieste avec heures de début et de fin
-  await p.getByRole('button', { name: 'Sieste' }).click();
+  await p.getByRole('button', { name: 'Sommeil' }).click();
+  await p.locator('dialog').getByText('Noter un sommeil déjà terminé').click();
   await p.locator('dialog').getByLabel('Endormissement').fill('13:10');
-  await p.locator('dialog').getByLabel(/^Réveil/).fill('15:05');
-  await p.getByRole('button', { name: 'Enregistrer la sieste' }).click();
+  await p.locator('dialog').getByLabel('Réveil', { exact: true }).fill('15:05');
+  await p.getByRole('button', { name: 'Enregistrer le sommeil' }).click();
   await p.locator('.tl-item', { hasText: '13h10 à 15h05 (1 h 55)' }).waitFor();
   assert(true, 'carnet : sieste avec durée calculée');
   // Modifier une note
@@ -150,7 +153,7 @@ async function run(scheme) {
     assert(clip.includes('A bien mangé') && clip.includes('Lou'), 'résumé du jour contient le repas');
     const l = clip.split('\n');
     assert(l.findIndex((x) => x.startsWith('Soins :')) < l.findIndex((x) => x.startsWith('Repas :')), 'résumé : les soins avant les repas');
-    assert(clip.includes('Sieste : 1 h 55 en tout'), 'résumé : total de sieste');
+    assert(clip.includes('Sommeil : 1 h 55 en tout'), 'résumé : total de sommeil');
   }
   // Historique : jour précédent, puis retour
   await p.getByRole('button', { name: 'Jour précédent' }).click();

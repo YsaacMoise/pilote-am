@@ -19,6 +19,10 @@ async function run(scheme) {
     viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: scheme, locale: 'fr-FR',
     timezoneId: 'Europe/Paris', hasTouch: true, isMobile: true, permissions: ['clipboard-read', 'clipboard-write'],
   });
+  // Heure fixe (jeudi 15 octobre 2026, 15 h 30) : le parcours ne dépend pas du moment où il est lancé
+  await ctx.clock.install({ time: new Date('2026-10-15T15:30:00+02:00') });
+  await ctx.clock.pauseAt(new Date('2026-10-15T15:30:00+02:00'));
+  await ctx.clock.resume();
   const p = await ctx.newPage();
   const errors = [];
   p.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -32,8 +36,9 @@ async function run(scheme) {
   const seule = p.getByRole('button', { name: 'Explorer seule' });
   await seule.waitFor({ timeout: 8000 }).then(() => seule.click()).catch(() => {});
   await p.getByRole('link', { name: 'Carnet' }).click();
-  await p.getByRole('heading', { name: /La journée de/ }).waitFor();
-  const kid = (await p.getByRole('heading', { name: /La journée de/ }).textContent()).replace('La journée de ', '').trim();
+  await p.getByRole('heading', { name: /La journée d/ }).waitFor();
+  const titre = (await p.getByRole('heading', { name: /La journée d/ }).textContent()).trim();
+  const kid = titre.replace(/^La journée (de |d’)/, '');
 
   // Note libre, puis modification
   await p.getByRole('button', { name: 'Note libre' }).click();
@@ -49,6 +54,7 @@ async function run(scheme) {
 
   // Biberon en ml
   await p.getByRole('button', { name: 'Repas' }).click();
+  await p.getByRole('button', { name: 'Biberon', exact: true }).click();
   await p.getByLabel('Biberon, quantité bue (ml)').fill('180');
   await shot('02-fiche-repas');
   await p.getByRole('button', { name: 'Ajouter le biberon' }).click();
@@ -57,6 +63,7 @@ async function run(scheme) {
 
   // Température : fièvre signalée
   await p.getByRole('button', { name: 'Soin' }).click();
+  await p.getByRole('button', { name: 'Prise de température' }).click();
   await p.getByLabel('Température (°C)').fill('38,4');
   await p.getByText('c’est de la fièvre').waitFor();
   await shot('03-fiche-soin');
@@ -64,28 +71,41 @@ async function run(scheme) {
   await tl('Température 38,4 °C').waitFor();
   assert(await p.locator('.tl-item .tag', { hasText: 'Fièvre' }).isVisible(), 'température notée, fièvre signalée');
 
-  // Sieste avec début et fin ; réveil avant l'endormissement refusé
-  await p.getByRole('button', { name: 'Sieste' }).click();
-  await p.locator('dialog').getByLabel('Endormissement').fill('15:30');
-  await p.locator('dialog').getByLabel(/^Réveil/).fill('15:00');
-  assert(await p.getByText('L’heure du réveil doit être après l’endormissement.').isVisible(), 'réveil avant l’endormissement refusé');
-  await p.locator('dialog').getByLabel('Endormissement').fill('13:10');
-  await p.locator('dialog').getByLabel(/^Réveil/).fill('15:05');
-  await shot('04-fiche-sieste');
-  await p.getByRole('button', { name: 'Enregistrer la sieste' }).click();
-  await tl('13h10 à 15h05 (1 h 55)').waitFor();
-  assert(true, 'sieste avec durée calculée');
+  // Sommeil en cours (démonstration : endormi à 12h40) : le bouton le dit, la fiche propose le réveil
+  const btnSommeil = p.getByRole('region', { name: /^Ajouter au carnet d/ }).getByRole('button', { name: /^Sommeil/ });
+  assert(/Dort depuis 12h40/.test(await btnSommeil.textContent()), 'bouton Sommeil : « Dort depuis 12h40 »');
+  await btnSommeil.click();
+  await p.locator('dialog').getByText('Dort depuis 12h40').waitFor();
+  await shot('04-fiche-reveil');
+  await p.getByRole('button', { name: 'Réveil maintenant' }).click();
+  await tl('12h40 à 15h30 (2 h 50)').waitFor();
+  assert(await toastHas(/Réveil noté à 15h30/), 'réveil en un geste, durée calculée');
 
-  // Sieste en cours (données de démonstration) : terminée en la modifiant
-  const enCours = tl('Dort depuis');
-  if (await enCours.count()) {
-    assert(await enCours.getByRole('button', { name: /^Réveil de/ }).isVisible(), 'sieste en cours : bouton Réveil');
-    await enCours.getByRole('button', { name: /^Modifier la note de/ }).click();
-    await p.locator('dialog').getByLabel(/^Réveil/).fill('14:10');
-    await p.getByRole('button', { name: 'Enregistrer' }).click();
-    await tl('12h40 à 14h10 (1 h 30)').waitFor();
-    assert(true, 'sieste en cours terminée par modification');
-  }
+  // Choix rapide : sieste de moins de 15 minutes
+  await btnSommeil.click();
+  await p.getByRole('button', { name: /endort maintenant/ }).waitFor();
+  assert(true, 'plus de sommeil en cours : « S’endort maintenant » proposé');
+  await shot('04b-fiche-sommeil');
+  await p.getByRole('button', { name: 'Sieste rapide (moins de 15 min)' }).click();
+  await tl('Sieste rapide (moins de 15 min)').waitFor();
+  assert(true, 'choix rapide : sieste de moins de 15 minutes');
+
+  // Sommeil déjà terminé, saisi après coup ; réveil avant l'endormissement refusé
+  await btnSommeil.click();
+  await p.locator('dialog').getByText('Noter un sommeil déjà terminé').click();
+  await p.locator('dialog').getByLabel('Endormissement').fill('10:00');
+  await p.locator('dialog').getByLabel('Réveil', { exact: true }).fill('09:30');
+  assert(await p.getByText('L’heure du réveil doit être après l’endormissement.').isVisible(), 'réveil avant l’endormissement refusé');
+  await p.locator('dialog').getByLabel('Réveil', { exact: true }).fill('10:30');
+  await p.getByRole('button', { name: 'Enregistrer le sommeil' }).click();
+  await tl('10h00 à 10h30 (30 min)').waitFor();
+  assert(true, 'sommeil terminé saisi après coup');
+
+  // S'endort maintenant, en un geste
+  await btnSommeil.click();
+  await p.getByRole('button', { name: /endort maintenant/ }).click();
+  await tl('Dort depuis 15h30').waitFor();
+  assert(await tl('Dort depuis 15h30').getByRole('button', { name: /^Réveil d/ }).isVisible(), 'endormissement en un geste, bouton Réveil sur la ligne');
   await p.evaluate(() => window.scrollTo(0, 0));
   await shot('01-carnet');
 
@@ -93,11 +113,11 @@ async function run(scheme) {
   await p.getByRole('button', { name: 'Envoyer le résumé aux parents' }).click();
   await toastHas(/Résumé copié/);
   const clip = await p.evaluate(() => navigator.clipboard.readText().catch(() => ''));
-  assert(clip.includes(`La journée de ${kid}`), 'résumé : prénom de l’enfant');
+  assert(clip.includes(titre), 'résumé : prénom de l’enfant (avec l’élision)');
   const l = clip.split('\n');
   const i = (s) => l.findIndex((x) => x.startsWith(s));
-  assert(i('Soins :') > 0 && i('Soins :') < i('Sieste') && i('Sieste') < i('Repas :'), 'résumé : soins, puis sieste, puis repas');
-  assert(/Sieste : \d+ h( \d\d)? en tout/.test(clip), 'résumé : total de sieste');
+  assert(i('Soins :') > 0 && i('Soins :') < i('Sommeil') && i('Sommeil') < i('Repas :'), 'résumé : soins, puis sommeil, puis repas');
+  assert(clip.includes('Sommeil : 3 h 20 en tout'), 'résumé : total de sommeil (2 h 50 + 30 min)');
   fs.writeFileSync(path.join(out, `carnet-${scheme}-resume.txt`), clip);
 
   // Historique : jour précédent, note ajoutée ce jour-là, retour

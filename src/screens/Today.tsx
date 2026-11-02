@@ -8,6 +8,7 @@ import { Banner, CHILD_COLORS, Choices, DateInput, Gommette, Sheet, Stepper, Swi
 import { AideVideo, BienvenueDemo } from '../ui/VideoGuide';
 import { isDemo } from '../db';
 import { Icon } from '../ui/icons';
+import { de } from '../engine/texte';
 
 const fmtH = (t: string) => t.replace(/^0(\d)/, '$1').replace(':', ' h ');
 
@@ -187,7 +188,7 @@ function KidCard({ c, day, onEdit, compact }: { c: Contract; day: string; onEdit
             const plage = di.planned[na.idx];
             if (plage && minutes(now) > minutes(plage.end)) extra = ` (+${hoursLabel(minutes(now) - minutes(plage.end))})`;
           }
-          toast(`${isArr ? 'Arrivée' : 'Départ'} de ${c.child} à ${fmtH(now)}${extra}`, undo);
+          toast(`${isArr ? 'Arrivée' : 'Départ'} ${de(c.child)} à ${fmtH(now)}${extra}`, undo);
         },
       };
     }
@@ -206,7 +207,7 @@ function KidCard({ c, day, onEdit, compact }: { c: Contract; day: string; onEdit
           </span>
         </button>
         {action && (
-          <button class={action.quiet ? 'btn btn-outline' : 'btn btn-primary'} onClick={action.run} aria-label={`${action.label} de ${c.child}`}>
+          <button class={action.quiet ? 'btn btn-outline' : 'btn btn-primary'} onClick={action.run} aria-label={`${action.label} ${de(c.child)}`}>
             <Icon name={action.icon} />{action.label}
           </button>
         )}
@@ -230,7 +231,7 @@ function KidCard({ c, day, onEdit, compact }: { c: Contract; day: string; onEdit
       )}
       <div class="kid-actions" style={!action ? { gridTemplateColumns: '1fr' } : undefined}>
         {action && (
-          <button class={action.quiet ? 'btn btn-outline' : 'btn btn-primary btn-lg'} onClick={action.run} aria-label={action.quiet ? `Accueil imprévu : arrivée de ${c.child}` : undefined}>
+          <button class={action.quiet ? 'btn btn-outline' : 'btn btn-primary btn-lg'} onClick={action.run} aria-label={action.quiet ? `Accueil imprévu : arrivée ${de(c.child)}` : undefined}>
             <Icon name={action.icon} />{action.label}
           </button>
         )}
@@ -287,7 +288,7 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
     });
     logUsage('journee_modifiee', 'aujourdhui');
     onClose();
-    toast(`Journée de ${c.child} enregistrée`, undo);
+    toast(`Journée ${de(c.child)} enregistrée`, undo);
   }
 
   return (

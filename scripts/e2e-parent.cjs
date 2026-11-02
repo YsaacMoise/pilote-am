@@ -98,8 +98,8 @@ async function axe(p, label) {
   await axe(p, 'parents, aujourd’hui');
 
   console.log('\n== En direct : nouvelle note de l’AM ==');
-  await a.getByRole('region', { name: 'Ajouter au carnet de Lou' }).getByRole('button', { name: 'Sieste' }).click();
-  await a.getByRole('button', { name: 'Noter l’endormissement' }).click();
+  await a.getByRole('region', { name: 'Ajouter au carnet de Lou' }).getByRole('button', { name: /^Sommeil/ }).click();
+  await a.getByRole('button', { name: /endort maintenant/ }).click();
   await p.getByText(/Dort depuis \d\dh\d\d/).waitFor({ timeout: 10000 });
   assert(true, 'la sieste apparaît chez les parents sans recharger');
   await p.shot('04-en-direct');

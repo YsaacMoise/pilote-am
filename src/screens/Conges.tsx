@@ -8,6 +8,7 @@ import { AM_ABS_LABEL } from '../engine/model';
 import { Banner, Gommette, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { AmAbsenceSheet } from './Today';
+import { de } from '../engine/texte';
 
 export function Conges() {
   const s = useStore();
@@ -25,7 +26,7 @@ export function Conges() {
           const k = compteur(ctx, t, s.settings.enfantsACharge);
           const ind = indemnite(ctx, y, s.settings.enfantsACharge);
           return (
-            <section class="card stack" aria-label={`Congés, contrat de ${c.child}`}>
+            <section class="card stack" aria-label={`Congés, contrat ${de(c.child)}`}>
               <div class="row"><Gommette name={c.child} color={c.color} size="sm" /><h2>{c.child}</h2></div>
               <div class="stat-grid">
                 <div><b class="num">{k.aPrendre}</b><span>jours à prendre d’ici le 31 mai</span></div>

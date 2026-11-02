@@ -8,6 +8,7 @@ import type { Bulletin } from '../engine/model';
 import { Banner, EuroInput, Gommette, NumberInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { ScanError, parseBulletin, pdfText } from '../pdf';
+import { de } from '../engine/texte';
 
 export function Controle({ cid, month }: { cid?: string; month?: string }) {
   const s = useStore();
@@ -60,7 +61,7 @@ export function Controle({ cid, month }: { cid?: string; month?: string }) {
           <h2 aria-live="polite">{monthLabel(m).replace(/^./, (x) => x.toUpperCase())}</h2>
           <button class="icon-btn" aria-label="Mois suivant" disabled={m >= monthOf(today())} onClick={() => { setM(addMonths(m, 1)); setB({}); setKey(key + 1); }}><Icon name="right" /></button>
         </div>
-        <p class="muted">Recopie les chiffres du bulletin Pajemploi de {c.child}, ou importe le PDF. L’app compare avec son calcul : {euros(r.netTotal)} net, {r.heuresNormales} h, {r.joursActivite} jours.</p>
+        <p class="muted">Recopie les chiffres du bulletin Pajemploi {de(c.child)}, ou importe le PDF. L’app compare avec son calcul : {euros(r.netTotal)} net, {r.heuresNormales} h, {r.joursActivite} jours.</p>
         <label class="btn btn-outline btn-block">
           <Icon name="upload" />Importer le bulletin PDF
           <input type="file" accept="application/pdf,.pdf" class="sr-only" onChange={(e) => onPdf((e.target as HTMLInputElement).files?.[0])} />

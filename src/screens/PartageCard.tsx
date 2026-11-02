@@ -8,6 +8,7 @@ import { shareUrl } from '../partage/crypto';
 import { Banner, Sheet } from '../ui/kit';
 import { AideVideo } from '../ui/VideoGuide';
 import { Icon } from '../ui/icons';
+import { de } from '../engine/texte';
 
 const cloud = () => import('../cloud');
 
@@ -33,7 +34,7 @@ export function PartageCard({ cid }: { cid: string }) {
       <AideVideo id="inviter" />
       {!k && (
         <>
-          <p>Les parents de {c.child} suivent sa journée en direct et retrouvent leur déclaration Pajemploi prête à recopier, sans compte ni mot de passe.</p>
+          <p>Les parents {de(c.child)} suivent sa journée en direct et retrouvent leur déclaration Pajemploi prête à recopier, sans compte ni mot de passe.</p>
           <p class="hint">Ils verront :</p>
           <ul class="what">
             <li>les arrivées, départs et absences des 7 derniers jours</li>
@@ -62,7 +63,7 @@ export function PartageCard({ cid }: { cid: string }) {
           <p class="hint">Le code n’est jamais dans le lien. Sans lui, la page reste fermée.</p>
           <div class="share-url">{url.replace(/^https?:\/\//, '')}</div>
           <button class="btn btn-primary btn-lg btn-block" disabled={busy} onClick={async () => {
-            const res = await shareText(`Bonjour, voici le lien pour suivre la journée de ${c.child} et retrouver la déclaration Pajemploi du mois : ${url}\nJe vous donne le code à 4 chiffres de vive voix.${state.settings.amName ? `\n${state.settings.amName}` : ''}`);
+            const res = await shareText(`Bonjour, voici le lien pour suivre la journée ${de(c.child)} et retrouver la déclaration Pajemploi du mois : ${url}\nJe vous donne le code à 4 chiffres de vive voix.${state.settings.amName ? `\n${state.settings.amName}` : ''}`);
             logUsage('lien_parent_envoye', 'contrat');
             if (res === 'copied') toast('Message copié : colle-le dans ton message aux parents.');
           }}><Icon name="share" />Envoyer le lien aux parents</button>
@@ -74,7 +75,7 @@ export function PartageCard({ cid }: { cid: string }) {
       {couper && (
         <Sheet title="Couper le lien ?" onClose={() => setCouper(false)}>
           <div class="stack">
-            <p>La page des parents de {c.child} devient vide tout de suite. Tu pourras créer un nouveau lien, avec un nouveau code.</p>
+            <p>La page des parents {de(c.child)} devient vide tout de suite. Tu pourras créer un nouveau lien, avec un nouveau code.</p>
             <button class="btn btn-danger btn-block" disabled={busy} onClick={() => run(async () => {
               const fait = await (await cloud()).cutShare(cid);
               setCouper(false);

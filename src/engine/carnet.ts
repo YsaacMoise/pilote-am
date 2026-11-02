@@ -3,10 +3,11 @@
 // parent et par le résumé : les champs précis servent à le recalculer et à modifier une note.
 import { minutes } from './dates';
 import type { Journal } from './model';
+import { de as deNom } from './texte';
 
 export type Kind = Journal['kind'];
 
-export const KIND_LABEL: Record<Kind, string> = { repas: 'Repas', sieste: 'Sieste', change: 'Change', humeur: 'Humeur', soin: 'Soin', note: 'Note' };
+export const KIND_LABEL: Record<Kind, string> = { repas: 'Repas', sieste: 'Sommeil', change: 'Change', humeur: 'Humeur', soin: 'Soin', note: 'Note' };
 
 /** Pour l'affichage : pas de retour à la ligne entre un nombre et son unité (« 180 ml », « 38,4 °C », « 1 h 55 ») */
 export function insecable(s: string): string {
@@ -95,7 +96,7 @@ export function resumeJour(o: { enfant: string; jour: string; presence?: string;
   const es = [...o.notes].sort((a, b) => a.time.localeCompare(b.time));
   const de = (k: Kind) => es.filter((e) => e.kind === k);
   const avecHeure = (e: Journal) => `${e.detail} (${hh(e.time)})`;
-  const lignes: string[] = [`Bonjour ! La journée de ${o.enfant}, ${o.jour} :`, ''];
+  const lignes: string[] = [`Bonjour ! La journée ${deNom(o.enfant)}, ${o.jour} :`, ''];
   if (o.presence) lignes.push(o.presence);
 
   const soins = de('soin');
@@ -104,7 +105,7 @@ export function resumeJour(o: { enfant: string; jour: string; presence?: string;
   const siestes = de('sieste');
   if (siestes.length) {
     const total = sommeilTotal(siestes);
-    const tete = total ? `Sieste : ${dureeLabel(total)} en tout` : 'Sieste';
+    const tete = total ? `Sommeil : ${dureeLabel(total)} en tout` : 'Sommeil';
     const parts = siestes.map((e) =>
       minutesSieste(e) ? `${hh(e.time)} à ${hh(e.fin!)}` : siesteEnCours(e) ? `en cours depuis ${hh(e.time)}` : avecHeure(e));
     lignes.push(`${tete} (${parts.join(', ')})`);

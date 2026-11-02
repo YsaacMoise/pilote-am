@@ -7,8 +7,24 @@ import { centsToInput, parseEuros } from '../engine/money';
 
 // Les deux premières sont celles des enfants de la charte (Terre d'Argile, Sauge Minérale), puis des tons de terre voisins.
 // Initiale en Cormorant gras ≥ 19 px : texte « grand », contraste 3:1 minimum avec le blanc (argile 3,2:1, les autres ≥ 5:1).
-export const CHILD_COLORS = ['#C87D55', '#5E7165', '#3E5C76', '#6E3F5C', '#8A5A12', '#2F6B6B'];
-export const COLOR_NAMES = ['Argile', 'Sauge', 'Ardoise', 'Prune', 'Ocre', 'Canard'];
+// 8 couleurs : 4 enfants accueillis en même temps (CASF L421-4), un de plus par dérogation, et des contrats à temps partiel
+// qui ne se croisent pas. Chaque couleur va à un seul enfant en cours de contrat. Nouvelles couleurs ajoutées à la fin
+// (les contrats existants gardent la leur).
+export const CHILD_COLORS = ['#C87D55', '#5E7165', '#3E5C76', '#6E3F5C', '#8A5A12', '#2F6B6B', '#A4443A', '#6A5A9A'];
+export const COLOR_NAMES = ['Argile', 'Sauge', 'Ardoise', 'Prune', 'Ocre', 'Canard', 'Brique', 'Iris'];
+
+/** Couleurs déjà prises par les autres enfants en cours de contrat (index → prénom) */
+export function couleursPrises(contracts: { id: string; child: string; color: number; end?: string }[], exceptId: string, at: string): Map<number, string> {
+  const out = new Map<number, string>();
+  for (const c of contracts) if (c.id !== exceptId && (!c.end || c.end >= at)) out.set(c.color % CHILD_COLORS.length, c.child);
+  return out;
+}
+
+/** Première couleur libre (ou, si les 8 sont prises, celle qui revient le moins) */
+export function couleurLibre(prises: Map<number, string>): number {
+  for (let i = 0; i < CHILD_COLORS.length; i++) if (!prises.has(i)) return i;
+  return 0;
+}
 
 export function Gommette({ name, color, size }: { name: string; color: number; size?: 'sm' | 'lg' }) {
   return (

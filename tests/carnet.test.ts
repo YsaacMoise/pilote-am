@@ -86,7 +86,7 @@ describe('carnet : résumé du jour', () => {
     expect(lignes[0]).toBe('Bonjour ! La journée de Léa, lundi 2 novembre :');
     expect(lignes[2]).toBe('Arrivée 8h05, départ 17h10');
     expect(lignes[3]).toBe('Soins : Température 38,4 °C (fièvre) (14h20)');
-    expect(lignes[4]).toBe('Sieste : 2 h 25 en tout (10h30 à 11h00, 13h10 à 15h05)');
+    expect(lignes[4]).toBe('Sommeil : 2 h 25 en tout (10h30 à 11h00, 13h10 à 15h05)');
     expect(lignes[5]).toBe('Repas : Biberon de 180 ml (10h00), Biberon de 120 ml (16h00) (300 ml en tout)');
   });
   it('puis humeur, changes comptés, et fin du message', () => {
@@ -96,6 +96,21 @@ describe('carnet : résumé du jour', () => {
   });
   it('sieste en cours ou ancienne note : pas de total inventé', () => {
     const t = resumeJour({ enfant: 'Léo', jour: 'lundi 2 novembre', notes: [j({ time: '12:40', kind: 'sieste', sommeil: true, detail: 'Dort depuis 12h40' })] });
-    expect(t).toContain('Sieste (en cours depuis 12h40)');
+    expect(t).toContain('Sommeil (en cours depuis 12h40)');
+  });
+});
+
+describe('français : élision devant un prénom', () => {
+  it('« de Léo », « d’Adam », « d’Inès », « d’Hugo »', async () => {
+    const { de } = await import('../src/engine/texte');
+    expect(de('Léo')).toBe('de Léo');
+    expect(de('Adam')).toBe('d’Adam');
+    expect(de('Inès')).toBe('d’Inès');
+    expect(de('Élise')).toBe('d’Élise');
+    expect(de('Hugo')).toBe('d’Hugo');
+    expect(de('Violette')).toBe('de Violette');
+  });
+  it('résumé : « La journée d’Adam »', () => {
+    expect(resumeJour({ enfant: 'Adam', jour: 'lundi 2 novembre', notes: [] }).split('\n')[0]).toBe('Bonjour ! La journée d’Adam, lundi 2 novembre :');
   });
 });
