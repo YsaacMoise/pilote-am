@@ -1,12 +1,12 @@
 // Vidéos en motion design, au format téléphone (9:16), montrées au moment où elles servent :
 //  - page d'accueil : un aperçu animé sans le son, qui ouvre « Une journée avec Arvela » (1 min) ;
-//  - dans l'app : une bulle « ▶ Comment… » sur l'écran concerné, qui lance le passage utile (10 à 45 s),
-//    puis disparaît une fois la vidéo vue ou la bulle fermée ;
+//  - dans l'app : une bulle « ▶ Comment… » sur l'écran concerné, qui lance le passage utile (10 à 45 s) ;
+//    une fois la vidéo vue ou la bulle fermée, elle reste à sa place en version discrète (« Revoir… ») ;
 //  - Plus › Vidéos : toutes les vidéos, avec « Déjà vue ».
 // Fichiers dans public/videos/ (.mp4 H.264 + .vtt). Fabriqués avec Remotion (motion/) ; voix Google AI Studio (Nika).
 // Pas de mise en cache hors ligne (trop lourd) : une vidéo ne se charge que si on appuie sur Lecture.
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { logUsage } from '../store';
+import { logUsage, toast } from '../store';
 import { Sheet } from './kit';
 import { Logo } from './Logo';
 
@@ -168,24 +168,33 @@ export function VideoSheet({ aide, clip, vue, onClose }: { aide?: Aide; clip?: C
 }
 
 /**
- * Bulle « ▶ Comment… · 15 s » posée sur l'écran concerné. Elle disparaît quand la vidéo a été vue ou si on la ferme.
- * `permanente` : toujours affichée (page des parents).
+ * Bulle « ▶ Comment… · 15 s » posée sur l'écran concerné, aux couleurs de l'app tant que la vidéo n'a pas été vue.
+ * Vue ou fermée, elle se fait discrète (une ligne grise « Revoir… ») mais reste à sa place : on peut toujours la relancer.
+ * `permanente` : toujours en version pleine (page des parents).
  */
 export function AideVideo({ id, permanente = false }: { id: keyof typeof AIDES | string; permanente?: boolean }) {
   const e = useVues();
   const [open, setOpen] = useState(false);
   const aide = AIDES[id];
   if (!VIDEOS_PRETES || !aide || !CLIPS[aide.clip].pret) return null;
-  const masquee = !permanente && (e.vues.includes(id) || e.fermees.includes(id));
-  if (masquee && !open) return null;
+  const vue = e.vues.includes(id);
+  const discrete = !permanente && (vue || e.fermees.includes(id));
   return (
     <>
-      <div class="aide-video">
-        <button type="button" class="aide-video-btn" onClick={() => { setOpen(true); logUsage('aide_video', id); }}>
-          <Lecture taille={16} />
-          <span><b>{aide.label}</b> <span class="nowrap">· {aide.duree}</span></span>
+      <div class={`aide-video${discrete ? ' discret' : ''}`}>
+        <button type="button" class="aide-video-btn" onClick={() => { setOpen(true); logUsage(discrete ? 'aide_video_revue' : 'aide_video', id); }}>
+          <Lecture taille={discrete ? 13 : 16} />
+          {discrete
+            ? <span>{vue ? 'Revoir : ' : ''}{aide.label} <span class="nowrap">· {aide.duree}</span></span>
+            : <span><b>{aide.label}</b> <span class="nowrap">· {aide.duree}</span></span>}
         </button>
-        {!permanente && <button type="button" class="aide-video-x" aria-label="Masquer cette aide" onClick={() => { fermerAide(id); logUsage('aide_video_fermee', id); }}>×</button>}
+        {!discrete && !permanente && (
+          <button type="button" class="aide-video-x" aria-label="Réduire cette aide" onClick={() => {
+            fermerAide(id);
+            logUsage('aide_video_fermee', id);
+            toast('Aide réduite : elle reste ici en petit, et dans Plus › Vidéos.');
+          }}>×</button>
+        )}
       </div>
       {open && <VideoSheet aide={aide} vue={id} onClose={() => setOpen(false)} />}
     </>

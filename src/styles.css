@@ -824,6 +824,10 @@ h1.h-card { font-size: 25px; }
 .aide-video-btn { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 14px 4px 5px; border: 0; background: none; font: inherit; font-size: 15px; color: var(--ink); cursor: pointer; text-align: left; }
 .aide-video-btn .video-play { width: 34px; height: 34px; flex: none; box-shadow: none; }
 .aide-video-x { min-width: 44px; border: 0; border-left: 1px solid var(--accent-soft); background: none; font-size: 22px; color: var(--ink-2); cursor: pointer; }
+/* Vidéo déjà vue ou bulle fermée : une ligne discrète, lisible (contraste AA), qu'on peut toujours relancer */
+.aide-video.discret { border-color: var(--line); background: transparent; }
+.aide-video.discret .aide-video-btn { color: var(--ink-2); font-size: 14px; gap: 8px; padding: 2px 14px 2px 6px; }
+.aide-video.discret .video-play { width: 28px; height: 28px; background: var(--surface-2); color: var(--ink-2); }
 .foot-aide { display: flex; justify-content: center; }
 /* Page d'accueil : aperçu animé sans le son */
 .apercu-video { display: flex; gap: 16px; align-items: center; width: 100%; padding: 12px; text-align: left; font: inherit; color: var(--ink); cursor: pointer; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow-tab); }
