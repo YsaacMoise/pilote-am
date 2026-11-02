@@ -22,19 +22,30 @@ async function run(scheme) {
     timezoneId: 'Europe/Paris', hasTouch: true, isMobile: true, acceptDownloads: true,
     permissions: ['clipboard-read', 'clipboard-write'],
   });
+  // Date fixe : le parcours ne dépend pas du jour où il est lancé (bulletin de test de septembre 2026).
+  await ctx.clock.install({ time: new Date('2026-10-15T10:00:00+02:00') });
+  await ctx.clock.resume();
   const p = await ctx.newPage();
   const errors = [];
   p.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(m.text()); });
   p.on('pageerror', (e) => errors.push(e.message));
   const shot = (n) => p.screenshot({ path: path.join(out, `e2e-${scheme}-${n}.png`) });
   const toastHas = async (re) => { await p.locator('.toast p', { hasText: re }).waitFor({ timeout: 5000 }); return true; };
+  // En cas d'échec : capture et texte de l'écran, pour voir où le parcours s'est arrêté
+  const echec = async () => {
+    await p.screenshot({ path: path.join(out, `e2e-${scheme}-ECHEC.png`) }).catch(() => {});
+    fs.writeFileSync(path.join(out, `e2e-${scheme}-ECHEC.txt`), await p.locator('body').innerText().catch(() => ''));
+  };
+  try {
 
   await p.goto(base);
-  await p.getByRole('heading', { name: 'Arvela' }).waitFor();
-  assert(await p.getByRole('button', { name: 'Créer mon compte' }).isVisible(), 'accueil : création de compte proposée');
+  const creer = p.getByRole('button', { name: 'Créer mon compte gratuit' }).first();
+  await creer.waitFor();
+  assert(await creer.isVisible(), 'accueil : création de compte proposée');
+  await creer.click();
   await p.getByLabel('Adresse e-mail').fill(`parcours-${scheme}-${Date.now()}@exemple.fr`);
-  await p.getByLabel('Mot de passe').fill('motdepasse-solide');
-  await p.getByRole('button', { name: 'Créer mon compte' }).click();
+  await p.getByLabel('Mot de passe', { exact: true }).fill('Motdepasse-solide1');
+  await p.getByRole('button', { name: 'Créer mon compte', exact: true }).click();
   await p.getByRole('button', { name: 'Continuer ici pour l’instant' }).click();
   await p.getByLabel('Ton prénom').fill('Sonia');
   await p.getByRole('button', { name: 'Ajouter un enfant que tu accueilles' }).click();
@@ -204,7 +215,7 @@ async function run(scheme) {
   // Export anonymisé
   await p.goto(base + '#/pilote');
   await p.getByRole('button', { name: /Mois suivant/ }).click();
-  const [dl2] = await Promise.all([p.waitForEvent('download'), p.getByRole('button', { name: 'Partager l’export anonymisé' }).click()]);
+  const [dl2] = await Promise.all([p.waitForEvent('download'), p.getByRole('button', { name: 'Partager l’export pseudonymisé' }).click()]);
   const ex = fs.readFileSync(await dl2.path(), 'utf8');
   assert(!/Lou|Petit|Sonia|soleil|bien mangé/.test(ex), 'export : aucun prénom ni note du carnet');
   assert(JSON.parse(ex).enfants[0].enfant === 'A', 'export : enfant renommé A');
@@ -252,6 +263,7 @@ async function run(scheme) {
 
   const real = errors.filter((e) => !/Failed to load resource.*ERR_INTERNET_DISCONNECTED/.test(e));
   assert(real.length === 0, 'aucune erreur de console' + (real.length ? ' : ' + real.join(' | ') : ''));
+  } catch (e) { await echec(); throw e; }
   await b.close();
 }
 
