@@ -8,7 +8,13 @@ import type { ErreurCode } from '../usage-events';
 
 /** Note l'erreur (C-101) chaque fois qu'elle apparaît à l'écran, pas à chaque affichage */
 export function useErreurAffichee(code: ErreurCode, visible: boolean) {
-  useEffect(() => { if (visible) logErreur(code); }, [visible]);
+  useEffect(() => {
+    if (!visible) return;
+    // Champ en cours de frappe (« , » dans un montant) : noté seulement si l'erreur reste affichée 2 secondes.
+    if (code !== 'saisie') { logErreur(code); return; }
+    const t = setTimeout(() => logErreur(code), 2000);
+    return () => clearTimeout(t);
+  }, [visible]);
 }
 import { centsToInput, parseEuros } from '../engine/money';
 
