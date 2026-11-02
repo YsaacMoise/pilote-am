@@ -187,6 +187,13 @@ export async function addJournal(j: Journal): Promise<Undo> {
   return async () => { await deleteJournal(j.id); };
 }
 
+/** Remplace une note existante ; l'annulation remet la version d'avant */
+export async function updateJournal(j: Journal): Promise<Undo> {
+  const prev = state.journal.find((x) => x.id === j.id);
+  await addJournal(j);
+  return async () => { if (prev) await addJournal(prev); else await deleteJournal(j.id); };
+}
+
 export async function deleteJournal(id: string): Promise<Undo> {
   const prev = state.journal.find((x) => x.id === id);
   state.journal = state.journal.filter((x) => x.id !== id);

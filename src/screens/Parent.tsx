@@ -13,6 +13,7 @@ import { Gommette, Switch } from '../ui/kit';
 import { Logo } from '../ui/Logo';
 import { Icon } from '../ui/icons';
 import { AideVideo } from '../ui/VideoGuide';
+import { insecable } from '../engine/carnet';
 
 const CODE_KEY = (id: string) => `pam-parent-code-${id}`;
 const KIND: Record<EntreeCarnet['kind'], string> = { repas: 'Repas', sieste: 'Sieste', change: 'Change', humeur: 'Humeur', soin: 'Soin', note: 'Note' };
@@ -206,7 +207,7 @@ function evenements(j: JourParent | undefined, carnet: EntreeCarnet[], am: strin
       if (p.d) out.push({ t: p.d, titre: 'Départ', sous: prevu ? `Prévu à ${h(prevu.end)}` : undefined });
     });
   }
-  for (const e of carnet) out.push({ t: e.time, titre: e.kind === 'note' ? `Note de ${am}` : KIND[e.kind], sous: e.detail || undefined });
+  for (const e of carnet) out.push({ t: e.time, titre: e.kind === 'note' ? `Note de ${am}` : KIND[e.kind], sous: e.detail ? insecable(e.detail) : undefined });
   return out.sort((a, b) => a.t.localeCompare(b.t));
 }
 
@@ -260,7 +261,7 @@ function Jour({ snap, jour }: { snap: ParentSnapshot; jour: string }) {
                   {notes.length > 0 && (
                     <details class="ev-details">
                       <summary>Carnet ({notes.length})</summary>
-                      {notes.map((e) => <p><span class="num">{h(e.time)}</span> · <b>{e.kind === 'note' ? 'Note' : KIND[e.kind]}</b>{e.detail ? ` · ${e.detail}` : ''}</p>)}
+                      {notes.map((e) => <p><span class="num">{h(e.time)}</span> · <b>{e.kind === 'note' ? 'Note' : KIND[e.kind]}</b>{e.detail ? ` · ${insecable(e.detail)}` : ''}</p>)}
                     </details>
                   )}
                 </div>

@@ -45,7 +45,7 @@ Pour découvrir sans rien saisir : **« Voir avec des enfants d’exemple »** s
 | 5 | Contrôle du bulletin déclaré, brut compris (cohérence net/brut, minimum conventionnel). | Mois › Contrôler le bulletin |
 | 6 | Congés payés : compteur (à prendre, pris, restants, en cours) et indemnité (dixième contre maintien). | Plus › Congés |
 | 7 | Fin de contrat : préavis, indemnité de rupture, régularisation, congés non pris. Aucun document officiel. | Plus › Fin de contrat |
-| 8 | Carnet de liaison : boutons rapides (repas, sieste, change, humeur, soin, note), dictée par le micro du clavier, résumé du jour partagé aux parents. | Carnet |
+| 8 | Carnet de liaison : boutons rapides (repas, sieste, change, humeur, soin, note), dictée par le micro du clavier, résumé du jour partagé aux parents (présence, soins, total de sieste, repas en tête). Historique jour par jour sur 60 jours (ajout d’une note oubliée la veille), modification d’une note en la touchant, sieste avec endormissement, réveil et durée, biberon en ml, température en °C avec fièvre signalée dès 38 °C. | Carnet |
 | 9 | Compteur fiscal : abattement spécifique et revenu imposable estimé, par enfant et au total. | Plus › Impôts |
 | 10 | Données du pilote : bouton « Ça coince » en haut de chaque écran, journal d’usage local, export mensuel anonymisé (enfants A/B/C, aucun prénom, aucune note du carnet, prénoms effacés des remarques). | Partout, Plus › Données du pilote |
 
@@ -109,6 +109,7 @@ Sources vérifiées le 28/10/2026 : fiche DREETS Pays de la Loire du 12/06/2026 
 ## Tests et vérifications
 
 - `npm test` : **59 cas chiffrés** du moteur (mensualisation, retenues, maladie, heures en plus, fériés, entretien, congés, fin de contrat, impôts, contrôle, déclaration), dont 7 tests de non-régression issus de la relecture.
+- `node scripts/serve.mjs 4173 & node scripts/e2e-carnet.cjs` : **parcours du carnet** par le mode démonstration, clair puis sombre : note modifiée, biberon, température et fièvre, sieste (réveil avant l’endormissement refusé), résumé, historique de la veille, rien qui dépasse, cibles ≥ 44 px, zéro erreur de console.
 - `node scripts/serve.mjs 4173 & node scripts/e2e.cjs` : **parcours complet Playwright** à 390×844, en clair puis en sombre : accueil, création d’un contrat repris, import d’un bulletin PDF (fichier fictif `tests/fixtures/bulletin-test.pdf`), arrivée/annulation/départ, enfant malade, absence de l’AM, carnet et résumé, mois et texte pour le parent, contrôle du bulletin, « Ça coince », sauvegarde puis restauration (et refus d’un faux fichier), export anonymisé sans prénom, rechargement **hors ligne**, rien qui dépasse de l’écran, cibles ≥ 44 px, **zéro erreur de console**.
 - `AXE=…/axe.min.js node scripts/axe.cjs` : **audit axe-core WCAG 2.1 A/AA** de tous les écrans (et d’une feuille ouverte) en clair et sombre : aucune violation.
 - `node scripts/shots.cjs` : captures de chaque écran, relues à l’œil.
