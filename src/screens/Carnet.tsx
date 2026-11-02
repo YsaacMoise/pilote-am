@@ -25,7 +25,7 @@ const SOIN_GROUPES = [
 
 const KINDS: { k: Kind; l: string; icon: IconName; options: string[]; groupes?: { titre: string; options: string[] }[] }[] = [
   { k: 'repas', l: 'Repas', icon: 'meal', options: ['A tout mangé', 'A bien mangé', 'A un peu mangé', 'N’a pas mangé', OPT_BIBERON, 'Goûter pris'] },
-  { k: 'sieste', l: 'Sommeil', icon: 'moon', options: ['Sieste rapide (moins de 15 min)', 'Endormissement rapide', 'Endormissement difficile', 'Sommeil calme', 'Sommeil agité', 'Réveils pendant la sieste', 'N’a pas dormi'] },
+  { k: 'sieste', l: 'Sommeil', icon: 'moon', options: ['Sieste rapide (moins de 15 min)', 'Sommeil calme', 'Sommeil agité', 'Réveils pendant la sieste', 'N’a pas dormi'] },
   { k: 'change', l: 'Change', icon: 'couche', options: ['Couche mouillée', 'Selles', 'Pot / toilettes', 'Change complet'] },
   { k: 'humeur', l: 'Humeur', icon: 'smile', options: ['De bonne humeur', 'Calme', 'Grognon', 'Triste', 'A beaucoup joué', 'A beaucoup pleuré'] },
   { k: 'soin', l: 'Soin', icon: 'pansement', options: SOIN_GROUPES.flatMap((g) => g.options), groupes: SOIN_GROUPES },
