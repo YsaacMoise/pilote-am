@@ -8,6 +8,9 @@ import { acquisition, compteur, cpForMonth, indemnite, maintien } from './conges
 import { monthBase, monthBrut, regularisation, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx } from './payroll';
 import { netToBrut } from './rates';
 
+/** Entrée en vigueur de l'avenant n° 10 du 9 septembre 2025 (inaptitude) */
+const AVENANT_10 = '2026-05-01';
+
 export type Motif = 'retrait' | 'demission' | 'deces' | 'inaptitude' | 'inaptitude_pro' | 'faute_grave' | 'essai';
 
 export const MOTIF_LABEL: Record<Motif, string> = {
@@ -90,6 +93,11 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   }
   if (manquants.length) {
     alertes.push(`Historique incomplet : ${manquants.length} mois sans bulletin. Ajoute les bulletins manquants dans l’historique pour un calcul juste.`);
+  }
+
+  // Avenant n° 10 (inaptitude) en vigueur le 1er mai 2026 : avant, ses règles ne s'appliquaient pas.
+  if ((motif === 'inaptitude' || motif === 'inaptitude_pro') && notif < AVENANT_10) {
+    alertes.push('Inaptitude notifiée avant le 1er mai 2026 : les règles de l’avenant n° 10 appliquées ici n’étaient pas encore en vigueur. Fais vérifier le calcul (relais petite enfance, DREETS).');
   }
 
   // Indemnité de rupture. Ancienneté appréciée à la date d'envoi de la lettre (ou au décès), comme pour le préavis.

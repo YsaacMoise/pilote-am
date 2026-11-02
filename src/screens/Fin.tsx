@@ -12,14 +12,19 @@ export function Fin({ id }: { id?: string }) {
   const [notif, setNotif] = useState(today());
   const [motif, setMotif] = useState<Motif>('retrait');
   const [remise, setRemise] = useState<'recommande' | 'main_propre'>('recommande');
-  const [presentation, setPresentation] = useState(today());
+  // Première présentation : suit la date d'envoi tant qu'elle n'est pas saisie (relecture contradictoire, point 1).
+  const [presentation, setPresentation] = useState<string | null>(null);
+  const changeEnvoi = (v: string) => { setNotif(v); if (presentation && presentation < v) setPresentation(null); };
   const c = s.contracts.find((x) => x.id === cid);
   if (!c) return <><Topbar title="Fin de contrat" back="#/plus" screen="fin" /><main><div class="card empty"><p>Aucun contrat.</p></div></main></>;
   const envoi = notif < c.start ? c.start : notif;
   // C-017 : le préavis part de la première présentation de la lettre recommandée ou de la remise en main propre
   // contre décharge (art. 120), jamais de l'annonce orale.
   const avecLettre = motif !== 'deces';
-  const pres = avecLettre && remise === 'recommande' && presentation > envoi ? presentation : envoi;
+  // Seuls le retrait et la démission ont un préavis : pour les autres motifs, seule la date d'envoi compte.
+  const avecPreavis = motif === 'retrait' || motif === 'demission';
+  const presVue = presentation && presentation > envoi ? presentation : envoi;
+  const pres = avecPreavis && remise === 'recommande' ? presVue : envoi;
   const f = finDeContrat(ctxFor(c), envoi, motif, s.settings.enfantsACharge, pres);
   const total = f.indemniteRupture + f.regularisation + f.cpIndemnite;
   return (
@@ -38,21 +43,23 @@ export function Fin({ id }: { id?: string }) {
           <fieldset>
             <legend>La rupture</legend>
             <Choices label="Qui arrête et pourquoi" value={motif} onChange={setMotif} options={(Object.keys(MOTIF_LABEL) as Motif[]).map((k) => ({ v: k, l: MOTIF_LABEL[k] }))} />
-            {avecLettre ? (
+            {avecPreavis ? (
               <>
-                <Choices label="Comment la lettre est donnée" value={remise} onChange={setRemise} options={[
+                <Choices label="Comment la lettre est donnée" value={remise} onChange={(v) => { setRemise(v); setPresentation(null); }} options={[
                   { v: 'recommande', l: 'Lettre recommandée avec accusé de réception' },
                   { v: 'main_propre', l: 'Lettre remise en main propre contre décharge', sub: 'L’autre signe et date un double' },
                 ]} />
                 {remise === 'recommande' ? (
                   <>
-                    <DateInput label="Date d’envoi de la lettre" hint="Sert à compter l’ancienneté." value={notif} min={c.start} onChange={setNotif} />
-                    <DateInput label="Date de première présentation de la lettre" hint="Le jour où le facteur la présente la première fois (accusé de réception ou avis de passage). Le préavis part de ce jour, pas de l’annonce orale." value={presentation < envoi ? envoi : presentation} min={envoi} onChange={setPresentation} />
+                    <DateInput label="Date d’envoi de la lettre" hint="Sert à compter l’ancienneté." value={notif} min={c.start} onChange={changeEnvoi} />
+                    <DateInput label="Date de première présentation de la lettre" hint="Le jour où le facteur la présente la première fois (accusé de réception ou avis de passage). Le préavis part de ce jour, pas de l’annonce orale." value={presVue} min={envoi} onChange={(v) => setPresentation(v || null)} />
                   </>
                 ) : (
-                  <DateInput label="Date de remise de la lettre contre décharge" hint="Le préavis part de ce jour, pas de l’annonce orale." value={notif} min={c.start} onChange={setNotif} />
+                  <DateInput label="Date de remise de la lettre contre décharge" hint="Le préavis part de ce jour, pas de l’annonce orale." value={notif} min={c.start} onChange={changeEnvoi} />
                 )}
               </>
+            ) : avecLettre ? (
+              <DateInput label="Date d’envoi ou de remise de la lettre" hint="Pas de préavis pour ce motif : le contrat s’arrête à cette date." value={notif} min={c.start} onChange={changeEnvoi} />
             ) : (
               <DateInput label="Date du décès" value={notif} min={c.start} onChange={setNotif} />
             )}

@@ -878,3 +878,19 @@ describe('audit C-003 : un avenant en cours de mois ne change pas les jours d’
     expect(monthBase(makeCtx(c, [], [], '2026-12-15'), '2026-11').joursActivite).toBe(11);
   });
 });
+
+describe('audit C-017, relecture contradictoire', () => {
+  const ctx = () => makeCtx(contract({ start: '2024-01-08', trackedFrom: '2024-01-08' }), [], [], '2028-12-31');
+  it('un mois de préavis en février et en année bissextile', () => {
+    const fin = (p: string) => finDeContrat(ctx(), p, 'retrait', 0, p).preavisFin;
+    expect(fin('2027-01-15')).toBe('2027-02-14');
+    expect(fin('2027-01-31')).toBe('2027-02-28');
+    expect(fin('2027-02-28')).toBe('2027-03-27');
+    expect(fin('2028-01-31')).toBe('2028-02-29');
+    expect(fin('2026-12-31')).toBe('2027-01-30');
+  });
+  it('inaptitude notifiée avant le 1er mai 2026 : alerte', () => {
+    expect(finDeContrat(ctx(), '2026-04-15', 'inaptitude_pro').alertes.join(' ')).toMatch(/avant le 1er mai 2026/);
+    expect(finDeContrat(ctx(), '2026-05-04', 'inaptitude_pro').alertes.join(' ')).not.toMatch(/avant le 1er mai 2026/);
+  });
+});
