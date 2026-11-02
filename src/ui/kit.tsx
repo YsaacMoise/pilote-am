@@ -2,6 +2,7 @@ import type { ComponentChildren, JSX } from 'preact';
 import { useEffect, useId, useRef, useState } from 'preact/hooks';
 import { Icon, type IconName } from './icons';
 import { Logo } from './Logo';
+import { AIDE_PAR_ECRAN, aideEcran, VideoSheet } from './VideoGuide';
 import { onToast, type ToastMsg, addFeedback, toast, logUsage } from '../store';
 import { centsToInput, parseEuros } from '../engine/money';
 
@@ -37,6 +38,8 @@ export function Gommette({ name, color, size }: { name: string; color: number; s
 /** Barre du haut : titre + bouton « Ça coince » présent sur chaque écran */
 export function Topbar({ title, sub, back, screen, end }: { title: string; sub?: string; back?: string; screen: string; end?: ComponentChildren }) {
   const [open, setOpen] = useState(false);
+  const [video, setVideo] = useState(false);
+  const aide = aideEcran(screen);
   return (
     <header class="topbar">
       {back ? (
@@ -55,16 +58,25 @@ export function Topbar({ title, sub, back, screen, end }: { title: string; sub?:
         <Icon name="message" size={18} />
         Ça coince
       </button>
-      {open && <CoinceSheet screen={screen} onClose={() => setOpen(false)} />}
+      {open && <CoinceSheet screen={screen} onVideo={aide ? () => { setOpen(false); setVideo(true); logUsage('aide_video_coince', screen); } : undefined} onClose={() => setOpen(false)} />}
+      {video && aide && <VideoSheet aide={aide} vue={AIDE_PAR_ECRAN[screen]} onClose={() => setVideo(false)} />}
     </header>
   );
 }
 
-function CoinceSheet({ screen, onClose }: { screen: string; onClose: () => void }) {
+function CoinceSheet({ screen, onVideo, onClose }: { screen: string; onVideo?: () => void; onClose: () => void }) {
   const [text, setText] = useState('');
   const id = useId();
+  const aide = aideEcran(screen);
   return (
     <Sheet title="Ça coince ?" onClose={onClose}>
+      {aide && onVideo && (
+        <button type="button" class="coince-video" onClick={onVideo}>
+          <span class="video-play" aria-hidden="true"><svg viewBox="0 0 24 24" width={16} height={16}><path d="M8 5v14l11-7z" fill="currentColor" /></svg></span>
+          <span><b>Revoir la vidéo de cet écran</b><span>{aide.label} · {aide.duree}</span></span>
+        </button>
+      )}
+      {aide && <a class="coince-guide" href="#/guide">Toutes les vidéos</a>}
       <p>Dis en quelques mots ce qui te gêne sur cet écran. C’est noté sur ton téléphone. Ta remarque fera partie du bilan anonyme du mois, sans aucun prénom.</p>
       <div class="field">
         <label for={id}>Ce qui coince</label>

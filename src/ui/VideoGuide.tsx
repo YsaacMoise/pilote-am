@@ -1,12 +1,12 @@
 // Vidéos en motion design, au format téléphone (9:16), montrées au moment où elles servent :
 //  - page d'accueil : un aperçu animé sans le son, qui ouvre « Une journée avec Arvela » (1 min) ;
 //  - dans l'app : une bulle « ▶ Comment… » sur l'écran concerné, qui lance le passage utile (10 à 45 s),
-//    puis disparaît une fois la vidéo vue ou la bulle fermée ;
+//    puis disparaît une fois la vidéo vue ou la bulle fermée ; elle reste à portée dans « Ça coince » (en haut de l'écran) ;
 //  - Plus › Vidéos : toutes les vidéos, avec « Déjà vue ».
 // Fichiers dans public/videos/ (.mp4 H.264 + .vtt). Fabriqués avec Remotion (motion/) ; voix Google AI Studio (Nika).
 // Pas de mise en cache hors ligne (trop lourd) : une vidéo ne se charge que si on appuie sur Lecture.
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { logUsage } from '../store';
+import { logUsage, toast } from '../store';
 import { Sheet } from './kit';
 import { Logo } from './Logo';
 
@@ -43,6 +43,18 @@ export const AIDES: Record<string, Aide | null> = {
   simulateur: CLIPS.simulateur.pret ? { clip: 'simulateur', label: 'Simuler avec une famille', duree: CLIPS.simulateur.duree } : null,
   parents: { clip: 'parents', label: 'Comment ça marche', duree: CLIPS.parents.duree },
 };
+
+/** Vidéo d'aide de chaque écran (identifiant `screen` de la barre du haut), proposée dans « Ça coince » */
+export const AIDE_PAR_ECRAN: Record<string, keyof typeof AIDES> = {
+  aujourdhui: 'pointer', carnet: 'carnet', mois: 'mois', simulateur: 'simulateur', contrat: 'inviter',
+};
+
+/** L'aide vidéo d'un écran, si elle existe et que sa vidéo est prête */
+export function aideEcran(screen: string): Aide | null {
+  const id = AIDE_PAR_ECRAN[screen];
+  const a = id ? AIDES[id] : null;
+  return VIDEOS_PRETES && a && CLIPS[a.clip].pret ? a : null;
+}
 
 // ---------- Vidéos vues, bulles fermées (propres à ce téléphone) ----------
 const CLE = 'pam-videos';
@@ -185,7 +197,7 @@ export function AideVideo({ id, permanente = false }: { id: keyof typeof AIDES |
           <Lecture taille={16} />
           <span><b>{aide.label}</b> <span class="nowrap">· {aide.duree}</span></span>
         </button>
-        {!permanente && <button type="button" class="aide-video-x" aria-label="Masquer cette aide" onClick={() => { fermerAide(id); logUsage('aide_video_fermee', id); }}>×</button>}
+        {!permanente && <button type="button" class="aide-video-x" aria-label="Masquer cette aide" onClick={() => { fermerAide(id); logUsage('aide_video_fermee', id); toast('Aide masquée : tu la retrouves dans « Ça coince », en haut de l’écran.'); }}>×</button>}
       </div>
       {open && <VideoSheet aide={aide} vue={id} onClose={() => setOpen(false)} />}
     </>

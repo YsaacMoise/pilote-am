@@ -65,6 +65,14 @@ describe('instantané pour les parents', () => {
     expect(snap.am).toBe('Sonia');
   });
 
+  it('sommeil d’un jour passé jamais terminé : « réveil non noté », pas « Dort depuis »', () => {
+    const j: Journal[] = [
+      { id: 's1', cid: 'c1', date: '2026-11-03', time: '13:10', kind: 'sieste', sommeil: true, detail: 'Dort depuis 13h10' },
+      { id: 's2', cid: 'c1', date: '2026-11-04', time: '12:40', kind: 'sieste', sommeil: true, detail: 'Dort depuis 12h40' },
+    ];
+    const s2 = buildSnapshot({ ctx: makeCtx(c, days, leaves, '2026-11-04'), journal: j, amName: 'Sonia', enfants: 0, now: 1 });
+    expect(s2.carnet.map((e) => e.detail)).toEqual(['Endormissement à 13h10, réveil non noté', 'Dort depuis 12h40']);
+  });
   it('un jour prévu à venir sans pointage : attendu', () => {
     const s = buildSnapshot({ ctx: makeCtx(c, [], [], '2026-11-05'), journal: [], amName: '', enfants: 0, now: 1 });
     expect(s.jours[0]).toMatchObject({ date: '2026-11-05', statut: 'attendu', minutes: 0 });

@@ -4,7 +4,7 @@ import { addDays, dayLabel, minutes, nowHHMM, today, type ISODate } from '../eng
 import { dayInfo } from '../engine/payroll';
 import type { Contract, Journal } from '../engine/model';
 import {
-  KIND_LABEL, dureeLabel, insecable, detailBiberon, detailSieste, detailTemperature, estFievre, hh, parseMl, parseTemperature, resumeJour,
+  KIND_LABEL, detailReveilOublie, dureeLabel, insecable, reveilOublie, detailBiberon, detailSieste, detailTemperature, estFievre, hh, parseMl, parseTemperature, resumeJour,
   siesteEnCours, temperatureLabel, type Kind,
 } from '../engine/carnet';
 import { Gommette, Sheet, Topbar } from '../ui/kit';
@@ -60,6 +60,12 @@ export function Carnet() {
       return e ? [{ k, e }] : [];
     })
     : [];
+  // Réveils oubliés ces 7 derniers jours (sommeil commencé un jour passé, jamais terminé) : à corriger
+  const oublis = estAuj
+    ? s.journal
+      .filter((j) => j.date >= addDays(t, -7) && reveilOublie(j, t) && kids.some((k) => k.id === j.cid))
+      .sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time))
+    : [];
 
   async function sendSummary(c: Contract) {
     const r = await shareText(summaryText(c, jour, entries));
@@ -99,6 +105,20 @@ export function Carnet() {
             <Icon name="right" />
           </button>
         </nav>
+        {oublis.length > 0 && (
+          <section class="oublis" aria-label="Réveils non notés">
+            {oublis.map((e) => {
+              const k = kids.find((x) => x.id === e.cid)!;
+              const quand = e.date === addDays(t, -1) ? 'hier' : dayLabel(e.date);
+              return (
+                <div class="oubli-ligne">
+                  <span class="oubli-txt"><b>Réveil non noté</b><span>{k.child}, {quand} : endormissement à {hh(e.time)}</span></span>
+                  <button class="btn btn-secondary btn-sm" aria-label={`Corriger le sommeil ${de(k.child)} ${quand}`} onClick={() => setSheet({ kind: kindDef('sieste'), edit: e })}>Corriger</button>
+                </div>
+              );
+            })}
+          </section>
+        )}
         {dormeurs.length > 0 && (
           <section class="dodo" aria-label="En train de dormir">
             {dormeurs.map(({ k, e }) => {
@@ -159,8 +179,9 @@ export function Carnet() {
                         aria-label={`Modifier la note de ${hh(e.time)}`}
                         onClick={() => setSheet({ kind: kindDef(e.kind), edit: e })}
                       >
-                        <b>{KIND_LABEL[e.kind]}</b> · <span class="ph-no-capture" data-ph-mask="">{insecable(e.temp !== undefined && estFievre(e.temp) ? e.detail.replace(' (fièvre)', '') : e.detail)}</span>
+                        <b>{KIND_LABEL[e.kind]}</b> · <span class="ph-no-capture" data-ph-mask="">{insecable(reveilOublie(e, t) ? detailReveilOublie(e.time) : e.temp !== undefined && estFievre(e.temp) ? e.detail.replace(' (fièvre)', '') : e.detail)}</span>
                         {e.temp !== undefined && estFievre(e.temp) && <span class="tag warn tl-tag">Fièvre</span>}
+                        {reveilOublie(e, t) && <span class="tag warn tl-tag">Réveil non noté</span>}
                       </button>
                       <span class="tl-actions">
                         <button class="icon-btn ph-no-capture" aria-label={`Supprimer la note de ${hh(e.time)}`} onClick={async () => { const u = await deleteJournal(e.id); toast('Note supprimée', u); }}>
@@ -413,5 +434,5 @@ export function summaryText(c: Contract, d: string, entries: Journal[]): string 
   const presence = pres.length
     ? pres.map((p) => `Arrivée ${hh(p.a!)}${p.d ? `, départ ${hh(p.d)}` : ''}`).join(' ; ')
     : undefined;
-  return resumeJour({ enfant: c.child, jour: dayLabel(d), presence, notes: entries });
+  return resumeJour({ enfant: c.child, jour: dayLabel(d), presence, notes: entries, jourTermine: d < today() });
 }

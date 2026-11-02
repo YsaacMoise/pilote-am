@@ -83,6 +83,16 @@ export function sommeilTotal(siestes: Pick<Journal, 'time' | 'fin'>[]): number {
   return total + (fin - debut);
 }
 
+/** Sommeil commencé un jour passé et jamais terminé : le réveil a été oublié */
+export function reveilOublie(j: Journal, aujourdhui: string): boolean {
+  return siesteEnCours(j) && j.date < aujourdhui;
+}
+
+/** Texte d'un sommeil dont le réveil n'a pas été noté (jour terminé) */
+export function detailReveilOublie(debut: string): string {
+  return `Endormissement à ${hh(debut)}, réveil non noté`;
+}
+
 /** Sieste commencée et pas encore terminée */
 export function siesteEnCours(j: Journal): boolean {
   return j.kind === 'sieste' && !!j.sommeil && !j.fin;
@@ -92,7 +102,7 @@ export function siesteEnCours(j: Journal): boolean {
  * Résumé du jour à envoyer aux parents : l'essentiel en tête (présence, soins, sommeil, repas), puis le reste.
  * `presence` : « Arrivée 8h05, départ 17h10 » ou undefined.
  */
-export function resumeJour(o: { enfant: string; jour: string; presence?: string; notes: Journal[] }): string {
+export function resumeJour(o: { enfant: string; jour: string; presence?: string; notes: Journal[]; jourTermine?: boolean }): string {
   const es = [...o.notes].sort((a, b) => a.time.localeCompare(b.time));
   const de = (k: Kind) => es.filter((e) => e.kind === k);
   const avecHeure = (e: Journal) => `${e.detail} (${hh(e.time)})`;
@@ -107,7 +117,7 @@ export function resumeJour(o: { enfant: string; jour: string; presence?: string;
     const total = sommeilTotal(siestes);
     const tete = total ? `Sommeil : ${dureeLabel(total)} en tout` : 'Sommeil';
     const parts = siestes.map((e) =>
-      minutesSieste(e) ? `${hh(e.time)} à ${hh(e.fin!)}` : siesteEnCours(e) ? `en cours depuis ${hh(e.time)}` : avecHeure(e));
+      minutesSieste(e) ? `${hh(e.time)} à ${hh(e.fin!)}` : siesteEnCours(e) ? (o.jourTermine ? detailReveilOublie(e.time).toLowerCase() : `en cours depuis ${hh(e.time)}`) : avecHeure(e));
     lignes.push(`${tete} (${parts.join(', ')})`);
   }
 

@@ -40,6 +40,17 @@ async function run(scheme) {
   const titre = (await p.getByRole('heading', { name: /La journée d/ }).textContent()).trim();
   const kid = titre.replace(/^La journée (de |d’)/, '');
 
+  // Aide vidéo : la bulle se ferme, et la vidéo reste dans « Ça coince »
+  await p.getByRole('button', { name: 'Masquer cette aide' }).click();
+  assert(await toastHas(/tu la retrouves dans « Ça coince »/), 'bulle fermée : le message dit où la retrouver');
+  assert(!(await p.locator('.aide-video').count()), 'bulle fermée : elle n’encombre plus l’écran');
+  await p.getByRole('button', { name: 'Ça coince' }).click();
+  await p.getByRole('button', { name: /Revoir la vidéo de cet écran/ }).click();
+  await p.locator('dialog video, dialog .video-affiche').first().waitFor({ timeout: 8000 });
+  assert(true, '« Ça coince » relance la vidéo de l’écran');
+  await p.keyboard.press('Escape');
+  await p.waitForTimeout(300);
+
   // Note libre, puis modification
   await p.getByRole('button', { name: 'Note libre' }).click();
   await p.getByLabel('Ta note').fill('A dessiné un soleil');
@@ -129,9 +140,29 @@ async function run(scheme) {
   await p.getByRole('button', { name: 'Calme' }).click();
   await tl('Calme').waitFor();
   assert(true, 'note ajoutée à la veille');
+  // Réveil oublié la veille : sommeil sans heure de réveil
+  await p.getByRole('button', { name: /^Sommeil/ }).click();
+  await p.locator('dialog').getByLabel('Endormissement').fill('13:00');
+  await p.locator('dialog').getByLabel('Réveil', { exact: true }).fill('14:00');
+  await p.getByRole('button', { name: 'Enregistrer le sommeil' }).click();
+  await tl('13h00 à 14h00').waitFor();
+  await p.getByRole('button', { name: /^Modifier la note de 13h00/ }).click();
+  await p.locator('dialog').getByLabel(/^Réveil/).fill('');
+  await p.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+  await tl('réveil non noté').waitFor();
+  assert(await tl('réveil non noté').locator('.tag', { hasText: 'Réveil non noté' }).isVisible(), 'veille : sommeil sans réveil signalé');
   await shot('05-veille');
   await p.getByRole('button', { name: 'Revenir à aujourd’hui' }).click();
   await tl('grand soleil').waitFor();
+  const oubli = p.getByRole('region', { name: 'Réveils non notés' });
+  assert(/Réveil non noté.*hier.*13h00/.test(await oubli.textContent()), 'aujourd’hui : « Réveil non noté, hier » signalé en haut du carnet');
+  await p.evaluate(() => window.scrollTo(0, 0));
+  await shot('05b-oubli');
+  await oubli.getByRole('button', { name: /^Corriger/ }).click();
+  await p.locator('dialog').getByLabel(/^Réveil/).fill('14:30');
+  await p.getByRole('button', { name: 'Enregistrer', exact: true }).click();
+  await toastHas(/Note modifiée/);
+  assert(!(await oubli.count()), 'réveil corrigé : l’alerte disparaît');
   assert(!(await tl('Calme').count()), 'retour à aujourd’hui : la note de la veille reste à la veille');
   assert(await p.getByRole('button', { name: 'Jour suivant' }).isDisabled(), 'pas de jour futur');
 
