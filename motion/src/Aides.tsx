@@ -194,7 +194,7 @@ export const AideSimulateur: React.FC = () => {
   const finAppel = c('simulateur') - 0.55, tapSim = c('simulateur') - 0.05, tapEnv = c('envoies') + 0.1;
   const H = (D.sHauteur as unknown as number) - 844;
   const vers = (r: Rect, marge: number) => Math.max(0, Math.min(r.top - marge, H));
-  const scroll = kf(t, [[tapSim + 0.5, 0], [c('horaires') - 0.4, vers(D.sArrivee, 260)], [c('tarif') - 0.3, vers(D.sTarif, 360)], [c('voit') - 0.2, vers(D.sResultat, 200)], [c('caf') + 0.35, vers(D.sResultat, 200)], [c('envoies') - 0.3, vers(D.sEnvoyer, 520)]]);
+  const scroll = kf(t, [[tapSim + 0.5, 0], [c('horaires') - 0.4, vers(D.sArrivee, 260)], [c('tarif') - 0.3, vers(D.sTarif, 360)], [c('voit') - 0.5, vers(D.sTarif, 360)], [c('voit') - 0.05, vers(D.sResultat, 200)], [c('caf') + 0.35, vers(D.sResultat, 200)], [c('envoies') - 0.3, vers(D.sEnvoyer, 520)]]);
   const ecran = (
     <Push p={fade(t, tapSim + 0.1, tapSim + 0.5, Easing.linear)}>
       {[
