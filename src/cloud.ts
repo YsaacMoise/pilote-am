@@ -75,6 +75,7 @@ async function onUser(u: CloudUser | null) {
   user = u;
   // Nouvelle connexion : les clés refusées repartent avec la file d'attente, l'ancien bandeau n'a plus lieu d'être.
   setCloud({ email: u.email ?? undefined, verified: u.verified, refus: undefined });
+  protegees.clear();
   try {
     if (lsGet(LS.linked) === u.uid) attach(u);
     else await link(u);
@@ -172,19 +173,18 @@ async function doLink(u: CloudUser, mode?: MergeMode) {
 /** Envoi refusé par le serveur : clés gardées, bandeau affiché. Exporté pour les tests. */
 let refusN = 0;
 /**
- * Clés dont la valeur du téléphone n'est pas encore confirmée en ligne (envoi refusé, ou file renvoyée au
- * branchement). Pendant ce temps, une version venue du serveur ne l'écrase pas : après un refus, Firestore remet
- * la version du serveur, qui serait sinon rangée sur le téléphone puis renvoyée à la place du changement (C-023).
+ * Clés refusées par le serveur, pas encore renvoyées avec succès. Après un refus, Firestore remet la version du
+ * serveur : elle ne doit pas écraser le changement du téléphone, qui sera renvoyé (le téléphone gagne, comme pour
+ * les changements faits hors connexion). Les réglages ne sont jamais protégés : ils sont toujours fusionnés.
+ * La protection tombe avec le bandeau (renvoi confirmé, déconnexion, nouvelle connexion) (C-023).
  */
 const protegees = new Set<string>();
-/** Vrai quand la file renvoyée au branchement a été remise au service en ligne */
-let renvoiFini = false;
 /** Suppression du compte en cours : un refus tardif ne doit ni remplir la file ni afficher de bandeau */
 let suppression = false;
 export function onRejected(code: string, docs: Array<{ s: db.SyncedStore; k: string }>) {
   if (suppression) return;
   db.outboxKeep(docs);
-  for (const d of docs) protegees.add(docId(d.s, d.k));
+  for (const d of docs) if (!(d.s === 'kv' && d.k === 'settings')) protegees.add(docId(d.s, d.k));
   // Personne n'est connecté : les clés attendent la prochaine connexion, sans bandeau ni événement.
   if (!user) return;
   refusN++;
@@ -264,8 +264,6 @@ function attach(u: CloudUser): Promise<void> {
   const set = state.settings;
   sharedSettings = stable(forRemote('kv', 'settings', { k: 'settings', v: set }));
   const waiting = db.outboxRead();
-  for (const { s, k } of waiting) protegees.add(docId(s, k));
-  renvoiFini = false;
   db.outboxClear();
   db.setMirror(mirror);
   attached = true;
@@ -275,7 +273,7 @@ function attach(u: CloudUser): Promise<void> {
       if (v === undefined) enqueue(s, k, null);
       else enqueue(s, k, stable(forRemote(s, k, v)));
     }
-  })().catch((e) => console.warn(e)).then(() => { queueMicrotask(() => { renvoiFini = true; }); });
+  })().catch((e) => console.warn(e));
   const since = Math.max(0, Number(lsGet(LS.since) ?? 0) - RESUME_MARGIN_MS);
   let chain = Promise.resolve();
   unlisten = be!.listen(u.uid, since, (docs, meta) => {
@@ -290,12 +288,6 @@ function attach(u: CloudUser): Promise<void> {
   unsubShares = subscribe(() => scheduleShares());
   reconciled = false;
   scheduleShares(500);
-  // Quand la file renvoyée est confirmée par le serveur sans nouveau refus, la protection est levée.
-  const n0 = refusN;
-  const b = be!;
-  void renvoi.then(() => new Promise((r) => setTimeout(r, 0))).then(() => b.waitPending(60000)).then((ok) => {
-    if (ok && refusN === n0 && attached) protegees.clear();
-  }).catch(() => {});
   return renvoi;
 }
 
@@ -340,8 +332,6 @@ function refreshStatus() {
   else if (!online || fromCache) setCloud({ status: 'offline' });
   else {
     setCloud({ status: 'synced', lastSync: Date.now() });
-    // Tout est parti et confirmé, sans refus affiché : plus rien à protéger.
-    if (renvoiFini && !cloudInfo().refus) protegees.clear();
   }
 }
 
@@ -559,6 +549,7 @@ export async function deleteAccount(password: string) {
   for (const c of state.contracts) if (c.partage) { const { partage: _, ...rest } = c; await putContract(rest); }
   db.outboxClear();
   setCloud({ refus: undefined });
+  protegees.clear();
   suppression = false;
   logUsage('compte_supprime');
 }

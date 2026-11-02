@@ -133,4 +133,14 @@ describe('audit C-023 : envoi refusé par le serveur', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(putRaw).toHaveBeenCalled();
   });
+
+  it('relecture contradictoire : les réglages refusés restent fusionnés avec ceux venus du serveur', async () => {
+    const db = await import('../src/db');
+    const putRaw = db.putRaw as unknown as ReturnType<typeof vi.fn>;
+    fake.rejected!('permission-denied', [{ s: 'kv', k: 'settings' }]);
+    putRaw.mockClear();
+    fake.listenCb!([{ s: 'kv', k: 'settings', v: JSON.stringify({ k: 'settings', v: { liensCoupes: ['x'] } }), t: Date.now() + 5 }], { fromCache: false, maxT: Date.now() + 5 });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(putRaw).toHaveBeenCalled();
+  });
 });

@@ -166,10 +166,13 @@ export const backend: Backend = {
     return () => { pendSubs.delete(cb); };
   },
   async waitPending(timeoutMs) {
-    return Promise.race([
-      waitForPendingWrites(fs).then(() => true),
-      new Promise<boolean>((res) => setTimeout(() => res(false), timeoutMs)),
-    ]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        waitForPendingWrites(fs).then(() => true),
+        new Promise<boolean>((res) => { timer = setTimeout(() => res(false), timeoutMs); }),
+      ]);
+    } finally { clearTimeout(timer); }
   },
 
   async putShare(id, d) {
