@@ -1,0 +1,24 @@
+{
+ "id": "aide-mois",
+ "usage": "Aide de l'écran Mois. Public : l'assistante maternelle en fin de mois, inquiète de se tromper.",
+ "outil": "Google AI Studio, page Generate speech",
+ "modele": "Gemini 3.8 Flash TTS",
+ "voix": "Nika",
+ "style": "Voix française claire et souriante, comme une collègue qui montre un geste en passant. Débit vif et naturel, phrases courtes, pauses brèves. Jamais commercial, jamais robotique.",
+ "texte": "Fin du mois. Tout est déjà calculé, dans l'ordre des cases Pajemploi. Touche « Envoyer au parent ». Il reçoit les montants, prêts à recopier.",
+ "fichier": "public/voix/aide-mois.wav",
+ "reperes": {
+  "fin": "fin",
+  "calcule": "calculé",
+  "ordre": "ordre",
+  "cases": "cases",
+  "envoyer": "envoyer",
+  "recoit": "reçoit",
+  "montants": "montants",
+  "recopier": "recopier",
+  "finRecopier": {
+   "mot": "recopier",
+   "bord": "fin"
+  }
+ }
+}

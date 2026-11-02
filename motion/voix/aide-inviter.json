@@ -1,0 +1,26 @@
+{
+ "id": "aide-inviter",
+ "usage": "Aide de la fiche enfant (lien des parents). Public : l'assistante maternelle qui veut inviter les parents.",
+ "outil": "Google AI Studio, page Generate speech",
+ "modele": "Gemini 3.8 Flash TTS",
+ "voix": "Nika",
+ "style": "Voix française claire et souriante, comme une collègue qui montre un geste en passant. Débit vif et naturel, phrases courtes, pauses brèves. Jamais commercial, jamais robotique.",
+ "texte": "Dans Plus, ouvre la fiche de l'enfant et crée le lien. Envoie-le aux parents. Le code, donne-le de vive voix : il n'est jamais écrit dans le lien.",
+ "fichier": "public/voix/aide-inviter.wav",
+ "reperes": {
+  "plus": "plus",
+  "fiche": "fiche",
+  "cree": "crée",
+  "lien": "lien",
+  "envoie": "envoie",
+  "code": "code",
+  "voix": "voix",
+  "jamais": "jamais",
+  "ecrit": "écrit",
+  "finLien": {
+   "mot": "lien",
+   "n": 2,
+   "bord": "fin"
+  }
+ }
+}

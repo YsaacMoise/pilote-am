@@ -1,0 +1,45 @@
+{
+ "source": "Mesuré par scripts/reperes.py depuis voix/aide-carnet.json — ne pas modifier à la main",
+ "fichier": "voix/aide-carnet.wav",
+ "duree": 9.08,
+ "mots": {
+  "choisis": 0.332,
+  "noter": 2.62,
+  "heure": 3.4,
+  "seule": 3.9,
+  "endort": 5.0,
+  "sommeil": 5.94,
+  "reveil": 6.98,
+  "reveil2": 8.08,
+  "haut": 8.6,
+  "fin": 8.72
+ },
+ "phrases": [
+  {
+   "texte": "Choisis l'enfant, puis ce que tu veux noter.",
+   "debut": 0.332,
+   "fin": 2.92
+  },
+  {
+   "texte": "L'heure s'ajoute toute seule.",
+   "debut": 3.4,
+   "fin": 4.12
+  },
+  {
+   "texte": "Il s'endort ?",
+   "debut": 4.76,
+   "fin": 5.28
+  },
+  {
+   "texte": "Sommeil.",
+   "debut": 5.94,
+   "fin": 6.24
+  },
+  {
+   "texte": "À son réveil, touche Réveil, en haut.",
+   "debut": 6.7,
+   "fin": 8.72
+  }
+ ],
+ "a_ecouter": []
+}

@@ -16,26 +16,63 @@
   "finDirect": 9.18,
   "finDoux": 7.06
  },
+ "phrases": [
+  {
+   "texte": "Huit heures.",
+   "debut": 0.304,
+   "fin": 0.82
+  },
+  {
+   "texte": "Adam arrive.",
+   "debut": 1.28,
+   "fin": 1.78
+  },
+  {
+   "texte": "Un geste, et c'est noté.",
+   "debut": 2.32,
+   "fin": 3.64
+  },
+  {
+   "texte": "Il a bien mangé.",
+   "debut": 4.18,
+   "fin": 5.0
+  },
+  {
+   "texte": "Il s'endort, tout doux.",
+   "debut": 5.5,
+   "fin": 7.06
+  },
+  {
+   "texte": "Et ses parents le voient, en direct.",
+   "debut": 7.56,
+   "fin": 9.18
+  },
+  {
+   "texte": "Le soir, plus rien à recopier.",
+   "debut": 9.96,
+   "fin": 11.82
+  },
+  {
+   "texte": "Ton mois se calcule tout seul, prêt à déclarer.",
+   "debut": 12.3,
+   "fin": 14.62
+  },
+  {
+   "texte": "Arvela.",
+   "debut": 15.4,
+   "fin": 15.88
+  },
+  {
+   "texte": "Le carnet de bord des assistantes maternelles.",
+   "debut": 16.3,
+   "fin": 18.02
+  }
+ ],
  "a_ecouter": [
-  {
-   "attendu": "recopier",
-   "entendu": "recopié.",
-   "vers": 11.42
-  },
-  {
-   "attendu": "mois",
-   "entendu": "moins",
-   "vers": 12.46
-  },
   {
    "attendu": "arvela",
    "entendu": "Arvelin,",
    "vers": 15.4
-  },
-  {
-   "attendu": "maternelles",
-   "entendu": "paternelles.",
-   "vers": 17.44
   }
  ]
 }

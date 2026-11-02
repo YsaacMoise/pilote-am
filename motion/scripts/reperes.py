@@ -18,6 +18,7 @@ import unicodedata
 import numpy as np
 from faster_whisper import WhisperModel
 
+NOMBRES = {"40": ("quarante",), "12": ("douze",), "8": ("huit",)}
 ICI = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -46,33 +47,60 @@ def main(chemin_fiche):
     if mots and mots[0]["debut"] < debut_voix:
         mots[0]["debut"] = round(debut_voix, 3)
 
+    # Alignement du texte de la fiche sur les mots entendus : chaque mot écrit reçoit l'instant du mot entendu correspondant,
+    # même si la reconnaissance l'a mal transcrit (« Pajemploi » entendu « page emploi » garde son instant).
+    jetons = re.findall(r"[\w'\u2019]+", fiche["texte"])
+    attendus = [norme(x) for x in jetons]
+    garde = [i for i, x in enumerate(attendus) if x]
+    attendus = [attendus[i] for i in garde]
+    entendus = [m["n"] for m in mots]
+    vers = [None] * len(attendus)
+    a_ecouter = []
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(a=attendus, b=entendus, autojunk=False).get_opcodes():
+        for k in range(i1, i2):
+            if op == "equal":
+                vers[k] = j1 + (k - i1)
+            elif op == "replace":
+                vers[k] = min(j2 - 1, j1 + (k - i1) * (j2 - j1) // max(1, i2 - i1))
+            elif op == "delete":
+                vers[k] = min(j1, len(mots) - 1)
+        # Homophones (« arrivée » entendu « arriver », « quarante » entendu « 40 ») : la reconnaissance ne peut pas les distinguer
+        a_txt, e_txt = " ".join(attendus[i1:i2]), " ".join(entendus[j1:j2])
+        homophone = difflib.SequenceMatcher(a=a_txt, b=e_txt).ratio() >= 0.8 or (e_txt.isdigit() and a_txt in NOMBRES.get(e_txt, ()))
+        if op in ("replace", "delete") and not homophone:
+            t = mots[j1]["debut"] if j1 < len(mots) else None
+            a_ecouter.append({"attendu": " ".join(attendus[i1:i2]), "entendu": " ".join(m["mot"] for m in mots[j1:j2]), "vers": t})
+
     reperes, erreurs = {}, []
     for cle, cible in fiche["reperes"].items():
         if isinstance(cible, str):
             cible = {"mot": cible}
-        trouves = [m for m in mots if m["n"] == norme(cible["mot"])]
         rang = cible.get("n", 1)
-        if len(trouves) < rang:
-            erreurs.append(f"repère « {cle} » : le mot « {cible['mot']} » n'est pas entendu (occurrence {rang})")
+        positions = [k for k, x in enumerate(attendus) if x == norme(cible["mot"])]
+        if len(positions) < rang:
+            erreurs.append(f"repère « {cle} » : le mot « {cible['mot']} » n'est pas dans le texte de la fiche (occurrence {rang})")
             continue
-        m = trouves[rang - 1]
+        m = mots[vers[positions[rang - 1]]]
         reperes[cle] = m["fin"] if cible.get("bord") == "fin" else m["debut"]
 
-    # Mots du texte qui ne sont pas entendus tels quels : à écouter
-    attendus = [norme(x) for x in re.findall(r"[\w'’-]+", fiche["texte"])]
-    attendus = [x for x in attendus if x]
-    entendus = [m["n"] for m in mots]
-    a_ecouter = []
-    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(a=attendus, b=entendus, autojunk=False).get_opcodes():
-        if op in ("replace", "delete"):
-            t = mots[j1]["debut"] if j1 < len(mots) else None
-            a_ecouter.append({"attendu": " ".join(attendus[i1:i2]), "entendu": " ".join(m["mot"] for m in mots[j1:j2]), "vers": t})
+    # Phrases (pour les sous-titres) : début du premier mot, fin du dernier
+    phrases = []
+    texte_phrases = [p.strip() for p in re.split(r"(?<=[.?!])\s+", fiche["texte"]) if p.strip()]
+    k = 0
+    for ph in texte_phrases:
+        n = len([x for x in (norme(t) for t in re.findall(r"[\w'\u2019]+", ph)) if x])
+        if n == 0:
+            continue
+        a, b = mots[vers[k]], mots[vers[min(k + n - 1, len(vers) - 1)]]
+        phrases.append({"texte": ph, "debut": a["debut"], "fin": b["fin"]})
+        k += n
 
     sortie = {
         "source": f"Mesuré par scripts/reperes.py depuis {os.path.relpath(chemin_fiche, ICI)} — ne pas modifier à la main",
         "fichier": fiche["fichier"].removeprefix("public/"),
         "duree": round(len(brut) / 4 / 16000, 3),
         "mots": reperes,
+        "phrases": phrases,
         "a_ecouter": a_ecouter,
     }
     cible = os.path.join(ICI, "public/voix", fiche["id"] + ".reperes.json")
