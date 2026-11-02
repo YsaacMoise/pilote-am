@@ -21,6 +21,7 @@ const fake = vi.hoisted(() => {
     userCb: null as null | ((u: unknown) => void),
     writes: [] as Array<Array<{ s: string; k: string; v: string | null }>>,
     waitOk: true,
+    listenCb: null as null | ((docs: unknown[], meta: unknown) => void),
     refuseNext: false,
   };
   return s;
@@ -36,7 +37,7 @@ vi.mock('../src/sync/backend-firebase', () => ({
       fake.writes.push(docs);
       if (fake.refuseNext) { fake.refuseNext = false; fake.rejected?.('permission-denied', docs.map((d) => ({ s: d.s, k: d.k }))); }
     },
-    listen() { return () => {}; },
+    listen(_uid: string, _since: number, cb: (docs: unknown[], meta: unknown) => void) { fake.listenCb = cb; return () => {}; },
     async listShares() { return []; },
     async deleteShare() {},
     async putShare() {},
@@ -112,5 +113,24 @@ describe('audit C-023 : envoi refusé par le serveur', () => {
     expect(cloudInfo().refus).toBeTruthy();
     expect(await cloud.retryRejected()).toBe(true);
     expect(cloudInfo().refus).toBeUndefined();
+  });
+
+  it('relecture contradictoire : une version du serveur reçue après un refus n’écrase pas le changement du téléphone', async () => {
+    const cloud = await import('../src/cloud');
+    const db = await import('../src/db');
+    const putRaw = db.putRaw as unknown as ReturnType<typeof vi.fn>;
+    fake.rejected!('permission-denied', [{ s: 'contracts', k: 'c2' }]);
+    putRaw.mockClear();
+    // Firestore remet la version du serveur, vue par l'écoute.
+    fake.listenCb!([{ s: 'contracts', k: 'c2', v: JSON.stringify({ id: 'c2', child: 'Ancienne' }), t: Date.now() }], { fromCache: false, maxT: Date.now() });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(putRaw).not.toHaveBeenCalled();
+    // Une fois le renvoi confirmé, les versions du serveur sont de nouveau rangées.
+    fake.waitOk = true;
+    expect(await cloud.retryRejected()).toBe(true);
+    await new Promise((r) => setTimeout(r, 20));
+    fake.listenCb!([{ s: 'contracts', k: 'c2', v: JSON.stringify({ id: 'c2', child: 'Nouvelle' }), t: Date.now() + 1 }], { fromCache: false, maxT: Date.now() + 1 });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(putRaw).toHaveBeenCalled();
   });
 });
