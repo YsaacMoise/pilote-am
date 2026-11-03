@@ -11,6 +11,8 @@
   "dort": 7.16,
   "quarante2": 8.6,
   "mange": 9.98,
+  "couches": 11.32,
+  "haut": 11.32,
   "prive": 12.24,
   "code": 13.32,
   "voix": 15.14,
@@ -47,6 +49,11 @@
    "fin": 10.36
   },
   {
+   "texte": "Et si Sonia a besoin de couches, c'est écrit en haut.",
+   "debut": 11.32,
+   "fin": 11.64
+  },
+  {
    "texte": "Ce lien est privé : le code, Sonia vous le donne de vive voix.",
    "debut": 11.32,
    "fin": 15.42
@@ -62,5 +69,11 @@
    "fin": 21.14
   }
  ],
- "a_ecouter": []
+ "a_ecouter": [
+  {
+   "attendu": "et si sonia a besoin de couches est ecrit en haut",
+   "entendu": "",
+   "vers": 11.32
+  }
+ ]
 }
