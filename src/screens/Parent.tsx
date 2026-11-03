@@ -13,7 +13,7 @@ import { Gommette, Switch } from '../ui/kit';
 import { Logo } from '../ui/Logo';
 import { Icon } from '../ui/icons';
 import { AideVideo } from '../ui/VideoGuide';
-import { insecable } from '../engine/carnet';
+import { choseApporter, demandesApporter, estApporter, insecable } from '../engine/carnet';
 
 const CODE_KEY = (id: string) => `pam-parent-code-${id}`;
 const KIND: Record<EntreeCarnet['kind'], string> = { repas: 'Repas', sieste: 'Sommeil', change: 'Change', humeur: 'Humeur', soin: 'Soin', note: 'Note' };
@@ -207,7 +207,7 @@ function evenements(j: JourParent | undefined, carnet: EntreeCarnet[], am: strin
       if (p.d) out.push({ t: p.d, titre: 'Départ', sous: prevu ? `Prévu à ${h(prevu.end)}` : undefined });
     });
   }
-  for (const e of carnet) out.push({ t: e.time, titre: e.kind === 'note' ? `Note de ${am}` : KIND[e.kind], sous: e.detail ? insecable(e.detail) : undefined });
+  for (const e of carnet) out.push({ t: e.time, titre: estApporter(e) ? 'À apporter' : e.kind === 'note' ? `Note de ${am}` : KIND[e.kind], sous: e.detail ? insecable(estApporter(e) ? cap(choseApporter(e)) : e.detail) : undefined });
   return out.sort((a, b) => a.t.localeCompare(b.t));
 }
 
@@ -228,8 +228,24 @@ function Jour({ snap, jour }: { snap: ParentSnapshot; jour: string }) {
   const auj = snap.jours.find((j) => j.date === jour);
   const evAuj = evenements(auj, snap.carnet.filter((e) => e.date === jour), snap.am);
   const avant = snap.jours.filter((j) => j.date < jour);
+  // À apporter : demandé depuis la dernière arrivée de l'enfant. À l'arrivée suivante, c'est apporté : la demande disparaît.
+  const arrivees = snap.jours.filter((j) => j.date <= jour).flatMap((j) => j.pres.filter((p) => p.a).map((p) => `${j.date} ${p.a}`)).sort();
+  const demandes = demandesApporter(snap.carnet.filter((e) => e.date <= jour), arrivees.at(-1) ?? '');
   return (
     <>
+      {demandes.length > 0 && (
+        <section class="card apporter" aria-labelledby="app-t">
+          <Icon name="sac" size={28} />
+          <div>
+            <h2 id="app-t" class="ph-h2 sm">À apporter</h2>
+            <ul>
+              {demandes.map((e) => (
+                <li><b>{cap(choseApporter(e))}</b> <span>· demandé {e.date === jour ? `aujourd’hui\u00a0à\u00a0${h(e.time)}` : dayLabel(e.date).split(' ')[0]}</span></li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
       <section class="card stack-sm" aria-labelledby="auj-t">
         <div class="spread">
           <h2 id="auj-t" class="ph-h2">{cap(dayLabel(jour))}</h2>
@@ -261,7 +277,7 @@ function Jour({ snap, jour }: { snap: ParentSnapshot; jour: string }) {
                   {notes.length > 0 && (
                     <details class="ev-details">
                       <summary>Carnet ({notes.length})</summary>
-                      {notes.map((e) => <p><span class="num">{h(e.time)}</span> · <b>{e.kind === 'note' ? 'Note' : KIND[e.kind]}</b>{e.detail ? ` · ${insecable(e.detail)}` : ''}</p>)}
+                      {notes.map((e) => <p><span class="num">{h(e.time)}</span> · <b>{estApporter(e) ? 'À apporter' : e.kind === 'note' ? 'Note' : KIND[e.kind]}</b>{e.detail ? ` · ${insecable(estApporter(e) ? choseApporter(e) : e.detail)}` : ''}</p>)}
                     </details>
                   )}
                 </div>
