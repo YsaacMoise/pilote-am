@@ -5,7 +5,7 @@
  "modele": "Gemini 3.8 Flash TTS",
  "voix": "Nika",
  "style": "Voix française claire et souriante, comme une collègue qui montre un geste en passant. Débit vif et naturel, phrases courtes, pauses brèves. Jamais commercial, jamais robotique.",
- "texte": "Choisis l'enfant, puis ce que tu veux noter. L'heure s'ajoute toute seule. Il s'endort ? Sommeil. À son réveil, touche Réveil, en haut.",
+ "texte": "Choisis l'enfant, puis ce que tu veux noter. L'heure s'ajoute toute seule. Il s'endort ? Sommeil. À son réveil, touche Réveil, en haut. Il manque des couches ? À apporter. Ses parents le voient aussitôt.",
  "fichier": "public/voix/aide-carnet.wav",
  "reperes": {
   "choisis": "choisis",
@@ -20,8 +20,12 @@
    "n": 2
   },
   "haut": "haut",
+  "manque": "manque",
+  "apporter": "apporter",
+  "parents": "parents",
+  "aussitot": "aussitôt",
   "fin": {
-   "mot": "haut",
+   "mot": "aussitôt",
    "bord": "fin"
   }
  }

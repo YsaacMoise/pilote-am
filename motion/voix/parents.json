@@ -4,8 +4,8 @@
  "outil": "Google AI Studio, page Generate speech",
  "modele": "Gemini 3.8 Flash TTS",
  "voix": "Nika",
- "style": "Voix française douce et posée, rassurante, qui vouvoie un parent au travail. Chaleureuse et sincère, jamais commerciale. Débit naturel, ni lent ni pressé. Une petite pause avant « Il dort depuis midi quarante ».",
- "texte": "Midi quarante. Vous êtes au travail, et vous pensez à Adam. Vous ouvrez le lien de Sonia. Il dort depuis midi quarante. Il a bien mangé. Ce lien est privé : le code, Sonia vous le donne de vive voix. Et à la fin du mois, vos cases Pajemploi sont prêtes. Vous n'avez plus qu'à les recopier.",
+ "style": "Voix française douce et posée, rassurante, qui vouvoie un parent au travail. Chaleureuse et sincère, jamais commerciale. Débit naturel, ni lent ni pressé. Une petite pause avant « Il dort depuis midi quarante ». Une petite pause avant « Et si Sonia a besoin de couches ».",
+ "texte": "Midi quarante. Vous êtes au travail, et vous pensez à Adam. Vous ouvrez le lien de Sonia. Il dort depuis midi quarante. Il a bien mangé. Et si Sonia a besoin de couches, c'est écrit en haut. Ce lien est privé : le code, Sonia vous le donne de vive voix. Et à la fin du mois, vos cases Pajemploi sont prêtes. Vous n'avez plus qu'à les recopier.",
  "fichier": "public/voix/parents.wav",
  "reperes": {
   "quarante": "quarante",
@@ -19,6 +19,8 @@
    "n": 2
   },
   "mange": "mangé",
+  "couches": "couches",
+  "haut": "haut",
   "prive": "privé",
   "code": "code",
   "voix": "voix",

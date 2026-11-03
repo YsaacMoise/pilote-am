@@ -740,9 +740,10 @@ h1.h-card { font-size: 25px; }
 .apporter { display: flex; gap: 14px; align-items: flex-start; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: var(--accent-soft); }
 .apporter > svg { flex: none; color: var(--accent-ink); margin-top: 2px; }
 .apporter h2 { margin: 0 0 4px; }
-.apporter ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.apporter ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
 .apporter li b { font-weight: 650; }
-.apporter li span { color: var(--ink-2); font-size: 15px; }
+.apporter li b { display: block; }
+.apporter li span { display: block; color: var(--ink-2); font-size: 15px; }
 .cp { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px dashed var(--line); }
 .cp:last-of-type { border-bottom: 0; }
 .cp-l { display: flex; flex-direction: column; }
