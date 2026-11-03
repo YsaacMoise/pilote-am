@@ -55,11 +55,13 @@ export function Confidentialite({ back = '#/plus' }: { back?: string }) {
           <p>Si tu dictes avec le micro du clavier, c’est ton téléphone qui transcrit ta voix : selon tes réglages, Apple ou Google peut recevoir l’enregistrement. Arvela ne reçoit que le texte.</p>
           <h3>L’hébergement du site</h3>
           <p>Le site arvela.fr est servi par Google Firebase Hosting, qui garde l’adresse internet des visites quelques mois pour détecter les abus.</p>
+          <h3>La protection contre les robots</h3>
+          <p>Pour que seule l’app puisse utiliser ton compte et ta base, Arvela utilise Firebase App Check avec reCAPTCHA Enterprise (Google Cloud). Quand l’app se connecte au service en ligne, reCAPTCHA observe de façon invisible des signaux techniques du navigateur pour vérifier qu’il ne s’agit pas d’un robot. Google agit pour le compte d’Arvela et n’utilise pas ces données pour la publicité. Le jeton de vérification est gardé sur ton téléphone 7 jours au plus.</p>
         </section>
 
         <section class="card stack-sm">
           <h2>Combien de temps</h2>
-          <p><b>Ton compte et ce que tu saisis :</b> tant que ton compte existe. Si tu supprimes ton compte, la copie en ligne est effacée tout de suite ; Google l’efface de ses sauvegardes sous 180 jours au plus.</p>
+          <p><b>Ton compte et ce que tu saisis :</b> tant que ton compte existe. Si tu supprimes ton compte, la copie en ligne est effacée tout de suite. Elle disparaît des sauvegardes quotidiennes d’Arvela sous 98 jours, et Google l’efface de ses propres copies techniques sous 180 jours au plus.</p>
           <p><b>Le lien pour les parents :</b> tant que tu ne le coupes pas. Il est effacé avec le contrat ou le compte.</p>
           <p><b>La mesure d’usage :</b> les événements sont gardés 1 an au plus.</p>
           <p><b>Sur ton téléphone :</b> tant que tu gardes l’app. Tu restes libre de tout effacer.</p>
@@ -83,7 +85,7 @@ export function Confidentialite({ back = '#/plus' }: { back?: string }) {
 
         <section class="card stack-sm">
           <h2>Stockage sur l’appareil</h2>
-          <p>Arvela n’utilise pas de cookies publicitaires. L’app garde tes données et tes préférences dans la mémoire de ton téléphone. Si tu as allumé la mesure d’usage, elle y garde aussi un identifiant tiré au hasard, effacé dès que tu l’éteins.</p>
+          <p>Arvela n’utilise pas de cookies publicitaires. L’app garde tes données et tes préférences dans la mémoire de ton téléphone. Si tu as allumé la mesure d’usage, elle y garde aussi un identifiant tiré au hasard, effacé dès que tu l’éteins. Quand tu utilises ton compte, la protection contre les robots y dépose un jeton de vérification et un cookie technique de reCAPTCHA, nécessaires à la sécurité et sans usage publicitaire.</p>
         </section>
 
         <section class="card stack-sm">
