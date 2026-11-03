@@ -141,6 +141,22 @@ terminer((async () => {
     await p.evaluate(() => scrollTo(0, 0));
     await shot('c-rose-3');
   });
+  await etape('Carnet 15 h 00 : À apporter → « Couches »', async () => {
+    await heure('15:00'); await allerA(p, '#/carnet', 700);
+    await enfant.getByRole('button', { name: /Rose/ }).click(); await p.waitForTimeout(400);
+    await p.evaluate(() => scrollTo(0, 0));
+    await shot('c-rose-3b');
+    const tuile = p.getByRole('region', { name: /^Ajouter au carnet de Rose/ }).getByRole('button', { name: /^À apporter/ });
+    J.cApporter = await rect(tuile);
+    await tuile.click(); await p.waitForTimeout(800);
+    await shot('c-apporter');
+    J.cApporterFeuille = await rect(p.locator('dialog[open]'));
+    J.cCouches = await rect(p.getByRole('button', { name: 'Couches', exact: true }));
+    await p.getByRole('button', { name: 'Couches', exact: true }).click(); await p.waitForTimeout(800);
+    await p.evaluate(() => scrollTo(0, 0));
+    await shot('c-rose-4');
+    J.cLigneApporter = await rect(p.locator('.tl-item', { hasText: 'À apporter' }).last());
+  });
 
   fs.writeFileSync(OUT + 'demo.json', JSON.stringify(J, null, 1));
   await ctx.close(); await br.close();

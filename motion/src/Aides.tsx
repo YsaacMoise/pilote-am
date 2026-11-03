@@ -89,6 +89,8 @@ export const AideCarnet: React.FC = () => {
   const tapRose = c('choisis') + 0.55, tapRepas = c('noter') - 0.25, tapTout = c('heure') - 0.45;
   const tapSommeil = c('sommeil') - 0.2, tapEndort = c('sommeil') + 0.45, tapReveil = c('reveil2') + 0.05;
   const midi = tapSommeil - 0.35, apresMidi = tapReveil - 0.45;
+  // Il manque des couches ? La tuile « À apporter », « Couches », et la demande arrive chez les parents
+  const quinze = c('manque') - 0.35, tapApporter = c('apporter') - 0.15, tapCouches = c('apporter') + 0.6;
   const ecran = (
     <>
       <Cross a="demo/c-adam" b="demo/c-rose-0" p={fade(t, tapRose + 0.06, tapRose + 0.3, Easing.linear)} />
@@ -97,8 +99,13 @@ export const AideCarnet: React.FC = () => {
       <Shot src="demo/c-rose-2" o={fade(t, tapEndort + 0.15, tapEndort + 0.4, Easing.linear)} />
       <Shot src="demo/c-rose-2b" o={fade(t, apresMidi, apresMidi + 0.2, Easing.linear)} />
       <Shot src="demo/c-rose-3" o={fade(t, tapReveil + 0.1, tapReveil + 0.35, Easing.linear)} />
+      <Shot src="demo/c-rose-3b" o={fade(t, quinze, quinze + 0.2, Easing.linear)} />
+      <Shot src="demo/c-rose-4" o={fade(t, tapCouches + 0.15, tapCouches + 0.4, Easing.linear)} />
       <Sheet src="demo/c-repas" top={D.cRepasFeuille.top} t={t} up={tapRepas + 0.05} down={tapTout + 0.1} />
       <Sheet src="demo/c-sommeil" top={D.cSommeilFeuille.top} t={t} up={tapSommeil + 0.05} down={tapEndort + 0.1} />
+      <Sheet src="demo/c-apporter" top={D.cApporterFeuille.top} t={t} up={tapApporter + 0.05} down={tapCouches + 0.1} />
+      <Halo t={t} from={c('manque') - 0.1} to={tapApporter} r={D.cApporter} />
+      <Halo t={t} from={tapCouches + 0.35} to={DUREE_CARNET} r={D.cLigneApporter} pad={4} />
       <Halo t={t} from={c('heure') - 0.1} to={midi} r={D.cHeure1} pad={6} />
       <Halo t={t} from={c('reveil') - 0.1} to={tapReveil} r={D.cDodo} />
       <Tap t={t} at={tapRose} r={D.cRose} />
@@ -107,9 +114,13 @@ export const AideCarnet: React.FC = () => {
       <Tap t={t} at={tapSommeil} r={D.cSommeil} />
       <Tap t={t} at={tapEndort} r={D.cEndort} />
       <Tap t={t} at={tapReveil} r={D.cReveil2} />
+      <Tap t={t} at={tapApporter} r={D.cApporter} />
+      <Tap t={t} at={tapCouches} r={D.cCouches} />
     </>
   );
-  return <Cadre v={VC} t={t} fin={DUREE_CARNET} ecran={ecran} heure={[{ at: 0.2, h: '11 h 50' }, { at: midi, h: '12 h 40' }, { at: apresMidi, h: '14 h 55' }]} italique={['toute seule', 'Réveil']} sons={taps([tapRose, tapRepas, tapTout, tapSommeil, tapEndort, tapReveil])} />;
+  // « Ses parents le voient aussitôt » : la carte telle qu'elle arrive en haut de leur page
+  const dessus = <Bulle t={t} from={c('parents') - 0.25} to={DUREE_CARNET + 1} titre="Page des parents" texte={'À apporter : couches\nDemandé aujourd’hui à 15h00'} x={110} y={930} w={860} size={36} />;
+  return <Cadre v={VC} t={t} fin={DUREE_CARNET} ecran={ecran} dessus={dessus} heure={[{ at: 0.2, h: '11 h 50' }, { at: midi, h: '12 h 40' }, { at: apresMidi, h: '14 h 55' }, { at: quinze, h: '15 h 00' }]} italique={['toute seule', 'Réveil', 'À apporter']} sons={<>{taps([tapRose, tapRepas, tapTout, tapSommeil, tapEndort, tapReveil, tapApporter, tapCouches])}<Sfx at={c('parents') - 0.2} name="envoye" volume={0.35} /></>} />;
 };
 
 // ---------- Mois : tout est calculé, case par case, puis envoyé au parent ----------

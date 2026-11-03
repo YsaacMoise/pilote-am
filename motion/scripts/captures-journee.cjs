@@ -162,6 +162,23 @@ terminer((async () => {
     J.aReveil = await rect(p.getByRole('region', { name: 'En train de dormir' }).getByRole('button', { name: /^Réveil/ }));
   });
   await etape('12 h 41 · le sommeil apparaît chez les parents', async () => { await attendre('Sommeil', '12:41'); await shot(q, 'p-2'); await parent('p2'); J.p2prive = await rect(q.getByText(/Lien privé/).first()); });
+  // Vidéo des parents : Sonia demande des couches, la carte « À apporter » arrive en haut de leur page.
+  // La demande est ensuite retirée, pour que la suite de la journée (vidéo d'accueil) reste la même.
+  await etape('12 h 41 · À apporter → « Couches », la carte chez les parents', async () => {
+    await heure(ctx, '12:41'); await allerA(p, '#/carnet');
+    await tuiles.getByRole('button', { name: /^À apporter/ }).click(); await p.waitForTimeout(700);
+    await p.getByRole('button', { name: 'Couches', exact: true }).click(); await p.waitForTimeout(800);
+    await q.locator('section.apporter').waitFor({ timeout: 8000 }).catch(async () => { await q.reload(); await q.getByLabel('Code', { exact: true }).fill(code).catch(() => {}); await q.locator('section.apporter').waitFor(); });
+    await masquer(q); await q.waitForTimeout(700);
+    await shot(q, 'p-2-apporter');
+    J.p3apporter = await rect(q.locator('section.apporter'));
+    J.p3repas = await rect(q.locator('.ev', { hasText: 'Repas' }).first());
+    J.p3dort = await rect(q.locator('.ev', { hasText: 'Sommeil' }).first());
+    J.p3prive = await rect(q.getByText(/Lien privé/).first());
+    const ligne = p.locator('.tl-item', { hasText: 'À apporter' });
+    await ligne.getByRole('button', { name: /^Supprimer/ }).click(); await p.waitForTimeout(500);
+    await ligne.waitFor({ state: 'detached' });
+  });
 
   await etape('Parents : onglet « Ce mois » et copie d’une case', async () => {
     await q.getByRole('tab', { name: 'Ce mois' }).click();

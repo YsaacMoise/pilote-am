@@ -41,11 +41,12 @@ export const Parents: React.FC = () => {
   const fin = DUREE_PARENTS;
   const sigAt = SIG_AT;
 
-  const pensez = c('pensez'), ouvrez = c('ouvrez'), dort = c('dort'), mange = c('mange'), prive = c('prive'), code = c('code'), finMois = c('fin'), cases = c('cases'), recopier = c('recopier');
+  const pensez = c('pensez'), ouvrez = c('ouvrez'), dort = c('dort'), mange = c('mange'), couches = c('couches'), prive = c('prive'), code = c('code'), finMois = c('fin'), cases = c('cases'), recopier = c('recopier');
   const allume = ouvrez - 0.2; // le téléphone sort de veille
   const tapCode = ouvrez + 0.35;
   const page = dort - 0.55; // la page de la journée s'ouvre
   const tapMois = finMois + 0.15;
+  const demande = couches - 0.55; // la demande de Sonia arrive en direct : la carte « À apporter » en haut
   const tapCopier = recopier - 0.25;
 
   const S = 1.5, top = 520;
@@ -57,6 +58,7 @@ export const Parents: React.FC = () => {
     const veille = 1 - fade(t, allume, allume + 0.35);
     const code1 = fade(t, tapCode + 0.35, tapCode + 0.5, Easing.linear);
     const pg = fade(t, page, page + 0.4, Easing.linear);
+    const pa = fade(t, demande, demande + 0.35, Easing.linear);
     const mois = fade(t, tapMois + 0.1, tapMois + 0.4, Easing.linear);
     const copie = fade(t, tapCopier + 0.1, tapCopier + 0.25, Easing.linear);
     const zoneDecl: Rect = { left: J.pDecl.left, top: J.pDecl.top, w: J.pDecl.w, h: SH - 70 - J.pDecl.top, x: J.pDecl.x, y: 0 };
@@ -66,11 +68,13 @@ export const Parents: React.FC = () => {
         <Shot src="journee/p-code-1" o={code1} />
         <Tap t={t} at={tapCode} r={J.pCode} />
         <Shot src="journee/p-2" o={pg} />
+        <Shot src="journee/p-2-apporter" o={pa} />
         {pg > 0 && (
           <>
             <Halo t={t} from={dort - 0.1} to={mange - 0.3} r={J.p2ligne} couleur={C.sauge} />
-            <Halo t={t} from={mange - 0.2} to={prive - 0.3} r={J.p1ligne} couleur={C.sauge} />
-            <Halo t={t} from={prive - 0.1} to={finMois} r={J.p2prive} couleur={C.sauge} />
+            <Halo t={t} from={mange - 0.2} to={demande} r={J.p1ligne} couleur={C.sauge} />
+            <Halo t={t} from={couches - 0.1} to={prive - 0.3} r={J.p3apporter} couleur={C.sauge} />
+            <Halo t={t} from={prive - 0.1} to={finMois} r={J.p3prive} couleur={C.sauge} />
           </>
         )}
         <Shot src="journee/p-mois" o={mois} />
@@ -134,6 +138,7 @@ export const Parents: React.FC = () => {
       <Musique fichier="musique/patterns-in-the-grain.mp3" depart={2} fin={fin} pistes={PISTES} niveau={0.16} fps={fps} />
       {[tapCode, tapMois, tapCopier].map((x) => <Sfx key={x} at={x} name="tap" volume={0.5} />)}
       <Sfx at={allume} name="pop" volume={0.3} />
+      <Sfx at={demande} name="pop" volume={0.25} />
       <Sfx at={sigAt + 0.2} name="chime" volume={0.35} />
     </Frame>
   );

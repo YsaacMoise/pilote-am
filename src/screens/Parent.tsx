@@ -240,7 +240,7 @@ function Jour({ snap, jour }: { snap: ParentSnapshot; jour: string }) {
             <h2 id="app-t" class="ph-h2 sm">À apporter</h2>
             <ul>
               {demandes.map((e) => (
-                <li><b>{cap(choseApporter(e))}</b> <span>· demandé {e.date === jour ? `aujourd’hui\u00a0à\u00a0${h(e.time)}` : dayLabel(e.date).split(' ')[0]}</span></li>
+                <li><b>{cap(choseApporter(e))}</b><span>Demandé {e.date === jour ? `aujourd’hui à ${h(e.time)}` : dayLabel(e.date).split(' ')[0]}</span></li>
               ))}
             </ul>
           </div>
