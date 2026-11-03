@@ -37,8 +37,10 @@ jobs:
       - name: Publier l'aperçu
         id: apercu
         run: |
-          npx --yes firebase-tools@15.34.2 hosting:channel:deploy "pr${{ github.event.pull_request.number }}" \
-            --expires 7d --project arvela-app --non-interactive --json > apercu.json
+          if ! npx --yes firebase-tools@15.34.2 hosting:channel:deploy "pr${{ github.event.pull_request.number }}" \
+            --expires 7d --project arvela-app --non-interactive --json > apercu.json; then
+            cat apercu.json; exit 1
+          fi
           url=$(node -e "const r=require('./apercu.json'); const s=Object.values(r.result||{})[0]; if(!s||!s.url){console.error(JSON.stringify(r));process.exit(1)} console.log(s.url)")
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "::notice title=Aperçu::$url"
