@@ -41,6 +41,7 @@ const P: Record<string, JSX.Element> = {
   heart: (<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z" />),
   note: (<><path d="M12 20h9" /><path d="M3 4h18M3 9h18M3 14h10" /></>),
   couche: (<><path d="M2.5 5.5h19v4c-3.4.2-5.7 2.8-6.2 6.5V18.5H8.7V16c-.5-3.7-2.8-6.3-6.2-6.5z" /><path d="M2.5 9h3M18.5 9h3" /></>),
+  sac: (<><path d="M5 8h14l-1.2 12.2a1 1 0 0 1-1 .8H7.2a1 1 0 0 1-1-.8z" /><path d="M9 10V6.5a3 3 0 0 1 6 0V10" /></>),
   pansement: (<><rect x="1.8" y="8" width="20.4" height="8" rx="4" transform="rotate(-45 12 12)" /><rect x="9" y="9" width="6" height="6" rx="1" transform="rotate(-45 12 12)" /></>),
   mic: (<><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10a7 7 0 0 0 14 0M12 17v4" /></>),
   calendar: (<><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></>),

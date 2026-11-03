@@ -4,7 +4,7 @@ import { addDays, dayLabel, minutes, nowHHMM, today, type ISODate } from '../eng
 import { dayInfo } from '../engine/payroll';
 import type { Contract, Journal } from '../engine/model';
 import {
-  KIND_LABEL, detailReveilOublie, dureeLabel, insecable, reveilOublie, detailBiberon, detailSieste, detailTemperature, estFievre, hh, parseMl, parseTemperature, resumeJour,
+  A_APPORTER, KIND_LABEL, choseApporter, detailApporter, detailReveilOublie, estApporter, dureeLabel, insecable, reveilOublie, detailBiberon, detailSieste, detailTemperature, estFievre, hh, parseMl, parseTemperature, resumeJour,
   siesteEnCours, temperatureLabel, type Kind,
 } from '../engine/carnet';
 import { Gommette, Sheet, Topbar } from '../ui/kit';
@@ -17,21 +17,51 @@ import { de } from '../engine/texte';
 const OPT_BIBERON = 'Biberon';
 const OPT_TEMPERATURE = 'Prise de température';
 
+type Groupe = { titre: string; options: string[] };
+
+// Repas : combien il a mangé, ce qu'il a bu, ses goûts. Un seul toucher : l'heure dit de quel repas il s'agit.
+const REPAS_GROUPES: Groupe[] = [
+  { titre: 'Quantité mangée', options: ['A tout mangé', 'A bien mangé', 'A un peu mangé', 'N’a pas mangé'] },
+  { titre: 'Biberon et boissons', options: [OPT_BIBERON, 'A bien bu', 'A peu bu'] },
+  { titre: 'Goûts et autonomie', options: ['A goûté un nouvel aliment', 'A refusé un aliment', 'A mangé sans aide'] },
+];
+
+// Change : la couche et la propreté
+const CHANGE_GROUPES: Groupe[] = [
+  { titre: 'Couche', options: ['Couche mouillée', 'Selles', 'Selles liquides', 'Change complet'] },
+  { titre: 'Propreté', options: ['Pot / toilettes', 'Petit accident'] },
+];
+
+// Humeur : comment il était, ce qu'il a fait, ce qu'il a appris
+const HUMEUR_GROUPES: Groupe[] = [
+  { titre: 'Humeur', options: ['De bonne humeur', 'Calme', 'Grognon', 'Triste', 'A beaucoup pleuré', 'Signes de fatigue'] },
+  { titre: 'Activités', options: ['A beaucoup joué', 'Sortie dehors', 'Activité manuelle', 'Histoires et comptines', 'Jeux avec les autres enfants'] },
+  { titre: 'Progrès', options: ['A dit un nouveau mot', 'Progrès en motricité', 'A partagé ou aidé'] },
+];
+
 // Soin : les gestes, puis les petits incidents à signaler aux parents
-const SOIN_GROUPES = [
+const SOIN_GROUPES: Groupe[] = [
   { titre: 'Soins donnés', options: [OPT_TEMPERATURE, 'Médicament donné (ordonnance)', 'Lavage de nez', 'Crème appliquée', 'Plaie désinfectée'] },
   { titre: 'Petits incidents', options: ['Petite chute', 'Bosse ou bleu', 'Morsure ou griffure', 'Vomissement', 'Saignement de nez'] },
 ];
 
-const KINDS: { k: Kind; l: string; icon: IconName; options: string[]; groupes?: { titre: string; options: string[] }[] }[] = [
-  { k: 'repas', l: 'Repas', icon: 'meal', options: ['A tout mangé', 'A bien mangé', 'A un peu mangé', 'N’a pas mangé', OPT_BIBERON, 'Goûter pris'] },
+const avec = (groupes: Groupe[]) => ({ options: groupes.flatMap((g) => g.options), groupes });
+
+type KindDef = { k: Kind; l: string; icon: IconName; options: string[]; groupes?: Groupe[]; apporter?: boolean };
+
+const KINDS: KindDef[] = [
+  { k: 'repas', l: 'Repas', icon: 'meal', ...avec(REPAS_GROUPES) },
   { k: 'sieste', l: 'Sommeil', icon: 'moon', options: ['Sieste rapide (moins de 15 min)', 'Sommeil calme', 'Sommeil agité', 'Réveils pendant la sieste', 'N’a pas dormi'] },
-  { k: 'change', l: 'Change', icon: 'couche', options: ['Couche mouillée', 'Selles', 'Pot / toilettes', 'Change complet'] },
-  { k: 'humeur', l: 'Humeur', icon: 'smile', options: ['De bonne humeur', 'Calme', 'Grognon', 'Triste', 'A beaucoup joué', 'A beaucoup pleuré'] },
-  { k: 'soin', l: 'Soin', icon: 'pansement', options: SOIN_GROUPES.flatMap((g) => g.options), groupes: SOIN_GROUPES },
+  { k: 'change', l: 'Change', icon: 'couche', ...avec(CHANGE_GROUPES) },
+  { k: 'humeur', l: 'Humeur', icon: 'smile', ...avec(HUMEUR_GROUPES) },
+  { k: 'soin', l: 'Soin', icon: 'pansement', ...avec(SOIN_GROUPES) },
   { k: 'note', l: 'Note libre', icon: 'edit', options: [] },
 ];
+// Ce que les parents doivent apporter : ce n'est pas un moment de la journée, donc une tuile à part.
+// Enregistré comme une note « À apporter : couches » (lisible tel quel partout, même par une ancienne version de l'app).
+const APPORTER: KindDef = { k: 'note', l: 'À apporter', icon: 'sac', options: A_APPORTER, apporter: true };
 const kindDef = (k: Kind) => KINDS.find((x) => x.k === k)!;
+const defDe = (e: Journal) => (estApporter(e) ? APPORTER : kindDef(e.kind));
 
 /** Plus ancien jour consultable dans le carnet */
 const JOURS_HISTORIQUE = 60;
@@ -45,7 +75,7 @@ export function Carnet() {
   // Enfants présents en ce moment (arrivés, pas encore partis) : pour noter à tous d'un coup (aujourd'hui seulement)
   const present = estAuj ? kids.filter((k) => (dayInfo(ctxFor(k), t).rec?.pres ?? []).some((p) => p.a && !p.d)) : [];
   const [cid, setCid] = useState<string | undefined>(present.length > 1 ? 'tous' : kids[0]?.id);
-  const [sheet, setSheet] = useState<{ kind: (typeof KINDS)[number]; edit?: Journal } | null>(null);
+  const [sheet, setSheet] = useState<{ kind: KindDef; edit?: Journal } | null>(null);
   const all = cid === 'tous' && present.length > 1;
   const c = all ? undefined : kids.find((k) => k.id === cid) ?? kids[0];
   const targets: Contract[] = all ? present : c ? [c] : [];
@@ -177,9 +207,9 @@ export function Carnet() {
                       <button
                         class="tl-body ph-no-capture"
                         aria-label={`Modifier la note de ${hh(e.time)}`}
-                        onClick={() => setSheet({ kind: kindDef(e.kind), edit: e })}
+                        onClick={() => setSheet({ kind: defDe(e), edit: e })}
                       >
-                        <b>{KIND_LABEL[e.kind]}</b> · <span class="ph-no-capture" data-ph-mask="">{insecable(reveilOublie(e, t) ? detailReveilOublie(e.time) : e.temp !== undefined && estFievre(e.temp) ? e.detail.replace(' (fièvre)', '') : e.detail)}</span>
+                        <b>{estApporter(e) ? 'À apporter' : KIND_LABEL[e.kind]}</b> · <span class="ph-no-capture" data-ph-mask="">{insecable(estApporter(e) ? choseApporter(e) : reveilOublie(e, t) ? detailReveilOublie(e.time) : e.temp !== undefined && estFievre(e.temp) ? e.detail.replace(' (fièvre)', '') : e.detail)}</span>
                         {e.temp !== undefined && estFievre(e.temp) && <span class="tag warn tl-tag">Fièvre</span>}
                         {reveilOublie(e, t) && <span class="tag warn tl-tag">Réveil non noté</span>}
                       </button>
@@ -217,7 +247,7 @@ function cap(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function QuickButtons({ label, onPick }: { label: string; onPick: (k: (typeof KINDS)[number]) => void }) {
+function QuickButtons({ label, onPick }: { label: string; onPick: (k: KindDef) => void }) {
   return (
     <section aria-label={label} class="quick">
       {KINDS.map((k) => (
@@ -226,6 +256,10 @@ function QuickButtons({ label, onPick }: { label: string; onPick: (k: (typeof KI
           {k.l}
         </button>
       ))}
+      <button class="q-large" onClick={() => onPick(APPORTER)}>
+        <span class="q-ico"><Icon name={APPORTER.icon} /></span>
+        <span class="q-txt">{APPORTER.l}<small>Demander aux parents</small></span>
+      </button>
     </section>
   );
 }
@@ -234,7 +268,7 @@ function QuickButtons({ label, onPick }: { label: string; onPick: (k: (typeof KI
 type Saisie = Pick<Journal, 'detail' | 'sommeil' | 'fin' | 'ml' | 'temp'>;
 
 function EntrySheet({ cs, kind, date, edit, ouverte, onClose }: {
-  cs: Contract[]; kind: (typeof KINDS)[number]; date: ISODate; edit?: Journal; ouverte?: Journal; onClose: () => void;
+  cs: Contract[]; kind: KindDef; date: ISODate; edit?: Journal; ouverte?: Journal; onClose: () => void;
 }) {
   const maintenant = nowHHMM();
   const estAuj = date === today();
@@ -253,7 +287,7 @@ function EntrySheet({ cs, kind, date, edit, ouverte, onClose }: {
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [ml, setMl] = useState(edit?.ml !== undefined ? String(edit.ml) : '');
   const [temp, setTemp] = useState(edit?.temp !== undefined ? temperatureLabel(edit.temp).replace(' °C', '') : '');
-  const [text, setText] = useState(edit && texteLibre ? edit.detail : '');
+  const [text, setText] = useState(edit && texteLibre ? (kind.apporter ? choseApporter(edit) : edit.detail) : '');
 
   const finInvalide = !!fin && fin <= time;
   const passeInvalide = !!debutPasse && !!finPasse && finPasse <= debutPasse;
@@ -342,7 +376,7 @@ function EntrySheet({ cs, kind, date, edit, ouverte, onClose }: {
 
   const names = cs.map((c) => c.child).join(', ');
   return (
-    <Sheet title={edit ? `Modifier : ${KIND_LABEL[kind.k].toLowerCase()}, ${names}` : `${kind.l}, ${names}`} onClose={onClose}>
+    <Sheet title={edit ? `Modifier : ${(kind.apporter ? kind.l : KIND_LABEL[kind.k]).toLowerCase()}, ${names}` : `${kind.l}, ${names}`} onClose={onClose}>
       {ouverte ? (
         <>
           <p class="sommeil-etat"><Icon name="moon" /><b>Dort depuis {hh(ouverte.time)}</b></p>
@@ -354,7 +388,7 @@ function EntrySheet({ cs, kind, date, edit, ouverte, onClose }: {
           {reveilInvalide && <p class="hint warn" role="alert">L’heure du réveil doit être après l’endormissement ({hh(ouverte.time)}).</p>}
           <button class="btn btn-secondary btn-block" disabled={!heureReveil || reveilInvalide} onClick={() => reveiller(heureReveil)}>Enregistrer le réveil</button>
         </>
-      ) : (sommeil && !edit && estAuj) ? null : (
+      ) : (sommeil && !edit && estAuj) || kind.apporter ? null : (
         <div class="spread">
           <label for="jr-time" class="label">{sommeil && edit ? 'Endormissement' : 'Heure'}</label>
           <input id="jr-time" class="input num" style={{ width: '140px' }} type="time" value={time} onInput={(e) => setTime((e.target as HTMLInputElement).value)} />
@@ -386,13 +420,15 @@ function EntrySheet({ cs, kind, date, edit, ouverte, onClose }: {
 
       {edit && biberon && champBiberon}
       {edit && thermo && champTemperature}
+      {kind.apporter && <p class="hint">Les parents le voient en haut de leur page, jusqu’à la prochaine arrivée de l’enfant.</p>}
       {texteLibre && !ouverte && kind.options.length > 0 && (
         (kind.groupes ?? [{ titre: '', options: kind.options }]).map((g) => (
           <div class="choices" role="group" aria-label={g.titre || undefined}>
             {g.titre && <span class="choices-titre">{g.titre}</span>}
             {g.options.map((o) => {
               const champ = !edit && o === OPT_BIBERON ? champBiberon : !edit && o === OPT_TEMPERATURE ? champTemperature : null;
-              if (!champ) return <button class="choice" aria-pressed={edit?.detail === o} onClick={() => save({ detail: o }, 'carnet_' + kind.k)}>{o}</button>;
+              const detail = kind.apporter ? detailApporter(o) : o;
+              if (!champ) return <button class="choice" aria-pressed={edit?.detail === detail} onClick={() => save({ detail }, kind.apporter ? 'carnet_apporter' : 'carnet_' + kind.k)}>{o}</button>;
               return (
                 <>
                   <button class="choice" aria-expanded={ouvert === o} onClick={() => setOuvert(ouvert === o ? null : o)}>{o}</button>
@@ -415,12 +451,12 @@ function EntrySheet({ cs, kind, date, edit, ouverte, onClose }: {
       {texteLibre && !ouverte && (
         <>
           <div class="field">
-            <label for="jr-text">{edit ? 'Texte de la note' : kind.options.length || sommeil || biberon || thermo ? 'Ou écris un détail' : 'Ta note'}</label>
-            <textarea id="jr-text" class="input" value={text} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} placeholder="Ex. : a fait ses premiers pas !" />
+            <label for="jr-text">{kind.apporter ? (edit ? 'À apporter' : 'Autre chose') : edit ? 'Texte de la note' : kind.options.length || sommeil || biberon || thermo ? 'Ou écris un détail' : 'Ta note'}</label>
+            <textarea id="jr-text" class="input" value={text} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} placeholder={kind.apporter ? 'Ex. : une tenue de pluie' : 'Ex. : a fait ses premiers pas !'} />
             <span class="hint"><span class="kbd-ico"><Icon name="mic" size={18} /></span> Touche le micro du clavier pour dicter.</span>
           </div>
-          <button class="btn btn-primary btn-block btn-lg" disabled={!text.trim()} onClick={() => save({ detail: text.trim() }, 'carnet_' + kind.k)}>
-            {edit ? 'Enregistrer' : 'Ajouter la note'}
+          <button class="btn btn-primary btn-block btn-lg" disabled={!text.trim()} onClick={() => save({ detail: kind.apporter ? detailApporter(text) : text.trim() }, kind.apporter ? 'carnet_apporter' : 'carnet_' + kind.k)}>
+            {edit ? 'Enregistrer' : kind.apporter ? 'Demander' : 'Ajouter la note'}
           </button>
         </>
       )}

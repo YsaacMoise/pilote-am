@@ -102,6 +102,25 @@ export function siesteEnCours(j: Journal): boolean {
  * Résumé du jour à envoyer aux parents : l'essentiel en tête (présence, soins, sommeil, repas), puis le reste.
  * `presence` : « Arrivée 8h05, départ 17h10 » ou undefined.
  */
+/** Ce que les parents doivent apporter : une note « À apporter : couches », regroupée sur une ligne à part dans le résumé */
+export const A_APPORTER = ['Couches', 'Lingettes', 'Crème de change', 'Vêtements de rechange', 'Lait infantile'];
+const PREFIXE_APPORTER = 'À apporter : ';
+/** « Couches » → « À apporter : couches ». Seule la première lettre passe en minuscule (une marque reste écrite comme elle est). */
+export const detailApporter = (chose: string) => PREFIXE_APPORTER + chose.trim().charAt(0).toLowerCase() + chose.trim().slice(1);
+export const estApporter = (e: { kind: Journal['kind']; detail: string }) => e.kind === 'note' && e.detail.startsWith(PREFIXE_APPORTER);
+/** « À apporter : couches » → « couches » */
+export const choseApporter = (e: { detail: string }) => e.detail.slice(PREFIXE_APPORTER.length);
+
+/** Pour la page des parents : ce qui a été demandé depuis la dernière arrivée de l'enfant (« 2026-11-03 08:05 »), sans doublon, le plus récent d'abord.
+ *  À l'arrivée suivante, les parents ont apporté : la demande disparaît. */
+export function demandesApporter<E extends { date: string; time: string; kind: Journal['kind']; detail: string }>(carnet: E[], depuis: string): E[] {
+  const vues = new Set<string>();
+  return carnet
+    .filter((e) => estApporter(e) && `${e.date} ${e.time}` >= depuis)
+    .sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time))
+    .filter((e) => { const k = choseApporter(e).toLowerCase(); if (vues.has(k)) return false; vues.add(k); return true; });
+}
+
 export function resumeJour(o: { enfant: string; jour: string; presence?: string; notes: Journal[]; jourTermine?: boolean }): string {
   const es = [...o.notes].sort((a, b) => a.time.localeCompare(b.time));
   const de = (k: Kind) => es.filter((e) => e.kind === k);
@@ -133,7 +152,10 @@ export function resumeJour(o: { enfant: string; jour: string; presence?: string;
   const changes = de('change');
   if (changes.length) lignes.push(`Change : ${changes.length} (${changes.map(avecHeure).join(', ')})`);
 
-  const notes = de('note');
+  const apporter = [...new Set(es.filter(estApporter).map(choseApporter))];
+  if (apporter.length) lignes.push(`${PREFIXE_APPORTER}${apporter.join(', ')}`);
+
+  const notes = de('note').filter((e) => !estApporter(e));
   if (notes.length) lignes.push(`Note : ${notes.map(avecHeure).join(', ')}`);
 
   lignes.push('', 'Bonne soirée !');
