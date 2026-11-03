@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Journal } from '../src/engine/model';
 import {
-  insecable, reveilOublie, detailReveilOublie, detailBiberon, detailSieste, detailTemperature, dureeLabel, estFievre, minutesSieste, parseMl, parseTemperature, resumeJour, siesteEnCours, sommeilTotal,
+  insecable, reveilOublie, detailReveilOublie, detailBiberon, detailSieste, detailTemperature, dureeLabel, estFievre, minutesSieste, parseMl, parseTemperature, detailApporter, resumeJour, siesteEnCours, sommeilTotal,
 } from '../src/engine/carnet';
 
 const j = (o: Partial<Journal>): Journal => ({ id: 'x', cid: 'c1', date: '2026-11-02', time: '12:00', kind: 'note', detail: '', ...o });
@@ -94,15 +94,17 @@ describe('carnet : résumé du jour', () => {
     expect(lignes[7]).toBe('Change : 2 (Selles (11h10), Couche mouillée (15h30))');
     expect(lignes.at(-1)).toBe('Bonne soirée !');
   });
-  it('ce que les parents doivent apporter : ligne à part, pas compté comme un change', () => {
+  it('ce que les parents doivent apporter : une ligne à part, sans heure, sans doublon', () => {
     const t = resumeJour({ enfant: 'Léo', jour: 'lundi 2 novembre', notes: [
       j({ time: '10:00', kind: 'change', detail: 'Selles' }),
-      j({ time: '11:00', kind: 'change', detail: 'Couches à apporter' }),
-      j({ time: '16:00', kind: 'change', detail: 'Vêtements de rechange à apporter' }),
-      j({ time: '16:30', kind: 'change', detail: 'Couches à apporter' }),
+      j({ time: '11:00', kind: 'note', detail: detailApporter('Couches') }),
+      j({ time: '12:00', kind: 'note', detail: 'A dessiné un soleil' }),
+      j({ time: '16:00', kind: 'note', detail: detailApporter('Vêtements de rechange') }),
+      j({ time: '16:30', kind: 'note', detail: detailApporter('Couches') }),
     ] }).split('\n');
     expect(t).toContain('Change : 1 (Selles (10h00))');
     expect(t).toContain('À apporter : couches, vêtements de rechange');
+    expect(t).toContain('Note : A dessiné un soleil (12h00)');
   });
   it('sieste en cours ou ancienne note : pas de total inventé', () => {
     const t = resumeJour({ enfant: 'Léo', jour: 'lundi 2 novembre', notes: [j({ time: '12:40', kind: 'sieste', sommeil: true, detail: 'Dort depuis 12h40' })] });

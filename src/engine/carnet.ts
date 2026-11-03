@@ -102,8 +102,11 @@ export function siesteEnCours(j: Journal): boolean {
  * Résumé du jour à envoyer aux parents : l'essentiel en tête (présence, soins, sommeil, repas), puis le reste.
  * `presence` : « Arrivée 8h05, départ 17h10 » ou undefined.
  */
-/** Choix du change qui ne sont pas des changes : ce que les parents doivent apporter. Une ligne à part dans le résumé. */
-export const A_APPORTER = ['Couches à apporter', 'Lingettes ou crème à apporter', 'Vêtements de rechange à apporter'];
+/** Ce que les parents doivent apporter : une note « À apporter : couches », regroupée sur une ligne à part dans le résumé */
+export const A_APPORTER = ['Couches', 'Lingettes', 'Crème de change', 'Vêtements de rechange', 'Lait infantile'];
+const PREFIXE_APPORTER = 'À apporter : ';
+export const detailApporter = (chose: string) => PREFIXE_APPORTER + chose.toLowerCase();
+const estApporter = (e: Journal) => e.kind === 'note' && e.detail.startsWith(PREFIXE_APPORTER);
 
 export function resumeJour(o: { enfant: string; jour: string; presence?: string; notes: Journal[]; jourTermine?: boolean }): string {
   const es = [...o.notes].sort((a, b) => a.time.localeCompare(b.time));
@@ -133,13 +136,13 @@ export function resumeJour(o: { enfant: string; jour: string; presence?: string;
   const humeur = de('humeur');
   if (humeur.length) lignes.push(`Humeur : ${humeur.map(avecHeure).join(', ')}`);
 
-  const changes = de('change').filter((e) => !A_APPORTER.includes(e.detail));
+  const changes = de('change');
   if (changes.length) lignes.push(`Change : ${changes.length} (${changes.map(avecHeure).join(', ')})`);
 
-  const apporter = [...new Set(de('change').filter((e) => A_APPORTER.includes(e.detail)).map((e) => e.detail.replace(/ à apporter$/, '').toLowerCase()))];
-  if (apporter.length) lignes.push(`À apporter : ${apporter.join(', ')}`);
+  const apporter = [...new Set(es.filter(estApporter).map((e) => e.detail.slice(PREFIXE_APPORTER.length)))];
+  if (apporter.length) lignes.push(`${PREFIXE_APPORTER}${apporter.join(', ')}`);
 
-  const notes = de('note');
+  const notes = de('note').filter((e) => !estApporter(e));
   if (notes.length) lignes.push(`Note : ${notes.map(avecHeure).join(', ')}`);
 
   lignes.push('', 'Bonne soirée !');
