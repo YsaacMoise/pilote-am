@@ -12,3 +12,13 @@ export const firebaseConfig = {
   messagingSenderId: '371665732009',
   appId: '1:371665732009:web:a0d17e3375b65eb28fc4b8',
 } as const;
+
+// Protection anti-robots (Firebase App Check, fournisseur reCAPTCHA Enterprise, créé le 03/11/2026).
+// Clé de site publique par conception : elle est envoyée au navigateur et limitée au domaine arvela.fr
+// dans la console Google Cloud. Clé à score, sans case à cocher : rien n'est visible pour l'utilisatrice.
+export const RECAPTCHA_SITE_KEY = '6LdxAg8uAAAAAAahu93N7aNBjnG80EIM2QhxyJG-';
+
+/** App Check ne tourne que sur l'adresse réelle : la clé refuse les autres domaines (tests, aperçus). */
+export function appCheckActif(hostname: string): boolean {
+  return hostname === 'arvela.fr';
+}
