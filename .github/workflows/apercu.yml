@@ -34,12 +34,14 @@ jobs:
         with:
           workload_identity_provider: projects/371665732009/locations/global/workloadIdentityPools/github/providers/pilote-am
           service_account: github-publication@arvela-app.iam.gserviceaccount.com
+      - name: Vérifier le laissez-passer Google
+        run: gcloud auth print-access-token > /dev/null && echo "Laissez-passer obtenu"
       - name: Publier l'aperçu
         id: apercu
         run: |
           if ! npx --yes firebase-tools@15.34.2 hosting:channel:deploy "pr${{ github.event.pull_request.number }}" \
-            --expires 7d --project arvela-app --non-interactive --json > apercu.json; then
-            cat apercu.json; exit 1
+            --expires 7d --project arvela-app --non-interactive --json --debug > apercu.json; then
+            cat apercu.json; grep -iE "error|denied|permission|token|credential" firebase-debug.log | tail -25; exit 1
           fi
           url=$(node -e "const r=require('./apercu.json'); const s=Object.values(r.result||{})[0]; if(!s||!s.url){console.error(JSON.stringify(r));process.exit(1)} console.log(s.url)")
           echo "url=$url" >> "$GITHUB_OUTPUT"
