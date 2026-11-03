@@ -71,7 +71,7 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 | C-041 | Moyen | **Action YKM** | Fermer les inscriptions (console Firebase > Authentication) après la création du compte de la sœur ; alerte de budget |
 | C-042 | Faible | Corrigé | Version affichée dans Réglages et jointe à la mesure ; recherche de mise à jour au retour dans l'app |
 | C-043 | Moyen | Corrigé (03/11/2026, demande de fusion « sécurité avant ouverture ») | Règle CSP stricte dans firebase.json, sans script écrit dans la page ; parcours complets rejoués avec la règle active ; tests de non-régression (tests/securite.test.ts) |
-| C-044 | Élevé | Corrigé | Empreintes vérifiées le 31/10/2026 (identiques à l'audit), firebase-tools 15.34.2. Rotation de la clé de service : Action YKM, avant phase 2 |
+| C-044 | Élevé | Corrigé (04/11/2026, demande de fusion n°41) | Empreintes vérifiées le 31/10/2026, firebase-tools 15.34.2. Clé de service supprimée du circuit : publication par fédération d'identité (groupe github, fournisseur pilote-am, limité au dépôt YsaacMoise/pilote-am) vers le compte github-publication, droits limités à la publication du site. Reste, après une publication réussie : supprimer la clé du compte firebase-adminsdk et le secret FIREBASE_SERVICE_ACCOUNT_ARVELA_APP (Action YKM) |
 | C-045 | Conforme | Prouvé conforme | |
 | C-046 | Faible | Partiel | Exemple en @example.com ; nouveaux commits signés avec l'adresse noreply GitHub. Restriction de la clé d'API web : Action YKM |
 | C-047 | Moyen | Ouvert, avant phase 2 | |
