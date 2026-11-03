@@ -10,12 +10,26 @@ import {
   collection, deleteDoc, doc, getDocsFromServer, setDoc, initializeFirestore, onSnapshot, memoryLocalCache, persistentLocalCache, persistentMultipleTabManager,
   query, serverTimestamp, Timestamp, waitForPendingWrites, where, writeBatch, type DocumentData,
 } from 'firebase/firestore';
-import { firebaseConfig } from '../firebase-config';
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
+import { appCheckActif, firebaseConfig, RECAPTCHA_SITE_KEY } from '../firebase-config';
 import type { Backend, CloudUser, SharedDoc } from './backend';
 import { docId, isSyncedStore, type RemoteDoc } from './plan';
 import { deviceId } from '../cloud-state';
 
 const app = initializeApp(firebaseConfig);
+// App Check (audit, avant phase 2) : prouve à Firebase que les demandes viennent bien de l'app publiée
+// sur arvela.fr, et pas d'un robot qui appellerait directement le service. Démarré avant la connexion
+// et la base pour que leurs premières demandes portent déjà le jeton. Tant que la protection n'est pas
+// rendue obligatoire dans la console, une demande sans jeton passe quand même : rien ne peut bloquer l'app.
+// Durée de vie du jeton réglée à 7 jours dans la console, pour limiter le nombre d'évaluations reCAPTCHA
+// (10 000 gratuites par mois, payantes au-delà).
+if (typeof location !== 'undefined' && appCheckActif(location.hostname)) {
+  try {
+    initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY), isTokenAutoRefreshEnabled: true });
+  } catch {
+    /* App Check indisponible : la connexion et la base continuent sans jeton */
+  }
+}
 const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
 auth.languageCode = 'fr';
 // Cache persistant : les changements faits hors ligne sont gardés et envoyés au retour du réseau, même après fermeture.
