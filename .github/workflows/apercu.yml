@@ -1,0 +1,35 @@
+# Aperçu de test de chaque demande de fusion, avant toute publication sur arvela.fr.
+# Firebase publie la version proposée sur une adresse à part (arvela-app--pr-<numéro>-….web.app),
+# effacée au bout de 7 jours. L'adresse est ajoutée en commentaire de la demande de fusion.
+# Limites de l'aperçu : App Check n'y tourne pas, et la connexion au compte y est refusée,
+# car la clé Firebase n'accepte que arvela.fr. Il sert à vérifier les écrans, la démonstration et la règle CSP.
+name: Aperçu
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+concurrency:
+  group: apercu-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  apercu:
+    # Jamais pour une demande venue d'un dépôt copié : elle n'a pas accès à la clé de publication.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run build
+      - uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0.11.0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ARVELA_APP }}
+          projectId: arvela-app
+          expires: 7d
+          firebaseToolsVersion: 15.34.2
