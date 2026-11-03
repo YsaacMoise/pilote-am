@@ -4,7 +4,7 @@ import { addDays, dayLabel, minutes, nowHHMM, today, type ISODate } from '../eng
 import { dayInfo } from '../engine/payroll';
 import type { Contract, Journal } from '../engine/model';
 import {
-  KIND_LABEL, detailReveilOublie, dureeLabel, insecable, reveilOublie, detailBiberon, detailSieste, detailTemperature, estFievre, hh, parseMl, parseTemperature, resumeJour,
+  A_APPORTER, KIND_LABEL, detailReveilOublie, dureeLabel, insecable, reveilOublie, detailBiberon, detailSieste, detailTemperature, estFievre, hh, parseMl, parseTemperature, resumeJour,
   siesteEnCours, temperatureLabel, type Kind,
 } from '../engine/carnet';
 import { Gommette, Sheet, Topbar } from '../ui/kit';
@@ -17,18 +17,43 @@ import { de } from '../engine/texte';
 const OPT_BIBERON = 'Biberon';
 const OPT_TEMPERATURE = 'Prise de température';
 
+type Groupe = { titre: string; options: string[] };
+
+// Repas : combien il a mangé, ce qu'il a bu, et les découvertes
+const REPAS_GROUPES: Groupe[] = [
+  { titre: 'Au repas', options: ['A tout mangé', 'A bien mangé', 'A un peu mangé', 'N’a pas mangé'] },
+  { titre: 'Goûter et boissons', options: ['Goûter pris', OPT_BIBERON, 'A bien bu', 'A peu bu'] },
+  { titre: 'Découvertes', options: ['A goûté un nouvel aliment', 'A refusé un aliment', 'A mangé sans aide'] },
+];
+
+// Change : la couche, la propreté, et ce que les parents doivent apporter (ligne à part dans le résumé)
+const CHANGE_GROUPES: Groupe[] = [
+  { titre: 'Couche', options: ['Couche mouillée', 'Selles', 'Selles liquides', 'Change complet'] },
+  { titre: 'Propreté', options: ['Pot / toilettes', 'Petit accident'] },
+  { titre: 'À apporter par les parents', options: A_APPORTER },
+];
+
+// Humeur : comment il était, ce qu'il a fait, ce qu'il a appris
+const HUMEUR_GROUPES: Groupe[] = [
+  { titre: 'Humeur', options: ['De bonne humeur', 'Calme', 'Grognon', 'Triste', 'A beaucoup pleuré', 'Signes de fatigue'] },
+  { titre: 'Activités', options: ['A beaucoup joué', 'Sortie dehors', 'Activité manuelle', 'Histoires et comptines', 'Jeux avec les autres enfants'] },
+  { titre: 'Progrès', options: ['A dit un nouveau mot', 'Progrès en motricité', 'A partagé ou aidé'] },
+];
+
 // Soin : les gestes, puis les petits incidents à signaler aux parents
-const SOIN_GROUPES = [
+const SOIN_GROUPES: Groupe[] = [
   { titre: 'Soins donnés', options: [OPT_TEMPERATURE, 'Médicament donné (ordonnance)', 'Lavage de nez', 'Crème appliquée', 'Plaie désinfectée'] },
   { titre: 'Petits incidents', options: ['Petite chute', 'Bosse ou bleu', 'Morsure ou griffure', 'Vomissement', 'Saignement de nez'] },
 ];
 
-const KINDS: { k: Kind; l: string; icon: IconName; options: string[]; groupes?: { titre: string; options: string[] }[] }[] = [
-  { k: 'repas', l: 'Repas', icon: 'meal', options: ['A tout mangé', 'A bien mangé', 'A un peu mangé', 'N’a pas mangé', OPT_BIBERON, 'Goûter pris'] },
+const avec = (groupes: Groupe[]) => ({ options: groupes.flatMap((g) => g.options), groupes });
+
+const KINDS: { k: Kind; l: string; icon: IconName; options: string[]; groupes?: Groupe[] }[] = [
+  { k: 'repas', l: 'Repas', icon: 'meal', ...avec(REPAS_GROUPES) },
   { k: 'sieste', l: 'Sommeil', icon: 'moon', options: ['Sieste rapide (moins de 15 min)', 'Sommeil calme', 'Sommeil agité', 'Réveils pendant la sieste', 'N’a pas dormi'] },
-  { k: 'change', l: 'Change', icon: 'couche', options: ['Couche mouillée', 'Selles', 'Pot / toilettes', 'Change complet'] },
-  { k: 'humeur', l: 'Humeur', icon: 'smile', options: ['De bonne humeur', 'Calme', 'Grognon', 'Triste', 'A beaucoup joué', 'A beaucoup pleuré'] },
-  { k: 'soin', l: 'Soin', icon: 'pansement', options: SOIN_GROUPES.flatMap((g) => g.options), groupes: SOIN_GROUPES },
+  { k: 'change', l: 'Change', icon: 'couche', ...avec(CHANGE_GROUPES) },
+  { k: 'humeur', l: 'Humeur', icon: 'smile', ...avec(HUMEUR_GROUPES) },
+  { k: 'soin', l: 'Soin', icon: 'pansement', ...avec(SOIN_GROUPES) },
   { k: 'note', l: 'Note libre', icon: 'edit', options: [] },
 ];
 const kindDef = (k: Kind) => KINDS.find((x) => x.k === k)!;

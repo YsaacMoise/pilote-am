@@ -102,6 +102,9 @@ export function siesteEnCours(j: Journal): boolean {
  * Résumé du jour à envoyer aux parents : l'essentiel en tête (présence, soins, sommeil, repas), puis le reste.
  * `presence` : « Arrivée 8h05, départ 17h10 » ou undefined.
  */
+/** Choix du change qui ne sont pas des changes : ce que les parents doivent apporter. Une ligne à part dans le résumé. */
+export const A_APPORTER = ['Couches à apporter', 'Lingettes ou crème à apporter', 'Vêtements de rechange à apporter'];
+
 export function resumeJour(o: { enfant: string; jour: string; presence?: string; notes: Journal[]; jourTermine?: boolean }): string {
   const es = [...o.notes].sort((a, b) => a.time.localeCompare(b.time));
   const de = (k: Kind) => es.filter((e) => e.kind === k);
@@ -130,8 +133,11 @@ export function resumeJour(o: { enfant: string; jour: string; presence?: string;
   const humeur = de('humeur');
   if (humeur.length) lignes.push(`Humeur : ${humeur.map(avecHeure).join(', ')}`);
 
-  const changes = de('change');
+  const changes = de('change').filter((e) => !A_APPORTER.includes(e.detail));
   if (changes.length) lignes.push(`Change : ${changes.length} (${changes.map(avecHeure).join(', ')})`);
+
+  const apporter = [...new Set(de('change').filter((e) => A_APPORTER.includes(e.detail)).map((e) => e.detail.replace(/ à apporter$/, '').toLowerCase()))];
+  if (apporter.length) lignes.push(`À apporter : ${apporter.join(', ')}`);
 
   const notes = de('note');
   if (notes.length) lignes.push(`Note : ${notes.map(avecHeure).join(', ')}`);
