@@ -70,7 +70,7 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 | C-040 | Conforme | Prouvé conforme | 27/27 sur émulateur |
 | C-041 | Moyen | **Action YKM** | Fermer les inscriptions (console Firebase > Authentication) après la création du compte de la sœur ; alerte de budget |
 | C-042 | Faible | Corrigé | Version affichée dans Réglages et jointe à la mesure ; recherche de mise à jour au retour dans l'app |
-| C-043 | Moyen | Ouvert, avant phase 2 | CSP |
+| C-043 | Moyen | Corrigé (03/11/2026, demande de fusion « sécurité avant ouverture ») | Règle CSP stricte dans firebase.json, sans script écrit dans la page ; parcours complets rejoués avec la règle active ; tests de non-régression (tests/securite.test.ts) |
 | C-044 | Élevé | Corrigé | Empreintes vérifiées le 31/10/2026 (identiques à l'audit), firebase-tools 15.34.2. Rotation de la clé de service : Action YKM, avant phase 2 |
 | C-045 | Conforme | Prouvé conforme | |
 | C-046 | Faible | Partiel | Exemple en @example.com ; nouveaux commits signés avec l'adresse noreply GitHub. Restriction de la clé d'API web : Action YKM |
@@ -99,10 +99,10 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 | C-101 | Moyen | Partiel | Version jointe ; événements d'erreur et de correction : pendant le test. Organisation PostHog « Marelo » à renommer (Action YKM) |
 | C-110 | Élevé | Corrigé à la publication | |
 | C-111 | Moyen | Corrigé | Redirection côté page vers arvela.fr (hors chemins /__/ de Firebase Auth) |
-| C-112 | Moyen | Partiel | Échec sans clé, versions figées, règles testées avant publication. Protection de la branche main et publication des règles par le workflow : Action YKM |
+| C-112 | Moyen | Partiel | Échec sans clé, versions figées, règles testées avant publication. Branche main protégée le 03/11/2026 (demande de fusion obligatoire, vérifications « tests » et « regles-firestore » exigées, suppression et réécriture interdites). Reste : publication des règles Firestore par le workflow |
 | C-113 | Élevé | **Action YKM** | Double authentification GitHub, Google, OVHcloud, PostHog |
-| C-114 | Moyen | **Action YKM** | DMARC et CAA dans la zone DNS OVH |
-| C-115 | Élevé | **Action YKM** | Sauvegardes Firestore (offre Blaze) et alerte de budget |
+| C-114 | Moyen | Corrigé (03/11/2026) | DMARC en quarantaine ; CAA limité à letsencrypt.org et pki.goog ; verrou de transfert et DNSSEC déjà actifs |
+| C-115 | Élevé | Corrigé (03/11/2026) | Offre Blaze ; sauvegarde quotidienne gardée 98 jours ; alerte de budget à 5 € par mois. Reste : un test de restauration |
 | C-116 | Moyen | Ouvert, avant phase 2 | |
 | C-120 | Élevé | Corrigé | |
 | C-121 | Moyen | Corrigé | « Indépendant de l'Urssaf » sur Mois, Plus, Mentions et dans le message au parent |
@@ -134,3 +134,8 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 2. Section 2, point 5 : « au moins une semaine sans accueil » ; la règle juste est celle de C-002 (52 − N semaines).
 3. Section 8, question 8 : renvoie à C-044 au lieu de C-041 ; question 9 : C-051 au lieu de C-151 ; C-130 : C-156 au lieu de C-154.
 4. Section 2 : C-004 et C-006 placés avant la validation humaine alors que leurs cas (38 et 19) sont « à valider par un humain ». Les deux règles ont été vérifiées le 31/10/2026 sur deux fiches officielles chacune.
+
+## Ajouts du 3 novembre 2026
+
+- Protection anti-robots : Firebase App Check avec reCAPTCHA Enterprise (Fraud Defense), clé à score limitée à arvela.fr, jeton de 7 jours. Enregistrée en mode surveillance : rien n'est bloqué. Le code (demande de fusion « sécurité avant ouverture ») ne s'active que sur arvela.fr. À rendre obligatoire pour Firestore puis Authentication quand les mesures de la console montrent que les demandes de l'app sont vérifiées.
+- Aperçu de test : chaque demande de fusion est publiée sur une adresse Firebase à part, effacée après 7 jours (workflow Aperçu).
