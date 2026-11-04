@@ -30,6 +30,11 @@ export function computeMonth(ctx: Ctx, m: Month, enfants = 0): MonthResult {
   };
 }
 
+/** Total à verser par la famille : salaire net, entretien, repas et kilomètres (écran Mois, message au parent, relevé) */
+export function totalAVerser(r: MonthResult): number {
+  return r.netTotal + r.entretien + r.repas + r.km;
+}
+
 export interface DeclLine { label: string; value: string; hint?: string }
 
 /** Les cases de la déclaration Pajemploi, dans l'ordre */
@@ -79,7 +84,7 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   if (r.cpIndemnite) out.push(`• Indemnité de congés payés : ${euros(r.cpIndemnite)}`);
   if (r.cpComplement) out.push(`• Complément de congés payés : ${euros(r.cpComplement)}`);
   out.push('');
-  out.push(`Total à me verser : ${euros(r.netTotal + r.entretien + r.repas + r.km)}`);
+  out.push(`Total à me verser : ${euros(totalAVerser(r))}`);
   out.push('');
   out.push('Calcul fait avec l’application Arvela, outil d’aide indépendant de l’Urssaf : la déclaration Pajemploi fait foi.');
   out.push('');

@@ -140,6 +140,10 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 - Protection anti-robots : Firebase App Check avec reCAPTCHA Enterprise (Fraud Defense), clé à score limitée à arvela.fr, jeton de 7 jours. Enregistrée en mode surveillance : rien n'est bloqué. Le code (demande de fusion « sécurité avant ouverture ») ne s'active que sur arvela.fr. À rendre obligatoire pour Firestore puis Authentication quand les mesures de la console montrent que les demandes de l'app sont vérifiées.
 - Aperçu de test : chaque demande de fusion est publiée sur une adresse Firebase à part, effacée après 7 jours (workflow Aperçu).
 
+## Relevé du mois en PDF (demande de YKM du 31/10/2026, branche releve-pdf)
+
+Bouton « Relevé du mois (PDF) » sur l'écran Mois : document de travail fabriqué sur le téléphone, sans réseau (pdf-lib chargé au clic, polices de la charte figées en TTF depuis les paquets @fontsource par scripts/make-pdf-fonts.py, mises en cache hors ligne), puis partage du téléphone (fichier seul) ou téléchargement. Données préparées par `releveDonnees` (src/releve/donnees.ts) à partir de computeMonth, declarationLines et dayInfo, sans nouveau calcul ; ni brut, ni cotisations, ni net imposable. Mention obligatoire en bas de chaque page ; « provisoire » pour le mois en cours. Mesure : l'événement `releve_pdf` seul, sans propriété. Tests tests/releve.test.ts ; parcours iPhone simulé et axe (0 défaut, clair et sombre) : scripts/e2e-releve.cjs.
+
 ## Relecture de sécurité indépendante du 4 novembre 2026
 
 13 constats. Corrigés dans la demande de fusion « durcissement » :
