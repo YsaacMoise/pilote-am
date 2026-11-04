@@ -4,7 +4,7 @@ import { ctxFor, logUsage, toast, useStore, state } from '../store';
 import { addMonths, dayLabel, eachDay, firstDay, lastDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
 import { computeMonth, declarationLines, declarationText } from '../engine/month';
 import { dayInfo, termsAt } from '../engine/payroll';
-import { euros, hoursLabel } from '../engine/money';
+import { euros, eurosArrondis, hoursLabel } from '../engine/money';
 import { CHILD_ABS_LABEL, AM_ABS_LABEL, type Contract } from '../engine/model';
 import { Banner, Gommette, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
@@ -76,7 +76,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
       <section class="summary stack" aria-labelledby="tot">
         <span class="summary-label" id="tot">À verser par la famille {c.family ? `(${c.family})` : ''}</span>
         <span class="total">{euros(totalVerse)}</span>
-        <span class="summary-sub">dont salaire net {euros(r.netTotal)}, soit environ {euros(r.brutEstime)} brut</span>
+        <span class="summary-sub">dont salaire net {euros(r.netTotal)}, soit {r.brut ? euros(r.brutEstime) : `environ ${eurosArrondis(r.brutEstime)}`} brut</span>
         {current && <span class="summary-note">Provisoire jusqu’à la fin du mois</span>}
       </section>
 
@@ -130,7 +130,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
             {r.repas > 0 && (<><dt>Repas</dt><dd>{euros(r.repas)}</dd></>)}
             {r.km > 0 && (<><dt>Kilomètres</dt><dd>{euros(r.km)}</dd></>)}
           </dl>
-          {r.reductionHS > 0 && <p class="muted small">Heures complémentaires et majorées : Pajemploi ajoute à la somme à verser une réduction de cotisations d’environ {euros(Math.round(r.reductionHS / 100) * 100)} (11,31 % de leur brut, art. L241-17 du code de la sécurité sociale), et retire le prélèvement à la source. Ces heures sont exonérées d’impôt jusqu’à 7 500 € par an.</p>}
+          {r.reductionHS > 0 && <p class="muted small">Heures complémentaires et majorées : Pajemploi ajoute à la somme à verser une réduction de cotisations d’environ {eurosArrondis(r.reductionHS)} (11,31 % de leur brut, art. L241-17 du code de la sécurité sociale), et retire le prélèvement à la source. Ces heures sont exonérées d’impôt jusqu’à 7 500 € par an.</p>}
           <p class="muted small">
             {termsAt(c, `${month}-01`).yearType === 'complete'
               ? 'Année complète : retenue = salaire mensualisé × heures non payées ÷ heures prévues dans le mois (art. 111).'

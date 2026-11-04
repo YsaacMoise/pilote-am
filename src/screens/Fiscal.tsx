@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { ctxFor, useStore } from '../store';
 import { monthOf, today } from '../engine/dates';
 import { fiscalYears } from '../engine/fiscal';
-import { euros } from '../engine/money';
+import { euros, eurosArrondis } from '../engine/money';
 import { Banner, Gommette, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 
@@ -27,12 +27,13 @@ export function Fiscal() {
         </div>
         <section class="card stack" aria-labelledby="imp">
           <span class="muted" id="imp">Revenu imposable estimé{year === cur ? ' à ce jour' : ''}</span>
-          <span class="total">{euros(tot.imp)}</span>
+          <span class="total">{eurosArrondis(tot.imp)}</span>
           <dl class="kv">
-            <dt>Sommes reçues (salaires, entretien, repas, kilomètres)</dt><dd>{euros(tot.recu)}</dd>
-            <dt>Abattement spécifique</dt><dd>−{euros(tot.abat)}</dd>
+            <dt>Sommes reçues (salaires, entretien, repas, kilomètres)</dt><dd>{eurosArrondis(tot.recu)}</dd>
+            <dt>Abattement spécifique</dt><dd>−{eurosArrondis(tot.abat)}</dd>
           </dl>
-          {tot.hsExo > 0 && <p class="hint">Heures complémentaires et majorées exonérées d’impôt : {euros(tot.hsExo)}, à part, sur la ligne des heures supplémentaires exonérées (case 1GH). Elles ne sont pas imposées mais comptent dans le revenu fiscal de référence.{tot.hsImp > 0 ? ` Le plafond de 7 500 € est dépassé : ${euros(tot.hsImp)} restent imposables.` : ''}</p>}
+          {tot.hsExo > 0 && <p class="hint">Heures complémentaires et majorées exonérées d’impôt : {eurosArrondis(tot.hsExo)}, à part, sur la ligne des heures supplémentaires exonérées (case 1GH). Elles ne sont pas imposées mais comptent dans le revenu fiscal de référence.{tot.hsImp > 0 ? ` Le plafond de 7 500 € est dépassé : ${eurosArrondis(tot.hsImp)} restent imposables.` : ''}</p>}
+          <p class="hint">Montants estimés, arrondis à l’euro comme sur la déclaration : le salaire imposable dépend d’un brut estimé à partir du net.</p>
           <p class="hint">Avec le régime spécial des assistantes maternelles, tu déclares ce montant au lieu du salaire pré-rempli. Compare avec le pré-rempli : le plus favorable est à retenir.</p>
         </section>
         {partiel && <Banner tone="warn">Des mois manquent dans l’historique : l’estimation est incomplète.</Banner>}
@@ -40,14 +41,14 @@ export function Fiscal() {
           <section class="card stack" aria-label={`Impôts, ${c.child}`}>
             <div class="row"><Gommette name={c.child} color={c.color} size="sm" /><h2>{c.child}</h2></div>
             <dl class="kv">
-              <dt>Salaire net imposable estimé</dt><dd>{euros(f.netImposable)}</dd>
-              {f.hsValeur > 0 && (<><dt>Heures complémentaires et majorées exonérées (déjà retirées)</dt><dd>{euros(f.hsExonere)}</dd></>)}
-              <dt>Entretien et repas</dt><dd>{euros(f.entretienRepas)}</dd>
-              {f.km > 0 && (<><dt>Indemnités kilométriques</dt><dd>{euros(f.km)}</dd></>)}
-              {f.repasParents > 0 && (<><dt>Repas fournis par les parents (avantage en nature)</dt><dd>{euros(f.repasParents)}</dd></>)}
+              <dt>Salaire net imposable estimé</dt><dd>{eurosArrondis(f.netImposable)}</dd>
+              {f.hsValeur > 0 && (<><dt>Heures complémentaires et majorées exonérées (déjà retirées)</dt><dd>{eurosArrondis(f.hsExonere)}</dd></>)}
+              <dt>Entretien et repas</dt><dd>{eurosArrondis(f.entretienRepas)}</dd>
+              {f.km > 0 && (<><dt>Indemnités kilométriques</dt><dd>{eurosArrondis(f.km)}</dd></>)}
+              {f.repasParents > 0 && (<><dt>Repas fournis par les parents (avantage en nature)</dt><dd>{eurosArrondis(f.repasParents)}</dd></>)}
               <dt>Jours d’accueil</dt><dd>{f.jours}{f.joursCourts ? ` (dont ${f.joursCourts} de moins de 8 h)` : ''}</dd>
-              <dt>Abattement ({f.facteur} × SMIC {f.smics.length > 1 ? f.smics.map(euros).join(' puis ') : euros(f.smic)} par jour)</dt><dd>−{euros(f.abattement)}</dd>
-              <dt>Imposable</dt><dd>{euros(f.imposable)}</dd>
+              <dt>Abattement ({f.facteur} × SMIC {f.smics.length > 1 ? f.smics.map(euros).join(' puis ') : euros(f.smic)} par jour)</dt><dd>−{eurosArrondis(f.abattement)}</dd>
+              <dt>Imposable</dt><dd>{eurosArrondis(f.imposable)}</dd>
             </dl>
             {f.abattement < f.abattementBrut && <p class="hint">L’abattement est plafonné aux sommes reçues.</p>}
           </section>

@@ -6,6 +6,13 @@ export function euros(c: number): string {
   return `${nf.format(c / 100)}\u00a0€`.replace(/ /g, ' ');
 }
 
+const nf0 = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
+
+/** Montant estimé, arrondi à l'euro (C-008 : rien qui dépende du brut estimé n'est affiché au centime) */
+export function eurosArrondis(c: number): string {
+  return `${nf0.format(Math.round(c / 100))}\u00a0€`.replace(/\u202f/g, '\u00a0');
+}
+
 /** "3,28" / "3.28" / "3 €" → 328 ; null si illisible */
 export function parseEuros(s: string): number | null {
   const t = s.replace(/[€\s  ]/g, '').replace(',', '.');

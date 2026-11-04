@@ -6,6 +6,8 @@ import { makeCtx } from '../src/engine/payroll';
 import { fiscalYear, plafonnerHS, type FiscalChild } from '../src/engine/fiscal';
 import { computeMonth } from '../src/engine/month';
 import { controle } from '../src/engine/controle';
+import { finDeContrat } from '../src/engine/fin';
+import { eurosArrondis } from '../src/engine/money';
 import { PLAFOND_HS_EXONEREES } from '../src/engine/rates';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
@@ -136,5 +138,34 @@ describe('C-019 : heures complémentaires et majorées exonérées (CGI art. 81 
     expect(sans.some((x) => /incohérents/.test(x.title))).toBe(true);
     const avec = controle({ id: 'b', cid: 'c1', month: '2026-10', net: 90000, brut: 100000, source: 'manuel' }, { ...r, reductionHS: 9000 }, 350);
     expect(avec.some((x) => x.title === 'Net et brut cohérents' && /91,0 %/.test(x.detail))).toBe(true);
+  });
+});
+
+describe('C-008 : brut estimé affiché comme une estimation, brut réel demandé avant la fin de contrat', () => {
+  // Contrat du 05/01/2026, lettre envoyée le 02/11/2026 : 9 mois d'ancienneté, indemnité de 1/80e des bruts.
+  const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05' });
+  const ctx = () => makeCtx(c, [], [], '2026-12-31');
+  it('sans bulletin : tous les mois sont estimés', () => {
+    const f = finDeContrat(ctx(), '2026-11-02', 'retrait');
+    expect(f.ancienneteMois).toBe(9);
+    expect(f.brutsEstimes[0]).toBe('2026-01');
+    expect(f.dernierJour).toBe('2026-11-16'); // 9 mois : préavis de 15 jours
+    expect(f.brutsEstimes.length).toBe(11); // janvier à novembre
+  });
+  it('brut d’un bulletin contrôlé : le mois n’est plus estimé et son brut est pris tel quel', () => {
+    const f0 = finDeContrat(ctx(), '2026-11-02', 'retrait');
+    const f1 = finDeContrat(ctx(), '2026-11-02', 'retrait', 0, undefined, { parMois: { '2026-03': 90000 } });
+    expect(f1.brutsEstimes).not.toContain('2026-03');
+    expect(f1.brutsEstimes.length).toBe(f0.brutsEstimes.length - 1);
+  });
+  it('total des bruts saisi : 12 345,00 € ÷ 80 = 154,31 €, plus aucune estimation', () => {
+    const f = finDeContrat(ctx(), '2026-11-02', 'retrait', 0, undefined, { total: 1234500 });
+    expect(f.totalBrut).toBe(1234500);
+    expect(f.indemniteRupture).toBe(15431);
+    expect(f.brutsEstimes).toEqual([]);
+  });
+  it('arrondi à l’euro : 1 234,50 € → « 1 235 € », 154,31 € → « 154 € »', () => {
+    expect(eurosArrondis(123450)).toBe('1\u00a0235\u00a0€');
+    expect(eurosArrondis(15431)).toBe('154\u00a0€');
   });
 });
