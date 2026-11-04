@@ -20,6 +20,7 @@ jobs:
         with:
           ref: main
           path: main
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
@@ -41,6 +42,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: main
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
@@ -62,6 +64,14 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+      # firebase-tools vient du fichier de verrouillage (versions figées), sans scripts d'installation :
+      # aucun paquet téléchargé à la volée ne tourne pendant que le laissez-passer Google est présent.
+      - run: npm ci --ignore-scripts
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: site
@@ -71,7 +81,7 @@ jobs:
           workload_identity_provider: projects/371665732009/locations/global/workloadIdentityPools/github/providers/pilote-am
           service_account: github-publication@arvela-app.iam.gserviceaccount.com
       - name: Publier sur arvela.fr
-        run: npx --yes firebase-tools@15.34.2 deploy --only hosting --project arvela-app --non-interactive
+        run: npx --no-install firebase deploy --only hosting --project arvela-app --non-interactive
   redirection-github-pages:
     runs-on: ubuntu-latest
     permissions:
@@ -85,6 +95,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: main
+          persist-credentials: false
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
           path: pages-redirection

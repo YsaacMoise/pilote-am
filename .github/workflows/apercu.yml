@@ -25,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
@@ -39,7 +41,7 @@ jobs:
       - name: Publier l'aperçu
         id: apercu
         run: |
-          if ! npx --yes firebase-tools@15.34.2 hosting:channel:deploy "pr${{ github.event.pull_request.number }}" \
+          if ! npx --no-install firebase hosting:channel:deploy "pr${{ github.event.pull_request.number }}" \
             --expires 7d --project arvela-app --non-interactive --json > apercu.json; then
             cat apercu.json; grep -iE "error|denied|permission|token|credential" firebase-debug.log | tail -25; exit 1
           fi
