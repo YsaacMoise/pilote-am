@@ -127,6 +127,8 @@ export interface Settings {
   onboarded?: boolean;
   /** Écran Aujourd'hui en liste compacte (tous les enfants visibles d'un coup) */
   compact?: boolean;
+  /** Conditions d'utilisation acceptées : version (CONDITIONS_VERSION de legal.ts) et date (AAAA-MM-JJ). Copié dans le compte. */
+  conditionsAcceptees?: { version: string; date: string };
 }
 
 export interface Bulletin {

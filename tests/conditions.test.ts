@@ -98,3 +98,47 @@ describe('liens vers les conditions d’utilisation', () => {
     expect(compte).not.toMatch(/type="checkbox"/);
   });
 });
+
+describe('accord aux conditions d’utilisation', () => {
+  it('à la création du compte : version et date gardées dans les réglages copiés dans le compte', async () => {
+    const { acceptationConditions, CONDITIONS_VERSION } = await import('../src/legal');
+    expect(acceptationConditions(new Date(2026, 10, 4, 23, 30))).toEqual({ version: CONDITIONS_VERSION, date: '2026-11-04' });
+    expect(acceptationConditions(new Date(2027, 0, 9))).toEqual({ version: CONDITIONS_VERSION, date: '2027-01-09' });
+    const cloud = lire('src/cloud.ts');
+    const creation = cloud.slice(cloud.indexOf('export async function createAccount'), cloud.indexOf('export async function signIn'));
+    expect(creation).toContain('saveSettings({ conditionsAcceptees: acceptationConditions() })');
+    // Les réglages sont copiés dans le compte, sauf les champs propres à l'appareil : l'accord n'en fait pas partie.
+    const { forRemote } = await import('../src/sync/plan');
+    const envoye = forRemote('kv', 'settings', { k: 'settings', v: { amName: '', enfantsACharge: 0, conditionsAcceptees: { version: CONDITIONS_VERSION, date: '2026-11-04' } } }) as { v: Record<string, unknown> };
+    expect(envoye.v.conditionsAcceptees).toEqual({ version: CONDITIONS_VERSION, date: '2026-11-04' });
+  });
+
+  it('message aux comptes existants tant que la version en vigueur n’est pas acceptée', async () => {
+    const { conditionsAAccepter, CONDITIONS_VERSION, MESSAGE_CONDITIONS } = await import('../src/legal');
+    expect(conditionsAAccepter({ onboarded: true })).toBe(true);
+    expect(conditionsAAccepter({ onboarded: true, conditionsAcceptees: { version: '2026-01-01' } })).toBe(true);
+    expect(conditionsAAccepter({ onboarded: true, conditionsAcceptees: { version: CONDITIONS_VERSION } })).toBe(false);
+    // Avant l'installation (site public) : pas de message, la phrase de la création du compte suffit.
+    expect(conditionsAAccepter({ onboarded: false })).toBe(false);
+    expect(MESSAGE_CONDITIONS).toBe('Les conditions d’utilisation ont changé le 4 novembre 2026. Elles contiennent désormais le contrat de traitement des données.');
+  });
+
+  it('le message propose « Lire » et « J’accepte », qui enregistre la version et la date', () => {
+    const app = lire('src/app.tsx');
+    const bandeau = app.slice(app.indexOf('function ConditionsBanner'), app.indexOf('function useHash'));
+    expect(bandeau).toContain('href="#/conditions">Lire</a>');
+    expect(bandeau).toContain('saveSettings({ conditionsAcceptees: acceptationConditions() })');
+    expect(bandeau).toContain('J’accepte');
+    expect(bandeau).toContain('isDemo()');
+    expect(app).toContain('<ConditionsBanner />');
+  });
+});
+
+describe('message aux parents', () => {
+  it('annonce les données de santé utiles au calcul et le droit de saisir la CNIL', async () => {
+    const { TEXTE_PARENTS } = await import('../src/legal');
+    expect(TEXTE_PARENTS).toContain('le motif « malade » d\'une absence');
+    expect(TEXTE_PARENTS).toContain('situation de handicap ou de maladie');
+    expect(TEXTE_PARENTS).toContain('saisir la CNIL');
+  });
+});

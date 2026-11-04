@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { logUsage, toast, useStore } from './store';
+import { logUsage, saveSettings, toast, useStore } from './store';
 import { isDemo, setDemo, deleteDatabase } from './db';
 import { Toaster } from './ui/kit';
 import { Icon, type IconName } from './ui/icons';
@@ -27,6 +27,7 @@ import { Guide } from './screens/Guide';
 import { VIDEOS_PRETES } from './ui/VideoGuide';
 import { Compte } from './screens/Compte';
 import { useCloud } from './cloud-state';
+import { acceptationConditions, conditionsAAccepter, MESSAGE_CONDITIONS } from './legal';
 
 /** Bandeau sur tous les écrans quand le serveur a refusé un envoi (C-023) */
 function RefusBanner() {
@@ -37,6 +38,22 @@ function RefusBanner() {
       <Icon name="alert" size={20} />
       <p>{c.refus}</p>
       <button type="button" onClick={() => { void import('./cloud').then((m) => m.retryRejected()).then((ok) => { if (!ok) toast('Pas encore envoyé. Vérifie le réseau, puis réessaie.'); }).catch(() => {}); }}>Réessayer</button>
+    </div>
+  );
+}
+
+/** Conditions d'utilisation changées : message aux utilisatrices déjà installées, jusqu'à leur accord (version et date gardées). */
+function ConditionsBanner() {
+  const s = useStore();
+  if (isDemo() || !conditionsAAccepter(s.settings)) return null;
+  return (
+    <div class="sync-banner cond-banner" role="region" aria-label="Conditions d’utilisation">
+      <Icon name="file" size={20} />
+      <p>{MESSAGE_CONDITIONS}</p>
+      <div class="cond-actions">
+        <a class="cond-lire" href="#/conditions">Lire</a>
+        <button type="button" onClick={() => { void saveSettings({ conditionsAcceptees: acceptationConditions() }).then(() => toast('Merci, c’est noté.', undefined, 'ok')); }}>J’accepte</button>
+      </div>
     </div>
   );
 }
@@ -141,6 +158,7 @@ export function App() {
         </div>
       )}
       {!isDemo() && <RefusBanner />}
+      <ConditionsBanner />
       <div class="app">
         {screen}
         <nav class="tabbar" aria-label="Navigation principale">

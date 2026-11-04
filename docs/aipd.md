@@ -34,7 +34,7 @@ Le service est gratuit, en phase de test jusqu’au 31 janvier 2027, édité par
 | Sauvegarde | Toute la base | Sauvegarde quotidienne Firestore, 98 jours |
 | Lien parent | Instantané de 7 jours chiffré sur le téléphone | Firestore, collection `partages` ; lu dans le navigateur des parents |
 | Compte | Adresse e-mail, mot de passe, journaux de connexion | Firebase Authentication (États-Unis) |
-| Mesure d’usage | Noms d’événements et d’écrans, version, identifiant au hasard, caractéristiques techniques | PostHog, Francfort |
+| Mesure d’usage (utilisatrices inscrites seulement, demande de fusion n° 44) | Noms d’événements et d’écrans, version, identifiant au hasard (données pseudonymes), caractéristiques techniques | PostHog, Francfort ; résumé hebdomadaire par Claude (Anthropic) à partir de statistiques agrégées seulement |
 | Anti-robots | Signaux techniques du navigateur | reCAPTCHA Enterprise (Google) |
 | Bulletins PDF | Lus sur le téléphone, jamais envoyés | Téléphone |
 
@@ -52,13 +52,13 @@ Le détail des données, des destinataires et des durées est dans le registre.
 | Bases légales | Pour l’AM : exécution des contrats de travail et obligations de déclaration (paie, congés, fin de contrat) ; pour les données de santé du carnet, accord écrit des parents (article 9.2.a), demandé par le message prêt à envoyer de la politique de confidentialité. Pour Arvela : contrat (compte), intérêt légitime (mesure d’usage, anti-robots, journaux) | Satisfaisant, sous réserve : le motif « malade » d’une absence et la case handicap ou maladie servent au calcul de la paie et de l’abattement, sans accord écrit prévu. Mesure prévue n° 9 |
 | Minimisation | Prénom de l’enfant seulement ; pas de date de naissance, d’adresse, de numéro de sécurité sociale, de coordonnées des parents ; absences « sans diagnostic » ; listes fermées pour les soins ; PDF jamais envoyés ; lien parent limité à 7 jours, sans nom de famille ; mesure d’usage sans contenu saisi | Satisfaisant. Reste un risque : les notes libres du carnet et le champ « médicament » peuvent recevoir plus que nécessaire (rappel dans l’app : le carnet ne remplace pas le registre des médicaments) |
 | Exactitude | Correction possible à tout moment ; conflits entre appareils gérés sans perte silencieuse (C-023) | Satisfaisant |
-| Durées de conservation | En ligne : tant que le compte existe, effacement immédiat à la suppression, 98 jours dans les sauvegardes. Aucune purge automatique du carnet ni des contrats terminés : la conservation dépend de l’AM | **À améliorer** : mesure prévue n° 4 |
+| Durées de conservation | En ligne : tant que le compte existe, effacement immédiat à la suppression, 98 jours dans les sauvegardes. Aucune purge automatique du carnet ni des contrats terminés : la conservation dépend de l’AM. Aucune durée pour un compte abandonné (R-8). Les pierres tombales des liens coupés (identifiant, uid, date, sans contenu, n° 45) sont gardées sans limite | **À améliorer** : mesures prévues n° 4, 14 et 15 |
 
 ### Droits des personnes
 
 | Droit | Mise en œuvre | Appréciation |
 |---|---|---|
-| Information de l’AM | Politique de confidentialité, Conditions d’utilisation, mentions légales, lisibles avant le compte ; phrase d’acceptation à la création du compte | Satisfaisant |
+| Information de l’AM | Politique de confidentialité, Conditions d’utilisation, mentions légales, lisibles avant le compte ; phrase d’acceptation à la création du compte, accord enregistré (version et date) dans les réglages copiés dans le compte ; message aux comptes existants jusqu’à leur accord | Satisfaisant |
 | Information des parents | Message prêt à envoyer (politique de confidentialité), qui décrit les données, l’hébergement et l’accès possible de l’éditeur | Satisfaisant si l’AM l’envoie ; l’app ne le vérifie pas |
 | Accord pour le carnet | Demandé par écrit par l’AM, réponse gardée par elle ; retrait possible, l’AM supprime alors le carnet | Satisfaisant, à la charge de l’AM |
 | Accès et portabilité | Plus › Sauvegarde : fichier complet ; les parents voient les 7 derniers jours par le lien | Satisfaisant |
@@ -83,7 +83,8 @@ Le détail des données, des destinataires et des durées est dans le registre.
 - Publication sans clé de service ; branche main protégée avec vérifications obligatoires.
 - App Check avec reCAPTCHA Enterprise, **en mode surveillance (rien n’est bloqué)**.
 - Copie sur le téléphone, 7 copies automatiques locales, sauvegarde manuelle, sauvegarde quotidienne de la base gardée 98 jours ; alerte de budget.
-- Mesure d’usage sans contenu saisi, sans enregistrement d’écran ni profil, contrôlée par un test indépendant des fuites (31/10/2026).
+- Mesure d’usage sans contenu saisi, sans enregistrement d’écran ni profil, contrôlée par un test indépendant des fuites (31/10/2026) ; limitée aux utilisatrices inscrites (n° 44).
+- Lien parent coupé remplacé par une pierre tombale que personne ne peut recréer (n° 45).
 - Engagement écrit de l’éditeur de ne consulter les données qu’avec l’accord de l’AM.
 
 ### Risque 1. Accès illégitime aux données
@@ -93,10 +94,10 @@ Le détail des données, des destinataires et des durées est dans le registre.
 | Impacts sur les personnes | Révélation de l’état de santé d’un enfant (soins, fièvre, médicaments, incidents, handicap), du nom de la famille, des horaires de présence (donc des moments où le domicile est vide), des montants de salaire. Gêne, atteinte à la vie privée, risque pour la sécurité de l’enfant si les horaires sont connus d’une personne malveillante |
 | Menaces | Prise de contrôle du compte d’une AM (mot de passe réutilisé, hameçonnage) ; vol ou perte d’un téléphone non verrouillé ; lien parent transféré puis code trouvé ; prise de contrôle d’un compte administrateur de l’éditeur (Google, GitHub) ; erreur dans les règles d’accès ; demande d’une autorité étrangère à Google ou PostHog |
 | Sources | Attaquant extérieur, proche de la famille ou de l’AM, éditeur lui-même, prestataires |
-| Points faibles constatés | **Pas encore de double authentification sur les comptes administrateurs (C-113)** : un seul compte Google compromis donne accès à toutes les données de toutes les AM. App Check non bloquant. Code parent à 4 chiffres : avec le lien, un essai systématique des 10 000 codes hors ligne prend de quelques minutes à quelques heures selon le matériel (ordre de grandeur estimé ; la limite est reconnue dans src/partage/crypto.ts). Pas de code de verrouillage exigé sur le téléphone (C-050). Clé d’API web non restreinte (C-046) |
+| Points faibles constatés | **Pas encore de double authentification sur les comptes administrateurs (C-113)** : un seul compte Google compromis donne accès à toutes les données de toutes les AM. App Check non bloquant. Code parent à 4 chiffres : avec le lien, un essai systématique des 10 000 codes hors ligne prend de quelques minutes à quelques heures selon le matériel (ordre de grandeur estimé ; la limite est reconnue dans src/partage/crypto.ts). Pas de code de verrouillage exigé sur le téléphone (C-050). Clé d’API web non restreinte (C-046). **R-1 : la fédération d’identité qui publie le site accepte tout workflow du dépôt, quelle que soit la branche** : une branche pouvait publier sur arvela.fr sans fusion, donc mettre en ligne un code qui détourne les données. R-3 : création de comptes automatisable, la protection reCAPTCHA de Firebase Authentication n’étant pas activée. R-4 : jeton App Check de 7 jours, réutilisable par un robot |
 | Gravité | **Importante** : données de santé d’enfants, mais en petit nombre par compte, sans identifiant national ni adresse |
 | Vraisemblance | **Importante** tant que la double authentification n’est pas activée ; **limitée** ensuite |
-| Mesures prévues | 1, 2, 5, 6, 8 |
+| Mesures prévues | 1, 1 bis, 2, 2 bis, 5, 6, 8 |
 
 ### Risque 2. Modification non désirée des données
 
@@ -136,18 +137,22 @@ Le détail des données, des destinataires et des durées est dans le registre.
 | N° | Mesure | Risque | Échéance proposée | Responsable |
 |---|---|---|---|---|
 | 1 | Activer la double authentification sur les comptes Google, GitHub, OVHcloud et PostHog (C-113) | 1, 2 | **Avant l’ouverture des inscriptions** | YKM |
+| 1 bis | Limiter la fédération d’identité à `refs/heads/main` et à l’événement push (R-1), et sortir les aperçus de ce compte de publication | 1, 2 | **Avant l’ouverture des inscriptions** | YKM |
 | 2 | Rendre App Check obligatoire pour Firestore puis Authentication quand les mesures de la console montrent que les demandes de l’app sont vérifiées ; restreindre la clé d’API web au domaine (C-046) | 1 | Dans le mois qui suit l’ouverture | YKM |
+| 2 bis | Activer la protection reCAPTCHA de Firebase Authentication (passage à Identity Platform) contre la création automatique de comptes (R-3) ; ramener le jeton App Check à 1 jour (R-4) | 1 | Dans le mois qui suit l’ouverture | YKM |
 | 3 | Faire un essai de restauration de la base dans une base séparée, et écrire la procédure (dont : rejouer les suppressions faites depuis la sauvegarde) (C-115) | 2, 3 | Avant l’ouverture si possible, sinon sous un mois | YKM |
 | 4 | Proposer l’effacement du carnet et des contrats terminés après un délai (purge, C-155) | Durées | Avant la phase 2 | Développement |
 | 5 | Allonger le code du lien parent (6 chiffres ou plus) ou limiter les essais | 1 | Avant la phase 2 | Développement |
 | 6 | Conseiller un code de verrouillage du téléphone à l’installation (C-050) | 1 | Avant la phase 2 | Développement |
-| 7 | Vérifier le cadre contractuel de l’analyse hebdomadaire par Claude (Anthropic). Si aucun accord de traitement ne la couvre, ne lui donner que des statistiques agrégées, ou cesser cette analyse | Sous-traitance | Avant l’ouverture | YKM |
+| 7 | Analyse hebdomadaire par Claude (Anthropic) : limitée aux statistiques agrégées, jamais d’événements individuels ni d’identifiants (règle inscrite dans la tâche planifiée le 04/11/2026, **fait**). Reste à vérifier le cadre contractuel ; sinon, cesser cette analyse | Sous-traitance | Avant l’ouverture | YKM |
 | 8 | Effacer les événements de mesure d’usage sur demande dans un délai fixé, et documenter comment | Droits | Avec la mise en œuvre de la mesure par défaut | YKM |
-| 9 | Le message aux parents annonce déjà les motifs d’absence (« sans aucun diagnostic ») mais ne demande l’accord écrit que pour le carnet et ne cite pas la case handicap ou maladie. L’étendre à ces deux données | Base légale | Avant la phase 2 | Développement |
-| 10 | Remettre aux AM, sur demande, ce document, le registre et une fiche de registre prête à recopier pour leurs propres obligations | Sous-traitance | À l’ouverture | YKM |
+| 9 | Message aux parents étendu au motif « malade » et à la case handicap ou maladie, avec le droit de saisir la CNIL (src/legal.ts, **fait le 04/11/2026**) | Base légale | Avant la phase 2 | Développement |
+| 10 | Remettre aux AM, sur demande, ce document, le registre et la fiche de registre prête à recopier (docs/fiche-registre-assistante-maternelle.md) | Sous-traitance | À l’ouverture | YKM |
 | 11 | Faire valider les six points de docs/points-a-faire-valider.md par un juriste | Tous | Avant la fin du test (31 janvier 2027) | YKM |
 | 12 | Revoir cette AIPD à chaque changement important, et au plus tard avant la phase 2 | Tous | Avant la phase 2 | YKM |
-| 13 | Prévoir dans l’app un bandeau d’annonce pour les changements des conditions et des prestataires : les Conditions promettent de prévenir avant, mais le code n’a pas encore de mécanisme dédié (aujourd’hui : mise à jour de l’app et de la date des textes) | Sous-traitance | Avant le premier changement de prestataire ou de conditions | Développement |
+| 13 | Changements de conditions : message dans l’app jusqu’à l’accord de l’utilisatrice (fait le 04/11/2026). Changements de prestataire : les Conditions promettent un e-mail au moins 15 jours avant ; prévoir comment l’envoyer (liste des adresses tirée de la console, envoi depuis contact@arvela.fr) | Sous-traitance | Avant le premier changement de prestataire | YKM |
+| 14 | Fixer une durée pour les comptes inactifs (par exemple 2 ans sans connexion : e-mail d’avertissement, puis suppression) (R-8) | Durées | Avant la phase 2 | YKM et développement |
+| 15 | Fixer une durée pour les pierres tombales des liens coupés (par exemple purge de celles de plus de 12 mois par une tâche d’administration) | Durées | Avant la phase 2 | Développement |
 
 ---
 
@@ -157,8 +162,12 @@ Le détail des données, des destinataires et des durées est dans le registre.
 
 **Délégué à la protection des données.** Aucun (non obligatoire).
 
-**Conclusion.** Les finalités sont limitées, les données sont réduites au besoin, l’hébergement est en France et les droits s’exercent pour l’essentiel directement dans l’app. Le risque principal est l’accès illégitime aux données de santé des enfants. Aujourd’hui, son niveau est trop élevé pour une ouverture large, pour une raison précise : les comptes administrateurs ne sont pas protégés par une double authentification, alors qu’un seul d’entre eux donne accès à toutes les données. **Le traitement peut être ouvert à toutes les assistantes maternelles à condition que la mesure 1 soit faite avant l’ouverture, et la mesure 7 tranchée.** Les risques résiduels sont alors limités et ne justifient pas de consulter la CNIL avant la mise en œuvre (article 36). Les mesures 2 à 6 réduisent encore ces risques et doivent suivre selon les échéances indiquées.
+**Conclusion.** Les finalités sont limitées, les données sont réduites au besoin, l’hébergement est en France et les droits s’exercent pour l’essentiel directement dans l’app. Le risque principal est l’accès illégitime aux données de santé des enfants. Aujourd’hui, son niveau est trop élevé pour une ouverture large, pour une raison précise : les comptes administrateurs ne sont pas protégés par une double authentification, alors qu’un seul d’entre eux donne accès à toutes les données. **Le traitement peut être ouvert à toutes les assistantes maternelles à condition que les mesures 1 et 1 bis soient faites avant l’ouverture, et la mesure 7 tranchée.** Les risques résiduels sont alors limités et ne justifient pas de consulter la CNIL avant la mise en œuvre (article 36). Les mesures 2 à 6 réduisent encore ces risques et doivent suivre selon les échéances indiquées.
+
+**État au 4 novembre 2026 : la mesure 1 (double authentification sur les comptes d’administration) n’est pas faite. Tant qu’elle ne l’est pas, le risque 1 reste élevé et l’ouverture des inscriptions n’est pas couverte par cette analyse.** La mesure 1 bis (R-1) n’est pas faite non plus.
 
 | Rôle | Nom | Date | Décision |
 |---|---|---|---|
-| Éditeur, responsable de traitement pour ses traitements propres et sous-traitant des AM | YKM | | À signer après la mesure 1 |
+| Éditeur, responsable de traitement pour ses traitements propres et sous-traitant des AM | YKM | | À signer après les mesures 1 et 1 bis |
+
+Modèle remis par le sous-traitant, que chaque AM peut reprendre à son compte.

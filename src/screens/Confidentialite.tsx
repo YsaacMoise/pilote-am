@@ -31,7 +31,7 @@ export function Confidentialite({ back = '#/plus' }: { back?: string }) {
           <p><b>Toi</b>, sur ton téléphone et dans ton compte.</p>
           <p><b>L’éditeur d’Arvela (YKM)</b> peut techniquement accéder à la copie en ligne, comme pour tout service en ligne. Il s’engage à ne la consulter qu’avec ton accord, au cas par cas, pour t’aider à résoudre un problème. Il lit en revanche tes remarques « Ça coince » et, si tu l’as acceptée, la mesure d’usage.</p>
           <p><b>Une analyse automatique chaque semaine</b> : un assistant d’intelligence artificielle (Claude, de la société Anthropic), lancé par l’éditeur, lit la mesure d’usage pour en faire un résumé. Il ne lit ni tes contrats, ni tes journées, ni ton carnet.</p>
-          <p><b>Les prestataires techniques</b> : Google (hébergement et comptes) et PostHog (mesure d’usage), qui traitent les données pour le compte d’Arvela.</p>
+          <p><b>Les prestataires techniques</b> : Google (hébergement et comptes) et PostHog (mesure d’usage), qui traitent les données pour le compte d’Arvela. Avant d’ajouter ou de changer un prestataire qui touche aux données que tu saisis, Arvela te prévient au moins 15 jours avant, par e-mail à l’adresse de ton compte.</p>
           <p><b>Des relecteurs de sécurité</b>, mandatés par l’éditeur, peuvent lire le code et les réglages des services. Ils ne lisent pas tes données.</p>
         </section>
 
@@ -48,7 +48,7 @@ export function Confidentialite({ back = '#/plus' }: { back?: string }) {
           <h3>Le lien pour les parents (seulement si tu le crées)</h3>
           <p>Depuis la fiche d’un enfant, tu peux créer un lien privé pour ses parents. Ils y voient son prénom, ton prénom, les arrivées, départs et absences des 7 derniers jours, le carnet de ces 7 jours, et les montants du mois et du mois précédent. Ni le nom de la famille, ni les autres enfants.</p>
           <p>Ces informations sont chiffrées sur ton téléphone avant de partir. La copie en ligne (Google Firebase, à Paris) ne peut être lue qu’avec le lien et le code à 4 chiffres que tu donnes de vive voix. Le lien et le code sont gardés dans ton compte, comme le reste de tes données. Le code protège d’un lien transféré par erreur ; il ne résiste pas longtemps à quelqu’un qui aurait le lien et s’acharnerait : ne publie jamais le lien.</p>
-          <p>Couper le lien (ou supprimer le contrat, ou ton compte) efface la copie en ligne tout de suite.</p>
+          <p>Couper le lien (ou supprimer le contrat, ou ton compte) efface tout de suite le contenu de la copie en ligne. Il ne reste qu’une trace vide (le numéro du lien, le numéro technique de ton compte et une date) pour que personne ne puisse recréer le lien.</p>
           <h3>La mesure d’usage (seulement si tu l’as allumée)</h3>
           <p>Si tu l’allumes dans Plus › Réglages, l’app envoie à PostHog (serveurs en Europe, à Francfort) le nom des écrans ouverts et des gestes faits (par exemple « arrivée pointée », « mois envoyé »), la version de l’app, un identifiant tiré au hasard, et les caractéristiques techniques que PostHog relève lui-même : modèle de téléphone, système, navigateur, taille d’écran, langue et fuseau horaire. Rien de ce que tu écris ou choisis n’est envoyé, l’écran n’est jamais enregistré, et le projet PostHog est réglé pour ne pas garder l’adresse internet de ton téléphone. Tu peux l’éteindre à tout moment.</p>
           <h3>La dictée</h3>
@@ -60,9 +60,18 @@ export function Confidentialite({ back = '#/plus' }: { back?: string }) {
         </section>
 
         <section class="card stack-sm">
+          <h2>Pourquoi Arvela a le droit de traiter ces données</h2>
+          <p><b>Ton compte :</b> parce que tu as accepté les <a href="#/conditions">conditions d’utilisation</a> (contrat).</p>
+          <p><b>La protection contre les robots et les journaux du site :</b> pour la sécurité (intérêt légitime).</p>
+          <p><b>Tes remarques « Ça coince » :</b> pour corriger l’app (intérêt légitime).</p>
+          <p>Tu peux t’opposer à ces deux derniers ou demander d’en limiter l’usage en écrivant à {LEGAL.email}.</p>
+          <p><b>Ce que tu saisis sur les enfants et les parents :</b> c’est toi qui décides ; Arvela le traite pour ton compte, selon le contrat des conditions d’utilisation.</p>
+        </section>
+
+        <section class="card stack-sm">
           <h2>Combien de temps</h2>
           <p><b>Ton compte et ce que tu saisis :</b> tant que ton compte existe. Si tu supprimes ton compte, la copie en ligne est effacée tout de suite. Elle disparaît des sauvegardes quotidiennes d’Arvela sous 98 jours, et Google l’efface de ses propres copies techniques sous 180 jours au plus.</p>
-          <p><b>Le lien pour les parents :</b> tant que tu ne le coupes pas. Il est effacé avec le contrat ou le compte.</p>
+          <p><b>Le lien pour les parents :</b> tant que tu ne le coupes pas. Son contenu est effacé avec le contrat ou le compte ; la trace vide qui empêche de le recréer reste, sans contenu.</p>
           <p><b>La mesure d’usage :</b> les événements sont gardés 1 an au plus.</p>
           <p><b>Sur ton téléphone :</b> tant que tu gardes l’app. Tu restes libre de tout effacer.</p>
           <p><b>À la fin du test, le {LEGAL.finTest} :</b> l’éditeur te demande si tu veux continuer. Si tu arrêtes, tu fais d’abord une sauvegarde (Plus › Sauvegarde), puis ta copie en ligne et ta mesure d’usage sont effacées sous 30 jours.</p>
@@ -70,7 +79,7 @@ export function Confidentialite({ back = '#/plus' }: { back?: string }) {
 
         <section class="card stack-sm">
           <h2>Où vont les données hors d’Europe</h2>
-          <p>La base de données est à Paris et la mesure d’usage à Francfort. La connexion au compte passe par Google aux États-Unis. Google est certifié au cadre de protection des données entre l’Union européenne et les États-Unis (le « Data Privacy Framework »), qui autorise ce transfert. PostHog et Google sont des sociétés américaines : la loi américaine peut leur demander l’accès à des données, même stockées en Europe.</p>
+          <p>La base de données est à Paris et la mesure d’usage à Francfort. La connexion au compte passe par Google aux États-Unis. Le résumé hebdomadaire de la mesure d’usage passe par Anthropic, aux États-Unis, sous forme de statistiques seulement. Google est certifié au cadre de protection des données entre l’Union européenne et les États-Unis (le « Data Privacy Framework »), qui autorise ce transfert. PostHog et Google sont des sociétés américaines : la loi américaine peut leur demander l’accès à des données, même stockées en Europe.</p>
         </section>
 
         <section class="card stack-sm">
