@@ -2,7 +2,7 @@
 import { lastDay, monthLabel, type Month } from './dates';
 import { cpForMonth } from './conges';
 import { monthBase, termsAt, type Ctx, type MonthBase } from './payroll';
-import { netToBrut } from './rates';
+import { netToBrut, REDUCTION_HS } from './rates';
 import { euros, hoursLabel } from './money';
 
 export interface MonthResult extends MonthBase {
@@ -13,12 +13,23 @@ export interface MonthResult extends MonthBase {
   /** Salaire net à déclarer, congés compris */
   netTotal: number;
   brutEstime: number;
+  /**
+   * Heures complémentaires et majorées (CGI art. 81 quater, CSS art. L241-17 : pour une assistante maternelle, heures
+   * au-delà du contrat jusqu'à 45 h et heures au-delà de 45 h, prévues au contrat ou en plus) : valeur nette déclarée.
+   */
+  hsNet: number;
+  /** Brut estimé de ces heures */
+  hsBrut: number;
+  /** Réduction de cotisations salariales de ces heures, versée en plus du net déclaré (estimation) */
+  reductionHS: number;
 }
 
 export function computeMonth(ctx: Ctx, m: Month, enfants = 0): MonthResult {
   const b = monthBase(ctx, m);
   const cp = cpForMonth(ctx, m, enfants);
   const netTotal = b.net + cp.indemnite + cp.complement;
+  const hsNet = b.complAmount + b.majAmount + b.majContratAmount;
+  const hsBrut = netToBrut(hsNet, lastDay(m));
   return {
     ...b,
     cpJours: cp.jours,
@@ -27,6 +38,9 @@ export function computeMonth(ctx: Ctx, m: Month, enfants = 0): MonthResult {
     cpNote: cp.note,
     netTotal,
     brutEstime: b.brut ?? netToBrut(netTotal, lastDay(m)),
+    hsNet,
+    hsBrut,
+    reductionHS: Math.round(hsBrut * REDUCTION_HS),
   };
 }
 

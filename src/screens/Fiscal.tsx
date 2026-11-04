@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks';
 import { ctxFor, useStore } from '../store';
 import { monthOf, today } from '../engine/dates';
-import { fiscalYear } from '../engine/fiscal';
+import { fiscalYears } from '../engine/fiscal';
 import { euros } from '../engine/money';
 import { Banner, Gommette, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
@@ -11,10 +11,10 @@ export function Fiscal() {
   const cur = Number(today().slice(0, 4));
   const [year, setYear] = useState(cur);
   const upTo = year === cur ? monthOf(today()) : undefined;
-  const rows = s.contracts
-    .filter((c) => c.start <= `${year}-12-31` && (!c.end || c.end >= `${year}-01-01`))
-    .map((c) => ({ c, f: fiscalYear(ctxFor(c), year, s.settings.enfantsACharge, upTo) }));
-  const tot = rows.reduce((a, r) => ({ recu: a.recu + r.f.recu, abat: a.abat + r.f.abattement, imp: a.imp + r.f.imposable }), { recu: 0, abat: 0, imp: 0 });
+  const cs = s.contracts.filter((c) => c.start <= `${year}-12-31` && (!c.end || c.end >= `${year}-01-01`));
+  const fs = fiscalYears(cs.map((c) => ctxFor(c)), year, s.settings.enfantsACharge, upTo);
+  const rows = cs.map((c, i) => ({ c, f: fs[i] }));
+  const tot = rows.reduce((a, r) => ({ recu: a.recu + r.f.recu, abat: a.abat + r.f.abattement, imp: a.imp + r.f.imposable, hsExo: a.hsExo + r.f.hsExonere, hsImp: a.hsImp + r.f.hsImposable }), { recu: 0, abat: 0, imp: 0, hsExo: 0, hsImp: 0 });
   const partiel = rows.some((r) => r.f.partiel);
   return (
     <>
@@ -32,6 +32,7 @@ export function Fiscal() {
             <dt>Sommes reçues (salaires, entretien, repas, kilomètres)</dt><dd>{euros(tot.recu)}</dd>
             <dt>Abattement spécifique</dt><dd>−{euros(tot.abat)}</dd>
           </dl>
+          {tot.hsExo > 0 && <p class="hint">Heures complémentaires et majorées exonérées d’impôt : {euros(tot.hsExo)}, à part, sur la ligne des heures supplémentaires exonérées (case 1GH). Elles ne sont pas imposées mais comptent dans le revenu fiscal de référence.{tot.hsImp > 0 ? ` Le plafond de 7 500 € est dépassé : ${euros(tot.hsImp)} restent imposables.` : ''}</p>}
           <p class="hint">Avec le régime spécial des assistantes maternelles, tu déclares ce montant au lieu du salaire pré-rempli. Compare avec le pré-rempli : le plus favorable est à retenir.</p>
         </section>
         {partiel && <Banner tone="warn">Des mois manquent dans l’historique : l’estimation est incomplète.</Banner>}
@@ -40,6 +41,7 @@ export function Fiscal() {
             <div class="row"><Gommette name={c.child} color={c.color} size="sm" /><h2>{c.child}</h2></div>
             <dl class="kv">
               <dt>Salaire net imposable estimé</dt><dd>{euros(f.netImposable)}</dd>
+              {f.hsValeur > 0 && (<><dt>Heures complémentaires et majorées exonérées (déjà retirées)</dt><dd>{euros(f.hsExonere)}</dd></>)}
               <dt>Entretien et repas</dt><dd>{euros(f.entretienRepas)}</dd>
               {f.km > 0 && (<><dt>Indemnités kilométriques</dt><dd>{euros(f.km)}</dd></>)}
               {f.repasParents > 0 && (<><dt>Repas fournis par les parents (avantage en nature)</dt><dd>{euros(f.repasParents)}</dd></>)}
@@ -56,6 +58,7 @@ export function Fiscal() {
             <p>Article 80 sexies du code général des impôts : pour chaque enfant et chaque jour d’accueil, l’abattement vaut 3 fois le SMIC horaire (4 fois pour un enfant en situation de handicap ou de maladie), au prorata si la journée dure moins de 8 heures. Le SMIC retenu est celui en vigueur le jour de la garde.</p>
             <p>Quand les parents fournissent les repas, chaque jour d’accueil ajoute la valeur d’un repas aux sommes reçues (5,50 € en 2026, 5,45 € en 2025) : c’est un avantage en nature imposable, selon impots.gouv.</p>
             <p>Le salaire net imposable est estimé : net versé + CSG non déductible et CRDS (2,9 % de 98,25 % du brut estimé).</p>
+            <p>Les heures complémentaires (au-delà du contrat, jusqu’à 45 h dans la semaine) et les heures majorées (au-delà de 45 h, prévues au contrat ou en plus) sont exonérées d’impôt jusqu’à 7 500 € par an, tous employeurs réunis (article 81 quater du code général des impôts). Elles sont retirées du salaire imposable avec la réduction de cotisations qui les accompagne (11,31 % de leur brut, article L241-17 du code de la sécurité sociale). Les mois repris d’un bulletin n’ont pas ce détail : leurs heures restent comptées comme imposables.</p>
             <p>Les indemnités kilométriques versées par les parents font partie des sommes reçues, comme l’entretien et les repas (bulletin officiel des impôts, BOI-RSA-CHAMP-10-20-10 § 440 et 460).</p>
           </div>
         </details>

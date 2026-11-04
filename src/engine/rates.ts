@@ -36,6 +36,16 @@ export const RATES: Rates[] = [
   },
 ];
 
+/**
+ * Réduction de cotisations salariales des heures complémentaires et majorées (CSS art. L241-17, décret 2019-40 :
+ * 11,31 % de leur rémunération brute, dans la limite des cotisations d'assurance vieillesse). Pajemploi garde le net
+ * déclaré et le brut, et ajoute la réduction à la somme versée.
+ */
+export const REDUCTION_HS = 0.1131;
+
+/** Plafond annuel de l'exonération d'impôt de ces heures (CGI art. 81 quater), en rémunération nette imposable */
+export const PLAFOND_HS_EXONEREES = 750000;
+
 export function ratesAt(d: ISODate): Rates {
   let r = RATES[0];
   for (const x of RATES) if (x.from <= d) r = x;
