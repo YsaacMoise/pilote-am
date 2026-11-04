@@ -1,6 +1,6 @@
 // Faux service en ligne pour les tests automatisés (scripts/fake-cloud.mjs).
 // N'est inclus que si le site est construit avec VITE_FAKE_CLOUD : jamais dans le site publié.
-import type { Backend, CloudUser } from './backend';
+import { errCode, type Backend, type CloudUser } from './backend';
 import type { RemoteDoc } from './plan';
 import { deviceId } from '../cloud-state';
 
@@ -39,6 +39,7 @@ type Item = { uid: string; docs: Array<Omit<RemoteDoc, 't'>> };
 function readQ(): Item[] { try { return JSON.parse(localStorage.getItem(Q_KEY) ?? '[]'); } catch { return []; } }
 function writeQ(q: Item[]) { localStorage.setItem(Q_KEY, JSON.stringify(q)); pendSubs.forEach((f) => f(q.length > 0)); }
 const pendSubs = new Set<(p: boolean) => void>();
+const rejSubs = new Set<(code: string, docs: Array<{ s: RemoteDoc['s']; k: string }>) => void>();
 let flushing = false;
 async function flush() {
   if (flushing) return;
@@ -46,7 +47,16 @@ async function flush() {
   try {
     let q = readQ();
     while (q.length) {
-      await call('/write', { ...q[0], d: deviceId() });
+      try {
+        await call('/write', { ...q[0], d: deviceId() });
+      } catch (e) {
+        const code = errCode(e);
+        // Seuls les refus définitifs sortent de la file ; le reste (réseau, serveur indisponible) est réessayé.
+        if (!/permission-denied|invalid-argument|resource-exhausted|failed-precondition/.test(code)) throw e;
+        // Refus du serveur (comme Firestore) : l'envoi sort de la file et le refus est remonté (C-023).
+        const lot = q[0].docs.map((d) => ({ s: d.s, k: d.k }));
+        rejSubs.forEach((f) => f(code, lot));
+      }
       q = readQ().slice(1);
       writeQ(q);
     }
@@ -115,6 +125,10 @@ export const backend: Backend = {
     };
     void tick();
     return () => { stop = true; };
+  },
+  onRejected(cb) {
+    rejSubs.add(cb);
+    return () => { rejSubs.delete(cb); };
   },
   onPending(cb) {
     pendSubs.add(cb);

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { logUsage, useStore } from './store';
+import { logUsage, toast, useStore } from './store';
 import { isDemo, setDemo, deleteDatabase } from './db';
 import { Toaster } from './ui/kit';
 import { Icon, type IconName } from './ui/icons';
@@ -25,6 +25,20 @@ import { Installer, Welcome } from './screens/Welcome';
 import { Guide } from './screens/Guide';
 import { VIDEOS_PRETES } from './ui/VideoGuide';
 import { Compte } from './screens/Compte';
+import { useCloud } from './cloud-state';
+
+/** Bandeau sur tous les écrans quand le serveur a refusé un envoi (C-023) */
+function RefusBanner() {
+  const c = useCloud();
+  if (!c.refus || c.status === 'off') return null;
+  return (
+    <div class="sync-banner" role="alert">
+      <Icon name="alert" size={20} />
+      <p>{c.refus}</p>
+      <button type="button" onClick={() => { void import('./cloud').then((m) => m.retryRejected()).then((ok) => { if (!ok) toast('Pas encore envoyé. Vérifie le réseau, puis réessaie.'); }).catch(() => {}); }}>Réessayer</button>
+    </div>
+  );
+}
 
 function useHash(): string {
   const [h, setH] = useState(location.hash || '#/');
@@ -123,6 +137,7 @@ export function App() {
           }}>Quitter la démonstration</button>
         </div>
       )}
+      {!isDemo() && <RefusBanner />}
       <div class="app">
         {screen}
         <nav class="tabbar" aria-label="Navigation principale">

@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { deleteContract, logUsage, putContract, state, toast, uid, useStore } from '../store';
+import { deleteContract, logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
 import { addMonthsToDate, deMois, firstDay, mondayOf, monthOf, shortDate, today, JOUR_NOMS, type Month } from '../engine/dates';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, semainesSansAccueilAnnee, termsAt, weeklyMinutes } from '../engine/payroll';
 import { entretienPlancher, ratesAt } from '../engine/rates';
@@ -85,6 +85,8 @@ export function Contrat({ id }: { id?: string }) {
     if (c.end && c.end < c.start) errs.push('La date de fin est avant le début.');
     if (c.repasParents === undefined) errs.push('Indique qui fournit les repas de l’enfant.');
     setErrors(errs);
+    // C-101 : chaque enregistrement refusé est noté (relecture contradictoire : le deuxième refus passait inaperçu).
+    if (errs.length) logErreur('contrat_incomplet');
     if (errs.length) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const toSave: Contract = {
       ...c,

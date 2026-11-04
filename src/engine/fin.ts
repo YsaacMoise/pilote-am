@@ -8,13 +8,17 @@ import { acquisition, compteur, cpForMonth, indemnite, maintien } from './conges
 import { monthBase, monthBrut, regularisation, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx } from './payroll';
 import { netToBrut } from './rates';
 
-export type Motif = 'retrait' | 'demission' | 'deces' | 'inaptitude_pro' | 'faute_grave' | 'essai';
+/** Entrée en vigueur de l'avenant n° 10 du 9 septembre 2025 (inaptitude) */
+const AVENANT_10 = '2026-05-01';
+
+export type Motif = 'retrait' | 'demission' | 'deces' | 'inaptitude' | 'inaptitude_pro' | 'faute_grave' | 'essai';
 
 export const MOTIF_LABEL: Record<Motif, string> = {
   retrait: 'Les parents retirent l’enfant',
   demission: 'Je démissionne',
   deces: 'Décès de l’enfant',
-  inaptitude_pro: 'Inaptitude d’origine professionnelle',
+  inaptitude: 'Inaptitude sans lien avec le travail',
+  inaptitude_pro: 'Inaptitude après un accident du travail ou une maladie professionnelle',
   faute_grave: 'Faute grave reprochée',
   essai: 'Rupture pendant la période d’essai',
 };
@@ -36,26 +40,41 @@ export interface FinResult {
   alertes: string[];
 }
 
-export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0): FinResult {
+/**
+ * `notif` : date d'envoi de la lettre recommandée ou de remise en main propre contre décharge (date du décès pour
+ * un décès). L'ancienneté s'apprécie à cette date.
+ * `presentation` : date de première présentation de la lettre recommandée (avis de passage). Le préavis part de
+ * cette date ; en remise en main propre, c'est la date de remise (= `notif`). Jamais de l'annonce orale (C-017,
+ * CCN art. 120 ; fiches DREETS Auvergne-Rhône-Alpes du 18/03/2024 ; code.travail.gouv.fr, IDCC 3239).
+ */
+export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0, presentation?: ISODate): FinResult {
   const c = ctx.c;
   const alertes: string[] = [];
   const anc = fullMonthsBetween(c.start, notif);
+  const depart = presentation && presentation > notif ? presentation : notif;
 
-  // Préavis
+  // Préavis (art. 120). Retrait : 8 jours avant 3 mois. Démission : aucun préavis avant 3 mois.
+  // Inaptitude (avenant n° 10 du 9 septembre 2025, art. 119-5 et 64-4) : rupture sans préavis, à la date d'envoi.
   let preavisFin = notif;
   let preavisLabel = 'Pas de préavis';
-  if (motif === 'retrait' || motif === 'demission' || motif === 'inaptitude_pro') {
-    if (motif === 'inaptitude_pro') {
-      preavisLabel = 'Pas de préavis travaillé en cas d’inaptitude';
-    } else if (anc < 3) {
-      preavisLabel = '8 jours calendaires';
-      preavisFin = addDays(notif, 7);
+  if (motif === 'inaptitude' || motif === 'inaptitude_pro') {
+    preavisLabel = 'Pas de préavis en cas d’inaptitude : le contrat s’arrête à l’envoi de la lettre';
+  } else if (motif === 'retrait' || motif === 'demission') {
+    if (anc < 3) {
+      if (motif === 'retrait') {
+        preavisLabel = '8 jours calendaires';
+        preavisFin = addDays(depart, 7);
+      } else {
+        preavisLabel = 'Pas de préavis : moins de 3 mois d’ancienneté';
+      }
     } else if (anc < 12) {
       preavisLabel = '15 jours calendaires';
-      preavisFin = addDays(notif, 14);
+      preavisFin = addDays(depart, 14);
     } else {
       preavisLabel = '1 mois';
-      preavisFin = addDays(addMonthsToDate(notif, 1), -1);
+      // Un mois de date à date : du 15/10 au 14/11 ; du 31/10 au 30/11 (pas de 31 novembre).
+      const cible = addMonthsToDate(depart, 1);
+      preavisFin = cible.slice(8) < depart.slice(8) ? cible : addDays(cible, -1);
     }
   }
   const dernierJour = preavisFin;
@@ -76,6 +95,11 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     alertes.push(`Historique incomplet : ${manquants.length} mois sans bulletin. Ajoute les bulletins manquants dans l’historique pour un calcul juste.`);
   }
 
+  // Avenant n° 10 (inaptitude) en vigueur le 1er mai 2026 : avant, ses règles ne s'appliquaient pas.
+  if ((motif === 'inaptitude' || motif === 'inaptitude_pro') && notif < AVENANT_10) {
+    alertes.push('Inaptitude notifiée avant le 1er mai 2026 : les règles de l’avenant n° 10 appliquées ici n’étaient pas encore en vigueur. Fais vérifier le calcul (relais petite enfance, DREETS).');
+  }
+
   // Indemnité de rupture. Ancienneté appréciée à la date d'envoi de la lettre (ou au décès), comme pour le préavis.
   let indemniteRupture = 0;
   let ruptureExplication = '';
@@ -87,8 +111,21 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
       ruptureExplication = `Décès de l’enfant : pas d’indemnité de rupture, moins de 9 mois d’ancienneté (${anc} mois).`;
     }
   } else if (motif === 'inaptitude_pro') {
-    indemniteRupture = Math.round((totalBrut * 2) / 80);
-    ruptureExplication = 'Inaptitude d’origine professionnelle : 2/80e des salaires bruts.';
+    // Avenant n° 10 du 9 septembre 2025 (étendu, JO du 4 avril 2026, en vigueur le 1er mai 2026), art. 119-5 :
+    // indemnité spécifique de 2/80e, « selon les conditions d'ancienneté définies à l'article 121-1 » (9 mois).
+    if (anc >= 9) {
+      indemniteRupture = Math.round((totalBrut * 2) / 80);
+      ruptureExplication = 'Inaptitude après un accident du travail ou une maladie professionnelle : indemnité spécifique de 2/80e des salaires bruts (avenant n° 10, 9 mois d’ancienneté atteints).';
+    } else {
+      ruptureExplication = `Inaptitude d’origine professionnelle : pas d’indemnité, moins de 9 mois d’ancienneté (${anc} mois).`;
+    }
+  } else if (motif === 'inaptitude') {
+    if (anc >= 9) {
+      indemniteRupture = Math.round(totalBrut / 80);
+      ruptureExplication = 'Inaptitude sans lien avec le travail : 1/80e des salaires bruts (avenant n° 10, 9 mois d’ancienneté atteints).';
+    } else {
+      ruptureExplication = `Inaptitude : pas d’indemnité, moins de 9 mois d’ancienneté (${anc} mois).`;
+    }
   } else if (motif === 'retrait') {
     if (anc >= 9) {
       indemniteRupture = Math.round(totalBrut / 80);

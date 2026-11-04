@@ -1,6 +1,6 @@
 // Avenant : nouvelles conditions du contrat à partir du 1er d'un mois.
 import { useState } from 'preact/hooks';
-import { logUsage, putContract, state, toast, uid, useStore } from '../store';
+import { logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
 import { addMonths, firstDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, termsAt, weeklyMinutes } from '../engine/payroll';
 import { ratesAt } from '../engine/rates';
@@ -55,6 +55,8 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
     if (wk <= 0) errs.push('Le planning est vide.');
     for (let d = 1; d <= 7; d++) for (const p of t!.planning[d] ?? []) if (p.end <= p.start) errs.push('Une heure de fin est avant le début.');
     setErrors(errs);
+    // C-101 : chaque enregistrement refusé est noté (relecture contradictoire : le deuxième refus passait inaperçu).
+    if (errs.length) logErreur('avenant_incomplet');
     if (errs.length) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const av: Av = { id: existing?.id ?? uid(), from: date, ...(signe ? { signe } : {}), changes };
     const next: Contract = { ...c!, avenants: [...others, av].sort((a, b) => (a.from < b.from ? -1 : 1)) };

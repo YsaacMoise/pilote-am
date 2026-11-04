@@ -65,6 +65,22 @@ function outboxAdd(entries: Array<{ s: SyncedStore; k: string }>) {
   } catch { /* stockage plein : la prochaine réunion complète rattrapera */ }
 }
 
+/** Envoi refusé par le serveur (C-023) : les clés sont gardées pour être renvoyées au prochain branchement. */
+export function outboxKeep(entries: Array<{ s: SyncedStore; k: string }>) {
+  outboxAdd(entries);
+}
+
+/** Retire des clés de la file : une version plus récente, faite sur un autre appareil, a pris leur place (C-023). */
+export function outboxDrop(entries: Array<{ s: SyncedStore; k: string }>) {
+  const l = ls();
+  if (!l || !entries.length) return;
+  try {
+    const cur = new Set(JSON.parse(l.getItem(OUTBOX_KEY) ?? '[]') as string[]);
+    for (const e of entries) cur.delete(`${e.s}|${e.k}`);
+    l.setItem(OUTBOX_KEY, JSON.stringify([...cur]));
+  } catch { /* stockage indisponible */ }
+}
+
 export function outboxClear() {
   try { ls()?.removeItem(OUTBOX_KEY); } catch { /* */ }
 }

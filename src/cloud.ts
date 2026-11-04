@@ -5,10 +5,10 @@
 // arrivent en direct et sont rangés dans la base locale.
 import * as db from './db';
 import { PASSWORD_RULE, passwordChecks } from './password';
-import { autoCopy, ctxFor, load, logUsage, putContract, saveSettings, state, subscribe, toast } from './store';
+import { autoCopy, ctxFor, load, logErreur, logUsage, putContract, saveSettings, state, subscribe, toast } from './store';
 import { buildSnapshot } from './partage/snapshot';
 import { newShare, seal } from './partage/crypto';
-import { cloudInfo, LS, lsGet, lsSet, setCloud } from './cloud-state';
+import { cloudInfo, LS, lsGet, lsSet, messageRefus, setCloud } from './cloud-state';
 import { errCode, type Backend, type CloudUser } from './sync/backend';
 import { applyRemote, docId, forRemote, needsChoice, nextSince, planMerge, RESUME_MARGIN_MS, stable, type LocalRecord, type MergeMode, type RemoteDoc } from './sync/plan';
 
@@ -34,6 +34,7 @@ export function startCloud(): Promise<Backend> {
       const b = await loadBackend();
       be = b;
       b.onPending((p) => { pending = p; refreshStatus(); });
+      b.onRejected(onRejected);
       b.onUser((u) => { void onUser(u); });
       window.addEventListener('online', () => {
         if (user && lsGet(LS.linked) !== user.uid && cloudInfo().status !== 'choice') void link(user).catch(() => {});
@@ -64,13 +65,17 @@ function nextLink(): Promise<void> {
 async function onUser(u: CloudUser | null) {
   if (!u) {
     // Déconnexion (voulue ou non) : la copie s'arrête, les changements suivants sont notés dans la file d'attente.
+    // Les clés d'un envoi refusé restent dans cette file : elles repartent à la reconnexion.
     detach();
     user = null;
-    setCloud({ status: 'off', email: undefined, verified: undefined, lastSync: undefined });
+    protegees.clear();
+    setCloud({ status: 'off', email: undefined, verified: undefined, lastSync: undefined, refus: undefined });
     return;
   }
   user = u;
-  setCloud({ email: u.email ?? undefined, verified: u.verified });
+  // Nouvelle connexion : les clés refusées repartent avec la file d'attente, l'ancien bandeau n'a plus lieu d'être.
+  setCloud({ email: u.email ?? undefined, verified: u.verified, refus: undefined });
+  protegees.clear();
   try {
     if (lsGet(LS.linked) === u.uid) attach(u);
     else await link(u);
@@ -161,6 +166,60 @@ async function doLink(u: CloudUser, mode?: MergeMode) {
   attach(u);
 }
 
+// ---------- Envois refusés (C-023) ----------
+// Un envoi refusé par le serveur n'est plus perdu en silence : les clés sont notées dans la file d'attente du
+// téléphone (renvoyées au prochain branchement ou au prochain essai) et un bandeau le dit, sur tous les écrans.
+
+/** Envoi refusé par le serveur : clés gardées, bandeau affiché. Exporté pour les tests. */
+let refusN = 0;
+/**
+ * Clés refusées par le serveur, pas encore renvoyées avec succès, avec l'heure serveur la plus récente déjà vue au
+ * moment du refus. Après un refus, Firestore remet la version du serveur : cette version, déjà connue (heure ≤ cette
+ * limite), n'écrase pas le changement du téléphone, qui sera renvoyé. Une version plus récente vient d'un autre
+ * appareil : elle est rangée et le changement refusé n'est plus renvoyé par-dessus. Les réglages ne sont jamais
+ * protégés : ils sont toujours fusionnés. La protection tombe avec le bandeau (C-023).
+ */
+const protegees = new Map<string, number>();
+/** Suppression du compte en cours : un refus tardif ne doit ni remplir la file ni afficher de bandeau */
+let suppression = false;
+export function onRejected(code: string, docs: Array<{ s: db.SyncedStore; k: string }>) {
+  if (suppression) return;
+  db.outboxKeep(docs);
+  const vu = Number(lsGet(LS.since) ?? 0);
+  for (const d of docs) {
+    const id = docId(d.s, d.k);
+    if (!(d.s === 'kv' && d.k === 'settings') && !protegees.has(id)) protegees.set(id, vu);
+  }
+  // Personne n'est connecté : les clés attendent la prochaine connexion, sans bandeau ni événement.
+  if (!user) return;
+  refusN++;
+  // Lien parent refusé (aucun document de données) : il sera renvoyé en entier au prochain essai.
+  if (!docs.length) sentShares.clear();
+  // C-101 : noté une fois par bandeau affiché, pas à chaque lot refusé. Le code d'erreur ne part pas.
+  if (!cloudInfo().refus) logErreur('envoi_refuse');
+  setCloud({ refus: messageRefus(code) });
+}
+
+/**
+ * Bouton « Réessayer » du bandeau : relance la copie, qui renvoie d'abord les changements refusés.
+ * Le bandeau ne disparaît que si tout est parti sans nouveau refus (relecture contradictoire, point 5).
+ */
+export async function retryRejected(): Promise<boolean> {
+  if (!user || !be) return false;
+  const avant = refusN;
+  try {
+    if (attached) await attach(user);
+    else await link(user);
+  } catch { return false; }
+  await new Promise((r) => setTimeout(r, 0));
+  const ok = await be.waitPending(20000);
+  // Les renvois document par document d'un lot refusé partent juste après : on attend aussi leur réponse.
+  await new Promise((r) => setTimeout(r, 50));
+  const ok2 = ok && await be.waitPending(20000);
+  if (ok2 && refusN === avant) { setCloud({ refus: undefined }); protegees.clear(); return true; }
+  return false;
+}
+
 // ---------- Copie en direct ----------
 
 let queue = new Map<string, { s: db.SyncedStore; k: string; v: string | null }>();
@@ -205,21 +264,28 @@ const mirror: db.Mirror = {
 };
 
 /** Lance la copie en direct, après avoir envoyé ce qui a changé pendant qu'elle ne tournait pas. */
-function attach(u: CloudUser) {
+function attach(u: CloudUser): Promise<void> {
   detach();
   const set = state.settings;
   sharedSettings = stable(forRemote('kv', 'settings', { k: 'settings', v: set }));
   const waiting = db.outboxRead();
+  // Changements pas encore confirmés en ligne (refusés, ou faits avant la connexion) : une version du serveur déjà
+  // connue ne les écrase pas ; une plus récente passe, avec copie (voir receive). Seconde relecture, point 2.
+  const vuAttach = Number(lsGet(LS.since) ?? 0);
+  for (const { s, k } of waiting) {
+    const id = docId(s, k);
+    if (!(s === 'kv' && k === 'settings') && !protegees.has(id)) protegees.set(id, vuAttach);
+  }
   db.outboxClear();
   db.setMirror(mirror);
   attached = true;
-  void (async () => {
+  const renvoi = (async () => {
     for (const { s, k } of waiting) {
       const v = await db.get(s, k);
       if (v === undefined) enqueue(s, k, null);
       else enqueue(s, k, stable(forRemote(s, k, v)));
     }
-  })();
+  })().catch((e) => console.warn(e));
   const since = Math.max(0, Number(lsGet(LS.since) ?? 0) - RESUME_MARGIN_MS);
   let chain = Promise.resolve();
   unlisten = be!.listen(u.uid, since, (docs, meta) => {
@@ -234,6 +300,7 @@ function attach(u: CloudUser) {
   unsubShares = subscribe(() => scheduleShares());
   reconciled = false;
   scheduleShares(500);
+  return renvoi;
 }
 
 function detach() {
@@ -250,7 +317,20 @@ let reloadTimer: ReturnType<typeof setTimeout> | undefined;
 async function receive(docs: RemoteDoc[]) {
   if (!docs.length) return;
   let changed = false;
+  let copieFaite = false, remplace = false;
   for (const d of docs) {
+    const id = docId(d.s, d.k);
+    const limite = protegees.get(id);
+    if (limite !== undefined) {
+      // Version déjà connue (remise par Firestore après le refus) : le changement du téléphone sera renvoyé.
+      if (d.t <= limite) continue;
+      // Version plus récente, d'un autre appareil : elle gagne et le changement refusé ne repart pas par-dessus,
+      // mais il n'est jamais perdu en silence : copie automatique du téléphone d'abord, puis message.
+      protegees.delete(id);
+      if (!copieFaite) { await autoCopy(true).catch(() => {}); copieFaite = true; }
+      db.outboxDrop([{ s: d.s, k: d.k }]);
+      remplace = true;
+    }
     const cur = await db.get(d.s, d.k);
     const act = applyRemote(cur, d);
     if (d.s === 'kv' && d.k === 'settings' && d.v !== null) sharedSettings = stable(forRemote('kv', 'settings', JSON.parse(d.v)));
@@ -263,6 +343,9 @@ async function receive(docs: RemoteDoc[]) {
     else if (act.op === 'del') { await db.delRaw(d.s, d.k); changed = true; }
   }
   lsSet(LS.since, String(nextSince(Number(lsGet(LS.since) ?? 0), docs)));
+  if (remplace) {
+    toast('Une version plus récente, faite sur un autre appareil, a remplacé un changement qui n’avait pas pu partir. Ta version est gardée dans Sauvegarde, copies automatiques.', undefined, 'warn');
+  }
   if (changed) {
     clearTimeout(reloadTimer);
     reloadTimer = setTimeout(() => { void load(); }, 300);
@@ -274,7 +357,9 @@ function refreshStatus() {
   const online = typeof navigator === 'undefined' || navigator.onLine !== false;
   if (pending) setCloud({ status: 'pending' });
   else if (!online || fromCache) setCloud({ status: 'offline' });
-  else setCloud({ status: 'synced', lastSync: Date.now() });
+  else {
+    setCloud({ status: 'synced', lastSync: Date.now() });
+  }
 }
 
 // ---------- Lien parent ----------
@@ -472,9 +557,11 @@ export async function signOut(force = false): Promise<boolean> {
 export async function deleteAccount(password: string) {
   const b = await startCloud();
   detach();
+  suppression = true;
   try {
     await b.deleteAccount(password);
   } catch (e) {
+    suppression = false;
     // Une partie des données en ligne a pu être effacée : on refait une réunion complète, qui renvoie le téléphone.
     if (user) {
       lsSet(LS.linked, null);
@@ -488,5 +575,8 @@ export async function deleteAccount(password: string) {
   // Les liens parents sont effacés en ligne avec le compte : ils ne doivent pas revenir avec un prochain compte.
   for (const c of state.contracts) if (c.partage) { const { partage: _, ...rest } = c; await putContract(rest); }
   db.outboxClear();
+  setCloud({ refus: undefined });
+  protegees.clear();
+  suppression = false;
   logUsage('compte_supprime');
 }

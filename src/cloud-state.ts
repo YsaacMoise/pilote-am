@@ -20,6 +20,20 @@ export interface CloudInfo {
   lastSync?: number;
   /** Message lisible si quelque chose bloque */
   error?: string;
+  /**
+   * Un envoi a été refusé par le serveur (C-023) : message à afficher en bandeau jusqu'à un nouvel essai réussi
+   * (bouton « Réessayer ») ou une nouvelle connexion.
+   * Les changements concernés restent sur le téléphone et sont renvoyés au prochain essai.
+   */
+  refus?: string;
+}
+
+/** Message du bandeau quand le serveur refuse un envoi (code d'erreur Firebase ou du faux serveur) */
+export function messageRefus(code: string): string {
+  const garde = 'Tes derniers changements restent sur ce téléphone, mais ils ne sont pas copiés dans ton compte.';
+  if (code.includes('permission-denied') || code.includes('unauthenticated')) return `${garde} Le compte a refusé l’envoi : déconnecte-toi puis reconnecte-toi.`;
+  if (code.includes('resource-exhausted') || code.includes('quota')) return `${garde} Le service en ligne est saturé : réessaie plus tard.`;
+  return `${garde} Réessaie ; si ça recommence, signale-le avec « Ça coince ».`;
 }
 
 /** Repères gardés sur le téléphone (localStorage), propres à chaque appareil. */
@@ -92,4 +106,9 @@ export function statusText(c: CloudInfo): string {
     case 'offline': return 'Hors ligne : tout est gardé sur le téléphone';
     case 'error': return c.error ?? 'La copie en ligne est bloquée';
   }
+}
+
+/** Phrase d'état, refus d'envoi compris : un refus passe avant « À jour » (C-023) */
+export function statusLine(c: CloudInfo): string {
+  return c.refus && c.status !== 'off' ? 'Un envoi a été refusé : la copie en ligne n’est pas à jour' : statusText(c);
 }

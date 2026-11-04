@@ -4,7 +4,8 @@ import { addDays, dayLabel, minutes, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NO
 import { dayInfo, type DayInfo } from '../engine/payroll';
 import { AM_ABS_LABEL, CHILD_ABS_LABEL, type AmAbs, type ChildAbs, type Contract, type DayRec, type Presence } from '../engine/model';
 import { hoursLabel } from '../engine/money';
-import { Banner, CHILD_COLORS, Choices, DateInput, Gommette, Sheet, Stepper, Switch, Topbar } from '../ui/kit';
+import { Banner, CHILD_COLORS, Choices, DateInput, Gommette, Sheet, Stepper, Switch, Topbar, useErreurAffichee } from '../ui/kit';
+import { evAnnulation, evCorrection, heureCorrigee } from '../usage-events';
 import { AideVideo, BienvenueDemo } from '../ui/VideoGuide';
 import { isDemo } from '../db';
 import { Icon } from '../ui/icons';
@@ -183,12 +184,14 @@ function KidCard({ c, day, onEdit, compact }: { c: Contract; day: string; onEdit
             return { ...r, pres: p, extra: di.planned.length ? r.extra : true };
           });
           logUsage(isArr ? 'arrivee' : 'depart', 'aujourdhui');
+          // C-101 : une annulation juste après le pointage dit que le bouton a été touché par erreur.
+          const annuler = async () => { await undo(); logUsage(evAnnulation(isArr), 'aujourdhui'); };
           let extra = '';
           if (!isArr) {
             const plage = di.planned[na.idx];
             if (plage && minutes(now) > minutes(plage.end)) extra = ` (+${hoursLabel(minutes(now) - minutes(plage.end))})`;
           }
-          toast(`${isArr ? 'Arrivée' : 'Départ'} ${de(c.child)} à ${fmtH(now)}${extra}`, undo);
+          toast(`${isArr ? 'Arrivée' : 'Départ'} ${de(c.child)} à ${fmtH(now)}${extra}`, annuler);
         },
       };
     }
@@ -266,6 +269,7 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
   const [ferieT, setFerieT] = useState<boolean>(!!rec?.ferieTravaille);
   const [err, setErr] = useState('');
   const future = day > today();
+  useErreurAffichee('depart_avant_arrivee', !!err);
 
   async function save() {
     for (const p of pres) {
@@ -287,6 +291,11 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
       return next;
     });
     logUsage('journee_modifiee', 'aujourdhui');
+    // C-101 : heure déjà pointée puis changée (le jour même ou après coup). Ni l'heure ni l'écart ne partent.
+    // Heures effectives, plage par plage (sans filtrer, pour garder les index) : celles du formulaire, qui valent
+    // le planning quand rien n'a changé (relecture contradictoire : faux « heure corrigée » quand samePlan).
+    const apres = abs !== 'none' ? [] : pres;
+    if (heureCorrigee(rec?.pres, apres)) logUsage(evCorrection(day, today()), 'aujourdhui');
     onClose();
     toast(`Journée ${de(c.child)} enregistrée`, undo);
   }
@@ -342,6 +351,7 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
   const [from, setFrom] = useState(start);
   const [to, setTo] = useState(start);
   const err = to < from ? 'La date de fin doit être après le début.' : '';
+  useErreurAffichee('dates_absence', !!err);
   return (
     <Sheet title="Je serai absente" onClose={onClose}>
       <p class="muted">Pour tous les enfants. Les parents ne te paient pas les jours non payés : l’app fait la retenue toute seule.</p>

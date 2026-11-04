@@ -12,7 +12,7 @@ import {
 } from 'firebase/firestore';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import { appCheckActif, firebaseConfig, RECAPTCHA_SITE_KEY } from '../firebase-config';
-import type { Backend, CloudUser, SharedDoc } from './backend';
+import { errCode, type Backend, type CloudUser, type SharedDoc } from './backend';
 import { docId, isSyncedStore, type RemoteDoc } from './plan';
 import { deviceId } from '../cloud-state';
 
@@ -52,6 +52,16 @@ function track(p: Promise<unknown>) {
 }
 // Au démarrage, des changements d'une session précédente peuvent attendre encore le réseau.
 track(waitForPendingWrites(fs));
+
+// Envois refusés par le serveur (C-023) : Firestore ne rejette la promesse d'un envoi que pour un refus définitif
+// (règles, document invalide, quota), jamais pour une absence de réseau. Le refus est remonté au lieu d'être perdu.
+type Rejected = (code: string, docs: Array<{ s: RemoteDoc['s']; k: string }>) => void;
+const rejSubs = new Set<Rejected>();
+function rejected(e: unknown, docs: Array<{ s: RemoteDoc['s']; k: string }>) {
+  console.warn('envoi refusé', e);
+  const code = errCode(e);
+  rejSubs.forEach((f) => f(code, docs));
+}
 
 function toRemote(data: DocumentData): RemoteDoc | null {
   if (!isSyncedStore(data.s) || typeof data.k !== 'string') return null;
@@ -123,12 +133,21 @@ export const backend: Backend = {
     const me = deviceId();
     for (let i = 0; i < docs.length; i += BATCH) {
       const b = writeBatch(fs);
-      for (const d of docs.slice(i, i + BATCH)) {
-        b.set(doc(col(uid), docId(d.s, d.k)), { s: d.s, k: d.k, v: d.v, t: serverTimestamp(), d: me });
-      }
+      const lot = docs.slice(i, i + BATCH);
+      const data = (d: Omit<RemoteDoc, 't'>) => ({ s: d.s, k: d.k, v: d.v, t: serverTimestamp(), d: me });
+      for (const d of lot) b.set(doc(col(uid), docId(d.s, d.k)), data(d));
       // Hors ligne, la promesse n'aboutit qu'au retour du réseau : on ne l'attend pas, la file est gardée par Firestore.
       const p = b.commit();
-      p.catch((e) => console.warn('envoi refusé', e));
+      p.catch((e) => {
+        if (lot.length === 1) { rejected(e, [{ s: lot[0].s, k: lot[0].k }]); return; }
+        // Un lot est refusé en entier pour un seul document invalide : on renvoie chaque document seul,
+        // et seuls ceux qui sont refusés à leur tour sont remontés (relecture contradictoire, point 4).
+        const refuses: Array<{ s: RemoteDoc['s']; k: string }> = [];
+        let derniere: unknown = e;
+        const seuls = Promise.all(lot.map((d) => setDoc(doc(col(uid), docId(d.s, d.k)), data(d)).catch((x) => { refuses.push({ s: d.s, k: d.k }); derniere = x; })));
+        track(seuls);
+        void seuls.then(() => { if (refuses.length) rejected(derniere, refuses); });
+      });
       track(p);
     }
   },
@@ -151,16 +170,23 @@ export const backend: Backend = {
       cb(docs, { fromCache: snap.metadata.fromCache, maxT });
     }, onError);
   },
+  onRejected(cb) {
+    rejSubs.add(cb);
+    return () => { rejSubs.delete(cb); };
+  },
   onPending(cb) {
     pendSubs.add(cb);
     cb(inflight > 0);
     return () => { pendSubs.delete(cb); };
   },
   async waitPending(timeoutMs) {
-    return Promise.race([
-      waitForPendingWrites(fs).then(() => true),
-      new Promise<boolean>((res) => setTimeout(() => res(false), timeoutMs)),
-    ]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        waitForPendingWrites(fs).then(() => true),
+        new Promise<boolean>((res) => { timer = setTimeout(() => res(false), timeoutMs); }),
+      ]);
+    } finally { clearTimeout(timer); }
   },
 
   async putShare(id, d) {
@@ -168,7 +194,7 @@ export const backend: Backend = {
     if (!u) throw Object.assign(new Error('Pas de compte connecté'), { code: 'auth/no-current-user' });
     // Comme les autres envois : gardé dans la file hors ligne, envoyé au retour du réseau.
     const p = setDoc(doc(fs, 'partages', id), { owner: u.uid, v: d.v, iv: d.iv, salt: d.salt, t: serverTimestamp() });
-    p.catch((e) => console.warn('lien parent refusé', e));
+    p.catch((e) => rejected(e, []));
     track(p);
   },
   async listShares() {

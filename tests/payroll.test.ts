@@ -804,3 +804,101 @@ describe('saisie simplifiée des congés à la reprise (31 octobre 2026)', () =>
     expect(monthBase(makeCtx(c, [], leaves, '2027-01-15'), '2026-12').retenue).toBe(0);
   });
 });
+
+describe('audit C-017 : point de départ du préavis et inaptitude (art. 120, avenant n° 10)', () => {
+  // Contrat du 5 janvier 2026 : 9 mois d'ancienneté au 30 octobre 2026.
+  const ctx9 = () => makeCtx(contract({ start: '2026-01-05', trackedFrom: '2026-01-05' }), [], [], '2026-12-31');
+  it('le préavis part de la première présentation de la lettre recommandée, pas de l’envoi ni de l’annonce', () => {
+    // Envoi le 30/10, présentée le 03/11 : 15 jours calendaires du 03/11 au 17/11.
+    const f = finDeContrat(ctx9(), '2026-10-30', 'retrait', 0, '2026-11-03');
+    expect(f.preavisLabel).toBe('15 jours calendaires');
+    expect(f.preavisFin).toBe('2026-11-17');
+    // L'ancienneté reste appréciée à l'envoi.
+    expect(f.ancienneteMois).toBe(9);
+  });
+  it('remise en main propre : le préavis part du jour de la remise', () => {
+    const f = finDeContrat(ctx9(), '2026-10-30', 'retrait', 0, '2026-10-30');
+    expect(f.preavisFin).toBe('2026-11-13');
+  });
+  it('un mois de préavis compté depuis la présentation', () => {
+    const c = contract({ start: '2025-01-06', trackedFrom: '2025-01-06' });
+    const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-28', 'demission', 0, '2026-10-31');
+    expect(f.preavisLabel).toBe('1 mois');
+    expect(f.preavisFin).toBe('2026-11-30');
+  });
+  it('une date de présentation antérieure à l’envoi est ignorée', () => {
+    expect(finDeContrat(ctx9(), '2026-10-30', 'retrait', 0, '2026-10-20').preavisFin).toBe('2026-11-13');
+  });
+  it('démission avant 3 mois : pas de préavis ; retrait avant 3 mois : 8 jours', () => {
+    const mk = () => makeCtx(contract({ start: '2026-09-01', trackedFrom: '2026-09-01' }), [], [], '2026-12-31');
+    const d = finDeContrat(mk(), '2026-10-28', 'demission', 0, '2026-10-30');
+    expect(d.preavisFin).toBe('2026-10-28');
+    expect(d.preavisLabel).toMatch(/Pas de préavis/);
+    expect(finDeContrat(mk(), '2026-10-28', 'retrait', 0, '2026-10-30').preavisFin).toBe('2026-11-06');
+  });
+  it('inaptitude professionnelle : 2/80e dès 9 mois, rien avant, sans préavis', () => {
+    const f = finDeContrat(ctx9(), '2026-10-30', 'inaptitude_pro', 0, '2026-11-03');
+    expect(f.indemniteRupture).toBe(Math.round((f.totalBrut * 2) / 80));
+    expect(f.dernierJour).toBe('2026-10-30');
+    const court = finDeContrat(makeCtx(contract({ start: '2026-05-04', trackedFrom: '2026-05-04' }), [], [], '2026-12-31'), '2026-10-30', 'inaptitude_pro');
+    expect(court.indemniteRupture).toBe(0);
+  });
+  it('inaptitude sans lien avec le travail : 1/80e dès 9 mois, sans préavis', () => {
+    const f = finDeContrat(ctx9(), '2026-10-30', 'inaptitude');
+    expect(f.indemniteRupture).toBe(Math.round(f.totalBrut / 80));
+    expect(f.dernierJour).toBe('2026-10-30');
+  });
+});
+
+describe('audit C-003 : un avenant en cours de mois ne change pas les jours d’activité', () => {
+  it('avenant de taux au 16 novembre : 22 jours mensualisés, comme sans avenant', () => {
+    const sans = contract({ start: '2026-01-05', trackedFrom: '2026-01-05' });
+    const avec = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', avenants: [{ id: 'a1', from: '2026-11-16', changes: { rateNet: 400 } }] });
+    const a = monthBase(makeCtx(sans, [], [], '2026-12-15'), '2026-11');
+    const b = monthBase(makeCtx(avec, [], [], '2026-12-15'), '2026-11');
+    expect(a.joursActivite).toBe(22);
+    expect(b.segments?.length).toBe(2);
+    expect(b.joursActivite).toBe(22);
+  });
+  it('avenant de planning au 15 octobre (5 jours → 4 jours) : jours mensualisés proratisés par période', () => {
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05',
+      avenants: [{ id: 'a1', from: '2026-10-15', changes: { planning: week('08:00', '17:00', [1, 2, 3, 4]) } }] });
+    const r = monthBase(makeCtx(c, [], [], '2026-11-15'), '2026-10');
+    // Avant : 22 jours mensualisés × 10/22 jours ouvrés d'octobre ; après : 18 (4 × 52 ÷ 12 = 17,33 → 18) × 9/17
+    // (17 lundis à jeudis en octobre 2026, dont 9 à partir du 15). 10 + 9,53 = 19,53 → 20.
+    expect(r.joursActivite).toBe(20);
+  });
+  it('avenant au 22 octobre (5 jours → 3 jours) : somme arrondie à l’entier supérieur, comme Pajemploi', () => {
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05',
+      avenants: [{ id: 'a1', from: '2026-10-22', changes: { planning: week('08:00', '17:00', [1, 2, 3]) } }] });
+    const r = monthBase(makeCtx(c, [], [], '2026-11-15'), '2026-10');
+    // Avant : 22 × 15/22 = 15 ; après : 13 (3 × 52 ÷ 12 = 13) × 3/12 (lundis à mercredis d'octobre 2026,
+    // dont 3 à partir du 22) = 3,25. 15 + 3,25 = 18,25 → 19 (et non 18 avec un arrondi au plus proche).
+    expect(r.joursActivite).toBe(19);
+  });
+  it('avenant en cours de mois avec un jour retenu : un jour de moins', () => {
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', avenants: [{ id: 'a1', from: '2026-11-16', changes: { rateNet: 400 } }] });
+    const days = [rec('2026-11-20', { abs: 'sans_solde_enfant' })];
+    expect(monthBase(makeCtx(c, days, [], '2026-12-15'), '2026-11').joursActivite).toBe(21);
+  });
+  it('entrée dans le mois : jours réellement prévus, inchangé', () => {
+    const c = contract({ start: '2026-11-16', trackedFrom: '2026-11-16' });
+    expect(monthBase(makeCtx(c, [], [], '2026-12-15'), '2026-11').joursActivite).toBe(11);
+  });
+});
+
+describe('audit C-017, relecture contradictoire', () => {
+  const ctx = () => makeCtx(contract({ start: '2024-01-08', trackedFrom: '2024-01-08' }), [], [], '2028-12-31');
+  it('un mois de préavis en février et en année bissextile', () => {
+    const fin = (p: string) => finDeContrat(ctx(), p, 'retrait', 0, p).preavisFin;
+    expect(fin('2027-01-15')).toBe('2027-02-14');
+    expect(fin('2027-01-31')).toBe('2027-02-28');
+    expect(fin('2027-02-28')).toBe('2027-03-27');
+    expect(fin('2028-01-31')).toBe('2028-02-29');
+    expect(fin('2026-12-31')).toBe('2027-01-30');
+  });
+  it('inaptitude notifiée avant le 1er mai 2026 : alerte', () => {
+    expect(finDeContrat(ctx(), '2026-04-15', 'inaptitude_pro').alertes.join(' ')).toMatch(/avant le 1er mai 2026/);
+    expect(finDeContrat(ctx(), '2026-05-04', 'inaptitude_pro').alertes.join(' ')).not.toMatch(/avant le 1er mai 2026/);
+  });
+});
