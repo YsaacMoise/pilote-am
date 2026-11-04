@@ -17,7 +17,7 @@ export function Confidentialite({ back = '#/plus' }: { back?: string }) {
           <h2>L’essentiel</h2>
           <p>Tes données servent à une seule chose : faire marcher l’app pour toi. Elles ne sont ni vendues, ni louées, ni utilisées pour de la publicité.</p>
           <p>Ce que tu saisis est rangé sur ton téléphone, avec une copie dans ton compte, hébergée à Paris. Aucun autre compte de l’app ne peut y accéder.</p>
-          <p>La mesure d’usage est éteinte tant que tu ne l’allumes pas. Même allumée, elle ne reçoit jamais ce que tu écris ou choisis : ni prénoms, ni noms, ni horaires, ni montants, ni carnet, ni motifs d’absence. L’écran n’est jamais enregistré.</p>
+          <p>La mesure d’usage est anonyme et allumée par défaut ; tu peux l’éteindre en un geste dans Plus › Réglages. Elle ne reçoit jamais ce que tu écris ou choisis : ni prénoms, ni noms, ni horaires, ni montants, ni carnet, ni motifs d’absence. L’écran n’est jamais enregistré.</p>
         </section>
 
         <section class="card stack-sm">
@@ -29,7 +29,7 @@ export function Confidentialite({ back = '#/plus' }: { back?: string }) {
         <section class="card stack-sm">
           <h2>Qui peut voir tes données</h2>
           <p><b>Toi</b>, sur ton téléphone et dans ton compte.</p>
-          <p><b>L’éditeur d’Arvela (YKM)</b> peut techniquement accéder à la copie en ligne, comme pour tout service en ligne. Il s’engage à ne la consulter qu’avec ton accord, au cas par cas, pour t’aider à résoudre un problème. Il lit en revanche tes remarques « Ça coince » et, si tu l’as acceptée, la mesure d’usage.</p>
+          <p><b>L’éditeur d’Arvela (YKM)</b> peut techniquement accéder à la copie en ligne, comme pour tout service en ligne. Il s’engage à ne la consulter qu’avec ton accord, au cas par cas, pour t’aider à résoudre un problème. Il lit en revanche tes remarques « Ça coince » et, sauf si tu l’as éteinte, la mesure d’usage.</p>
           <p><b>Une analyse automatique chaque semaine</b> : un assistant d’intelligence artificielle (Claude, de la société Anthropic), lancé par l’éditeur, lit la mesure d’usage pour en faire un résumé. Il ne lit ni tes contrats, ni tes journées, ni ton carnet.</p>
           <p><b>Les prestataires techniques</b> : Google (hébergement et comptes) et PostHog (mesure d’usage), qui traitent les données pour le compte d’Arvela.</p>
           <p><b>Des relecteurs de sécurité</b>, mandatés par l’éditeur, peuvent lire le code et les réglages des services. Ils ne lisent pas tes données.</p>
@@ -49,8 +49,8 @@ export function Confidentialite({ back = '#/plus' }: { back?: string }) {
           <p>Depuis la fiche d’un enfant, tu peux créer un lien privé pour ses parents. Ils y voient son prénom, ton prénom, les arrivées, départs et absences des 7 derniers jours, le carnet de ces 7 jours, et les montants du mois et du mois précédent. Ni le nom de la famille, ni les autres enfants.</p>
           <p>Ces informations sont chiffrées sur ton téléphone avant de partir. La copie en ligne (Google Firebase, à Paris) ne peut être lue qu’avec le lien et le code à 4 chiffres que tu donnes de vive voix. Le lien et le code sont gardés dans ton compte, comme le reste de tes données. Le code protège d’un lien transféré par erreur ; il ne résiste pas longtemps à quelqu’un qui aurait le lien et s’acharnerait : ne publie jamais le lien.</p>
           <p>Couper le lien (ou supprimer le contrat, ou ton compte) efface la copie en ligne tout de suite.</p>
-          <h3>La mesure d’usage (seulement si tu l’as allumée)</h3>
-          <p>Si tu l’allumes dans Plus › Réglages, l’app envoie à PostHog (serveurs en Europe, à Francfort) le nom des écrans ouverts et des gestes faits (par exemple « arrivée pointée », « mois envoyé »), la version de l’app, un identifiant tiré au hasard, et les caractéristiques techniques que PostHog relève lui-même : modèle de téléphone, système, navigateur, taille d’écran, langue et fuseau horaire. Rien de ce que tu écris ou choisis n’est envoyé, l’écran n’est jamais enregistré, et le projet PostHog est réglé pour ne pas garder l’adresse internet de ton téléphone. Tu peux l’éteindre à tout moment.</p>
+          <h3>La mesure d’usage anonyme (sauf si tu l’éteins)</h3>
+          <p>Pour savoir ce qui sert et ce qui coince, l’app envoie à PostHog (serveurs en Europe, à Francfort) le nom des écrans ouverts et des gestes faits (par exemple « arrivée pointée », « mois envoyé », ou le type d’une erreur affichée, jamais son texte), la version de l’app, un identifiant tiré au hasard, et les caractéristiques techniques que PostHog relève lui-même : modèle de téléphone, système, navigateur, taille d’écran, langue et fuseau horaire. Rien de ce que tu écris ou choisis n’est envoyé, l’écran n’est jamais enregistré, l’adresse internet de ton téléphone n’est pas gardée et aucune localisation n’en est tirée. Ces données ne sont jamais reliées à ton compte ni à d’autres données, et ne servent qu’à des statistiques pour Arvela. L’identifiant est renouvelé au moins tous les 13 mois.</p><p>Cette mesure anonyme suit les conditions de la CNIL pour la mesure d’audience dispensée de consentement, et repose sur l’intérêt légitime d’Arvela à améliorer l’app. Tu peux t’y opposer à tout moment : éteins-la dans Plus › Réglages ; l’envoi s’arrête et l’identifiant est effacé du téléphone.</p>
           <h3>La dictée</h3>
           <p>Si tu dictes avec le micro du clavier, c’est ton téléphone qui transcrit ta voix : selon tes réglages, Apple ou Google peut recevoir l’enregistrement. Arvela ne reçoit que le texte.</p>
           <h3>L’hébergement du site</h3>
@@ -63,7 +63,7 @@ export function Confidentialite({ back = '#/plus' }: { back?: string }) {
           <h2>Combien de temps</h2>
           <p><b>Ton compte et ce que tu saisis :</b> tant que ton compte existe. Si tu supprimes ton compte, la copie en ligne est effacée tout de suite. Elle disparaît des sauvegardes quotidiennes d’Arvela sous 98 jours, et Google l’efface de ses propres copies techniques sous 180 jours au plus.</p>
           <p><b>Le lien pour les parents :</b> tant que tu ne le coupes pas. Il est effacé avec le contrat ou le compte.</p>
-          <p><b>La mesure d’usage :</b> les événements sont gardés 1 an au plus.</p>
+          <p><b>La mesure d’usage :</b> les événements sont gardés 1 an au plus (la CNIL fixe 25 mois au maximum).</p>
           <p><b>Sur ton téléphone :</b> tant que tu gardes l’app. Tu restes libre de tout effacer.</p>
           <p><b>À la fin du test, le {LEGAL.finTest} :</b> l’éditeur te demande si tu veux continuer. Si tu arrêtes, tu fais d’abord une sauvegarde (Plus › Sauvegarde), puis ta copie en ligne et ta mesure d’usage sont effacées sous 30 jours.</p>
         </section>
@@ -78,14 +78,14 @@ export function Confidentialite({ back = '#/plus' }: { back?: string }) {
           <p><b>Consulter et emporter tes données :</b> Plus › Sauvegarde crée un fichier complet que tu gardes où tu veux.</p>
           <p><b>Corriger :</b> directement dans l’app.</p>
           <p><b>Effacer :</b> Plus › Compte › Supprimer mon compte efface la copie en ligne. Tu peux aussi effacer les données du téléphone en supprimant l’app. Pour effacer ta mesure d’usage déjà envoyée, écris à {LEGAL.email}.</p>
-          <p><b>Refuser la mesure d’usage :</b> laisse-la éteinte, ou éteins-la dans Plus › Réglages.</p>
+          <p><b>T’opposer à la mesure d’usage :</b> éteins-la dans Plus › Réglages.</p>
           <p><b>Toute autre demande :</b> {LEGAL.contact}.</p>
           <p>Si tu estimes que tes droits ne sont pas respectés, tu peux saisir la CNIL (Commission nationale de l’informatique et des libertés), l’autorité française chargée des données personnelles, sur cnil.fr.</p>
         </section>
 
         <section class="card stack-sm">
           <h2>Stockage sur l’appareil</h2>
-          <p>Arvela n’utilise pas de cookies publicitaires. L’app garde tes données et tes préférences dans la mémoire de ton téléphone. Si tu as allumé la mesure d’usage, elle y garde aussi un identifiant tiré au hasard, effacé dès que tu l’éteins. Quand tu utilises ton compte, la protection contre les robots y dépose un jeton de vérification et un cookie technique de reCAPTCHA, nécessaires à la sécurité et sans usage publicitaire.</p>
+          <p>Arvela n’utilise pas de cookies publicitaires. L’app garde tes données et tes préférences dans la mémoire de ton téléphone. Sauf si tu l’as éteinte, la mesure d’usage y garde aussi un identifiant tiré au hasard, renouvelé au moins tous les 13 mois et effacé dès que tu l’éteins. Quand tu utilises ton compte, la protection contre les robots y dépose un jeton de vérification et un cookie technique de reCAPTCHA, nécessaires à la sécurité et sans usage publicitaire.</p>
         </section>
 
         <section class="card stack-sm">

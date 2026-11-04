@@ -57,13 +57,14 @@ describe('audit C-101 : erreur affichée', () => {
     expect(u[0].screen).toBe('avenant');
     expect(JSON.stringify(u[0])).not.toMatch(/c-123|a-456/);
   });
-  it('sans accord, la mesure ne laisse partir aucun de ces événements', async () => {
+  it('après un refus, la mesure ne laisse partir aucun de ces événements', async () => {
     const { posthogOptions } = await import('../src/analytics');
     const before_send = posthogOptions().before_send;
+    localStorage.setItem('pam-mesure-refus', '1');
     for (const ev of ['erreur_saisie', 'annulation_arrivee', 'heure_corrigee_apres_coup']) {
       expect(before_send({ event: ev, properties: { ecran: 'aujourdhui' } })).toBeNull();
     }
-    localStorage.setItem('pam-mesure-on', '1');
+    localStorage.removeItem('pam-mesure-refus');
     expect(before_send({ event: 'erreur_saisie', properties: { ecran: 'contrat' } })?.event).toBe('erreur_saisie');
   });
 });
