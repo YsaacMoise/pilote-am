@@ -6,6 +6,9 @@ import { finDeContrat, MOTIF_LABEL, type Motif } from '../engine/fin';
 import { euros, eurosArrondis, hoursLabel } from '../engine/money';
 import { Banner, Choices, DateInput, EuroInput, Gommette, Topbar } from '../ui/kit';
 
+/** « de mars », « d’août », « d’octobre » */
+const deMois = (l: string) => (/^[aeiouyéè]/i.test(l) ? `d’${l}` : `de ${l}`);
+
 export function Fin({ id }: { id?: string }) {
   const s = useStore();
   const [cid, setCid] = useState(id ?? s.contracts[0]?.id);
@@ -35,7 +38,7 @@ export function Fin({ id }: { id?: string }) {
   // L'indemnité de rupture dépend du brut : tant qu'un mois est estimé, elle est affichée arrondie, comme une estimation.
   const surBrut = motif === 'retrait' || motif === 'deces' || motif === 'inaptitude' || motif === 'inaptitude_pro';
   const estime = surBrut && f.brutsEstimes.length > 0;
-  const periode = f.brutsEstimes.length === 1 ? monthLabel(f.brutsEstimes[0]) : `${f.brutsEstimes.length} mois, de ${monthLabel(f.brutsEstimes[0] ?? '2026-01')} à ${monthLabel(f.brutsEstimes[f.brutsEstimes.length - 1] ?? '2026-01')}`;
+  const periode = f.brutsEstimes.length === 1 ? monthLabel(f.brutsEstimes[0]) : `${f.brutsEstimes.length} mois, ${deMois(monthLabel(f.brutsEstimes[0] ?? '2026-01'))} à ${monthLabel(f.brutsEstimes[f.brutsEstimes.length - 1] ?? '2026-01')}`;
   return (
     <>
       <Topbar title="Fin de contrat" back="#/plus" screen="fin" />
