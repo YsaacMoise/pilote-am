@@ -47,7 +47,7 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 | C-008 | Moyen | Ouvert, avant phase 2 | Rapport 78,12 % confirmé pour 2026 (taux de l'app : 4,20 € brut / 3,28 € net au 1er juin 2026, avenant n° 10) |
 | C-009 | Moyen | Ouvert, avant phase 2 | |
 | C-010 | Élevé | Ouvert, pendant le test | Tester sur 3 vrais bulletins noircis |
-| C-011 | Élevé | Ouvert, pendant le test | |
+| C-011 | Élevé | Corrigé (04/11/2026, branche lot-2-impots) | Règle officielle : « le montant horaire du SMIC à retenir est celui (ou ceux) en vigueur au cours de la période de garde » (BOI-RSA-CHAMP-10-20-10 § 490, version du 24/02/2017 toujours en vigueur, lue le 04/11/2026) ; la brochure impots.gouv de mars 2026 donne le SMIC par période (« 11,88 € du 01/01/2025 au 31/12/2025 »). Le moteur appliquait déjà le SMIC du jour de garde (mois du bulletin pour l'historique) ; le texte de « Comment l'app calcule » disait « SMIC du 1er janvier » : corrigé. Tests tests/fiscal.test.ts « C-011 » (avril-mai à 12,02 €, juin à 12,31 € : 2 146,68 €) |
 | C-012 | Conforme | Prouvé conforme | |
 | C-013 | Faible | Ouvert, à confirmer | Arrondi Pajemploi |
 | C-014 | Élevé | Ouvert, avant phase 2 | Validation humaine |
