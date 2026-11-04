@@ -6,10 +6,12 @@ import { ratesAt } from './rates';
 
 export interface FiscalChild {
   cid: string;
-  /** Sommes reçues : salaire net imposable estimé + entretien + repas */
+  /** Sommes reçues : salaire net imposable estimé + entretien + repas + kilomètres */
   recu: number;
   netImposable: number;
   entretienRepas: number;
+  /** Indemnités kilométriques (BOI-RSA-CHAMP-10-20-10 § 460 : indemnités de déplacement comprises) */
+  km: number;
   /** Repas fournis par les parents, évalués au barème de l'avantage en nature */
   repasParents: number;
   jours: number;
@@ -39,7 +41,7 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
     return v;
   };
   const facteur = c.majoreFiscal ? 4 : 3;
-  let net = 0, er = 0, rp = 0, jours = 0, courts = 0, abat = 0;
+  let net = 0, er = 0, km = 0, rp = 0, jours = 0, courts = 0, abat = 0;
   let partiel = false;
   const last = upTo && upTo < `${year}-12` ? upTo : (`${year}-12` as Month);
   for (const m of monthsBetween(`${year}-01`, last)) {
@@ -48,6 +50,7 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
     if (r.missing) { partiel = true; continue; }
     net += r.netTotal + Math.round(r.brutEstime * PART_NON_DEDUCTIBLE);
     er += r.entretien + r.repas;
+    km += r.km;
     if (r.fromHistory) {
       // Sans détail des jours : jours d'activité du bulletin, journées supposées de 8 h ou plus.
       jours += r.joursActivite;
@@ -65,11 +68,11 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
       abat += facteur * smicAt(d) * ratio;
     }
   }
-  const recu = net + er + rp;
+  const recu = net + er + km + rp;
   const abattementBrut = Math.round(abat);
   const abattement = Math.min(abattementBrut, recu);
   return {
-    cid: c.id, recu, netImposable: net, entretienRepas: er, repasParents: rp, jours, joursCourts: courts, abattementBrut, abattement,
+    cid: c.id, recu, netImposable: net, entretienRepas: er, km, repasParents: rp, jours, joursCourts: courts, abattementBrut, abattement,
     imposable: recu - abattement, smic: smics[smics.length - 1] ?? ratesAt(`${year}-01-01`).smic, smics, facteur, partiel,
   };
 }
