@@ -868,6 +868,14 @@ describe('audit C-003 : un avenant en cours de mois ne change pas les jours d’
     // (17 lundis à jeudis en octobre 2026, dont 9 à partir du 15). 10 + 9,53 = 19,53 → 20.
     expect(r.joursActivite).toBe(20);
   });
+  it('avenant au 22 octobre (5 jours → 3 jours) : somme arrondie à l’entier supérieur, comme Pajemploi', () => {
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05',
+      avenants: [{ id: 'a1', from: '2026-10-22', changes: { planning: week('08:00', '17:00', [1, 2, 3]) } }] });
+    const r = monthBase(makeCtx(c, [], [], '2026-11-15'), '2026-10');
+    // Avant : 22 × 15/22 = 15 ; après : 13 (3 × 52 ÷ 12 = 13) × 3/12 (lundis à mercredis d'octobre 2026,
+    // dont 3 à partir du 22) = 3,25. 15 + 3,25 = 18,25 → 19 (et non 18 avec un arrondi au plus proche).
+    expect(r.joursActivite).toBe(19);
+  });
   it('avenant en cours de mois avec un jour retenu : un jour de moins', () => {
     const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', avenants: [{ id: 'a1', from: '2026-11-16', changes: { rateNet: 400 } }] });
     const days = [rec('2026-11-20', { abs: 'sans_solde_enfant' })];

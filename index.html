@@ -3,20 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="robots" content="noindex, nofollow" />
-    <script>
-      // Une seule adresse pour l'app (audit C-111) : les adresses techniques Firebase renvoient vers arvela.fr.
-      (function () {
-        var h = location.hostname;
-        if ((/\.web\.app$/.test(h) || /\.firebaseapp\.com$/.test(h)) && location.pathname.indexOf('/__/') !== 0) {
-          location.replace('https://arvela.fr' + location.pathname + location.search + location.hash);
-        }
-      })();
-    </script>
- <script>
-      // Version jour par défaut ; nuit ou automatique seulement si l'utilisatrice l'a choisi. Appliqué avant l'affichage.
-      (function () { var t = null; try { t = localStorage.getItem('pam-theme'); } catch (e) {}
-        if (t !== 'auto') document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light'); })();
-    </script>
+    <script src="./demarrage.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Arvela · L’app des assistantes maternelles</title>
     <meta name="description" content="L’app gratuite des assistantes maternelles : pointage, carnet de liaison, déclaration Pajemploi, congés, et simulateur du coût réel d’un accueil après l’aide de la CAF." />

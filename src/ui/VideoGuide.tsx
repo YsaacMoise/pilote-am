@@ -1,6 +1,7 @@
 // Vidéos en motion design, au format téléphone (9:16), montrées au moment où elles servent :
 //  - page d'accueil : un aperçu animé sans le son, qui ouvre « Une journée avec Arvela » (21 s) ;
-//  - dans l'app : une bulle « ▶ Comment… » sur l'écran concerné, qui lance une aide courte (9 à 11 s),
+//  - dans l'app : une bulle « ▶ Comment… » sur l'écran concerné, qui lance une aide courte (13 à 15 s) ;
+//    vue ou réduite, elle reste en petit pendant la première semaine, puis part dans « Ça coince »,
 //    puis disparaît une fois la vidéo vue ou la bulle fermée ; elle reste à portée dans « Ça coince » (en haut de l'écran) ;
 //  - Plus › Vidéos : toutes les vidéos, avec « Déjà vue ».
 // Fichiers dans public/videos/ (.mp4 H.264 + .vtt). Fabriqués avec Remotion (motion/, « node scripts/videos.mjs ») ; voix Google AI Studio (Nika).
@@ -18,12 +19,12 @@ interface ClipInfo { titre: string; duree: string; resume: string; pret: boolean
 /** `pret` : le fichier est dans public/videos/. Une vidéo pas encore prête n'apparaît nulle part. */
 export const CLIPS: Record<Clip, ClipInfo> = {
   quotidien: { titre: 'Une journée avec Arvela', duree: '21 s', pret: true, resume: 'Une journée d’accueil notée d’un geste, vue en direct par les parents, et le mois calculé tout seul.' },
-  pointer: { titre: 'Pointer une arrivée et un départ', duree: '9 s', pret: true, resume: 'Arrivée le matin, Départ le soir, Modifier pour corriger une heure.' },
-  carnet: { titre: 'Noter dans le carnet', duree: '11 s', pret: true, resume: 'Choisir l’enfant, noter un repas, le sommeil et le réveil : l’heure s’ajoute toute seule.' },
-  mois: { titre: 'Ta fin de mois, prête à déclarer', duree: '10 s', pret: true, resume: 'Les cases Pajemploi dans l’ordre, et l’envoi des montants au parent.' },
-  inviter: { titre: 'Inviter les parents', duree: '11 s', pret: true, resume: 'Créer le lien, l’envoyer, donner le code de vive voix.' },
-  simulateur: { titre: 'Simuler un accueil', duree: '11 s', pret: true, resume: 'Une famille appelle : son coût réel, aides de la CAF comprises, envoyé en un geste.' },
-  parents: { titre: 'Suivre la journée de votre enfant', duree: '25 s', pret: true, resume: 'Ouvrir le lien, taper le code, suivre la journée en direct, copier les cases Pajemploi du mois.' },
+  pointer: { titre: 'Pointer une arrivée et un départ', duree: '13 s', pret: true, resume: 'Arrivée le matin, Départ le soir, Modifier pour corriger une heure.' },
+  carnet: { titre: 'Noter dans le carnet', duree: '17 s', pret: true, resume: 'Choisir l’enfant, noter un repas, le sommeil et le réveil : l’heure s’ajoute toute seule. Et demander aux parents ce qu’il faut apporter.' },
+  mois: { titre: 'Ta fin de mois, prête à déclarer', duree: '14 s', pret: true, resume: 'Les cases Pajemploi dans l’ordre, et l’envoi des montants au parent.' },
+  inviter: { titre: 'Inviter les parents', duree: '14 s', pret: true, resume: 'Créer le lien, l’envoyer, donner le code de vive voix.' },
+  simulateur: { titre: 'Simuler un accueil', duree: '15 s', pret: true, resume: 'Une famille appelle : son coût réel, aides de la CAF comprises, envoyé en un geste.' },
+  parents: { titre: 'Suivre la journée de votre enfant', duree: '24 s', pret: true, resume: 'Ouvrir le lien, taper le code, suivre la journée en direct, voir ce qu’il faut apporter, copier les cases Pajemploi du mois.' },
   installer: { titre: 'Installer l’app', duree: '21 s', pret: true, resume: 'Les gestes pour mettre Arvela sur l’écran d’accueil. Une fois installée, elle marche même sans réseau.' },
 };
 
@@ -57,11 +58,22 @@ export function aideEcran(screen: string): Aide | null {
   return VIDEOS_PRETES && a && CLIPS[a.clip].pret ? a : null;
 }
 
-// ---------- Vidéos vues, bulles fermées (propres à ce téléphone) ----------
+// ---------- Vidéos vues, bulles réduites, semaine de prise en main (propres à ce téléphone) ----------
+// Les bulles d'aide restent sur leur écran pendant la première semaine, même vues ou réduites (en version discrète).
+// Ensuite, celles qui ont été vues ou réduites partent dans « Ça coince », et un message le dit une fois.
+// VERSION : à augmenter quand les vidéos sont refaites, pour que les aides réapparaissent pour tout le monde.
 const CLE = 'pam-videos';
-interface Etat { vues: string[]; fermees: string[] }
+const VERSION = 2; // 2 : vidéos refaites (novembre 2026)
+const SEMAINE = 7 * 24 * 3600 * 1000;
+interface Etat { v: number; debut: number; vues: string[]; fermees: string[]; annonce: boolean }
 function lire(): Etat {
-  try { const e = JSON.parse(localStorage.getItem(CLE) || '{}'); return { vues: e.vues ?? [], fermees: e.fermees ?? [] }; } catch { return { vues: [], fermees: [] }; }
+  try {
+    const e = JSON.parse(localStorage.getItem(CLE) || '{}');
+    if (e.v === VERSION && typeof e.debut === 'number') return { v: VERSION, debut: e.debut, vues: e.vues ?? [], fermees: e.fermees ?? [], annonce: !!e.annonce };
+  } catch { /* stockage illisible : on repart de zéro */ }
+  const neuf: Etat = { v: VERSION, debut: Date.now(), vues: [], fermees: [], annonce: false };
+  try { localStorage.setItem(CLE, JSON.stringify(neuf)); } catch { /* navigation privée */ }
+  return neuf;
 }
 function ecrire(e: Etat) {
   try { localStorage.setItem(CLE, JSON.stringify(e)); } catch { /* navigation privée */ }
@@ -70,6 +82,30 @@ function ecrire(e: Etat) {
 export function videoVue(id: string): boolean { return lire().vues.includes(id); }
 export function marquerVue(id: string) { const e = lire(); if (!e.vues.includes(id)) ecrire({ ...e, vues: [...e.vues, id] }); }
 function fermerAide(id: string) { const e = lire(); if (!e.fermees.includes(id)) ecrire({ ...e, fermees: [...e.fermees, id] }); }
+/** La semaine de prise en main est-elle en cours ? */
+function enPriseEnMain(e: Etat): boolean { return Date.now() - e.debut < SEMAINE; }
+/** Dernier jour où les bulles restent sur les écrans (« 10 novembre ») */
+function finPriseEnMain(e: Etat): string {
+  return new Date(e.debut + SEMAINE).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+}
+/** Message dit une seule fois, quand les aides partent dans « Ça coince » ; le bouton « Ça coince » s'anime quelques secondes */
+function annoncerCoince() {
+  if (lire().annonce) return;
+  // Un court délai : l'écran et sa barre du haut finissent de s'afficher avant le message et l'animation du bouton
+  window.setTimeout(() => {
+    const e = lire();
+    if (e.annonce) return;
+    ecrire({ ...e, annonce: true });
+    toast('Les vidéos d’aide sont maintenant dans « Ça coince », en haut de chaque écran.');
+    window.dispatchEvent(new Event('pam-coince'));
+  }, 700);
+}
+/** Ce que l'on dit quand une aide passe en version discrète (vue ou réduite) */
+function messageDiscret(e: Etat, debut: string): string {
+  return enPriseEnMain(e)
+    ? `${debut} : elle reste ici en petit jusqu’au ${finPriseEnMain(e)}, puis dans « Ça coince », en haut de l’écran.`
+    : `${debut} : tu la retrouves dans « Ça coince », en haut de l’écran.`;
+}
 function useVues(): Etat {
   const [e, setE] = useState(lire);
   useEffect(() => {
@@ -108,7 +144,7 @@ function Affiche({ titre, duree, onPlay }: { titre: string; duree: string; onPla
  * `autoStart` : lecture dès l'ouverture (vidéo ouverte d'un geste) ; si le navigateur refuse, l'affiche reste.
  * `vue` : identifiant mémorisé quand la vidéo (ou le passage) a été vue jusqu'au bout.
  */
-export function VideoClip({ clip, debut, fin, titre, autoStart = false, vue }: { clip: Clip; debut?: number; fin?: number; titre?: string; autoStart?: boolean; vue?: string }) {
+export function VideoClip({ clip, debut, fin, titre, autoStart = false, vue, onFin }: { clip: Clip; debut?: number; fin?: number; titre?: string; autoStart?: boolean; vue?: string; onFin?: () => void }) {
   const ref = useRef<HTMLVideoElement>(null);
   const [started, setStarted] = useState(false);
   const [entiere, setEntiere] = useState(false); // passage terminé → lecture de toute la vidéo
@@ -132,7 +168,9 @@ export function VideoClip({ clip, debut, fin, titre, autoStart = false, vue }: {
   useEffect(() => { if (autoStart) lancer(); }, []);
 
   const finie = () => {
+    const premiere = !videoVue(id);
     marquerVue(id);
+    if (premiere) onFin?.();
     logUsage('video_fin', id);
   };
 
@@ -170,37 +208,50 @@ export function VideoClip({ clip, debut, fin, titre, autoStart = false, vue }: {
 }
 
 /** Une vidéo dans une feuille qui monte du bas, lancée d'un geste (le son est permis). */
-export function VideoSheet({ aide, clip, vue, onClose }: { aide?: Aide; clip?: Clip; vue?: string; onClose: () => void }) {
+export function VideoSheet({ aide, clip, vue, onClose, onFin }: { aide?: Aide; clip?: Clip; vue?: string; onClose: () => void; onFin?: () => void }) {
   const a = aide ?? { clip: clip!, label: CLIPS[clip!].titre, duree: CLIPS[clip!].duree };
   const titre = aide?.debut !== undefined ? aide.label : CLIPS[a.clip].titre;
   return (
     <Sheet title={titre} onClose={onClose}>
-      <VideoClip clip={a.clip} debut={a.debut} fin={a.fin} titre={aide?.debut !== undefined ? aide.label : undefined} autoStart vue={vue} />
+      <VideoClip clip={a.clip} debut={a.debut} fin={a.fin} titre={aide?.debut !== undefined ? aide.label : undefined} autoStart vue={vue} onFin={onFin} />
     </Sheet>
   );
 }
 
 /**
- * Bulle « ▶ Comment… · 15 s » posée sur l'écran concerné. Elle disparaît quand la vidéo a été vue ou si on la ferme.
- * `permanente` : toujours affichée (page des parents).
+ * Bulle « ▶ Comment… · 13 s » posée sur l'écran concerné, aux couleurs de l'app tant que la vidéo n'a pas été vue.
+ * Vue ou réduite (la croix), elle reste à sa place pendant la semaine de prise en main, en version discrète « Revoir… »,
+ * puis elle part dans « Ça coince » (en haut de chaque écran) ; un message le dit une fois.
+ * Une aide jamais vue ni réduite reste en version pleine.
+ * `permanente` : toujours en version pleine (page des parents).
  */
 export function AideVideo({ id, permanente = false }: { id: keyof typeof AIDES | string; permanente?: boolean }) {
   const e = useVues();
   const [open, setOpen] = useState(false);
   const aide = AIDES[id];
-  if (!VIDEOS_PRETES || !aide || !CLIPS[aide.clip].pret) return null;
-  const masquee = !permanente && (e.vues.includes(id) || e.fermees.includes(id));
-  if (masquee && !open) return null;
+  const vue = e.vues.includes(id);
+  const discrete = !permanente && (vue || e.fermees.includes(id));
+  const partie = discrete && !enPriseEnMain(e) && !open;
+  useEffect(() => { if (partie && aide) annoncerCoince(); }, [partie]);
+  if (!VIDEOS_PRETES || !aide || !CLIPS[aide.clip].pret || partie) return null;
   return (
     <>
-      <div class="aide-video">
-        <button type="button" class="aide-video-btn" onClick={() => { setOpen(true); logUsage('aide_video', id); }}>
-          <Lecture taille={16} />
-          <span><b>{aide.label}</b> <span class="nowrap">· {aide.duree}</span></span>
+      <div class={`aide-video${discrete ? ' discret' : ''}`}>
+        <button type="button" class="aide-video-btn" onClick={() => { setOpen(true); logUsage(discrete ? 'aide_video_revue' : 'aide_video', id); }}>
+          <Lecture taille={discrete ? 13 : 16} />
+          {discrete
+            ? <span>{vue ? 'Revoir : ' : ''}{aide.label} <span class="nowrap">· {aide.duree}</span></span>
+            : <span><b>{aide.label}</b> <span class="nowrap">· {aide.duree}</span></span>}
         </button>
-        {!permanente && <button type="button" class="aide-video-x" aria-label="Masquer cette aide" onClick={() => { fermerAide(id); logUsage('aide_video_fermee', id); toast('Aide masquée : tu la retrouves dans « Ça coince », en haut de l’écran.'); }}>×</button>}
+        {!discrete && !permanente && (
+          <button type="button" class="aide-video-x" aria-label="Réduire cette aide" onClick={() => {
+            fermerAide(id);
+            logUsage('aide_video_fermee', id);
+            toast(messageDiscret(lire(), 'Aide réduite'));
+          }}>×</button>
+        )}
       </div>
-      {open && <VideoSheet aide={aide} vue={id} onClose={() => setOpen(false)} />}
+      {open && <VideoSheet aide={aide} vue={id} onClose={() => setOpen(false)} onFin={permanente ? undefined : () => toast(messageDiscret(lire(), 'Vidéo vue'))} />}
     </>
   );
 }

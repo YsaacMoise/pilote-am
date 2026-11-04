@@ -40,16 +40,33 @@ async function run(scheme) {
   const titre = (await p.getByRole('heading', { name: /La journée d/ }).textContent()).trim();
   const kid = titre.replace(/^La journée (de |d’)/, '');
 
-  // Aide vidéo : la bulle se ferme, et la vidéo reste dans « Ça coince »
-  await p.getByRole('button', { name: 'Masquer cette aide' }).click();
-  assert(await toastHas(/tu la retrouves dans « Ça coince »/), 'bulle fermée : le message dit où la retrouver');
-  assert(!(await p.locator('.aide-video').count()), 'bulle fermée : elle n’encombre plus l’écran');
+  // Aide vidéo, semaine de prise en main : réduite, la bulle reste à sa place en petit et le message dit jusqu'à quand
+  await p.getByRole('button', { name: 'Réduire cette aide' }).click();
+  assert(await toastHas(/reste ici en petit jusqu’au 22 octobre, puis dans « Ça coince »/), 'bulle réduite : le message dit jusqu’à quand, puis où la retrouver');
+  assert(await p.locator('.aide-video.discret').count() === 1, 'bulle réduite : elle reste à sa place, en version discrète');
+  await p.locator('.aide-video.discret button').first().click();
+  await p.locator('dialog video, dialog .video-affiche').first().waitFor({ timeout: 8000 });
+  assert(true, 'la bulle discrète relance la vidéo');
+  await p.keyboard.press('Escape');
+  await p.waitForTimeout(300);
   await p.getByRole('button', { name: 'Ça coince' }).click();
   await p.getByRole('button', { name: /Revoir la vidéo de cet écran/ }).click();
   await p.locator('dialog video, dialog .video-affiche').first().waitFor({ timeout: 8000 });
-  assert(true, '« Ça coince » relance la vidéo de l’écran');
+  assert(true, '« Ça coince » relance aussi la vidéo de l’écran');
   await p.keyboard.press('Escape');
   await p.waitForTimeout(300);
+
+  // Une semaine plus tard : la bulle réduite part dans « Ça coince », un message le dit une fois, le bouton s'anime
+  await p.evaluate(() => { const e = JSON.parse(localStorage.getItem('pam-videos')); e.debut -= 8 * 24 * 3600 * 1000; localStorage.setItem('pam-videos', JSON.stringify(e)); });
+  await p.reload();
+  await p.getByRole('heading', { name: /La journée d/ }).waitFor();
+  assert(await toastHas(/maintenant dans « Ça coince »/), 'après la semaine : un message dit que les aides sont dans « Ça coince »');
+  assert(!(await p.locator('.aide-video').count()), 'après la semaine : la bulle réduite n’encombre plus l’écran');
+  assert(await p.locator('.pill.signal').count() === 1, 'après la semaine : le bouton « Ça coince » se signale');
+  await p.reload();
+  await p.getByRole('heading', { name: /La journée d/ }).waitFor();
+  await p.waitForTimeout(800);
+  assert(!(await p.locator('.toast p', { hasText: /maintenant dans « Ça coince »/ }).count()), 'le message n’est dit qu’une fois');
 
   // Note libre, puis modification
   await p.getByRole('button', { name: 'Note libre' }).click();

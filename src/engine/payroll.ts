@@ -591,8 +591,9 @@ function mergeParts(m: Month, parts: MonthBase[], cuts: ISODate[]): MonthBase {
   r.divisorMin = last.divisorMin;
   r.paidFraction = 1;
   r.heuresNormales = Math.round((r.normalesMin ?? 0) / 60);
-  // Parts fractionnaires des jours mensualisés (C-003) : arrondies une seule fois, au jour le plus proche.
-  r.joursActivite = Math.round(r.joursActivite - 1e-9);
+  // Parts fractionnaires des jours mensualisés (C-003) : arrondies une seule fois, à l'entier supérieur,
+  // comme la règle Pajemploi des jours mensualisés (joursMensualises).
+  r.joursActivite = Math.ceil(r.joursActivite - 1e-9);
   r.segments = parts.map((p, i) => ({ from: i === 0 ? firstDay(m) : cuts[i - 1], salaireMens: p.salaireMens, base: p.base }));
   r.alerts.unshift(`Avenant au ${cuts.map((d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`).join(', ')} : le salaire du mois est calculé au prorata de chaque période.`);
   return r;

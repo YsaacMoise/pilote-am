@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Journal } from '../src/engine/model';
 import {
-  insecable, reveilOublie, detailReveilOublie, detailBiberon, detailSieste, detailTemperature, dureeLabel, estFievre, minutesSieste, parseMl, parseTemperature, resumeJour, siesteEnCours, sommeilTotal,
+  insecable, reveilOublie, detailReveilOublie, detailBiberon, detailSieste, detailTemperature, dureeLabel, estFievre, minutesSieste, parseMl, parseTemperature, demandesApporter, detailApporter, resumeJour, siesteEnCours, sommeilTotal,
 } from '../src/engine/carnet';
 
 const j = (o: Partial<Journal>): Journal => ({ id: 'x', cid: 'c1', date: '2026-11-02', time: '12:00', kind: 'note', detail: '', ...o });
@@ -93,6 +93,30 @@ describe('carnet : résumé du jour', () => {
     expect(lignes[6]).toBe('Humeur : De bonne humeur (09h30)');
     expect(lignes[7]).toBe('Change : 2 (Selles (11h10), Couche mouillée (15h30))');
     expect(lignes.at(-1)).toBe('Bonne soirée !');
+  });
+  it('ce que les parents doivent apporter : une ligne à part, sans heure, sans doublon', () => {
+    const t = resumeJour({ enfant: 'Léo', jour: 'lundi 2 novembre', notes: [
+      j({ time: '10:00', kind: 'change', detail: 'Selles' }),
+      j({ time: '11:00', kind: 'note', detail: detailApporter('Couches') }),
+      j({ time: '12:00', kind: 'note', detail: 'A dessiné un soleil' }),
+      j({ time: '16:00', kind: 'note', detail: detailApporter('Vêtements de rechange') }),
+      j({ time: '16:30', kind: 'note', detail: detailApporter('Couches') }),
+    ] }).split('\n');
+    expect(t).toContain('Change : 1 (Selles (10h00))');
+    expect(t).toContain('À apporter : couches, vêtements de rechange');
+    expect(t).toContain('Note : A dessiné un soleil (12h00)');
+  });
+  it('page des parents : demandes depuis la dernière arrivée, sans doublon, la plus récente d’abord', () => {
+    const c = [
+      { date: '2026-10-30', time: '17:00', kind: 'note' as const, detail: detailApporter('Lait infantile') },
+      { date: '2026-11-02', time: '10:00', kind: 'note' as const, detail: detailApporter('Couches') },
+      { date: '2026-11-02', time: '16:00', kind: 'note' as const, detail: detailApporter('couches') },
+      { date: '2026-11-02', time: '12:00', kind: 'note' as const, detail: 'A dessiné un soleil' },
+      { date: '2026-11-03', time: '09:00', kind: 'note' as const, detail: detailApporter('Tenue de pluie Décathlon') },
+    ];
+    const d = demandesApporter(c, '2026-11-02 08:05');
+    expect(d.map((e) => e.detail)).toEqual(['À apporter : tenue de pluie Décathlon', 'À apporter : couches']);
+    expect(d[1].time).toBe('16:00');
   });
   it('sieste en cours ou ancienne note : pas de total inventé', () => {
     const t = resumeJour({ enfant: 'Léo', jour: 'lundi 2 novembre', notes: [j({ time: '12:40', kind: 'sieste', sommeil: true, detail: 'Dort depuis 12h40' })] });

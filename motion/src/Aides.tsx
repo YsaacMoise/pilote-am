@@ -1,6 +1,6 @@
 import { AbsoluteFill, Easing, interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
 import { Frame } from './components/Frame';
-import { Band, blocsDepuisPhrases, Bulle, Caption, cl, Cross, ease, fade, Halo, inOut, kf, mix, Musique, Phrase, PhoneBox, Piste, Push, Rect, rgba, Sfx, Sheet, Shot, Tap, Voix } from './components/ecran';
+import { Band, blocsDepuisPhrases, Bulle, Caption, cl, Cross, ease, fade, Halo, inOut, kf, mix, Musique, Phrase, PhoneBox, Piste, Push, Rect, rgba, Sfx, Sheet, Shot, Signature, Tap, Voix } from './components/ecran';
 import { C, F } from './theme';
 import VPo from '../public/voix/aide-pointer.reperes.json';
 import VCa from '../public/voix/aide-carnet.reperes.json';
@@ -9,6 +9,7 @@ import VIn from '../public/voix/aide-inviter.reperes.json';
 import VSi from '../public/voix/aide-simulateur.reperes.json';
 import JJ from '../public/ecrans/journee/journee.json';
 import DD from '../public/ecrans/demo/demo.json';
+import VSig from '../public/voix/signature.reperes.json';
 
 // Aides courtes, ouvertes depuis « Ça coince » quand l'assistante maternelle bloque, l'écran devant elle.
 // Pas de logo, pas d'introduction : l'écran à taille réelle, le doigt, une idée. Chaque aide garde son accent :
@@ -20,21 +21,24 @@ const D = DD as unknown as Record<string, Rect> & { mLignes: Rect[]; texteMois: 
 type Voix = { fichier: string; mots: Record<string, number>; phrases: Phrase[] };
 const A = 0.45; // la voix commence
 const finVoix = (v: Voix) => (v.mots.finRecopier ?? v.mots.finLien ?? v.mots.fin);
-const dureeAide = (v: Voix) => A + finVoix(v) + 1.3;
+// Après la voix : la signature (logo, « Arvela. Le carnet de bord des assistantes maternelles. », dite)
+const sigAt = (v: Voix) => A + finVoix(v) + 0.5;
+const dureeAide = (v: Voix) => sigAt(v) + 0.35 + VSig.mots.fin + 0.9;
 
 // Cadre commun : fond calme, sous-titres en haut, téléphone à taille quasi réelle, petite étiquette d'heure
 const S = 1.9;
 const TOP = 268;
 const Cadre: React.FC<{ v: Voix; t: number; fin: number; ecran: React.ReactNode; dessus?: React.ReactNode; heure?: { at: number; h: string }[]; italique?: string[]; sons?: React.ReactNode }> = ({ v, t, fin, ecran, dessus, heure = [], italique = [], sons }) => {
   const { fps } = useVideoConfig();
-  const pistes: Piste[] = [{ fichier: v.fichier, at: A }];
+  const pistes: Piste[] = [{ fichier: v.fichier, at: A }, { fichier: VSig.fichier, at: sigAt(v) + 0.35 }];
   const entree = interpolate(t, [0, 0.5], [1, 0], { ...cl, easing: ease });
-  const sortie = fade(t, fin - 0.5, fin, Easing.linear);
+  const sig = sigAt(v);
+  const sortie = fade(t, sig - 0.2, sig + 0.4, Easing.linear);
   const h = [...heure].reverse().find((x) => t >= x.at);
   return (
     <Frame>
       <AbsoluteFill style={{ background: `linear-gradient(180deg, ${mix(C.bg, C.accentSoft, 0.25)} 0%, ${C.bg} 40%)` }} />
-      <Caption t={t} blocs={blocsDepuisPhrases(v.phrases, A, { italique, finDernier: fin })} y={44} size={58} gauche={50} droite={50} />
+      <Caption t={t} blocs={blocsDepuisPhrases(v.phrases, A, { italique, finDernier: sigAt(v) })} y={44} size={58} gauche={50} droite={50} />
       <div style={{ position: 'absolute', inset: 0, translate: `0 ${entree * 160}px`, opacity: (1 - entree) * (1 - sortie) }}>
         <PhoneBox cx={540} top={TOP} S={S}>{ecran}</PhoneBox>
         {h && (
@@ -42,7 +46,9 @@ const Cadre: React.FC<{ v: Voix; t: number; fin: number; ecran: React.ReactNode;
         )}
         {dessus}
       </div>
-      <Voix p={pistes[0]} />
+      <Signature t={t} at={sig} fin={fin} phrase="Le carnet de bord des assistantes maternelles" />
+      {pistes.map((p, i) => <Voix key={i} p={p} />)}
+      <Sfx at={sig + 0.2} name="chime" volume={0.3} />
       <Musique fichier="musique/patterns-in-the-grain.mp3" depart={6} fin={fin} pistes={pistes} niveau={0.13} fps={fps} />
       {sons}
     </Frame>
@@ -83,6 +89,8 @@ export const AideCarnet: React.FC = () => {
   const tapRose = c('choisis') + 0.55, tapRepas = c('noter') - 0.25, tapTout = c('heure') - 0.45;
   const tapSommeil = c('sommeil') - 0.2, tapEndort = c('sommeil') + 0.45, tapReveil = c('reveil2') + 0.05;
   const midi = tapSommeil - 0.35, apresMidi = tapReveil - 0.45;
+  // Il manque des couches ? La tuile « À apporter », « Couches », et la demande arrive chez les parents
+  const quinze = c('manque') - 0.35, tapApporter = c('apporter') - 0.15, tapCouches = c('apporter') + 0.6;
   const ecran = (
     <>
       <Cross a="demo/c-adam" b="demo/c-rose-0" p={fade(t, tapRose + 0.06, tapRose + 0.3, Easing.linear)} />
@@ -91,8 +99,13 @@ export const AideCarnet: React.FC = () => {
       <Shot src="demo/c-rose-2" o={fade(t, tapEndort + 0.15, tapEndort + 0.4, Easing.linear)} />
       <Shot src="demo/c-rose-2b" o={fade(t, apresMidi, apresMidi + 0.2, Easing.linear)} />
       <Shot src="demo/c-rose-3" o={fade(t, tapReveil + 0.1, tapReveil + 0.35, Easing.linear)} />
+      <Shot src="demo/c-rose-3b" o={fade(t, quinze, quinze + 0.2, Easing.linear)} />
+      <Shot src="demo/c-rose-4" o={fade(t, tapCouches + 0.15, tapCouches + 0.4, Easing.linear)} />
       <Sheet src="demo/c-repas" top={D.cRepasFeuille.top} t={t} up={tapRepas + 0.05} down={tapTout + 0.1} />
       <Sheet src="demo/c-sommeil" top={D.cSommeilFeuille.top} t={t} up={tapSommeil + 0.05} down={tapEndort + 0.1} />
+      <Sheet src="demo/c-apporter" top={D.cApporterFeuille.top} t={t} up={tapApporter + 0.05} down={tapCouches + 0.1} />
+      <Halo t={t} from={c('manque') - 0.1} to={tapApporter} r={D.cApporter} />
+      <Halo t={t} from={tapCouches + 0.35} to={DUREE_CARNET} r={D.cLigneApporter} pad={4} />
       <Halo t={t} from={c('heure') - 0.1} to={midi} r={D.cHeure1} pad={6} />
       <Halo t={t} from={c('reveil') - 0.1} to={tapReveil} r={D.cDodo} />
       <Tap t={t} at={tapRose} r={D.cRose} />
@@ -101,9 +114,13 @@ export const AideCarnet: React.FC = () => {
       <Tap t={t} at={tapSommeil} r={D.cSommeil} />
       <Tap t={t} at={tapEndort} r={D.cEndort} />
       <Tap t={t} at={tapReveil} r={D.cReveil2} />
+      <Tap t={t} at={tapApporter} r={D.cApporter} />
+      <Tap t={t} at={tapCouches} r={D.cCouches} />
     </>
   );
-  return <Cadre v={VC} t={t} fin={DUREE_CARNET} ecran={ecran} heure={[{ at: 0.2, h: '11 h 50' }, { at: midi, h: '12 h 40' }, { at: apresMidi, h: '14 h 55' }]} italique={['toute seule', 'Réveil']} sons={taps([tapRose, tapRepas, tapTout, tapSommeil, tapEndort, tapReveil])} />;
+  // « Ses parents le voient aussitôt » : la carte telle qu'elle arrive en haut de leur page
+  const dessus = <Bulle t={t} from={c('parents') - 0.25} to={DUREE_CARNET + 1} titre="Page des parents" texte={'À apporter : couches\nDemandé aujourd’hui à 15h00'} x={110} y={930} w={860} size={36} />;
+  return <Cadre v={VC} t={t} fin={DUREE_CARNET} ecran={ecran} dessus={dessus} heure={[{ at: 0.2, h: '11 h 50' }, { at: midi, h: '12 h 40' }, { at: apresMidi, h: '14 h 55' }, { at: quinze, h: '15 h 00' }]} italique={['toute seule', 'Réveil', 'À apporter']} sons={<>{taps([tapRose, tapRepas, tapTout, tapSommeil, tapEndort, tapReveil, tapApporter, tapCouches])}<Sfx at={c('parents') - 0.2} name="envoye" volume={0.35} /></>} />;
 };
 
 // ---------- Mois : tout est calculé, case par case, puis envoyé au parent ----------

@@ -490,6 +490,11 @@ dialog.sheet[open] { animation: sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-weight: 650; cursor: pointer;
 }
 .quick button:active { background: var(--surface-2); }
+/* « À apporter » : une demande aux parents, pas un moment de la journée. Toute la largeur, sous les six tuiles. */
+.quick .q-large { grid-column: 1 / -1; min-height: 68px; flex-direction: row; justify-content: flex-start; gap: 14px; padding: 8px 16px; text-align: left; }
+.quick .q-large .q-ico { background: var(--accent-soft); color: var(--accent-ink); }
+.quick .q-txt { display: flex; flex-direction: column; line-height: 1.2; }
+.quick .q-txt small { font-size: 14px; font-weight: 500; color: var(--ink-2); }
 .quick .q-ico { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--sauge-soft); color: var(--sauge); }
 /* Carnet : fonds en galets légèrement penchés, comme le logo ; le picto reste droit */
 .quick .q-ico { width: 52px; border-radius: 52% 48% 50% 50% / 56% 54% 46% 44%; }
@@ -741,6 +746,14 @@ h1.h-card { font-size: 25px; }
 .ev-details { margin-top: 6px; }
 .ev-details summary { cursor: pointer; color: var(--primary); font-weight: 600; min-height: 44px; display: flex; align-items: center; }
 .ev-details p { margin: 4px 0; font-size: 15px; }
+/* Page des parents : ce que l'AM demande d'apporter, en haut de la journée */
+.apporter { display: flex; gap: 14px; align-items: flex-start; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: var(--accent-soft); }
+.apporter > svg { flex: none; color: var(--accent-ink); margin-top: 2px; }
+.apporter h2 { margin: 0 0 4px; }
+.apporter ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.apporter li b { font-weight: 650; }
+.apporter li b { display: block; }
+.apporter li span { display: block; color: var(--ink-2); font-size: 15px; }
 .cp { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px dashed var(--line); }
 .cp:last-of-type { border-bottom: 0; }
 .cp-l { display: flex; flex-direction: column; }
@@ -840,6 +853,14 @@ h1.h-card { font-size: 25px; }
 .aide-video-btn { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 14px 4px 5px; border: 0; background: none; font: inherit; font-size: 15px; color: var(--ink); cursor: pointer; text-align: left; }
 .aide-video-btn .video-play { width: 34px; height: 34px; flex: none; box-shadow: none; }
 .aide-video-x { min-width: 44px; border: 0; border-left: 1px solid var(--accent-soft); background: none; font-size: 22px; color: var(--ink-2); cursor: pointer; }
+/* Vidéo déjà vue ou bulle réduite, pendant la semaine de prise en main : une ligne discrète, lisible (contraste AA), qu'on peut toujours relancer */
+.aide-video.discret { border-color: var(--line-strong); background: transparent; }
+.aide-video.discret .aide-video-btn { color: var(--ink-2); font-size: 14px; gap: 8px; padding: 2px 14px 2px 6px; }
+.aide-video.discret .video-play { width: 28px; height: 28px; background: var(--surface-2); color: var(--ink-2); }
+/* Les aides viennent de partir dans « Ça coince » : le bouton le montre quelques secondes */
+.pill.signal { animation: coince-signal 1.2s ease-in-out 4; box-shadow: 0 0 0 3px var(--accent-soft); }
+@keyframes coince-signal { 50% { box-shadow: 0 0 0 7px var(--accent-soft); } }
+@media (prefers-reduced-motion: reduce) { .pill.signal { animation: none; } }
 /* « Ça coince » : la vidéo de l'écran d'abord, puis la remarque */
 .coince-video { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 14px 8px 8px; border: 1px solid var(--accent-soft); background: var(--primary-soft); border-radius: var(--r-md); font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
 .coince-video .video-play { width: 40px; height: 40px; flex: none; box-shadow: none; }

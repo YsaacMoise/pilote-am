@@ -52,15 +52,13 @@ jobs:
   firebase:
     needs: [build, regles]
     runs-on: ubuntu-latest
+    # Publication sans clé stockée (04/11/2026) : GitHub prouve à Google que la demande vient de ce dépôt,
+    # Google rend un laissez-passer d'une heure pour le compte github-publication, qui n'a que le droit
+    # de publier le site (Firebase Hosting Admin et lecture des clés d'API). Plus aucune clé dans les secrets.
+    permissions:
+      contents: read
+      id-token: write
     steps:
-      - name: Clé de déploiement présente ?
-        env:
-          HAS_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ARVELA_APP != '' }}
-        run: |
-          if [ "$HAS_KEY" != "true" ]; then
-            echo "::error::Clé FIREBASE_SERVICE_ACCOUNT_ARVELA_APP absente des secrets du dépôt : publication impossible."
-            exit 1
-          fi
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: main
@@ -68,13 +66,12 @@ jobs:
         with:
           name: site
           path: dist
-      - uses: FirebaseExtended/action-hosting-deploy@500ac625ca2dd40cbd15f7659af953801858032a # v0.11.0
+      - uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
         with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ARVELA_APP }}
-          projectId: arvela-app
-          channelId: live
-          firebaseToolsVersion: 15.34.2
+          workload_identity_provider: projects/371665732009/locations/global/workloadIdentityPools/github/providers/pilote-am
+          service_account: github-publication@arvela-app.iam.gserviceaccount.com
+      - name: Publier sur arvela.fr
+        run: npx --yes firebase-tools@15.34.2 deploy --only hosting --project arvela-app --non-interactive
   redirection-github-pages:
     runs-on: ubuntu-latest
     permissions:

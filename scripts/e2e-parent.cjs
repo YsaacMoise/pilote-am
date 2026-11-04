@@ -104,6 +104,17 @@ async function axe(p, label) {
   assert(true, 'la sieste apparaît chez les parents sans recharger');
   await p.shot('04-en-direct');
 
+  console.log('\n== À apporter : demande de l’AM, en haut de la page des parents ==');
+  await a.getByRole('region', { name: 'Ajouter au carnet de Lou' }).getByRole('button', { name: /^À apporter/ }).click();
+  await a.getByRole('button', { name: 'Couches', exact: true }).click();
+  await a.locator('.tl-item', { hasText: 'À apporter' }).waitFor();
+  const carte = p.locator('section.apporter');
+  await carte.waitFor({ timeout: 10000 });
+  assert((await carte.innerText()).includes('Couches'), 'la carte « À apporter » apparaît en direct avec « Couches »');
+  assert(await p.locator('.ev', { hasText: 'À apporter' }).count() > 0, 'dans la journée, la ligne s’appelle « À apporter », pas « Note »');
+  await p.shot('05-a-apporter');
+  await axe(p, 'parents, à apporter');
+
   console.log('\n== Parents : le mois ==');
   await p.getByRole('tab', { name: 'Ce mois' }).click();
   await p.getByRole('heading', { name: 'Votre déclaration Pajemploi' }).waitFor();

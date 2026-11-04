@@ -51,7 +51,14 @@ export function Gommette({ name, color, size }: { name: string; color: number; s
 export function Topbar({ title, sub, back, screen, end }: { title: string; sub?: string; back?: string; screen: string; end?: ComponentChildren }) {
   const [open, setOpen] = useState(false);
   const [video, setVideo] = useState(false);
+  const [signal, setSignal] = useState(false); // les aides viennent de partir dans « Ça coince » : le bouton s'anime
   const aide = aideEcran(screen);
+  useEffect(() => {
+    let t: number | undefined;
+    const f = () => { setSignal(true); clearTimeout(t); t = window.setTimeout(() => setSignal(false), 6000); };
+    window.addEventListener('pam-coince', f);
+    return () => { window.removeEventListener('pam-coince', f); clearTimeout(t); };
+  }, []);
   return (
     <header class="topbar">
       {back ? (
@@ -66,7 +73,7 @@ export function Topbar({ title, sub, back, screen, end }: { title: string; sub?:
         {sub && <span class="sub">{sub}</span>}
       </h1>
       {end}
-      <button class="pill" onClick={() => setOpen(true)} aria-haspopup="dialog">
+      <button class={`pill${signal ? ' signal' : ''}`} onClick={() => setOpen(true)} aria-haspopup="dialog">
         <Icon name="message" size={18} />
         Ça coince
       </button>

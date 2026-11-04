@@ -13,7 +13,7 @@ export const LEGAL = {
   /** Date de fin de la phase de test (3 mois) */
   finTest: '31 janvier 2027',
   /** Date de la dernière mise à jour des textes */
-  maj: '1er novembre 2026',
+  maj: '3 novembre 2026',
 };
 
 /** Phrase de responsabilité reprise dans l'app et dans le message envoyé au parent (C-120, C-121) */
