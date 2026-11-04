@@ -102,7 +102,7 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 | C-112 | Moyen | Partiel | Échec sans clé, versions figées, règles testées avant publication. Branche main protégée le 03/11/2026 (demande de fusion obligatoire, vérifications « tests » et « regles-firestore » exigées, suppression et réécriture interdites). Reste : publication des règles Firestore par le workflow |
 | C-113 | Élevé | **Action YKM** | Double authentification GitHub, Google, OVHcloud, PostHog |
 | C-114 | Moyen | Corrigé (03/11/2026) | DMARC en quarantaine ; CAA limité à letsencrypt.org et pki.goog ; verrou de transfert et DNSSEC déjà actifs |
-| C-115 | Élevé | Corrigé (03/11/2026) | Offre Blaze ; sauvegarde quotidienne gardée 98 jours ; alerte de budget à 5 € par mois. Reste : un test de restauration |
+| C-115 | Élevé | Corrigé (03/11/2026, restauration testée le 04/11/2026) | Offre Blaze ; sauvegarde quotidienne gardée 98 jours ; alerte de budget à 5 € par mois. Essai de restauration le 04/11/2026 : sauvegarde de 08 h 43 UTC restaurée dans une base séparée « essai-restauration », 105 documents utilisateurs et 1 lien parent, identiques à la base réelle ; base d'essai supprimée ensuite. Règles Firestore de la n°45 publiées le 04/11/2026 à 11 h 22 UTC (Cloud Shell, par YKM). À refaire chaque trimestre |
 | C-116 | Moyen | Ouvert, avant phase 2 | |
 | C-120 | Élevé | Corrigé | |
 | C-121 | Moyen | Corrigé | « Indépendant de l'Urssaf » sur Mois, Plus, Mentions et dans le message au parent |
