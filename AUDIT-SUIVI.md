@@ -26,7 +26,7 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 | C-030 Soins en clair vers PostHog | Corrigé | Plus d'enregistrement d'écran ni de capture automatique ; carnet masqué ; aria-label sans le texte saisi. Test tests/analytics.test.ts. Parcours piégé dans Chrome contre un faux serveur PostHog (contrôle indépendant du 31/10/2026) : sans accord 0 requête ; avec accord, aucune donnée saisie ni identifiant de contrat ; après extinction, plus aucun envoi ; démonstration 0 requête |
 | C-031 Corps des requêtes capturables | Corrigé | `recordBody`/`recordHeaders` forcés à faux, enregistrement coupé côté client, pseudonymisation sans limite de profondeur. Test analytics |
 | C-032 / C-150 Mesure sans consentement | Corrigé, changé le 04/11/2026 | D'abord option B (accord explicite). Le 04/11/2026, décision de YKM : mesure active par défaut, opposition en un geste dans Réglages, sur le fondement de l'exemption de consentement de la CNIL pour la mesure d'audience (pages CNIL du 04/07/2025 et FAQ du 29/04/2026). Conditions tenues et testées (tests/analytics.test.ts) : aucun profil de personne (`person_profiles: 'never'`), aucune propriété de personne, adresse IP retirée (réglage du projet et `before_send`), pas de géolocalisation (`$geoip_disable`), identifiant renouvelé au plus tard après 13 mois sans prolongation, événements gardés 1 an (25 mois au plus), jamais en démonstration ; côté projet PostHog, enregistrement d'écran, capture automatique, erreurs, journaux, performances, cartes de chaleur et sondages coupés le 04/11/2026. Une utilisatrice qui avait éteint la mesure reste refusée. Jamais pour les visiteurs du site, le simulateur avant inscription ni la page des parents : seules les utilisatrices inscrites, qui ont accès à Réglages, sont mesurées (relecture du 04/11/2026). Les données sont pseudonymes, pas anonymes : le mot « anonyme » est retiré des textes. Information une fois dans l'app, dans Réglages et dans la politique. Reste à faire valider : le recours à l'exemption pour un outil tiers (PostHog) ; l'analyse hebdomadaire par Claude ne doit lire que des statistiques agrégées, jamais des événements individuels |
-| C-151 Mentions légales et contact | Partiel | Page Mentions légales (éditeur YKM non professionnel, hébergeurs, contact@arvela.fr, conditions du test). **Action YKM : créer l'adresse contact@arvela.fr (redirection OVH)**. Contrat de sous-traitance article 28 complet : avant phase 2 |
+| C-151 Mentions légales et contact | Corrigé | Page Mentions légales (éditeur YKM non professionnel, hébergeurs, contact@arvela.fr). Contrat de sous-traitance article 28 complet : **fait le 04/11/2026**, écran Conditions d'utilisation (src/screens/Conditions.tsx), accepté à la création du compte, tests tests/conditions.test.ts et parcours e2e. Adresse contact@arvela.fr : redirection OVH vers la boîte de YKM, vérifiée dans la console le 04/11/2026 |
 | C-153 Politique et message aux parents inexacts | Corrigé | Politique réécrite (5 points), message aux parents devenu demande d'accord écrit pour le carnet |
 | C-110 GitHub Pages encore en ligne | Corrigé à la publication | Workflow : page de redirection vers arvela.fr + service worker qui se désinscrit. Option YKM : désactiver Pages dans GitHub > Settings > Pages |
 | C-120 Aucun avertissement de responsabilité | Corrigé | Conditions du test (Mentions légales), avertissement sur l'écran Mois et dans le message au parent |
@@ -102,7 +102,7 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 | C-112 | Moyen | Partiel | Échec sans clé, versions figées, règles testées avant publication. Branche main protégée le 03/11/2026 (demande de fusion obligatoire, vérifications « tests » et « regles-firestore » exigées, suppression et réécriture interdites). Reste : publication des règles Firestore par le workflow |
 | C-113 | Élevé | **Action YKM** | Double authentification GitHub, Google, OVHcloud, PostHog |
 | C-114 | Moyen | Corrigé (03/11/2026) | DMARC en quarantaine ; CAA limité à letsencrypt.org et pki.goog ; verrou de transfert et DNSSEC déjà actifs |
-| C-115 | Élevé | Corrigé (03/11/2026) | Offre Blaze ; sauvegarde quotidienne gardée 98 jours ; alerte de budget à 5 € par mois. Reste : un test de restauration |
+| C-115 | Élevé | Corrigé (03/11/2026, restauration testée le 04/11/2026) | Offre Blaze ; sauvegarde quotidienne gardée 98 jours ; alerte de budget à 5 € par mois. Essai de restauration le 04/11/2026 : sauvegarde de 08 h 43 UTC restaurée dans une base séparée « essai-restauration », 105 documents utilisateurs et 1 lien parent, identiques à la base réelle ; base d'essai supprimée ensuite. Règles Firestore de la n°45 publiées le 04/11/2026 à 11 h 22 UTC (Cloud Shell, par YKM). À refaire chaque trimestre |
 | C-116 | Moyen | Ouvert, avant phase 2 | |
 | C-120 | Élevé | Corrigé | |
 | C-121 | Moyen | Corrigé | « Indépendant de l'Urssaf » sur Mois, Plus, Mentions et dans le message au parent |
@@ -118,14 +118,14 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 | C-145 | Moyen | Phase 3 | |
 | C-146 | Faible | **Action YKM** | Exclure de PostHog les deux sessions du 30/10/2026 vers 3 h 27 et 3 h 45 UTC |
 | C-150 | Critique | Corrigé | = C-032 |
-| C-151 | Élevé | Partiel | voir plus haut |
-| C-152 | Élevé | Partiel | Demande d'accord écrit des parents pour le carnet ; analyse d'impact avant phase 2 |
+| C-151 | Élevé | Corrigé | voir plus haut |
+| C-152 | Élevé | Partiel | Demande d'accord écrit des parents pour le carnet ; analyse d'impact faite le 04/11/2026 (docs/aipd.md). Reste : étendre l'accord écrit au motif « malade » et à la case handicap ou maladie (AIPD, mesure 9) |
 | C-153 | Élevé | Corrigé | |
 | C-154 | Moyen | Partiel | Renvoi au registre papier et rappel de déclaration d'accident ; vrai registre : avant phase 2 |
 | C-155 | Moyen | Ouvert, avant phase 2 | Purge du carnet |
 | C-156 | Moyen | Corrigé | Phrase sur le droit américain |
 | C-157 | Moyen | Ouvert, avant phase 2 | Effacement PostHog à la suppression du compte |
-| C-158 | Élevé | Ouvert, avant phase 2 | Registre des traitements et analyse d'impact |
+| C-158 | Élevé | Partiel | Registre (docs/registre-des-traitements.md, parties responsable et sous-traitant) et analyse d'impact (docs/aipd.md) écrits le 04/11/2026, méthode CNIL. Conclusion de l'AIPD : ouverture à toutes les AM possible **à condition** de faire avant la double authentification des comptes administrateurs (C-113) et de trancher le cadre de l'analyse par Claude (mesure 7). Six questions au juriste : docs/points-a-faire-valider.md |
 | C-159 | Faible | Corrigé | noindex, robots.txt, phrase sur la dictée |
 
 ## Erreurs relevées dans le rapport d'audit lui-même
@@ -139,6 +139,17 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 
 - Protection anti-robots : Firebase App Check avec reCAPTCHA Enterprise (Fraud Defense), clé à score limitée à arvela.fr, jeton de 7 jours. Enregistrée en mode surveillance : rien n'est bloqué. Le code (demande de fusion « sécurité avant ouverture ») ne s'active que sur arvela.fr. À rendre obligatoire pour Firestore puis Authentication quand les mesures de la console montrent que les demandes de l'app sont vérifiées.
 - Aperçu de test : chaque demande de fusion est publiée sur une adresse Firebase à part, effacée après 7 jours (workflow Aperçu).
+
+## Ajouts du 4 novembre 2026 (volet légal avant l'ouverture, branche `volet-legal`)
+
+- Conditions d'utilisation avec le contrat de traitement des données de l'article 28 du RGPD (src/screens/Conditions.tsx) : liées depuis l'en-tête et le pied de page du site, Plus, les mentions légales et la politique ; phrase d'acceptation à la création du compte, sans case à cocher ; date dans src/legal.ts (`majConditions`). Les mentions légales renvoient désormais aux conditions pour la partie données.
+- Registre des traitements (docs/registre-des-traitements.md) : six fiches responsable (compte, mesure d'usage, anti-robots, e-mails de service, retours du test et contact, journaux du site) et trois fiches sous-traitant (données saisies, liens parents, sauvegardes).
+- Analyse d'impact (docs/aipd.md) : deux critères du G29 (enfants, données de santé) ; risque principal : accès illégitime, vraisemblance importante tant que C-113 n'est pas fait.
+- Points à faire valider par un juriste (docs/points-a-faire-valider.md) : qualification responsable / sous-traitant, hébergement de données de santé, exemption reCAPTCHA, statut de consommatrice, anonymat de l'éditeur, exemption de mesure d'audience pour PostHog.
+- C-041 (fermer les inscriptions) est dépassé par la décision d'ouvrir les inscriptions à toutes les AM ; la condition posée par l'AIPD (C-113 avant l'ouverture) le remplace.
+- Mesure d'usage active par défaut avec opposition (décision YKM du 04/11/2026) : décrite dans le registre et l'AIPD, publiée par la demande de fusion n°44 (C-032 / C-150 à jour).
+- Relecture indépendante du volet légal (04/11/2026) : corrections appliquées sur la même branche. Accord aux conditions enregistré (`conditionsAcceptees` : version et date) à la création du compte, dans les réglages copiés dans le compte ; message affiché aux comptes existants jusqu'à leur accord (« Lire », « J'accepte »). Message aux parents étendu au motif « malade », à la case handicap ou maladie et au droit de saisir la CNIL. Textes alignés sur les n° 44 (mesure des seules utilisatrices inscrites, données pseudonymes) et n° 45 (pierres tombales des liens parents). Fiche de registre prête pour les AM (docs/fiche-registre-assistante-maternelle.md). AIPD : points faibles R-1, R-3, R-4 et mesures 1 bis, 2 bis, 14 (comptes inactifs, R-8) et 15 (pierres tombales). **Prérequis de fusion : contact@arvela.fr doit exister.**
+- scripts/e2e-sync.cjs : `waitForFunction` remplacé par une attente par `page.evaluate`, pour que le parcours passe avec la règle CSP (sans `unsafe-eval`).
 
 ## Relecture de sécurité indépendante du 4 novembre 2026
 

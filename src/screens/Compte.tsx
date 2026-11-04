@@ -70,6 +70,7 @@ export function AccountForm({ initial = 'create', initialEmail = '', onDone }: {
       {create && <PasswordRules pw={pw} />}
       {error && <Banner tone="warn">{error}</Banner>}
       {create && <p class="hint">Ton compte garde une copie de tes données, hébergée à Paris. <a href="#/confidentialite">Ce qui est gardé et tes droits</a></p>}
+      {create && <p class="hint">En créant ton compte, tu acceptes les <a href="#/conditions">Conditions d’utilisation</a>.</p>}
       <button class="btn btn-primary btn-lg btn-block" type="submit" disabled={busy}>
         {busy ? (create ? 'Création…' : 'Connexion…') : create ? 'Créer mon compte' : 'Me connecter'}
       </button>
@@ -148,7 +149,7 @@ export function Compte() {
         )}
         <section class="card stack-sm">
           <h2 class="row"><Icon name="lock" />Où vont tes données</h2>
-          <p>La copie de tes données est rangée chez Google Firebase, sur des serveurs à Paris. Ton adresse e-mail et ton mot de passe, chiffré, sont gérés par Google hors de France. Dans l’app, seul ton compte donne accès à tes données. Comme pour tout service en ligne, l’équipe d’Arvela peut techniquement les consulter pour l’entretien.</p>
+          <p>La copie de tes données est rangée chez Google Firebase, sur des serveurs à Paris. Ton adresse e-mail et ton mot de passe, haché (transformé de façon irréversible), sont gérés par Google hors de France. Dans l’app, seul ton compte donne accès à tes données. Comme pour tout service en ligne, l’éditeur d’Arvela peut techniquement y accéder ; il s’engage à ne le faire qu’avec ton accord.</p>
           <p class="hint">Les sauvegardes dans Fichiers restent utiles : elles ne dépendent d’aucun compte.</p>
         </section>
       </main>

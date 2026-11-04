@@ -11,6 +11,17 @@ const cloud = process.env.CLOUD || 'http://localhost:4180';
 const out = path.join(__dirname, 'out');
 fs.mkdirSync(out, { recursive: true });
 
+// Attente d'une condition dans la page, par page.evaluate : waitForFunction évalue une chaîne,
+// ce que la règle CSP (sans 'unsafe-eval') interdit quand serve.mjs tourne avec CSP=1.
+async function attendre(page, fn, timeout) {
+  const fin = Date.now() + timeout;
+  for (;;) {
+    if (await page.evaluate(fn).catch(() => false)) return;
+    if (Date.now() > fin) throw new Error('Délai dépassé en attendant : ' + fn.toString());
+    await page.waitForTimeout(150);
+  }
+}
+
 function assert(cond, msg) {
   if (!cond) throw new Error('ÉCHEC : ' + msg);
   console.log('  ok  ' + msg);
@@ -95,7 +106,7 @@ async function phone(b, name) {
   await p2.goto(base + '#/reglages');
   await p2.getByLabel('Ton prénom').fill('Sonia B');
   await a.goto(base + '#/reglages');
-  await a.waitForFunction(() => document.querySelector('input[autocomplete="given-name"]')?.value === 'Sonia B', null, { timeout: 10000 });
+  await attendre(a, () => document.querySelector('input[autocomplete="given-name"]')?.value === 'Sonia B', 10000);
   assert(true, 'prénom changé sur B → visible sur A');
 
   await a.goto(base + '#/');
@@ -115,7 +126,7 @@ async function phone(b, name) {
   await a.shot('04-hors-ligne');
   await A.ctx.setOffline(false);
   await p2.goto(base + '#/reglages');
-  await p2.waitForFunction(() => document.querySelector('input[autocomplete="given-name"]')?.value === 'Sonia hors ligne', null, { timeout: 15000 });
+  await attendre(p2, () => document.querySelector('input[autocomplete="given-name"]')?.value === 'Sonia hors ligne', 15000);
   assert(true, 'retour du réseau : le changement fait hors ligne arrive sur B');
 
   console.log('\n== Fermeture et réouverture ==');
@@ -141,7 +152,7 @@ async function phone(b, name) {
   await p2.locator('.li-title', { hasText: 'Inès' }).click();
   await p2.getByRole('button', { name: 'Supprimer ce contrat' }).click();
   await a2.goto(base + '#/plus');
-  await a2.waitForFunction(() => ![...document.querySelectorAll('.li-title')].some((e) => e.textContent.includes('Inès')), null, { timeout: 10000 });
+  await attendre(a2, () => ![...document.querySelectorAll('.li-title')].some((e) => e.textContent.includes('Inès')), 10000);
   assert(true, 'enfant supprimé sur B → disparu sur A');
   const after = (await stats())[uid];
   assert(after.live === before && after.total > before, `suppression gardée en ligne comme « pierre tombale » (${after.total - after.live} marquée)`);
@@ -165,7 +176,7 @@ async function phone(b, name) {
   await a2.getByRole('button', { name: 'Me connecter' }).click();
   await a2.getByText(/^À jour/).waitFor({ timeout: 10000 });
   await p2.goto(base + '#/reglages');
-  await p2.waitForFunction(() => document.querySelector('input[autocomplete="given-name"]')?.value === 'Sonia déconnectée', null, { timeout: 10000 });
+  await attendre(p2, () => document.querySelector('input[autocomplete="given-name"]')?.value === 'Sonia déconnectée', 10000);
   assert(true, 'changement fait pendant la déconnexion : envoyé à la reconnexion, visible sur B');
 
   console.log('\n== Troisième téléphone avec ses propres enfants : choix demandé ==');

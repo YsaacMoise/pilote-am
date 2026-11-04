@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { logUsage, toast, useStore } from './store';
+import { logUsage, saveSettings, toast, useStore } from './store';
 import { isDemo, setDemo, deleteDatabase } from './db';
 import { Toaster } from './ui/kit';
 import { Icon, type IconName } from './ui/icons';
@@ -11,6 +11,7 @@ import { Contrat } from './screens/Contrat';
 import { Avenant } from './screens/Avenant';
 import { Confidentialite } from './screens/Confidentialite';
 import { Mentions } from './screens/Mentions';
+import { Conditions } from './screens/Conditions';
 import { Historique } from './screens/Historique';
 import { Controle } from './screens/Controle';
 import { Conges } from './screens/Conges';
@@ -26,6 +27,7 @@ import { Guide } from './screens/Guide';
 import { VIDEOS_PRETES } from './ui/VideoGuide';
 import { Compte } from './screens/Compte';
 import { useCloud } from './cloud-state';
+import { acceptationConditions, conditionsAAccepter, MESSAGE_CONDITIONS } from './legal';
 
 /** Bandeau sur tous les écrans quand le serveur a refusé un envoi (C-023) */
 function RefusBanner() {
@@ -36,6 +38,22 @@ function RefusBanner() {
       <Icon name="alert" size={20} />
       <p>{c.refus}</p>
       <button type="button" onClick={() => { void import('./cloud').then((m) => m.retryRejected()).then((ok) => { if (!ok) toast('Pas encore envoyé. Vérifie le réseau, puis réessaie.'); }).catch(() => {}); }}>Réessayer</button>
+    </div>
+  );
+}
+
+/** Conditions d'utilisation changées : message aux utilisatrices déjà installées, jusqu'à leur accord (version et date gardées). */
+function ConditionsBanner() {
+  const s = useStore();
+  if (isDemo() || !conditionsAAccepter(s.settings)) return null;
+  return (
+    <div class="sync-banner cond-banner" role="region" aria-label="Conditions d’utilisation">
+      <Icon name="file" size={20} />
+      <p>{MESSAGE_CONDITIONS}</p>
+      <div class="cond-actions">
+        <a class="cond-lire" href="#/conditions">Lire</a>
+        <button type="button" onClick={() => { void saveSettings({ conditionsAcceptees: acceptationConditions() }).then(() => toast('Merci, c’est noté.', undefined, 'ok')); }}>J’accepte</button>
+      </div>
     </div>
   );
 }
@@ -76,12 +94,12 @@ export function App() {
     const title = ({
       '': 'Aujourd’hui', carnet: 'Carnet', mois: 'Mois', plus: 'Plus', contrat: 'Contrat', avenant: 'Avenant', historique: 'Historique',
       controle: 'Contrôle du bulletin', conges: 'Congés', fin: 'Fin de contrat', fiscal: 'Impôts', sauvegarde: 'Sauvegarde',
-      pilote: 'Données du pilote', compte: 'Compte', reglages: 'Réglages', regles: 'Comment l’app calcule', confidentialite: 'Confidentialité', mentions: 'Mentions légales', installer: 'Installer', simulateur: 'Simuler un accueil',
+      pilote: 'Données du pilote', compte: 'Compte', reglages: 'Réglages', regles: 'Comment l’app calcule', confidentialite: 'Confidentialité', mentions: 'Mentions légales', conditions: 'Conditions d’utilisation', installer: 'Installer', simulateur: 'Simuler un accueil',
     } as Record<string, string>)[p] ?? 'Arvela';
     // Avant le compte, c'est le site public : titres pensés pour les moteurs de recherche.
     const site = s.ready && !s.settings.onboarded && !isDemo();
     if (site && p === 'simulateur') document.title = 'Simulateur du coût d’une assistante maternelle · Arvela';
-    else if (site && p !== 'confidentialite' && p !== 'mentions') document.title = 'Arvela · L’app des assistantes maternelles';
+    else if (site && p !== 'confidentialite' && p !== 'mentions' && p !== 'conditions') document.title = 'Arvela · L’app des assistantes maternelles';
     else document.title = `${title} · Arvela`;
   }, [p, s.ready, s.settings.onboarded]);
 
@@ -89,9 +107,10 @@ export function App() {
   if (p === 'p' && parts[1]) { location.reload(); return null; }
   if (!s.ready) return null;
   if (!s.settings.onboarded && !isDemo()) {
-    // La politique de confidentialité reste lisible avant la création du compte.
+    // La politique de confidentialité et les conditions d'utilisation restent lisibles avant la création du compte.
     if (p === 'confidentialite') return <><Confidentialite back="#/" /><Toaster /></>;
     if (p === 'mentions') return <><Mentions back="#/" /><Toaster /></>;
+    if (p === 'conditions') return <><Conditions back="#/" /><Toaster /></>;
     if (p === 'simulateur') return <><Simulateur back="#/" connecte={false} /><Toaster /></>;
     return <><Welcome /><Toaster /></>;
   }
@@ -117,6 +136,7 @@ export function App() {
     case 'regles': screen = <Regles />; break;
     case 'confidentialite': screen = <Confidentialite />; break;
     case 'mentions': screen = <Mentions />; break;
+    case 'conditions': screen = <Conditions />; break;
     case 'installer': screen = <Installer />; break;
     case 'guide': screen = VIDEOS_PRETES ? <Guide /> : <Plus />; break;
     case 'bienvenue': screen = <Welcome />; break;
@@ -138,6 +158,7 @@ export function App() {
         </div>
       )}
       {!isDemo() && <RefusBanner />}
+      <ConditionsBanner />
       <div class="app">
         {screen}
         <nav class="tabbar" aria-label="Navigation principale">
