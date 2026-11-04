@@ -77,3 +77,53 @@ describe('relevé du mois : données', () => {
     expect(nomFichierReleve('', '2026-11')).toBe('Arvela-releve-enfant-2026-11.pdf');
   });
 });
+
+describe('relevé du mois : cas limites (relecture contradictoire)', () => {
+  it('contrat terminé avant aujourd’hui : le mois de sortie n’est plus « provisoire »', () => {
+    const c = contract({ end: '2026-11-13' });
+    const d = releveDonnees(makeCtx(c, [], [], '2026-11-20'), '2026-11', { amName: 'Sophie', now, version: 'x' });
+    expect(d.provisoire).toBe(false);
+    expect(d.lignes.at(-1)?.date).toBe('2026-11-13');
+  });
+  it('arrêt de l’assistante maternelle : les week-ends sans accueil prévu ne font pas de ligne', () => {
+    const leaves = [{ id: 'l', type: 'am_malade' as const, from: '2026-10-08', to: '2026-10-14' }];
+    const d = releveDonnees(makeCtx(contract(), [], leaves, '2026-11-02'), '2026-10', { amName: 'Sophie', now, version: 'x' });
+    expect(d.lignes.length).toBe(22);
+    expect(d.lignes.filter((l) => l.absence === 'Je suis malade').map((l) => l.date)).toEqual(['2026-10-08', '2026-10-09', '2026-10-12', '2026-10-13', '2026-10-14']);
+  });
+});
+
+describe('relevé du mois : PDF fabriqué', () => {
+  it('prénoms en latin étendu gardés en entier, mention sur chaque page, A4 portrait', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const racine = fileURLToPath(new URL('..', import.meta.url));
+    const vrai = globalThis.fetch;
+    globalThis.fetch = (async (u: string) => {
+      const chemin = String(u).replace(/^\//, '').split('?')[0];
+      const b = readFileSync(racine + chemin);
+      return new Response(b);
+    }) as typeof fetch;
+    try {
+      const { genererRelevePdf } = await import('../src/releve/fabrication');
+      const c = contract({ child: 'Łucja-Ağça Ţepeş', family: 'Ştefănescu-Żółć' });
+      const d = releveDonnees(makeCtx(c, recs, [], '2026-11-02'), '2026-10', { amName: 'Ana-Maria Ştefănescu', now, version: 'x' });
+      const pdf = await genererRelevePdf(d);
+      const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+      const doc = await pdfjs.getDocument({ data: pdf, isEvalSupported: false, useSystemFonts: false }).promise;
+      let tout = '';
+      for (let i = 1; i <= doc.numPages; i++) {
+        const p = await doc.getPage(i);
+        const [, , w, h] = p.view;
+        expect([Math.round(w), Math.round(h)]).toEqual([595, 842]);
+        const t = (await p.getTextContent()).items.map((x: any) => x.str).join(' ').replace(/\s+/g, ' ');
+        expect(t.replace(/\s+/g, ' ')).toContain('Il ne remplace pas le bulletin de salaire Pajemploi, qui fait foi.');
+        tout += t;
+      }
+      for (const nom of ['Łucja-Ağça', 'Ţepeş', 'Ştefănescu-Żółć', 'Ana-Maria']) expect(tout).toContain(nom);
+      expect(tout).not.toMatch(/brut|cotisation|imposable/i);
+    } finally {
+      globalThis.fetch = vrai;
+    }
+  }, 30000);
+});

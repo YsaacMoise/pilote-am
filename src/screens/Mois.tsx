@@ -70,7 +70,7 @@ export function Mois({ month: m0, cid: c0 }: { month?: string; cid?: string }) {
         {!c ? (
           <div class="card empty"><h2>Pas de contrat ce mois-ci</h2><p class="muted">Change de mois ou ajoute un enfant depuis « Plus ».</p></div>
         ) : (
-          <MonthView c={c} month={month} onEdit={setEdit} />
+          <MonthView key={`${c.id}|${month}`} c={c} month={month} onEdit={setEdit} />
         )}
       </main>
       {edit && c && <DaySheet c={c} day={edit} onClose={() => setEdit(null)} />}
@@ -86,8 +86,11 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
   const totalVerse = totalAVerser(r);
   const [occupe, setOccupe] = useState(false);
   const [pret, setPret] = useState<File | null>(null);
+  const [partage, setPartage] = useState(false);
   const envoyer = async (file: File) => {
-    const res = await partagerPdf(file);
+    if (partage) return; // un second appui pendant que la feuille de partage est ouverte lancerait un téléchargement
+    setPartage(true);
+    const res = await partagerPdf(file).finally(() => setPartage(false));
     // iPhone : le partage doit suivre de près un geste ; s'il a été refusé, un second bouton le relance.
     setPret(res === 'refuse' ? file : null);
   };
@@ -99,7 +102,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
         amName: state.settings.amName, enfants: state.settings.enfantsACharge, now: new Date(),
         version: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'inconnue',
       });
-      const { genererRelevePdf } = await import('../releve/pdf');
+      const { genererRelevePdf } = await import('../releve/fabrication');
       const pdf = await genererRelevePdf(d);
       logUsage('releve_pdf');
       await envoyer(new File([pdf as Uint8Array<ArrayBuffer>], d.nomFichier, { type: 'application/pdf' }));
@@ -168,7 +171,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
       </div>
       {pret && (
         <Banner tone="info">
-          Le relevé est prêt. <button class="btn-link" type="button" onClick={() => envoyer(pret)}>Partager le relevé</button>
+          Le relevé est prêt. <button class="btn-link" type="button" disabled={partage} onClick={() => envoyer(pret)}>Partager le relevé</button>
         </Banner>
       )}
 

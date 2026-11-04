@@ -77,13 +77,16 @@ export function releveDonnees(
   const c = ctx.c;
   const r = computeMonth(ctx, m, o.enfants ?? 0);
   const aujourdhui = ctx.today;
-  const provisoire = m >= monthOf(aujourdhui);
+  // Mois en cours, sauf si le contrat s'est déjà terminé avant aujourd'hui.
+  const provisoire = m >= monthOf(aujourdhui) && !(c.end && c.end < aujourdhui);
   const lignes: ReleveLigne[] = [];
   let prevuMin = 0, reelMin = 0, absEnfant = 0, absAm = 0, feries = 0;
   for (const d of eachDay(firstDay(m), lastDay(m))) {
     if (!inContract(c, d)) continue;
     const di = dayInfo(ctx, d);
     if (di.kind === 'hors' && !di.rec) continue;
+    // Absence de l'AM un jour sans accueil prévu (week-end pendant un arrêt) : rien à relever.
+    if (di.kind === 'am' && di.plannedMin === 0 && !di.rec) continue;
     prevuMin += di.plannedMin;
     reelMin += di.presentMin;
     let reel = '';
@@ -95,7 +98,7 @@ export function releveDonnees(
       if (di.plannedMin > 0) absEnfant++;
     } else if (di.kind === 'present') {
       const pres = (di.rec?.pres ?? []).filter((p) => p.a);
-      reel = pres.map((p) => `${p.a}–${p.d ?? (di.enCours ? 'en cours' : 'départ non pointé')}`).join(' · ');
+      reel = pres.map((p) => `${p.a}–${p.d ?? (di.enCours ? 'en cours' : 'départ non pointé, heure prévue retenue')}`).join(' · ');
     } else if (di.kind === 'prevu') {
       reel = d <= aujourdhui ? 'comme prévu' : '';
     }

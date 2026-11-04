@@ -18,7 +18,7 @@ const base = process.env.BASE || 'http://localhost:4173/';
       navigator.share = async (d) => {
         n++;
         if (d.text || d.title) throw new Error('texte interdit avec un fichier (WebKit 244408)');
-        if (n === 1) throw new DOMException('geste trop ancien', 'NotAllowedError');
+        if (n <= 2) throw new DOMException('geste trop ancien', 'NotAllowedError');
         window.__partages.push({ name: d.files[0].name, type: d.files[0].type, size: d.files[0].size });
       };
     });
@@ -37,7 +37,17 @@ const base = process.env.BASE || 'http://localhost:4173/';
     await p.getByRole('button', { name: 'Relevé du mois (PDF)' }).tap();
     await p.getByRole('button', { name: 'Partager le relevé' }).waitFor({ timeout: 20000 });
     await audit('Mois, relevé prêt');
+    // La bannière appartient au mois et à l'enfant affichés : elle disparaît quand on change de mois.
+    await p.getByRole('button', { name: 'Mois précédent' }).tap();
+    await p.waitForTimeout(300);
+    if (await p.getByRole('button', { name: 'Partager le relevé' }).count()) throw new Error('bannière restée sur un autre mois');
+    await p.getByRole('button', { name: 'Mois suivant' }).tap();
+    await p.waitForTimeout(300);
+    // Nouvelle fabrication, partage encore refusé, puis relancé depuis la bannière : il passe.
+    await p.getByRole('button', { name: 'Relevé du mois (PDF)' }).tap();
+    await p.getByRole('button', { name: 'Partager le relevé' }).waitFor({ timeout: 20000 });
     await p.getByRole('button', { name: 'Partager le relevé' }).tap();
+    await p.waitForFunction(() => window.__partages.length === 1, null, { timeout: 20000 });
     await p.waitForTimeout(500);
     const parts = await p.evaluate(() => window.__partages);
     const banniere = await p.getByRole('button', { name: 'Partager le relevé' }).count();

@@ -17,8 +17,31 @@ const FOOT = 70; // hauteur réservée au pied de page
 
 interface Fonts { titre: PDFFont; texte: PDFFont; gras: PDFFont; mono: PDFFont; monoGras: PDFFont }
 
-/** Espaces fines et insécables ramenées à l'espace insécable, présente dans toutes les polices */
-const clean = (s: string) => s.replace(/[  ]/g, ' ');
+/** Espaces fines ramenées à l'espace insécable ; remplacé plus bas par un nettoyeur qui connaît les polices */
+let clean = (s: string) => s.replace(/[\u202f\u2009]/g, '\u00a0');
+
+/** Un caractère absent des polices perd son accent (« ṇ » → « n ») ou devient « ? » : jamais de lettre qui disparaît. */
+function nettoyeur(fonts: PDFFont[]) {
+  const sets = fonts.map((f) => new Set(f.getCharacterSet()));
+  const ok = (ch: string) => sets.every((s) => s.has(ch.codePointAt(0)!));
+  return (s: string) => {
+    let out = '';
+    for (const ch of s.replace(/[\u202f\u2009]/g, '\u00a0').normalize('NFC')) {
+      if (ok(ch)) { out += ch; continue; }
+      const base = ch.normalize('NFD').replace(/\p{M}/gu, '');
+      out += base && [...base].every(ok) ? base : '?';
+    }
+    return out;
+  };
+}
+
+/** Coupe un texte trop long pour `max` points, avec « … » */
+function tronquer(text: string, font: PDFFont, size: number, max: number): string {
+  if (font.widthOfTextAtSize(text, size) <= max) return text;
+  let t = text;
+  while (t.length > 1 && font.widthOfTextAtSize(t + '…', size) > max) t = t.slice(0, -1);
+  return t.trimEnd() + '…';
+}
 
 async function bytes(url: string): Promise<Uint8Array> {
   const r = await fetch(url);
@@ -84,6 +107,7 @@ export async function genererRelevePdf(d: ReleveDonnees): Promise<Uint8Array> {
     mono: await doc.embedFont(mo, { subset: true }),
     monoGras: await doc.embedFont(mg, { subset: true }),
   };
+  clean = nettoyeur([f.titre, f.texte, f.gras, f.mono, f.monoGras]);
 
   const pages: PDFPage[] = [];
   let page!: PDFPage;
@@ -112,7 +136,7 @@ export async function genererRelevePdf(d: ReleveDonnees): Promise<Uint8Array> {
     } else {
       sceau(page, M, H - M - 22, 22);
       espace(page, 'ARVELA', M + 30, H - M - 15, f.titre, 13, 3);
-      droite(`${d.titre} · ${d.moisLabel} · ${d.enfant}`, W - M, H - M - 15, 9.5, f.gras);
+      droite(tronquer(clean(`${d.titre} · ${d.moisLabel} · ${d.enfant}`), f.gras, 9.5, W - 2 * M - 110), W - M, H - M - 15, 9.5, f.gras);
       y = H - M - 30;
       trait(y, 0.8);
       y -= 18;
@@ -140,8 +164,9 @@ export async function genererRelevePdf(d: ReleveDonnees): Promise<Uint8Array> {
   ];
   for (const [k, v] of infos) {
     txt(k, M, y, 9.5, f.texte);
-    txt(v, M + 130, y, 9.5, f.gras);
-    y -= 15;
+    const lignes = couper(v, f.gras, 9.5, W - 2 * M - 130);
+    lignes.forEach((s, i) => txt(s, M + 130, y - i * 12, 9.5, f.gras));
+    y -= 15 + (lignes.length - 1) * 12;
   }
   y -= 6;
 
@@ -187,9 +212,12 @@ export async function genererRelevePdf(d: ReleveDonnees): Promise<Uint8Array> {
       y -= r.total ? 18 : 15;
     }
   };
+  // Un bloc court ne se coupe pas entre deux pages.
+  place(40 + d.totaux.length * 15);
   section('Totaux');
   liste(d.totaux);
   y -= 4;
+  place(40 + d.montants.length * 16);
   section('Montants du mois');
   liste(d.montants);
   y -= 4;
