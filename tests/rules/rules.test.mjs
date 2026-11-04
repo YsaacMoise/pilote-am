@@ -18,7 +18,11 @@ const anon = env.unauthenticatedContext().firestore();
 // Lien parent : identifiants de 22 caractères, comme ceux de l'app
 const P0 = 'AAAAAAAAAAAAAAAAAAAAAA';
 const P1 = 'BBBBBBBBBBBBBBBBBBBBBB';
-const lien = (owner = 'alice') => ({ owner, v: 'texte-chiffre', iv: 'iv', salt: 'sel', t: serverTimestamp() });
+// iv : 12 octets en base64url (16 caractères) ; sel : 16 octets (22 caractères), comme l'app.
+const IV = 'iviviviviviviviv';
+const SEL = 'selselselselselselsel_';
+const lien = (owner = 'alice') => ({ owner, v: 'texte-chiffre', iv: IV, salt: SEL, t: serverTimestamp() });
+const tombe = (owner = 'alice') => ({ owner, revoque: true, t: serverTimestamp() });
 const bon = (k = 'c1') => ({ s: 'contracts', k, v: '{"child":"Léo"}', t: serverTimestamp(), d: 'appareil-1' });
 
 // Une donnée existante d'Alice, posée hors règles
@@ -73,7 +77,17 @@ const cas = [
   ['41. Lien de plus de 200 000 caractères : refusé', () => assertFails(setDoc(doc(alice, 'partages/DDDDDDDDDDDDDDDDDDDDDD'), { ...lien(), v: 'x'.repeat(200001) }))],
   ['42. Lien antidaté : refusé', () => assertFails(setDoc(doc(alice, 'partages/DDDDDDDDDDDDDDDDDDDDDD'), { ...lien(), t: Timestamp.fromDate(new Date('2020-01-01')) }))],
   ['43. Identifiant de lien trop court : refusé', () => assertFails(setDoc(doc(alice, 'partages/court'), lien()))],
-  ['44. Alice efface son lien', () => assertSucceeds(deleteDoc(doc(alice, `partages/${P0}`)))],
+  ['44. Alice efface son lien : refusé (un lien coupé devient une pierre tombale)', () => assertFails(deleteDoc(doc(alice, `partages/${P0}`)))],
+  // Relecture de sécurité du 04/11/2026
+  ['45. Document dont le nom ne correspond pas au magasin : refusé', () => assertFails(setDoc(doc(alice, 'users/alice/data/nimporte-quoi-123'), bon('x')))],
+  ['46. Document rangé sous un autre magasin : refusé', () => assertFails(setDoc(doc(alice, 'users/alice/data/days~c1'), bon('c1')))],
+  ['47. Lien avec iv et sel vides : refusé', () => assertFails(setDoc(doc(alice, 'partages/EEEEEEEEEEEEEEEEEEEEEE'), { ...lien(), iv: '', salt: '' }))],
+  ['48. Alice coupe son lien (pierre tombale)', () => assertSucceeds(setDoc(doc(alice, `partages/${P1}`), tombe()))],
+  ['49. Lien coupé encore lisible, sans contenu', () => assertSucceeds(getDoc(doc(anon, `partages/${P1}`)))],
+  ['50. Alice ne peut pas rouvrir un lien coupé', () => assertFails(setDoc(doc(alice, `partages/${P1}`), lien()))],
+  ['51. Bob ne peut pas recréer un lien coupé', () => assertFails(setDoc(doc(bob, `partages/${P1}`), lien('bob')))],
+  ['52. Bob ne peut pas poser de pierre tombale sur le lien d’Alice', () => assertFails(setDoc(doc(bob, `partages/${P0}`), tombe('bob')))],
+  ['53. Pierre tombale avec contenu en plus : refusée', () => assertFails(setDoc(doc(alice, `partages/${P0}`), { ...tombe(), v: 'x' }))],
 ];
 
 let ok = 0;

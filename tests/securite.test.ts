@@ -29,7 +29,7 @@ describe('règle CSP de firebase.json', () => {
   it('laisse passer Firebase et la mesure PostHog UE, et rien d’autre', () => {
     const connect = directive('connect-src').split(' ').slice(1);
     expect(connect.sort()).toEqual(
-      ["'self'", 'https://*.googleapis.com', 'https://eu-assets.i.posthog.com', 'https://eu.i.posthog.com', 'https://www.google.com/recaptcha/'].sort(),
+      ["'self'", 'https://*.googleapis.com', 'https://eu.i.posthog.com', 'https://www.google.com/recaptcha/'].sort(),
     );
   });
   it('index.html ne contient plus de script écrit dans la page', () => {

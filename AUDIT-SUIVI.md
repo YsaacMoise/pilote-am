@@ -139,3 +139,25 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 
 - Protection anti-robots : Firebase App Check avec reCAPTCHA Enterprise (Fraud Defense), clé à score limitée à arvela.fr, jeton de 7 jours. Enregistrée en mode surveillance : rien n'est bloqué. Le code (demande de fusion « sécurité avant ouverture ») ne s'active que sur arvela.fr. À rendre obligatoire pour Firestore puis Authentication quand les mesures de la console montrent que les demandes de l'app sont vérifiées.
 - Aperçu de test : chaque demande de fusion est publiée sur une adresse Firebase à part, effacée après 7 jours (workflow Aperçu).
+
+## Relecture de sécurité indépendante du 4 novembre 2026
+
+13 constats. Corrigés dans la demande de fusion « durcissement » :
+- R-5 (moyen) : un lien parent coupé était effacé, et son identifiant pouvait être recréé par un parent qui connaissait le lien pour afficher un faux carnet. Un lien coupé devient maintenant une pierre tombale sans contenu qui garde l'identifiant ; les règles interdisent de l'effacer, de le rouvrir ou de le recréer. Matrice des règles : cas 44 et 48 à 53.
+- R-2, en partie (élevé) : le nom d'un document doit commencer par son magasin (cas 45 et 46). Reste : plafond de volume par compte (compteur ou alerte de stockage).
+- R-6, en partie (moyen) : iv et sel d'un lien à la taille exacte produite par l'app (cas 47). Reste : expiration des liens, taille maximale réelle.
+- R-7 (moyen) : la publication n'exécute plus de paquet téléchargé à la volée ; firebase-tools vient du fichier de verrouillage, sans scripts d'installation. Jeton GitHub non gardé après chaque récupération du code.
+- R-9, en partie (faible) : CSP sans eu-assets.i.posthog.com ni arvela-app.firebaseapp.com ; micro interdit (aucun code ne l'utilise). Testé sur les 4 parcours de bout en bout avec la CSP.
+- R-12, en partie : alertes et mises à jour de sécurité Dependabot activées (04/11/2026).
+
+Réglages faits le 04/11/2026 avec l'accord de YKM :
+- R-1 (élevé) : corrigé. Condition du fournisseur pilote-am : `assertion.repository_id == '1436500329' && assertion.repository_owner_id == '347633010' && assertion.ref == 'refs/heads/main' && (assertion.event_name == 'push' || assertion.event_name == 'workflow_dispatch')`. Aperçus supprimés (workflow apercu.yml retiré).
+- R-4 (moyen) : jeton App Check ramené à 1 jour.
+- R-10 (faible) : effacement automatique des branches fusionnées activé.
+- R-11 (faible) : domaines autorisés de Firebase Auth : arvela.fr ajouté, localhost et l'aperçu pr41 retirés.
+
+Restent à décider :
+- R-3 (moyen) : création de comptes automatisable ; protection reCAPTCHA de Firebase Authentication non activée (passage définitif à Identity Platform, gratuit jusqu'à 50 000 utilisatrices actives par mois). Décision du 04/11/2026 : à activer au lancement du référencement ou de la publicité.
+- R-8 (moyen, conformité) : durée de conservation des comptes abandonnés à fixer ; analyse d'impact en cours.
+- R-10 : environ 40 branches périmées restent à effacer.
+- Référencement : `noindex` dans index.html et `Disallow: /` dans robots.txt, à retirer après le volet légal.
