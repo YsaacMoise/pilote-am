@@ -1,7 +1,7 @@
 import { termsAt } from '../engine/payroll';
 import { useState } from 'preact/hooks';
 import { ctxFor, useStore } from '../store';
-import { monthLabel, shortDate, today, type Month } from '../engine/dates';
+import { addMonths, monthLabel, monthOf, shortDate, today, type Month } from '../engine/dates';
 import { finDeContrat, MOTIF_LABEL, type Motif } from '../engine/fin';
 import { euros, eurosArrondis, hoursLabel } from '../engine/money';
 import { Banner, Choices, DateInput, EuroInput, Gommette, Topbar } from '../ui/kit';
@@ -16,6 +16,7 @@ export function Fin({ id }: { id?: string }) {
   const [presentation, setPresentation] = useState<string | null>(null);
   // C-008 : total des salaires bruts lu sur les bulletins Pajemploi, pour ne pas calculer l'indemnité sur une estimation.
   const [brutTotal, setBrutTotal] = useState<number | undefined>(undefined);
+  const [brutJusqua, setBrutJusqua] = useState<Month>(addMonths(monthOf(today()), -1));
   const changeEnvoi = (v: string) => { setNotif(v); if (presentation && presentation < v) setPresentation(null); };
   const c = s.contracts.find((x) => x.id === cid);
   if (!c) return <><Topbar title="Fin de contrat" back="#/plus" screen="fin" /><main><div class="card empty"><p>Aucun contrat.</p></div></main></>;
@@ -29,7 +30,7 @@ export function Fin({ id }: { id?: string }) {
   const pres = avecPreavis && remise === 'recommande' ? presVue : envoi;
   const parMois: Partial<Record<Month, number>> = {};
   for (const b of s.bulletins) if (b.cid === c.id && b.brut) parMois[b.month] = b.brut;
-  const f = finDeContrat(ctxFor(c), envoi, motif, s.settings.enfantsACharge, pres, { parMois, total: brutTotal });
+  const f = finDeContrat(ctxFor(c), envoi, motif, s.settings.enfantsACharge, pres, { parMois, total: brutTotal, jusqua: brutJusqua });
   const total = f.indemniteRupture + f.regularisation + f.cpIndemnite;
   // L'indemnité de rupture dépend du brut : tant qu'un mois est estimé, elle est affichée arrondie, comme une estimation.
   const surBrut = motif === 'retrait' || motif === 'deces' || motif === 'inaptitude' || motif === 'inaptitude_pro';
@@ -76,8 +77,11 @@ export function Fin({ id }: { id?: string }) {
         {surBrut && (f.brutsEstimes.length > 0 || brutTotal != null) && (
           <section class="card stack-sm" aria-labelledby="fin-brut">
             <h2 id="fin-brut">Salaires bruts de tes bulletins</h2>
-            <p>L’indemnité de rupture se calcule sur les salaires bruts. {f.brutsEstimes.length > 0 ? <>Le brut n’est pas connu pour {periode} : l’app l’estime à partir du net, ce qui peut être faux de quelques euros.</> : 'Le total saisi est utilisé.'}</p>
-            <EuroInput label="Total des salaires bruts depuis le début du contrat" hint="Additionne la ligne « salaire brut » de chaque bulletin Pajemploi de ce contrat, congés payés compris." cents={brutTotal} allowEmpty onChange={setBrutTotal} />
+            <p>L’indemnité de rupture se calcule sur les salaires bruts. {brutTotal == null && f.brutsEstimes.length > 0 ? <>Le brut n’est pas connu pour {periode} : l’app l’estime à partir du net, ce qui peut être faux de quelques euros.</> : 'Le total saisi est utilisé.'}</p>
+            <EuroInput label="Total des salaires bruts de tes bulletins" hint="Additionne la ligne « salaire brut » de chaque bulletin Pajemploi de ce contrat, du premier jusqu’au mois indiqué ci-dessous, congés payés compris." cents={brutTotal} allowEmpty onChange={setBrutTotal} />
+            <label class="label" for="fin-jusqua">Dernier bulletin compris dans ce total</label>
+            <input id="fin-jusqua" class="input" type="month" value={brutJusqua} min={c.start.slice(0, 7)} max={monthOf(f.dernierJour)} onChange={(e) => { const v = (e.target as HTMLInputElement).value; if (v) setBrutJusqua(v as Month); }} />
+            {brutTotal != null && f.brutsEstimes.length > 0 && <p class="hint">Les mois suivants ({periode}) n’ont pas encore de bulletin : leur brut reste estimé.</p>}
           </section>
         )}
         {f.alertes.map((a) => <Banner tone="warn">{a} <a href={`#/historique/${c.id}`}>Ouvrir l’historique</a></Banner>)}

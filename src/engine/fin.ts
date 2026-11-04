@@ -55,7 +55,10 @@ export interface FinResult {
 /** Bruts réels connus : par mois (bulletins contrôlés), ou total saisi depuis les bulletins Pajemploi */
 export interface BrutsReels {
   parMois?: Partial<Record<Month, number>>;
+  /** Total des bruts des bulletins Pajemploi, du début du contrat jusqu'au mois `jusqua` compris */
   total?: number;
+  /** Dernier mois compris dans `total` ; les mois suivants (préavis, mois en cours) restent comptés à part */
+  jusqua?: Month;
 }
 
 export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0, presentation?: ISODate, bruts: BrutsReels = {}): FinResult {
@@ -95,7 +98,13 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   let totalBrut = 0;
   const manquants: Month[] = [];
   const brutsEstimes: Month[] = [];
+  // C-008 : le total saisi depuis les bulletins Pajemploi remplace les mois qu'il couvre ; les mois suivants
+  // (préavis, mois sans bulletin encore) restent comptés, estimés si besoin (relecture contradictoire du 04/11/2026).
+  const saisi = bruts.total != null && bruts.total > 0;
+  const couvert = (m: Month) => saisi && (!bruts.jusqua || m <= bruts.jusqua);
+  if (saisi) totalBrut = bruts.total!;
   for (const m of monthsBetween(monthOf(c.start), monthOf(dernierJour))) {
+    if (couvert(m)) continue;
     const b = monthBase(endCtx, m);
     if (!b.active) continue;
     if (b.missing) { manquants.push(m); continue; }
@@ -106,11 +115,6 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     totalBrut += monthBrut(endCtx, m);
     const cp = cpForMonth(endCtx, m, enfants);
     totalBrut += netToBrut(cp.indemnite + cp.complement, lastDay(m));
-  }
-  // C-008 : le total saisi depuis les bulletins Pajemploi remplace toute estimation.
-  if (bruts.total != null && bruts.total > 0) {
-    totalBrut = bruts.total;
-    brutsEstimes.length = 0;
   }
   if (manquants.length) {
     alertes.push(`Historique incomplet : ${manquants.length} mois sans bulletin. Ajoute les bulletins manquants dans l’historique pour un calcul juste.`);
