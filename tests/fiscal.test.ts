@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { Contract, DayRec, Planning } from '../src/engine/model';
 import { makeCtx } from '../src/engine/payroll';
-import { fiscalYear, plafonnerHS, type FiscalChild } from '../src/engine/fiscal';
+import { fiscalYear, fiscalYears, plafonnerHS, type FiscalChild } from '../src/engine/fiscal';
 import { computeMonth } from '../src/engine/month';
 import { controle } from '../src/engine/controle';
 import { finDeContrat } from '../src/engine/fin';
@@ -111,10 +111,10 @@ describe('C-019 : heures complémentaires et majorées exonérées (CGI art. 81 
     const row = (cid: string, hsValeur: number): FiscalChild => ({
       cid, recu: 1000000, netImposable: 900000, hsValeur, hsExonere: hsValeur, hsImposable: 0, entretienRepas: 100000, km: 0,
       repasParents: 0, jours: 200, joursCourts: 0, abattementBrut: 738600, abattement: 738600, imposable: 261400,
-      smic: 1231, smics: [1231], facteur: 3, partiel: false,
+      smic: 1231, smics: [1231], facteur: 3, partiel: false, moisHistorique: 0,
     });
     // 5 000 € + 4 000 € = 9 000 € : 1 500 € au-delà, soit 833,33 € et 666,67 €.
-    const [a, b] = plafonnerHS([row('a', 500000), row('b', 400000)]);
+    const [a, b] = plafonnerHS([row('a', 500000), row('b', 400000)], PLAFOND_HS_EXONEREES);
     expect(a.hsImposable).toBe(83333);
     expect(b.hsImposable).toBe(66667);
     expect(a.hsExonere + b.hsExonere).toBe(PLAFOND_HS_EXONEREES);
@@ -122,9 +122,25 @@ describe('C-019 : heures complémentaires et majorées exonérées (CGI art. 81 
     expect(a.recu).toBe(1083333);
     expect(a.imposable).toBe(1083333 - 738600);
     // Sous le plafond : rien ne change.
-    const [c] = plafonnerHS([row('c', 700000)]);
+    const [c] = plafonnerHS([row('c', 700000)], PLAFOND_HS_EXONEREES);
     expect(c.hsImposable).toBe(0);
     expect(c.imposable).toBe(261400);
+    // Un enfant sans heure exonérée ne reçoit jamais de part (ni de reste d'arrondi négatif).
+    const [d, e, z] = plafonnerHS([row('d', 500001), row('e', 400000), row('z', 0)], PLAFOND_HS_EXONEREES);
+    expect(z.hsImposable).toBe(0);
+    expect(z.hsExonere).toBe(0);
+    expect(d.hsImposable + e.hsImposable).toBe(150001);
+  });
+  it('abattement plafonné aux sommes de l’ensemble des enfants, pas enfant par enfant (brochure IR 2026, p. 89)', () => {
+    // Octobre 2026. A : 50 h à 3,50 € (reçu 803,10 € < abattement 812,46 €). B : 45 h à 6,00 € (reçu 1 298,92 €).
+    // Total reçu 2 102,02 € ; abattement total 2 × 812,46 = 1 624,92 € ; imposable 477,10 € (et non 486,46 €).
+    const a = contract({ id: 'a', start: '2026-10-01', trackedFrom: '2026-10-01', planning: week('08:00', '18:00') });
+    const b = contract({ id: 'b', start: '2026-10-01', trackedFrom: '2026-10-01', rateNet: 600 });
+    const [fa, fb] = fiscalYears([makeCtx(a, [], [], '2026-10-31'), makeCtx(b, [], [], '2026-10-31')], 2026, 0, '2026-10');
+    expect(fa.recu).toBe(80310);
+    expect(fb.recu).toBe(129892);
+    expect(fa.abattement + fb.abattement).toBe(162492);
+    expect(fa.imposable + fb.imposable).toBe(47710);
   });
   it('contrôle du bulletin : net versé réduction comprise accepté, limite haute du rapport net/brut relevée', () => {
     const c = contract({ start: '2026-10-01', trackedFrom: '2026-10-01', planning: week('08:00', '18:00') });
@@ -158,11 +174,23 @@ describe('C-008 : brut estimé affiché comme une estimation, brut réel demand�
     expect(f1.brutsEstimes).not.toContain('2026-03');
     expect(f1.brutsEstimes.length).toBe(f0.brutsEstimes.length - 1);
   });
-  it('total des bruts saisi : 12 345,00 € ÷ 80 = 154,31 €, plus aucune estimation', () => {
-    const f = finDeContrat(ctx(), '2026-11-02', 'retrait', 0, undefined, { total: 1234500 });
+  it('total des bruts saisi jusqu’au dernier mois : 12 345,00 € ÷ 80 = 154,31 €, plus aucune estimation', () => {
+    const f = finDeContrat(ctx(), '2026-11-02', 'retrait', 0, undefined, { total: 1234500, jusqua: '2026-11' });
     expect(f.totalBrut).toBe(1234500);
     expect(f.indemniteRupture).toBe(15431);
     expect(f.brutsEstimes).toEqual([]);
+  });
+  it('total saisi jusqu’à octobre : le mois du préavis (novembre) reste compté, estimé', () => {
+    const f0 = finDeContrat(ctx(), '2026-11-02', 'retrait');
+    const f = finDeContrat(ctx(), '2026-11-02', 'retrait', 0, undefined, { total: 865935, jusqua: '2026-10' });
+    expect(f.brutsEstimes).toEqual(['2026-11']);
+    // Brut estimé de novembre (1er au 16) : le même que sans saisie.
+    const novembre = finDeContrat(ctx(), '2026-11-02', 'retrait', 0, undefined, { total: 1, jusqua: '2026-10' }).totalBrut - 1;
+    expect(novembre).toBeGreaterThan(0);
+    expect(f.totalBrut).toBe(865935 + novembre);
+    // 8 659,35 € est l'estimation de janvier à octobre : le total retombe sur l'estimation complète (9 117,10 €).
+    expect(f.totalBrut).toBe(f0.totalBrut);
+    expect(f.totalBrut).toBe(911710);
   });
   it('arrondi à l’euro : 1 234,50 € → « 1 235 € », 154,31 € → « 154 € »', () => {
     expect(eurosArrondis(123450)).toBe('1\u00a0235\u00a0€');

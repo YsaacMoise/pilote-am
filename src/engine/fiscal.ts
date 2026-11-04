@@ -2,7 +2,7 @@
 import { eachDay, lastDay, monthsBetween, type Month } from './dates';
 import { computeMonth } from './month';
 import { dayInfo, termsAt, type Ctx } from './payroll';
-import { PLAFOND_HS_EXONEREES, ratesAt } from './rates';
+import { plafondHS, ratesAt } from './rates';
 
 export interface FiscalChild {
   cid: string;
@@ -36,6 +36,8 @@ export interface FiscalChild {
   smics: number[];
   facteur: number;
   partiel: boolean;
+  /** Mois repris d'un bulletin : heures exonérées et kilomètres inconnus, comptés comme imposables ou absents */
+  moisHistorique: number;
 }
 
 /** CSG non déductible (2,4 %) + CRDS (0,5 %) sur 98,25 % du brut : à réintégrer dans le net imposable */
@@ -53,6 +55,7 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
   const facteur = c.majoreFiscal ? 4 : 3;
   let net = 0, hs = 0, er = 0, km = 0, rp = 0, jours = 0, courts = 0, abat = 0;
   let partiel = false;
+  let moisHistorique = 0;
   const last = upTo && upTo < `${year}-12` ? upTo : (`${year}-12` as Month);
   for (const m of monthsBetween(`${year}-01`, last)) {
     const r = computeMonth(ctx, m, enfants);
@@ -66,6 +69,7 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
     er += r.entretien + r.repas;
     km += r.km;
     if (r.fromHistory) {
+      moisHistorique++;
       // Sans détail des jours : jours d'activité du bulletin, journées supposées de 8 h ou plus.
       jours += r.joursActivite;
       abat += r.joursActivite * facteur * smicAt(lastDay(m));
@@ -87,7 +91,7 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
   const abattement = Math.min(abattementBrut, recu);
   return {
     cid: c.id, recu, netImposable: net, hsValeur: hs, hsExonere: hs, hsImposable: 0, entretienRepas: er, km, repasParents: rp, jours, joursCourts: courts, abattementBrut, abattement,
-    imposable: recu - abattement, smic: smics[smics.length - 1] ?? ratesAt(`${year}-01-01`).smic, smics, facteur, partiel,
+    imposable: recu - abattement, smic: smics[smics.length - 1] ?? ratesAt(`${year}-01-01`).smic, smics, facteur, partiel, moisHistorique,
   };
 }
 
@@ -96,13 +100,15 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
  * imposable par salariée, tous employeurs réunis : CGI art. 81 quater ; brochure impots.gouv 2026). La part au-delà
  * revient dans le net imposable de chaque enfant, au prorata de ses heures.
  */
-export function plafonnerHS(rows: FiscalChild[], plafond = PLAFOND_HS_EXONEREES): FiscalChild[] {
+export function plafonnerHS(rows: FiscalChild[], plafond: number): FiscalChild[] {
   const total = rows.reduce((a, r) => a + r.hsValeur, 0);
   const exces = Math.max(0, total - plafond);
   if (!exces) return rows;
   let reste = exces;
+  // Le reste d'arrondi va au dernier enfant qui a des heures exonérées (jamais une part négative).
+  const dernier = rows.map((r) => r.hsValeur > 0).lastIndexOf(true);
   return rows.map((r, i) => {
-    const part = i === rows.length - 1 ? reste : Math.round((exces * r.hsValeur) / total);
+    const part = i === dernier ? reste : r.hsValeur > 0 ? Math.round((exces * r.hsValeur) / total) : 0;
     reste -= part;
     const recu = r.recu + part;
     const abattement = Math.min(r.abattementBrut, recu);
@@ -110,7 +116,25 @@ export function plafonnerHS(rows: FiscalChild[], plafond = PLAFOND_HS_EXONEREES)
   });
 }
 
-/** Tous les contrats de l'année, plafond des heures exonérées compris */
+/**
+ * L'abattement est limité au total des sommes perçues de l'ensemble des enfants, pas enfant par enfant (brochure
+ * impots.gouv « Assistants maternels », mars 2026, p. 89 ; BOI-RSA-CHAMP-10-20-10 § 490). Chaque enfant garde son
+ * abattement entier tant que le total ne dépasse pas ; sinon chacun est réduit au prorata. Le reste d'un enfant
+ * peut alors être négatif : seul le total compte.
+ */
+export function plafonnerAbattement(rows: FiscalChild[]): FiscalChild[] {
+  const recu = rows.reduce((a, r) => a + r.recu, 0);
+  const abat = rows.reduce((a, r) => a + r.abattementBrut, 0);
+  const cible = Math.min(abat, recu);
+  let reste = cible;
+  return rows.map((r, i) => {
+    const a = i === rows.length - 1 ? reste : abat > recu ? Math.round((r.abattementBrut * recu) / abat) : r.abattementBrut;
+    reste -= a;
+    return { ...r, abattement: a, imposable: r.recu - a };
+  });
+}
+
+/** Tous les contrats de l'année : plafond des heures exonérées, puis plafond de l'abattement, tous enfants réunis */
 export function fiscalYears(ctxs: Ctx[], year: number, enfants = 0, upTo?: Month): FiscalChild[] {
-  return plafonnerHS(ctxs.map((ctx) => fiscalYear(ctx, year, enfants, upTo)));
+  return plafonnerAbattement(plafonnerHS(ctxs.map((ctx) => fiscalYear(ctx, year, enfants, upTo)), plafondHS(year)));
 }
