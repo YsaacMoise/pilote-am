@@ -7,7 +7,7 @@ import {
   signOut, verifyPasswordResetCode,
 } from 'firebase/auth';
 import {
-  collection, deleteDoc, doc, getDocsFromServer, setDoc, initializeFirestore, onSnapshot, memoryLocalCache, persistentLocalCache, persistentMultipleTabManager,
+  collection, doc, getDocsFromServer, setDoc, initializeFirestore, onSnapshot, memoryLocalCache, persistentLocalCache, persistentMultipleTabManager,
   query, serverTimestamp, Timestamp, waitForPendingWrites, where, writeBatch, type DocumentData,
 } from 'firebase/firestore';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
@@ -115,7 +115,8 @@ export const backend: Backend = {
     await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, password));
     // Liens parents d'abord : ils deviennent inutilisables tout de suite.
     const liens = await getDocsFromServer(query(collection(fs, 'partages'), where('owner', '==', u.uid)));
-    for (const d of liens.docs) await deleteDoc(d.ref);
+    // Pierres tombales plutôt qu'effacement : l'identifiant reste pris, personne ne peut recréer le lien.
+    for (const d of liens.docs) if (d.data().revoque !== true) await setDoc(d.ref, { owner: u.uid, revoque: true, t: serverTimestamp() });
     const snap = await getDocsFromServer(col(u.uid));
     for (let i = 0; i < snap.docs.length; i += BATCH) {
       const b = writeBatch(fs);
@@ -201,10 +202,15 @@ export const backend: Backend = {
     const u = auth.currentUser;
     if (!u) return [];
     const snap = await getDocsFromServer(query(collection(fs, 'partages'), where('owner', '==', u.uid)));
-    return snap.docs.map((d) => d.id);
+    // Les liens déjà coupés (pierres tombales) ne comptent pas.
+    return snap.docs.filter((d) => d.data().revoque !== true).map((d) => d.id);
   },
   async deleteShare(id) {
-    await deleteDoc(doc(fs, 'partages', id));
+    // Lien coupé : remplacé par une pierre tombale (sans contenu) qui garde l'identifiant pris
+    // (relecture de sécurité du 04/11/2026 : un lien effacé pouvait être recréé par un parent qui le connaissait).
+    const u = auth.currentUser;
+    if (!u) throw Object.assign(new Error('Pas de compte connecté'), { code: 'auth/no-current-user' });
+    await setDoc(doc(fs, 'partages', id), { owner: u.uid, revoque: true, t: serverTimestamp() });
   },
   watchShare(id, cb, onError) {
     return onSnapshot(doc(fs, 'partages', id), (snap) => {

@@ -32,9 +32,9 @@ export function Reglages() {
         </section>
         <section class="card">
           <fieldset>
-            <legend>Mesure d’usage du pilote</legend>
-            {isDemo() ? <p class="hint">Dans l’exemple, la mesure d’usage est toujours coupée : rien n’est envoyé.</p> : <Switch label="J’accepte d’aider à améliorer l’app" hint="Éteint tant que tu ne l’allumes pas. Si tu l’allumes, l’app envoie à PostHog (serveurs en Europe) le nom des écrans ouverts et des gestes faits (par exemple « arrivée pointée », « mois envoyé »), avec un identifiant au hasard et les caractéristiques techniques du téléphone (modèle, système, navigateur, taille d’écran, langue, fuseau horaire)." checked={mesure} onChange={(v) => { setMesure(v); setM(v); }} />}
-            <p class="hint">Rien de ce que tu écris ou choisis n’est envoyé : ni prénoms, ni noms, ni horaires, ni montants, ni carnet, ni motifs d’absence. Pas d’enregistrement de l’écran. Si tu éteins, l’envoi s’arrête et l’identifiant est effacé du téléphone.</p>
+            <legend>Mesure d’usage</legend>
+            {isDemo() ? <p class="hint">Dans l’exemple, la mesure d’usage est toujours coupée : rien n’est envoyé.</p> : <Switch label="Aider à améliorer l’app" hint="Allumé par défaut, tu peux l’éteindre à tout moment. L’app envoie à PostHog (serveurs en Europe) le nom des écrans ouverts et des gestes faits (par exemple « arrivée pointée », « mois envoyé »), avec un identifiant tiré au hasard, renouvelé au moins tous les 13 mois, et les caractéristiques techniques du téléphone (modèle, système, navigateur, taille d’écran, langue, fuseau horaire). Ces données servent seulement à compter ce qui est utilisé et ce qui coince ; elles ne sont jamais reliées à ton compte." checked={mesure} onChange={(v) => { setMesure(v); setM(v); }} />}
+            <p class="hint">Rien de ce que tu écris ou choisis n’est envoyé : ni prénoms, ni noms, ni horaires, ni montants, ni carnet, ni motifs d’absence. Pas d’enregistrement de l’écran, pas d’adresse internet gardée, pas de localisation. Si tu éteins, l’envoi s’arrête et l’identifiant est effacé du téléphone.</p>
             <p class="hint"><a href="#/confidentialite">Lire la politique de confidentialité</a></p>
           </fieldset>
         </section>

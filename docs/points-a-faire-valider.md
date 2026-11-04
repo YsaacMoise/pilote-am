@@ -44,7 +44,7 @@ Textes lus pour préparer ces questions : RGPD (articles 4, 6, 9, 13, 28, 30, 35
 
 **Enjeu.** Une information incomplète sur l’identité du responsable est un manquement à l’article 13. Perdre le bénéfice de l’anonymat de la LCEN obligerait à publier nom, prénom et domicile. Les deux textes n’ont pas le même objet et peuvent ne pas se concilier.
 
-**Choix en attendant.** Mentions légales et politique inchangées : « YKM, particulier, éditeur non professionnel », identité complète communiquée à l’hébergeur, contact contact@arvela.fr (adresse à créer, action YKM) ou bouton « Ça coince ». Aucun autre nom ni adresse publiés.
+**Choix en attendant.** Mentions légales et politique inchangées : « YKM, particulier, éditeur non professionnel », identité complète communiquée à l’hébergeur, contact contact@arvela.fr (redirection OVH vers la boîte de l’éditeur) ou bouton « Ça coince ». Aucun autre nom ni adresse publiés.
 
 ## 6. Exemption de consentement de la mesure d’audience pour PostHog
 
@@ -60,7 +60,7 @@ Textes lus pour préparer ces questions : RGPD (articles 4, 6, 9, 13, 28, 30, 35
 
 Ces actions ne relèvent pas du juriste, mais les textes de cette demande de fusion en dépendent.
 
-- **L’adresse contact@arvela.fr doit exister avant la fusion.** Les Conditions, la politique, les mentions légales et le message aux parents la donnent comme seul moyen d’écrire à l’éditeur, d’exercer ses droits, de s’opposer et de demander le registre, l’analyse d’impact ou la fiche de registre. Créer la redirection chez OVHcloud, puis envoyer un message d’essai depuis une autre adresse (action YKM, C-151).
-- **Fusionner aussi les demandes n° 44 (mesure d’usage) et n° 45 (pierres tombales des liens parents).** Les textes de cette demande décrivent déjà leur comportement : une mesure active par défaut pour les seules utilisatrices inscrites, et des liens coupés qui laissent une trace vide au lieu d’être effacés.
+- **Fait le 04/11/2026 : l’adresse contact@arvela.fr existe** (redirection OVHcloud vers la boîte de l’éditeur, vérifiée dans la console). Reste un message d’essai envoyé depuis une autre adresse (action YKM).
+- **Fait le 04/11/2026 : les demandes n° 44 (mesure d’usage) et n° 45 (pierres tombales des liens parents) sont fusionnées.**
 - **Prévoir le moyen d’envoyer l’e-mail promis 15 jours avant tout changement de prestataire** (liste des adresses tirée de la console Firebase, envoi depuis contact@arvela.fr). Aucun envoi de ce type n’existe dans le code (AIPD, mesure 13).
 

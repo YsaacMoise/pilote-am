@@ -1,25 +1,67 @@
-// Mesure d'usage du pilote (PostHog, hébergement UE).
-// Corrections après audit (C-030, C-031, C-032, C-033, C-034) :
-// - la mesure est éteinte par défaut et ne démarre qu'après un accord donné dans Plus › Réglages ;
+// Mesure d'usage (PostHog, hébergement UE).
+// Corrections après audit (C-030, C-031, C-033, C-034) :
 // - jamais en démonstration, jamais en local, jamais pendant les tests ;
 // - aucun enregistrement d'écran, aucune capture automatique des clics, aucune carte de chaleur,
 //   aucune capture des erreurs avec leur texte, aucune requête réseau enregistrée ;
 // - seuls partent des noms d'événements métier (« arrivee », « depart »…) et le nom de l'écran ;
 // - couper la mesure efface l'identifiant gardé sur le téléphone.
-import { state } from './store';
+// Depuis le 04/11/2026 (C-032, décision de YKM) : pour les utilisatrices de l'app, la mesure est active par
+// défaut et se coupe en un geste dans Réglages. Fondement visé : exemption de consentement de la CNIL pour la
+// mesure d'audience (article 82 de la loi Informatique et Libertés), à faire valider par un juriste. Les
+// données restent pseudonymes (identifiant au hasard), pas anonymes. Conditions tenues ici et testées : aucun
+// profil de personne ni lien avec le compte, pas de géolocalisation, adresse IP non gardée (réglage du projet
+// PostHog), identifiant renouvelé au plus tard tous les 13 mois sans prolongation, données gardées 1 an,
+// PostHog sous-traitant sans réutilisation, jamais les visiteurs du site, le simulateur avant compte ni les parents.
+import { state, toast } from './store';
 import { isDemo } from './db';
 
 declare const __APP_VERSION__: string;
 
 const KEY = 'phc_o2YzAa4ztXQV3DNa9RQaEiiDZJWBjNY3TsJWEGpYThhD';
-/** Accord donné dans Réglages (valeur « 1 »). Sans cet accord, rien ne part. */
-const OPT_IN = 'pam-mesure-on';
-/** Ancienne clé (mesure active par défaut) : retirée, elle ne vaut plus accord. */
+/** Refus donné dans Réglages (valeur « 1 »). Sans refus, la mesure est active. */
+const REFUS = 'pam-mesure-refus';
+/** Date de création de l'identifiant au hasard (millisecondes). */
+const DEPUIS = 'pam-mesure-depuis';
+/** Passage à la mesure active par défaut déjà fait sur ce téléphone. */
+const MIGRE = 'pam-mesure-v2';
+/** Anciennes clés : accord de l'époque où la mesure était éteinte par défaut, et refus plus ancien encore. */
+const OLD_OPT_IN = 'pam-mesure-on';
 const OLD_OPT_OUT = 'pam-mesure-off';
+/** Durée de vie maximale de l'identifiant : 13 mois (recommandation CNIL), compté depuis sa création. */
+export const DUREE_IDENTIFIANT_MS = 395 * 24 * 3600 * 1000;
 let ph: any = null;
 
+/**
+ * Une seule fois par téléphone : une utilisatrice qui avait éteint la mesure à l'époque où elle était
+ * allumable (PostHog garde alors sa clé de refus à « 0 ») reste refusée. Les autres passent à la mesure active.
+ */
+function migrer() {
+  try {
+    if (localStorage.getItem(MIGRE) === '1') return;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('__ph_opt_in_out') && localStorage.getItem(k) === '0') localStorage.setItem(REFUS, '1');
+    }
+    localStorage.removeItem(OLD_OPT_IN);
+    localStorage.removeItem(OLD_OPT_OUT);
+    localStorage.setItem(MIGRE, '1');
+  } catch { /* stockage indisponible */ }
+}
+
+/** Un identifiant de plus de 13 mois est effacé : PostHog en tire un nouveau. Pas de prolongation à chaque visite. */
+export function renouvelerIdentifiant(now = Date.now()) {
+  try {
+    const d = Number(localStorage.getItem(DEPUIS));
+    if (!d || now - d > DUREE_IDENTIFIANT_MS) {
+      if (d) effacerTracesMesure();
+      localStorage.setItem(DEPUIS, String(now));
+    }
+  } catch { /* stockage indisponible */ }
+}
+
 export function mesureActive(): boolean {
-  try { return localStorage.getItem(OPT_IN) === '1'; } catch { return false; }
+  migrer();
+  try { return localStorage.getItem(REFUS) !== '1'; } catch { return false; }
 }
 
 /**
@@ -35,7 +77,7 @@ export function effacerTracesMesure() {
       if (k && !k.startsWith('__ph_opt_in_out') && (k.startsWith('ph_') || k.startsWith('__ph_') || k.startsWith('_ph_'))) keys.push(k);
     }
     keys.forEach((k) => localStorage.removeItem(k));
-    localStorage.removeItem(OLD_OPT_OUT);
+    localStorage.removeItem(DEPUIS);
   } catch { /* stockage indisponible */ }
   try {
     for (const k of Object.keys(sessionStorage)) if (!k.startsWith('__ph_opt_in_out') && (k.startsWith('ph_') || k.startsWith('__ph_'))) sessionStorage.removeItem(k);
@@ -43,7 +85,8 @@ export function effacerTracesMesure() {
 }
 
 export function setMesure(on: boolean) {
-  try { on ? localStorage.setItem(OPT_IN, '1') : localStorage.removeItem(OPT_IN); } catch { /* stockage indisponible */ }
+  migrer();
+  try { on ? localStorage.removeItem(REFUS) : localStorage.setItem(REFUS, '1'); } catch { /* stockage indisponible */ }
   if (on) {
     if (ph) {
       try {
@@ -141,7 +184,7 @@ export function posthogOptions() {
     ui_host: 'https://eu.posthog.com',
     persistence: 'localStorage',
     // Pas de profil de personne : des événements seulement.
-    person_profiles: 'identified_only',
+    person_profiles: 'never',
     autocapture: false,
     capture_pageview: false,
     capture_pageleave: false,
@@ -164,11 +207,15 @@ export function posthogOptions() {
     },
     advanced_disable_feature_flags: true,
     before_send: (ev: any) => {
-      // Dernier verrou : sans accord en cours, rien ne part, même un événement déjà en file.
-      if (!ev || !mesureActive()) return null;
-      ev.properties = nettoyer(deep(ev.properties)) as any;
-      if (ev.$set) ev.$set = nettoyer(deep(ev.$set));
-      if (ev.$set_once) ev.$set_once = nettoyer(deep(ev.$set_once));
+      // Dernier verrou : après un refus, ou hors de l'app d'une utilisatrice, rien ne part.
+      if (!ev || !mesureActive() || !utilisatrice()) return null;
+      const props = (nettoyer(deep(ev.properties ?? {})) ?? {}) as Record<string, unknown>;
+      // Mesure anonyme : jamais d'adresse internet ni de géolocalisation, jamais de propriété de personne.
+      delete props.$ip;
+      props.$geoip_disable = true;
+      ev.properties = props;
+      delete ev.$set;
+      delete ev.$set_once;
       return ev;
     },
   };
@@ -178,18 +225,31 @@ function version(): string {
   try { return typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'inconnue'; } catch { return 'inconnue'; }
 }
 
+/**
+ * Seules les utilisatrices de l'app sont mesurées : jamais un simple visiteur du site, ni une famille qui
+ * ouvre le simulateur, ni un parent sur sa page (relecture du 04/11/2026). Elles seules ont accès à Réglages
+ * pour s'opposer.
+ */
+export function utilisatrice(): boolean {
+  return !!state.settings?.onboarded && !isDemo();
+}
+
 export async function initAnalytics() {
-  if (ph || !import.meta.env.PROD || !mesureActive() || isDemo()) return;
+  if (ph || !import.meta.env.PROD || !mesureActive() || !utilisatrice()) return;
   const host = location.hostname;
   if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost')) return;
+  renouvelerIdentifiant();
   const mod: any = await import('posthog-js/dist/module.full.no-external');
   const posthog = mod.default ?? mod.posthog ?? mod;
   posthog.init(KEY, {
     ...posthogOptions(),
     loaded: (p: any) => {
-      p.register({ app_mode: 'reel', app_version: version() });
+      // Pas de géolocalisation à partir de l'adresse internet (mesure d'audience anonyme).
+      p.register({ app_mode: 'reel', app_version: version(), $geoip_disable: true });
     },
   });
+  // Mesure rallumée après un refus : PostHog garde sa propre clé de refus, on la lève.
+  try { if (posthog.has_opted_out_capturing()) posthog.opt_in_capturing(); } catch { /* sans effet */ }
   ph = posthog;
   page();
   window.addEventListener('hashchange', page);
@@ -199,6 +259,16 @@ function page() {
   if (!ph || !mesureActive()) return;
   const ecran = ecranCourant(location.hash);
   ph.capture('$pageview', { $current_url: `${location.origin}/#/${ecran}`, ecran });
+}
+
+const INFO = 'pam-mesure-info';
+/** Une seule fois par téléphone : dire que la mesure est active et comment la couper. */
+export function informerUneFois() {
+  try {
+    if (!utilisatrice() || !mesureActive() || localStorage.getItem(INFO) === '1') return;
+    localStorage.setItem(INFO, '1');
+  } catch { return; }
+  toast('Pour s’améliorer, Arvela compte les écrans et gestes utilisés, sans ton nom ni ce que tu écris. Tu peux couper dans Réglages.', async () => { location.hash = '#/reglages'; }, undefined, 'Réglages');
 }
 
 /** Événements métier (déjà notés dans le journal local) : un nom et l'écran, jamais de texte saisi. */

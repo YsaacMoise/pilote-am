@@ -25,8 +25,8 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 | C-006 Diviseur des retenues incomplet | Corrigé | Diviseur de l'art. 111 : planning type du mois entier, absences, congés payés, semaines sans accueil et fériés chômés compris (texte de l'art. 111 ; fiches DREETS Occitanie et DDETS 31). Tests « C-006 » et « art. 111 » (novembre 2026 : 189 h ; octobre avec congés : 31,02 € ; août incomplet : 575,00 €) |
 | C-030 Soins en clair vers PostHog | Corrigé | Plus d'enregistrement d'écran ni de capture automatique ; carnet masqué ; aria-label sans le texte saisi. Test tests/analytics.test.ts. Parcours piégé dans Chrome contre un faux serveur PostHog (contrôle indépendant du 31/10/2026) : sans accord 0 requête ; avec accord, aucune donnée saisie ni identifiant de contrat ; après extinction, plus aucun envoi ; démonstration 0 requête |
 | C-031 Corps des requêtes capturables | Corrigé | `recordBody`/`recordHeaders` forcés à faux, enregistrement coupé côté client, pseudonymisation sans limite de profondeur. Test analytics |
-| C-032 / C-150 Mesure sans consentement | Corrigé | Option B renforcée : mesure éteinte par défaut, accord explicite dans Réglages, jamais en démonstration, aucun profil de personne, événements métier seulement |
-| C-151 Mentions légales et contact | Partiel | Page Mentions légales (éditeur YKM non professionnel, hébergeurs, contact@arvela.fr). Contrat de sous-traitance article 28 complet : **fait le 04/11/2026**, écran Conditions d'utilisation (src/screens/Conditions.tsx), accepté à la création du compte, tests tests/conditions.test.ts et parcours e2e. **Action YKM : créer l'adresse contact@arvela.fr (redirection OVH)** |
+| C-032 / C-150 Mesure sans consentement | Corrigé, changé le 04/11/2026 | D'abord option B (accord explicite). Le 04/11/2026, décision de YKM : mesure active par défaut, opposition en un geste dans Réglages, sur le fondement de l'exemption de consentement de la CNIL pour la mesure d'audience (pages CNIL du 04/07/2025 et FAQ du 29/04/2026). Conditions tenues et testées (tests/analytics.test.ts) : aucun profil de personne (`person_profiles: 'never'`), aucune propriété de personne, adresse IP retirée (réglage du projet et `before_send`), pas de géolocalisation (`$geoip_disable`), identifiant renouvelé au plus tard après 13 mois sans prolongation, événements gardés 1 an (25 mois au plus), jamais en démonstration ; côté projet PostHog, enregistrement d'écran, capture automatique, erreurs, journaux, performances, cartes de chaleur et sondages coupés le 04/11/2026. Une utilisatrice qui avait éteint la mesure reste refusée. Jamais pour les visiteurs du site, le simulateur avant inscription ni la page des parents : seules les utilisatrices inscrites, qui ont accès à Réglages, sont mesurées (relecture du 04/11/2026). Les données sont pseudonymes, pas anonymes : le mot « anonyme » est retiré des textes. Information une fois dans l'app, dans Réglages et dans la politique. Reste à faire valider : le recours à l'exemption pour un outil tiers (PostHog) ; l'analyse hebdomadaire par Claude ne doit lire que des statistiques agrégées, jamais des événements individuels |
+| C-151 Mentions légales et contact | Corrigé | Page Mentions légales (éditeur YKM non professionnel, hébergeurs, contact@arvela.fr). Contrat de sous-traitance article 28 complet : **fait le 04/11/2026**, écran Conditions d'utilisation (src/screens/Conditions.tsx), accepté à la création du compte, tests tests/conditions.test.ts et parcours e2e. Adresse contact@arvela.fr : redirection OVH vers la boîte de YKM, vérifiée dans la console le 04/11/2026 |
 | C-153 Politique et message aux parents inexacts | Corrigé | Politique réécrite (5 points), message aux parents devenu demande d'accord écrit pour le carnet |
 | C-110 GitHub Pages encore en ligne | Corrigé à la publication | Workflow : page de redirection vers arvela.fr + service worker qui se désinscrit. Option YKM : désactiver Pages dans GitHub > Settings > Pages |
 | C-120 Aucun avertissement de responsabilité | Corrigé | Conditions du test (Mentions légales), avertissement sur l'écran Mois et dans le message au parent |
@@ -118,7 +118,7 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 | C-145 | Moyen | Phase 3 | |
 | C-146 | Faible | **Action YKM** | Exclure de PostHog les deux sessions du 30/10/2026 vers 3 h 27 et 3 h 45 UTC |
 | C-150 | Critique | Corrigé | = C-032 |
-| C-151 | Élevé | Partiel | voir plus haut ; reste l'adresse contact@arvela.fr (Action YKM) |
+| C-151 | Élevé | Corrigé | voir plus haut |
 | C-152 | Élevé | Partiel | Demande d'accord écrit des parents pour le carnet ; analyse d'impact faite le 04/11/2026 (docs/aipd.md). Reste : étendre l'accord écrit au motif « malade » et à la case handicap ou maladie (AIPD, mesure 9) |
 | C-153 | Élevé | Corrigé | |
 | C-154 | Moyen | Partiel | Renvoi au registre papier et rappel de déclaration d'accident ; vrai registre : avant phase 2 |
@@ -147,6 +147,28 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 - Analyse d'impact (docs/aipd.md) : deux critères du G29 (enfants, données de santé) ; risque principal : accès illégitime, vraisemblance importante tant que C-113 n'est pas fait.
 - Points à faire valider par un juriste (docs/points-a-faire-valider.md) : qualification responsable / sous-traitant, hébergement de données de santé, exemption reCAPTCHA, statut de consommatrice, anonymat de l'éditeur, exemption de mesure d'audience pour PostHog.
 - C-041 (fermer les inscriptions) est dépassé par la décision d'ouvrir les inscriptions à toutes les AM ; la condition posée par l'AIPD (C-113 avant l'ouverture) le remplace.
-- Mesure d'usage active par défaut avec opposition (décision YKM du 04/11/2026) : décrite dans le registre et l'AIPD, mise en œuvre dans une autre branche. À la fusion, revoir C-032 / C-150 (« mesure éteinte par défaut ») et la fiche A2 du registre.
+- Mesure d'usage active par défaut avec opposition (décision YKM du 04/11/2026) : décrite dans le registre et l'AIPD, publiée par la demande de fusion n°44 (C-032 / C-150 à jour).
 - Relecture indépendante du volet légal (04/11/2026) : corrections appliquées sur la même branche. Accord aux conditions enregistré (`conditionsAcceptees` : version et date) à la création du compte, dans les réglages copiés dans le compte ; message affiché aux comptes existants jusqu'à leur accord (« Lire », « J'accepte »). Message aux parents étendu au motif « malade », à la case handicap ou maladie et au droit de saisir la CNIL. Textes alignés sur les n° 44 (mesure des seules utilisatrices inscrites, données pseudonymes) et n° 45 (pierres tombales des liens parents). Fiche de registre prête pour les AM (docs/fiche-registre-assistante-maternelle.md). AIPD : points faibles R-1, R-3, R-4 et mesures 1 bis, 2 bis, 14 (comptes inactifs, R-8) et 15 (pierres tombales). **Prérequis de fusion : contact@arvela.fr doit exister.**
 - scripts/e2e-sync.cjs : `waitForFunction` remplacé par une attente par `page.evaluate`, pour que le parcours passe avec la règle CSP (sans `unsafe-eval`).
+
+## Relecture de sécurité indépendante du 4 novembre 2026
+
+13 constats. Corrigés dans la demande de fusion « durcissement » :
+- R-5 (moyen) : un lien parent coupé était effacé, et son identifiant pouvait être recréé par un parent qui connaissait le lien pour afficher un faux carnet. Un lien coupé devient maintenant une pierre tombale sans contenu qui garde l'identifiant ; les règles interdisent de l'effacer, de le rouvrir ou de le recréer. Matrice des règles : cas 44 et 48 à 53.
+- R-2, en partie (élevé) : le nom d'un document doit commencer par son magasin (cas 45 et 46). Reste : plafond de volume par compte (compteur ou alerte de stockage).
+- R-6, en partie (moyen) : iv et sel d'un lien à la taille exacte produite par l'app (cas 47). Reste : expiration des liens, taille maximale réelle.
+- R-7 (moyen) : la publication n'exécute plus de paquet téléchargé à la volée ; firebase-tools vient du fichier de verrouillage, sans scripts d'installation. Jeton GitHub non gardé après chaque récupération du code.
+- R-9, en partie (faible) : CSP sans eu-assets.i.posthog.com ni arvela-app.firebaseapp.com ; micro interdit (aucun code ne l'utilise). Testé sur les 4 parcours de bout en bout avec la CSP.
+- R-12, en partie : alertes et mises à jour de sécurité Dependabot activées (04/11/2026).
+
+Réglages faits le 04/11/2026 avec l'accord de YKM :
+- R-1 (élevé) : corrigé. Condition du fournisseur pilote-am : `assertion.repository_id == '1436500329' && assertion.repository_owner_id == '347633010' && assertion.ref == 'refs/heads/main' && (assertion.event_name == 'push' || assertion.event_name == 'workflow_dispatch')`. Aperçus supprimés (workflow apercu.yml retiré).
+- R-4 (moyen) : jeton App Check ramené à 1 jour.
+- R-10 (faible) : effacement automatique des branches fusionnées activé.
+- R-11 (faible) : domaines autorisés de Firebase Auth : arvela.fr ajouté, localhost et l'aperçu pr41 retirés.
+
+Restent à décider :
+- R-3 (moyen) : création de comptes automatisable ; protection reCAPTCHA de Firebase Authentication non activée (passage définitif à Identity Platform, gratuit jusqu'à 50 000 utilisatrices actives par mois). Décision du 04/11/2026 : à activer au lancement du référencement ou de la publicité.
+- R-8 (moyen, conformité) : durée de conservation des comptes abandonnés à fixer ; analyse d'impact en cours.
+- R-10 : environ 40 branches périmées restent à effacer.
+- Référencement : `noindex` dans index.html et `Disallow: /` dans robots.txt, à retirer après le volet légal.

@@ -3,7 +3,9 @@ rules_version = '2';
 // Règles de sécurité de la base Arvela (projet arvela-app).
 // Chaque compte ne voit et ne modifie que ses propres données : users/{son uid}/data/...
 // Lien parent : partages/{id} contient un texte chiffré (illisible sans le lien et le code).
-// Lisible par qui connaît l'identifiant, jamais listable ; écrit et effacé par le seul compte qui l'a créé.
+// Lisible par qui connaît l'identifiant, jamais listable ; écrit par le seul compte qui l'a créé.
+// Un lien coupé n'est jamais effacé : il devient une « pierre tombale » (owner, revoque, t) qui garde
+// l'identifiant pris, pour qu'un tiers qui connaît le lien ne puisse pas le recréer (relecture du 04/11/2026).
 // Tout le reste est fermé.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -13,7 +15,9 @@ service cloud.firestore {
       }
       function validDoc() {
         let d = request.resource.data;
-        return d.keys().hasOnly(['s', 'k', 'v', 't', 'd'])
+        // Le nom du document commence par son magasin (« contracts~… ») : pas de documents hors du plan de l'app.
+        return docId.matches('^' + d.s + '~.+$')
+          && d.keys().hasOnly(['s', 'k', 'v', 't', 'd'])
           && d.keys().hasAll(['s', 'k', 'v', 't'])
           && d.s in ['kv', 'contracts', 'days', 'leaves', 'bulletins', 'journal', 'feedback']
           && d.k is string && d.k.size() > 0 && d.k.size() <= 300
@@ -33,16 +37,28 @@ service cloud.firestore {
           && d.keys().hasAll(['owner', 'v', 'iv', 'salt', 't'])
           && d.owner == request.auth.uid
           && d.v is string && d.v.size() > 0 && d.v.size() <= 200000
-          && d.iv is string && d.iv.size() <= 64
-          && d.salt is string && d.salt.size() <= 64
+          && d.iv is string && d.iv.matches('^[A-Za-z0-9_-]{16}$')
+          && d.salt is string && d.salt.matches('^[A-Za-z0-9_-]{22}$')
           && d.t == request.time;
+      }
+      function tombstone() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['owner', 'revoque', 't'])
+          && d.keys().hasAll(['owner', 'revoque', 't'])
+          && d.owner == request.auth.uid
+          && d.revoque == true
+          && d.t == request.time;
+      }
+      function isOwnerOf() {
+        return request.auth != null && resource.data.owner == request.auth.uid;
       }
       allow get: if true;
       // Liste seulement de ses propres liens (pour tout effacer à la suppression du compte)
       allow list: if request.auth != null && resource.data.owner == request.auth.uid;
       allow create: if request.auth != null && validShare();
-      allow update: if request.auth != null && resource.data.owner == request.auth.uid && validShare();
-      allow delete: if request.auth != null && resource.data.owner == request.auth.uid;
+      // Un lien coupé reste coupé : seule la mise à jour d'un lien vivant est permise.
+      allow update: if isOwnerOf() && resource.data.get('revoque', false) != true && (validShare() || tombstone());
+      allow delete: if false;
     }
   }
 }
