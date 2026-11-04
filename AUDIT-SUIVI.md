@@ -26,7 +26,7 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 | C-030 Soins en clair vers PostHog | Corrigé | Plus d'enregistrement d'écran ni de capture automatique ; carnet masqué ; aria-label sans le texte saisi. Test tests/analytics.test.ts. Parcours piégé dans Chrome contre un faux serveur PostHog (contrôle indépendant du 31/10/2026) : sans accord 0 requête ; avec accord, aucune donnée saisie ni identifiant de contrat ; après extinction, plus aucun envoi ; démonstration 0 requête |
 | C-031 Corps des requêtes capturables | Corrigé | `recordBody`/`recordHeaders` forcés à faux, enregistrement coupé côté client, pseudonymisation sans limite de profondeur. Test analytics |
 | C-032 / C-150 Mesure sans consentement | Corrigé | Option B renforcée : mesure éteinte par défaut, accord explicite dans Réglages, jamais en démonstration, aucun profil de personne, événements métier seulement |
-| C-151 Mentions légales et contact | Partiel | Page Mentions légales (éditeur YKM non professionnel, hébergeurs, contact@arvela.fr, conditions du test). **Action YKM : créer l'adresse contact@arvela.fr (redirection OVH)**. Contrat de sous-traitance article 28 complet : avant phase 2 |
+| C-151 Mentions légales et contact | Partiel | Page Mentions légales (éditeur YKM non professionnel, hébergeurs, contact@arvela.fr). Contrat de sous-traitance article 28 complet : **fait le 04/11/2026**, écran Conditions d'utilisation (src/screens/Conditions.tsx), accepté à la création du compte, tests tests/conditions.test.ts et parcours e2e. **Action YKM : créer l'adresse contact@arvela.fr (redirection OVH)** |
 | C-153 Politique et message aux parents inexacts | Corrigé | Politique réécrite (5 points), message aux parents devenu demande d'accord écrit pour le carnet |
 | C-110 GitHub Pages encore en ligne | Corrigé à la publication | Workflow : page de redirection vers arvela.fr + service worker qui se désinscrit. Option YKM : désactiver Pages dans GitHub > Settings > Pages |
 | C-120 Aucun avertissement de responsabilité | Corrigé | Conditions du test (Mentions légales), avertissement sur l'écran Mois et dans le message au parent |
@@ -118,14 +118,14 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 | C-145 | Moyen | Phase 3 | |
 | C-146 | Faible | **Action YKM** | Exclure de PostHog les deux sessions du 30/10/2026 vers 3 h 27 et 3 h 45 UTC |
 | C-150 | Critique | Corrigé | = C-032 |
-| C-151 | Élevé | Partiel | voir plus haut |
-| C-152 | Élevé | Partiel | Demande d'accord écrit des parents pour le carnet ; analyse d'impact avant phase 2 |
+| C-151 | Élevé | Partiel | voir plus haut ; reste l'adresse contact@arvela.fr (Action YKM) |
+| C-152 | Élevé | Partiel | Demande d'accord écrit des parents pour le carnet ; analyse d'impact faite le 04/11/2026 (docs/aipd.md). Reste : étendre l'accord écrit au motif « malade » et à la case handicap ou maladie (AIPD, mesure 9) |
 | C-153 | Élevé | Corrigé | |
 | C-154 | Moyen | Partiel | Renvoi au registre papier et rappel de déclaration d'accident ; vrai registre : avant phase 2 |
 | C-155 | Moyen | Ouvert, avant phase 2 | Purge du carnet |
 | C-156 | Moyen | Corrigé | Phrase sur le droit américain |
 | C-157 | Moyen | Ouvert, avant phase 2 | Effacement PostHog à la suppression du compte |
-| C-158 | Élevé | Ouvert, avant phase 2 | Registre des traitements et analyse d'impact |
+| C-158 | Élevé | Partiel | Registre (docs/registre-des-traitements.md, parties responsable et sous-traitant) et analyse d'impact (docs/aipd.md) écrits le 04/11/2026, méthode CNIL. Conclusion de l'AIPD : ouverture à toutes les AM possible **à condition** de faire avant la double authentification des comptes administrateurs (C-113) et de trancher le cadre de l'analyse par Claude (mesure 7). Six questions au juriste : docs/points-a-faire-valider.md |
 | C-159 | Faible | Corrigé | noindex, robots.txt, phrase sur la dictée |
 
 ## Erreurs relevées dans le rapport d'audit lui-même
@@ -139,3 +139,12 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 
 - Protection anti-robots : Firebase App Check avec reCAPTCHA Enterprise (Fraud Defense), clé à score limitée à arvela.fr, jeton de 7 jours. Enregistrée en mode surveillance : rien n'est bloqué. Le code (demande de fusion « sécurité avant ouverture ») ne s'active que sur arvela.fr. À rendre obligatoire pour Firestore puis Authentication quand les mesures de la console montrent que les demandes de l'app sont vérifiées.
 - Aperçu de test : chaque demande de fusion est publiée sur une adresse Firebase à part, effacée après 7 jours (workflow Aperçu).
+
+## Ajouts du 4 novembre 2026 (volet légal avant l'ouverture, branche `volet-legal`)
+
+- Conditions d'utilisation avec le contrat de traitement des données de l'article 28 du RGPD (src/screens/Conditions.tsx) : liées depuis l'en-tête et le pied de page du site, Plus, les mentions légales et la politique ; phrase d'acceptation à la création du compte, sans case à cocher ; date dans src/legal.ts (`majConditions`). Les mentions légales renvoient désormais aux conditions pour la partie données.
+- Registre des traitements (docs/registre-des-traitements.md) : six fiches responsable (compte, mesure d'usage, anti-robots, e-mails de service, retours du test et contact, journaux du site) et trois fiches sous-traitant (données saisies, liens parents, sauvegardes).
+- Analyse d'impact (docs/aipd.md) : deux critères du G29 (enfants, données de santé) ; risque principal : accès illégitime, vraisemblance importante tant que C-113 n'est pas fait.
+- Points à faire valider par un juriste (docs/points-a-faire-valider.md) : qualification responsable / sous-traitant, hébergement de données de santé, exemption reCAPTCHA, statut de consommatrice, anonymat de l'éditeur, exemption de mesure d'audience pour PostHog.
+- C-041 (fermer les inscriptions) est dépassé par la décision d'ouvrir les inscriptions à toutes les AM ; la condition posée par l'AIPD (C-113 avant l'ouverture) le remplace.
+- Mesure d'usage active par défaut avec opposition (décision YKM du 04/11/2026) : décrite dans le registre et l'AIPD, mise en œuvre dans une autre branche. À la fusion, revoir C-032 / C-150 (« mesure éteinte par défaut ») et la fiche A2 du registre.
