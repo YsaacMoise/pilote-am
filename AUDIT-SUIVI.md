@@ -150,11 +150,14 @@ Constat hors audit du 02/11/2026, seuil des 45 h (heures majorées) : **Corrigé
 - R-9, en partie (faible) : CSP sans eu-assets.i.posthog.com ni arvela-app.firebaseapp.com ; micro interdit (aucun code ne l'utilise). Testé sur les 4 parcours de bout en bout avec la CSP.
 - R-12, en partie : alertes et mises à jour de sécurité Dependabot activées (04/11/2026).
 
-À décider avec YKM (réglages de console) :
-- R-1 (élevé) : la fédération d'identité accepte tout workflow du dépôt, quelle que soit la branche ; une branche pouvait donc publier sur arvela.fr sans fusion. Correction : limiter la condition à `refs/heads/main` et à l'événement push (identifiants numériques du dépôt), et sortir les aperçus de ce compte (suppression, ou projet Firebase séparé).
-- R-3 (moyen) : création de comptes automatisable ; protection reCAPTCHA de Firebase Authentication non activée (passage à Identity Platform, gratuit jusqu'à 50 000 utilisatrices actives par mois).
-- R-4 (moyen) : jeton App Check de 7 jours, réutilisable par un robot ; le ramener à 1 jour.
+Réglages faits le 04/11/2026 avec l'accord de YKM :
+- R-1 (élevé) : corrigé. Condition du fournisseur pilote-am : `assertion.repository_id == '1436500329' && assertion.repository_owner_id == '347633010' && assertion.ref == 'refs/heads/main' && (assertion.event_name == 'push' || assertion.event_name == 'workflow_dispatch')`. Aperçus supprimés (workflow apercu.yml retiré).
+- R-4 (moyen) : jeton App Check ramené à 1 jour.
+- R-10 (faible) : effacement automatique des branches fusionnées activé.
+- R-11 (faible) : domaines autorisés de Firebase Auth : arvela.fr ajouté, localhost et l'aperçu pr41 retirés.
+
+Restent à décider :
+- R-3 (moyen) : création de comptes automatisable ; protection reCAPTCHA de Firebase Authentication non activée (passage définitif à Identity Platform, gratuit jusqu'à 50 000 utilisatrices actives par mois). Décision du 04/11/2026 : à activer au lancement du référencement ou de la publicité.
 - R-8 (moyen, conformité) : durée de conservation des comptes abandonnés à fixer ; analyse d'impact en cours.
-- R-10 (faible) : environ 40 branches périmées ; activer l'effacement automatique des branches fusionnées.
-- R-11 (faible) : domaines autorisés de Firebase Auth à nettoyer (retirer localhost et l'aperçu pr41, ajouter arvela.fr).
+- R-10 : environ 40 branches périmées restent à effacer.
 - Référencement : `noindex` dans index.html et `Disallow: /` dans robots.txt, à retirer après le volet légal.
