@@ -5,12 +5,13 @@
 //   aucune capture des erreurs avec leur texte, aucune requête réseau enregistrée ;
 // - seuls partent des noms d'événements métier (« arrivee », « depart »…) et le nom de l'écran ;
 // - couper la mesure efface l'identifiant gardé sur le téléphone.
-// Depuis le 04/11/2026 (C-032, décision de YKM) : la mesure est active par défaut et se coupe en un geste
-// dans Réglages. Fondement : exemption de consentement de la CNIL pour la mesure d'audience (article 82 de
-// la loi Informatique et Libertés). Conditions tenues ici et testées : statistiques seulement, aucun profil
-// de personne ni lien avec le compte, pas de géolocalisation, adresse IP non gardée (réglage du projet
-// PostHog), identifiant au hasard renouvelé au plus tard tous les 13 mois sans prolongation, données gardées
-// moins de 25 mois, PostHog sous-traitant sans réutilisation.
+// Depuis le 04/11/2026 (C-032, décision de YKM) : pour les utilisatrices de l'app, la mesure est active par
+// défaut et se coupe en un geste dans Réglages. Fondement visé : exemption de consentement de la CNIL pour la
+// mesure d'audience (article 82 de la loi Informatique et Libertés), à faire valider par un juriste. Les
+// données restent pseudonymes (identifiant au hasard), pas anonymes. Conditions tenues ici et testées : aucun
+// profil de personne ni lien avec le compte, pas de géolocalisation, adresse IP non gardée (réglage du projet
+// PostHog), identifiant renouvelé au plus tard tous les 13 mois sans prolongation, données gardées 1 an,
+// PostHog sous-traitant sans réutilisation, jamais les visiteurs du site, le simulateur avant compte ni les parents.
 import { state, toast } from './store';
 import { isDemo } from './db';
 
@@ -206,8 +207,8 @@ export function posthogOptions() {
     },
     advanced_disable_feature_flags: true,
     before_send: (ev: any) => {
-      // Dernier verrou : après un refus, rien ne part, même un événement déjà en file.
-      if (!ev || !mesureActive()) return null;
+      // Dernier verrou : après un refus, ou hors de l'app d'une utilisatrice, rien ne part.
+      if (!ev || !mesureActive() || !utilisatrice()) return null;
       const props = (nettoyer(deep(ev.properties ?? {})) ?? {}) as Record<string, unknown>;
       // Mesure anonyme : jamais d'adresse internet ni de géolocalisation, jamais de propriété de personne.
       delete props.$ip;
@@ -224,8 +225,17 @@ function version(): string {
   try { return typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'inconnue'; } catch { return 'inconnue'; }
 }
 
+/**
+ * Seules les utilisatrices de l'app sont mesurées : jamais un simple visiteur du site, ni une famille qui
+ * ouvre le simulateur, ni un parent sur sa page (relecture du 04/11/2026). Elles seules ont accès à Réglages
+ * pour s'opposer.
+ */
+export function utilisatrice(): boolean {
+  return !!state.settings?.onboarded && !isDemo();
+}
+
 export async function initAnalytics() {
-  if (ph || !import.meta.env.PROD || !mesureActive() || isDemo()) return;
+  if (ph || !import.meta.env.PROD || !mesureActive() || !utilisatrice()) return;
   const host = location.hostname;
   if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost')) return;
   renouvelerIdentifiant();
@@ -255,10 +265,10 @@ const INFO = 'pam-mesure-info';
 /** Une seule fois par téléphone : dire que la mesure est active et comment la couper. */
 export function informerUneFois() {
   try {
-    if (isDemo() || !mesureActive() || localStorage.getItem(INFO) === '1') return;
+    if (!utilisatrice() || !mesureActive() || localStorage.getItem(INFO) === '1') return;
     localStorage.setItem(INFO, '1');
   } catch { return; }
-  toast('Arvela compte de façon anonyme les écrans et gestes utilisés, pour s’améliorer. Rien de ce que tu écris ne part. Tu peux couper dans Réglages.', async () => { location.hash = '#/reglages'; }, undefined, 'Réglages');
+  toast('Pour s’améliorer, Arvela compte les écrans et gestes utilisés, sans ton nom ni ce que tu écris. Tu peux couper dans Réglages.', async () => { location.hash = '#/reglages'; }, undefined, 'Réglages');
 }
 
 /** Événements métier (déjà notés dans le journal local) : un nom et l'écran, jamais de texte saisi. */

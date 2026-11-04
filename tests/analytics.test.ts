@@ -134,8 +134,16 @@ describe('mesure d’usage active par défaut : conditions de l’exemption CNIL
     expect(store.get('pam-mesure-depuis')).toBe(String(t1));
     expect(DUREE_IDENTIFIANT_MS).toBeLessThanOrEqual(396 * 24 * 3600 * 1000);
   });
+  it('jamais pour un simple visiteur du site, une famille sur le simulateur ou un parent : seulement une utilisatrice inscrite', () => {
+    stockage();
+    state.settings = { ...state.settings, onboarded: false } as any;
+    expect(posthogOptions().before_send({ event: 'simulation', properties: {} })).toBeNull();
+    state.settings = { ...state.settings, onboarded: true } as any;
+    expect(posthogOptions().before_send({ event: 'simulation', properties: {} })?.event).toBe('simulation');
+  });
   it('aucune adresse internet, aucune géolocalisation, aucune propriété de personne ne part', () => {
     stockage();
+    state.settings = { ...state.settings, onboarded: true } as any;
     const ev = posthogOptions().before_send({ event: 'arrivee', properties: { $ip: '1.2.3.4', ecran: 'aujourdhui' }, $set: { email: 'x@y.fr' }, $set_once: { a: 1 } });
     expect(ev.properties.$ip).toBeUndefined();
     expect(ev.properties.$geoip_disable).toBe(true);
@@ -154,6 +162,7 @@ describe('mesure d’usage : contrôle indépendant du 31 octobre 2026', () => {
   });
   it('before_send nettoie $current_url et $session_entry_url, et ne laisse rien partir sans accord', () => {
     const o: any = posthogOptions();
+    state.settings = { ...state.settings, onboarded: true } as any;
     (globalThis as any).localStorage.removeItem('pam-mesure-refus');
     const ev = o.before_send({ event: 'ecran', properties: { $current_url: 'https://arvela.fr/#/contrat/k7f3', $session_entry_url: 'https://arvela.fr/#/fin/k7f3', title: 'Contrat · Arvela' } });
     expect(ev.properties.$current_url).toBe('https://arvela.fr/#/contrat');

@@ -59,6 +59,8 @@ describe('audit C-101 : erreur affichée', () => {
   });
   it('après un refus, la mesure ne laisse partir aucun de ces événements', async () => {
     const { posthogOptions } = await import('../src/analytics');
+    const { state } = await import('../src/store');
+    state.settings = { ...state.settings, onboarded: true } as any;
     const before_send = posthogOptions().before_send;
     localStorage.setItem('pam-mesure-refus', '1');
     for (const ev of ['erreur_saisie', 'annulation_arrivee', 'heure_corrigee_apres_coup']) {

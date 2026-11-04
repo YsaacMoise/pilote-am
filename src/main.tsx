@@ -51,7 +51,7 @@ async function start() {
   render(<App />, document.getElementById('app')!);
   // Compte en ligne déjà branché sur ce téléphone : on reprend la copie (Firebase chargé seulement dans ce cas).
   if (!isDemo() && hasCloudAccount()) import('./cloud').then((c) => c.startCloud()).catch(() => {});
-  // Mesure d'usage anonyme : active sauf refus dans Réglages ; après un refus, on efface toute trace.
+  // Mesure d'usage des utilisatrices : active sauf refus dans Réglages ; après un refus, on efface toute trace.
   setTimeout(() => {
     import('./analytics').then((a) => (a.mesureActive() ? (a.initAnalytics(), a.informerUneFois()) : a.effacerTracesMesure())).catch(() => {});
   }, 1500);
