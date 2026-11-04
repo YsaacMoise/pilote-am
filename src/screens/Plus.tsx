@@ -50,7 +50,8 @@ export function Plus() {
             <ListLink href="#/regles" icon="help" title="Comment l’app calcule" sub="Les règles de la convention et nos choix" />
             <ListLink href="#/installer" icon="phone" title="Installer sur l’iPhone" />
             <ListLink href="#/confidentialite" icon="shield" title="Confidentialité" sub="Ce qui est gardé, où, et tes droits" />
-            <ListLink href="#/mentions" icon="help" title="Mentions légales" sub="Éditeur, hébergeur, conditions du test" />
+            <ListLink href="#/conditions" icon="file" title="Conditions d’utilisation" sub="Règles d’usage et contrat de traitement des données" />
+            <ListLink href="#/mentions" icon="help" title="Mentions légales" sub="Éditeur, hébergeur" />
           </div>
         </section>
         <section class="stack-sm" aria-labelledby="donnees">

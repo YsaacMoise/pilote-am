@@ -186,6 +186,7 @@ export function Welcome() {
         <nav class="site-links" aria-label="Liens">
           <a href="#/simulateur">Simuler un accueil</a>
           <a href="#/confidentialite">Tes données</a>
+          <a href="#/conditions">Conditions</a>
           <a href="#/mentions">Mentions légales</a>
         </nav>
         {!signedIn && form !== 'login' && (
@@ -240,6 +241,7 @@ export function Welcome() {
         <nav aria-label="Pied de page">
           <a href="#/simulateur">Simuler un accueil</a>
           <a href="#/confidentialite">Confidentialité</a>
+          <a href="#/conditions">Conditions d’utilisation</a>
           <a href="#/mentions">Mentions légales</a>
         </nav>
         <BoutonNuit class="btn-theme" texte />

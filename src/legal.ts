@@ -13,7 +13,11 @@ export const LEGAL = {
   /** Date de fin de la phase de test (3 mois) */
   finTest: '31 janvier 2027',
   /** Date de la dernière mise à jour des textes */
-  maj: '3 novembre 2026',
+  maj: '4 novembre 2026',
+  /** Date de la dernière mise à jour des conditions d'utilisation (contrat de traitement des données, article 28 du RGPD) */
+  majConditions: '4 novembre 2026',
+  /** Durée de conservation des sauvegardes quotidiennes de la base (réglage de la console Firebase) */
+  joursSauvegardes: 98,
 };
 
 /** Phrase de responsabilité reprise dans l'app et dans le message envoyé au parent (C-120, C-121) */

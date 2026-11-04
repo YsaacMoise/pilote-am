@@ -23,7 +23,7 @@ export function Confidentialite({ back = '#/plus' }: { back?: string }) {
         <section class="card stack-sm">
           <h2>Qui est responsable</h2>
           <p>{LEGAL.responsable}. Pour toute question sur tes données : {LEGAL.contact}. Voir aussi les <a href="#/mentions">mentions légales</a>.</p>
-          <p>Pour les données des enfants et des parents que tu saisis, c’est toi qui décides de ce que tu notes, comme dans un cahier. Arvela les garde et les traite pour ton compte, uniquement pour faire marcher l’app.</p>
+          <p>Pour les données des enfants et des parents que tu saisis, c’est toi qui décides de ce que tu notes, comme dans un cahier. Arvela les garde et les traite pour ton compte, uniquement pour faire marcher l’app. Les engagements d’Arvela pour ces données (contrat de l’article 28 du RGPD) sont dans les <a href="#/conditions">conditions d’utilisation</a>.</p>
         </section>
 
         <section class="card stack-sm">

@@ -626,6 +626,8 @@ h1:focus { outline: none; }
 .site-links { display: none; gap: 24px; font-size: 14px; font-weight: 500; }
 .site-links a { color: var(--ink-2); text-decoration: none; padding: 10px 0; }
 .site-links a:hover { color: var(--ink); }
+/* Quatre liens (dont les conditions d'utilisation) : moins d'espace entre eux sur les écrans moyens */
+@media (max-width: 1099px) { .site-links { gap: 14px; } }
 .btn-sm { min-height: 44px; padding: 0 16px; font-size: 15px; border-radius: 12px; }
 
 .landing-main { display: flex; flex-direction: column; gap: 24px; }
