@@ -1,10 +1,13 @@
 import { termsAt } from '../engine/payroll';
 import { useState } from 'preact/hooks';
 import { ctxFor, useStore } from '../store';
-import { shortDate, today } from '../engine/dates';
+import { addMonths, monthLabel, monthOf, shortDate, today, type Month } from '../engine/dates';
 import { finDeContrat, MOTIF_LABEL, type Motif } from '../engine/fin';
-import { euros, hoursLabel } from '../engine/money';
-import { Banner, Choices, DateInput, Gommette, Topbar } from '../ui/kit';
+import { euros, eurosArrondis, hoursLabel } from '../engine/money';
+import { Banner, Choices, DateInput, EuroInput, Gommette, Topbar } from '../ui/kit';
+
+/** « de mars », « d’août », « d’octobre » */
+const deMois = (l: string) => (/^[aeiouyéè]/i.test(l) ? `d’${l}` : `de ${l}`);
 
 export function Fin({ id }: { id?: string }) {
   const s = useStore();
@@ -14,6 +17,9 @@ export function Fin({ id }: { id?: string }) {
   const [remise, setRemise] = useState<'recommande' | 'main_propre'>('recommande');
   // Première présentation : suit la date d'envoi tant qu'elle n'est pas saisie (relecture contradictoire, point 1).
   const [presentation, setPresentation] = useState<string | null>(null);
+  // C-008 : total des salaires bruts lu sur les bulletins Pajemploi, pour ne pas calculer l'indemnité sur une estimation.
+  const [brutTotal, setBrutTotal] = useState<number | undefined>(undefined);
+  const [brutJusqua, setBrutJusqua] = useState<Month>(addMonths(monthOf(today()), -1));
   const changeEnvoi = (v: string) => { setNotif(v); if (presentation && presentation < v) setPresentation(null); };
   const c = s.contracts.find((x) => x.id === cid);
   if (!c) return <><Topbar title="Fin de contrat" back="#/plus" screen="fin" /><main><div class="card empty"><p>Aucun contrat.</p></div></main></>;
@@ -25,8 +31,14 @@ export function Fin({ id }: { id?: string }) {
   const avecPreavis = motif === 'retrait' || motif === 'demission';
   const presVue = presentation && presentation > envoi ? presentation : envoi;
   const pres = avecPreavis && remise === 'recommande' ? presVue : envoi;
-  const f = finDeContrat(ctxFor(c), envoi, motif, s.settings.enfantsACharge, pres);
+  const parMois: Partial<Record<Month, number>> = {};
+  for (const b of s.bulletins) if (b.cid === c.id && b.brut) parMois[b.month] = b.brut;
+  const f = finDeContrat(ctxFor(c), envoi, motif, s.settings.enfantsACharge, pres, { parMois, total: brutTotal, jusqua: brutJusqua });
   const total = f.indemniteRupture + f.regularisation + f.cpIndemnite;
+  // L'indemnité de rupture dépend du brut : tant qu'un mois est estimé, elle est affichée arrondie, comme une estimation.
+  const surBrut = motif === 'retrait' || motif === 'deces' || motif === 'inaptitude' || motif === 'inaptitude_pro';
+  const estime = surBrut && f.brutsEstimes.length > 0;
+  const periode = f.brutsEstimes.length === 1 ? monthLabel(f.brutsEstimes[0]) : `${f.brutsEstimes.length} mois, ${deMois(monthLabel(f.brutsEstimes[0] ?? '2026-01'))} à ${monthLabel(f.brutsEstimes[f.brutsEstimes.length - 1] ?? '2026-01')}`;
   return (
     <>
       <Topbar title="Fin de contrat" back="#/plus" screen="fin" />
@@ -65,6 +77,16 @@ export function Fin({ id }: { id?: string }) {
             )}
           </fieldset>
         </section>
+        {surBrut && (f.brutsEstimes.length > 0 || brutTotal != null) && (
+          <section class="card stack-sm" aria-labelledby="fin-brut">
+            <h2 id="fin-brut">Salaires bruts de tes bulletins</h2>
+            <p>L’indemnité de rupture se calcule sur les salaires bruts. {brutTotal == null && f.brutsEstimes.length > 0 ? <>Le brut n’est pas connu pour {periode} : l’app l’estime à partir du net, ce qui peut être faux de quelques euros.</> : 'Le total saisi est utilisé.'}</p>
+            <EuroInput label="Total des salaires bruts de tes bulletins" hint="Additionne la ligne « salaire brut » de chaque bulletin Pajemploi de ce contrat, du premier jusqu’au mois indiqué ci-dessous, congés payés compris." cents={brutTotal} allowEmpty onChange={setBrutTotal} />
+            <label class="label" for="fin-jusqua">Dernier bulletin compris dans ce total</label>
+            <input id="fin-jusqua" class="input" type="month" value={brutJusqua} min={c.start.slice(0, 7)} max={monthOf(f.dernierJour)} onChange={(e) => { const v = (e.target as HTMLInputElement).value; if (v) setBrutJusqua(v as Month); }} />
+            {brutTotal != null && f.brutsEstimes.length > 0 && <p class="hint">Les mois suivants ({periode}) n’ont pas encore de bulletin : leur brut reste estimé.</p>}
+          </section>
+        )}
         {f.alertes.map((a) => <Banner tone="warn">{a} <a href={`#/historique/${c.id}`}>Ouvrir l’historique</a></Banner>)}
         <section class="card stack" aria-labelledby="fin-res" aria-live="polite">
           <h2 id="fin-res">Ce qui t’est dû</h2>
@@ -74,12 +96,12 @@ export function Fin({ id }: { id?: string }) {
             <dt>Dernier jour (préavis inclus)</dt><dd>{shortDate(f.dernierJour)}</dd>
           </dl>
           <div class="decl">
-            <div class="decl-line"><span class="decl-label"><span>Indemnité de rupture</span><span class="decl-hint">{f.ruptureExplication}</span></span><span class="decl-value">{euros(f.indemniteRupture)}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>Indemnité de rupture</span><span class="decl-hint">{f.ruptureExplication}</span></span><span class="decl-value">{estime && f.indemniteRupture > 0 ? `environ ${eurosArrondis(f.indemniteRupture)}` : euros(f.indemniteRupture)}</span></div>
             <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint">{f.regularisation > 0 || termsAt(c, f.dernierJour).yearType === 'incomplete' ? (f.regulMinutes ? `${hoursLabel(f.regulMinutes)} accueillies mais non payées par la mensualisation` : 'Pas d’heures accueillies au-delà de ce qui a été payé') : 'Année complète : pas de régularisation'}</span></span><span class="decl-value">{euros(f.regularisation)}</span></div>
             <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{euros(f.cpIndemnite)}</span></div>
           </div>
-          <div class="spread"><b>Total estimé, hors salaire du dernier mois</b><span class="decl-value">{euros(total)}</span></div>
-          <p class="hint">L’indemnité de rupture est calculée sur {euros(f.totalBrut)} de salaires bruts (estimés à partir du net quand le brut est inconnu). Elle n’est pas soumise aux cotisations.</p>
+          <div class="spread"><b>Total estimé, hors salaire du dernier mois</b><span class="decl-value">{estime && f.indemniteRupture > 0 ? `environ ${eurosArrondis(total)}` : euros(total)}</span></div>
+          <p class="hint">L’indemnité de rupture est calculée sur {estime ? `environ ${eurosArrondis(f.totalBrut)}` : euros(f.totalBrut)} de salaires bruts{estime ? ', en partie estimés à partir du net : saisis le total de tes bulletins plus haut pour un montant exact' : ''}. Elle n’est pas soumise aux cotisations.</p>
         </section>
       </main>
     </>

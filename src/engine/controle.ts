@@ -13,9 +13,13 @@ export function controle(b: Bulletin, r: MonthResult, rateNet: number): Check[] 
   const rates = ratesAt(lastDay(b.month));
   const tol = 100; // 1 € d'écart toléré (arrondis)
 
+  // C-019 : Pajemploi garde le net déclaré et le brut, et ajoute la réduction de cotisations des heures complémentaires
+  // et majorées à la somme versée. Un bulletin peut donc montrer le net déclaré ou le net réduction comprise.
+  const red = r.reductionHS ?? 0;
   if (b.net != null) {
     const diff = b.net - r.netTotal;
-    if (Math.abs(diff) <= tol) out.push({ level: 'ok', title: 'Salaire net conforme', detail: `${euros(b.net)} déclaré, ${euros(r.netTotal)} calculé.` });
+    if (red > 0 && Math.abs(b.net - r.netTotal - red) <= tol) out.push({ level: 'ok', title: 'Salaire net conforme', detail: `${euros(b.net)} sur le bulletin : ${euros(r.netTotal)} déclarés et ${euros(red)} de réduction de cotisations sur les heures complémentaires et majorées.` });
+    else if (Math.abs(diff) <= tol) out.push({ level: 'ok', title: 'Salaire net conforme', detail: `${euros(b.net)} déclaré, ${euros(r.netTotal)} calculé.` });
     else if (diff < 0) out.push({ level: 'warn', title: `Il manque ${euros(-diff)} de salaire net`, detail: `${euros(b.net)} déclaré, ${euros(r.netTotal)} calculé par l’app.` });
     else out.push({ level: 'info', title: `${euros(diff)} de plus que le calcul`, detail: `${euros(b.net)} déclaré, ${euros(r.netTotal)} calculé. Vérifie qu’il ne s’agit pas d’une erreur que tu devrais rembourser.` });
   }
@@ -37,10 +41,13 @@ export function controle(b: Bulletin, r: MonthResult, rateNet: number): Check[] 
   if (b.brut != null && b.net != null && b.brut > 0) {
     const ratio = b.net / b.brut;
     const pct = (ratio * 100).toFixed(1).replace('.', ',');
-    if (ratio < 0.74 || ratio > 0.82) {
-      out.push({ level: 'warn', title: 'Net et brut incohérents', detail: `Le net représente ${pct} % du brut. Pour une assistante maternelle on attend environ 78 % (cotisations salariales d’environ 22 %).` });
+    // Avec la réduction de cotisations des heures complémentaires et majorées, le net versé peut dépasser 82 % du brut.
+    const haut = 0.82 + red / b.brut;
+    const avecHS = red > 0 ? ` ; jusqu’à ${(haut * 100).toFixed(1).replace('.', ',')} % si le net comprend les ${euros(red)} de réduction de cotisations des heures complémentaires et majorées` : '';
+    if (ratio < 0.74 || ratio > haut) {
+      out.push({ level: 'warn', title: 'Net et brut incohérents', detail: `Le net représente ${pct} % du brut. Pour une assistante maternelle on attend environ 78 % (cotisations salariales d’environ 22 %)${avecHS}.` });
     } else {
-      out.push({ level: 'ok', title: 'Net et brut cohérents', detail: `Le net représente ${pct} % du brut (attendu : environ 78 %).` });
+      out.push({ level: 'ok', title: 'Net et brut cohérents', detail: `Le net représente ${pct} % du brut (attendu : environ 78 %${avecHS}).` });
     }
     if (b.heures && b.heures > 0) {
       const brutHoraire = Math.round((b.brut - r.cpIndemnite / 0.781 - r.cpComplement / 0.781) / (b.heures + r.complMin / 60 + (r.majContratMin + r.majMin) / 60));
