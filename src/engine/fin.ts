@@ -31,6 +31,11 @@ export interface FinResult {
   indemniteRupture: number;
   ruptureExplication: string;
   totalBrut: number;
+  /**
+   * C-008 : mois dont le brut est estimé à partir du net (rapport fixe), faute de brut lu sur un bulletin.
+   * Vide quand le total des salaires bruts a été saisi.
+   */
+  brutsEstimes: Month[];
   regularisation: number;
   regulMinutes: number;
   cpJoursRestants: number;
@@ -47,7 +52,16 @@ export interface FinResult {
  * cette date ; en remise en main propre, c'est la date de remise (= `notif`). Jamais de l'annonce orale (C-017,
  * CCN art. 120 ; fiches DREETS Auvergne-Rhône-Alpes du 18/03/2024 ; code.travail.gouv.fr, IDCC 3239).
  */
-export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0, presentation?: ISODate): FinResult {
+/** Bruts réels connus : par mois (bulletins contrôlés), ou total saisi depuis les bulletins Pajemploi */
+export interface BrutsReels {
+  parMois?: Partial<Record<Month, number>>;
+  /** Total des bruts des bulletins Pajemploi, du début du contrat jusqu'au mois `jusqua` compris */
+  total?: number;
+  /** Dernier mois compris dans `total` ; les mois suivants (préavis, mois en cours) restent comptés à part */
+  jusqua?: Month;
+}
+
+export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0, presentation?: ISODate, bruts: BrutsReels = {}): FinResult {
   const c = ctx.c;
   const alertes: string[] = [];
   const anc = fullMonthsBetween(c.start, notif);
@@ -83,10 +97,21 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // Salaires bruts depuis le début du contrat
   let totalBrut = 0;
   const manquants: Month[] = [];
+  const brutsEstimes: Month[] = [];
+  // C-008 : le total saisi depuis les bulletins Pajemploi remplace les mois qu'il couvre ; les mois suivants
+  // (préavis, mois sans bulletin encore) restent comptés, estimés si besoin (relecture contradictoire du 04/11/2026).
+  const saisi = bruts.total != null && bruts.total > 0;
+  const couvert = (m: Month) => saisi && (!bruts.jusqua || m <= bruts.jusqua);
+  if (saisi) totalBrut = bruts.total!;
   for (const m of monthsBetween(monthOf(c.start), monthOf(dernierJour))) {
+    if (couvert(m)) continue;
     const b = monthBase(endCtx, m);
     if (!b.active) continue;
     if (b.missing) { manquants.push(m); continue; }
+    // Brut d'un bulletin contrôlé : congés compris, rien à ajouter.
+    const lu = bruts.parMois?.[m];
+    if (lu != null && lu > 0) { totalBrut += lu; continue; }
+    if (!b.brut) brutsEstimes.push(m);
     totalBrut += monthBrut(endCtx, m);
     const cp = cpForMonth(endCtx, m, enfants);
     totalBrut += netToBrut(cp.indemnite + cp.complement, lastDay(m));
@@ -201,7 +226,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     ' : on retient le plus favorable entre le dixième et le maintien de salaire.';
 
   return {
-    ancienneteMois: anc, preavisLabel, preavisFin, dernierJour, indemniteRupture, ruptureExplication, totalBrut,
+    ancienneteMois: anc, preavisLabel, preavisFin, dernierJour, indemniteRupture, ruptureExplication, totalBrut, brutsEstimes,
     regularisation: regularisation_, regulMinutes, cpJoursRestants: joursCur + restantsPrec, cpIndemnite, cpExplication, manquants, alertes,
   };
 }

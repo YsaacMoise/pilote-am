@@ -391,6 +391,8 @@ export interface MonthBase {
   majMin: number;
   /** Heures du contrat au-delà de 45 h, mensualisées et proratisées (déjà dans le salaire de base) */
   majContratMin: number;
+  /** Valeur nette de ces heures du contrat au-delà de 45 h (comprise dans `base`) */
+  majContratAmount: number;
   complAmount: number;
   majAmount: number;
   ferieAmount: number;
@@ -422,7 +424,7 @@ function emptyBase(m: Month): MonthBase {
   return {
     month: m, active: false, fromHistory: false, missing: false, salaireMens: 0, mensuelMin: 0, divisorDays: 0,
     divisorMin: 0, contractDays: 0, contractMin: 0, deductedDays: 0, deductedMin: 0, paidFraction: 0, base: 0,
-    retenue: 0, heuresNormales: 0, joursActivite: 0, complMin: 0, majMin: 0, majContratMin: 0, complAmount: 0, majAmount: 0,
+    retenue: 0, heuresNormales: 0, joursActivite: 0, complMin: 0, majMin: 0, majContratMin: 0, majContratAmount: 0, complAmount: 0, majAmount: 0,
     ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, net: 0,
     alerts: [], forgotten: [], sickPaidNotice: false,
   };
@@ -569,7 +571,7 @@ function hoursMin(min: number): string {
   return mm ? `${h} h ${String(mm).padStart(2, '0')}` : `${h} h`;
 }
 
-const SUM_KEYS = ['base', 'retenue', 'majContratMin', 'joursActivite', 'complMin', 'majMin', 'complAmount', 'majAmount', 'ferieAmount',
+const SUM_KEYS = ['base', 'retenue', 'majContratMin', 'majContratAmount', 'joursActivite', 'complMin', 'majMin', 'complAmount', 'majAmount', 'ferieAmount',
   'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
 
 function mergeParts(m: Month, parts: MonthBase[], cuts: ISODate[]): MonthBase {
@@ -696,6 +698,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   r.normalesMin = (r.mensuelMin - majContrat) * fraction;
   r.heuresNormales = Math.round(r.normalesMin / 60);
   r.majContratMin = Math.round(majContrat * fraction);
+  r.majContratAmount = Math.round((r.majContratMin * c.rateNet * (100 + c.majoration)) / 100 / 60);
   // Jours d'activité. Entrée ou sortie dans le mois : jours réellement prévus et payés. Sinon jours mensualisés, moins
   // les jours retenus. Avenant en cours de mois (C-003) : la coupure ne doit pas changer la case ; chaque période
   // reçoit sa part des jours mensualisés de ses propres conditions (jours prévus de la période ÷ jours prévus du mois),
