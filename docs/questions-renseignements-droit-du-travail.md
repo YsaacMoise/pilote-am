@@ -20,7 +20,7 @@ Sigles : AM = assistante maternelle ; CCN = convention collective nationale des 
 >
 > Merci beaucoup.
 >
-> **1. Avenant en cours de mois : jours d'activité déclarés à Pajemploi.** Année complète. Jusqu'au 21 octobre 2026, 5 jours d'accueil par semaine (22 jours mensualisés) ; à partir du 22 octobre, 3 jours par semaine (13 jours mensualisés). En octobre, 15 jours d'accueil sont prévus avant le 22 sur 22 jours prévus avant l'avenant, et 3 jours après sur 12.
+> **1. Avenant en cours de mois : jours d'activité déclarés à Pajemploi.** Année complète. Jusqu'au 21 octobre 2026, 5 jours d'accueil par semaine (22 jours mensualisés) ; à partir du 22 octobre, 3 jours par semaine (13 jours mensualisés). En octobre : 15 jours d'accueil prévus avant le 22, sur les 22 que l'ancien planning prévoit dans tout le mois ; 3 jours prévus à partir du 22, sur les 12 que le nouveau planning prévoit dans tout le mois.
 > A : chaque période prend sa part des jours mensualisés de ses propres conditions : 22 × 15/22 = 15, puis 13 × 3/12 = 3,25 ; total 18,25, arrondi à l'entier supérieur : 19 jours.
 > B : on déclare les jours réellement prévus dans le mois : 15 + 3 = 18 jours.
 >
