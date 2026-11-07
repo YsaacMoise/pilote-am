@@ -101,7 +101,7 @@ export function Fin({ id }: { id?: string }) {
             <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{euros(f.cpIndemnite)}</span></div>
           </div>
           <div class="spread"><b>Total estimé, hors salaire du dernier mois</b><span class="decl-value">{estime && f.indemniteRupture > 0 ? `environ ${eurosArrondis(total)}` : euros(total)}</span></div>
-          <p class="hint">L’indemnité de rupture est calculée sur {estime ? `environ ${eurosArrondis(f.totalBrut)}` : euros(f.totalBrut)} de salaires bruts{estime ? ', en partie estimés à partir du net : saisis le total de tes bulletins plus haut pour un montant exact' : ''}. Elle n’est pas soumise aux cotisations.</p>
+          <p class="hint">L’indemnité de rupture est calculée sur {estime ? `environ ${eurosArrondis(f.totalBrut)}` : euros(f.totalBrut)} de salaires bruts, régularisation et indemnité de congés de la fin comprises{estime ? ', en partie estimés à partir du net : saisis le total de tes bulletins plus haut pour un montant exact' : ''}. Elle n’est pas soumise aux cotisations.</p>
         </section>
       </main>
     </>

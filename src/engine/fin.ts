@@ -4,7 +4,7 @@ import {
   addDays, addMonthsToDate, cpPeriod, cpPeriodStartYear, fullMonthsBetween, lastDay, monthOf, monthsBetween,
   type ISODate, type Month,
 } from './dates';
-import { acquisition, compteur, cpForMonth, indemnite, maintien } from './conges';
+import { acquisition, baseDixieme, compteur, cpForMonth, indemnite, maintien } from './conges';
 import { monthBase, monthBrut, regularisation, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx } from './payroll';
 import { netToBrut } from './rates';
 
@@ -125,6 +125,82 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     alertes.push('Inaptitude notifiée avant le 1er mai 2026 : les règles de l’avenant n° 10 appliquées ici n’étaient pas encore en vigueur. Fais vérifier le calcul (relais petite enfance, DREETS).');
   }
 
+  // Régularisation : heures réellement dues (planning, hors absences retenues) contre heures payées,
+  // depuis l'embauche, le début du suivi ou le dernier passage d'une année à l'autre (C-001 : les autres avenants ne coupent pas).
+  const finTerms = termsAt(c, dernierJour);
+  const regStart = regulStart(c, addDays(dernierJour, 1));
+  const reg = regularisation(endCtx, regStart, dernierJour);
+  const regulMinutes = reg.minutes;
+  // C-002 : sans toutes les semaines sans accueil, les semaines non saisies compteraient comme accueillies.
+  let manque = finTerms.yearType === 'incomplete' ? semainesSansAccueilManquantes(c, regStart, dernierJour) : 0;
+  // Dernière année de contrat non terminée : aucune semaine sans accueil saisie alors qu'il en faut = blocage
+  // (seconde relecture, point 5b : sinon les vacances déjà passées compteraient comme accueillies).
+  if (finTerms.yearType === 'incomplete') {
+    let debut = c.start;
+    while (addMonthsToDate(debut, 12) <= dernierJour) debut = addMonthsToDate(debut, 12);
+    const { attendu, saisies } = semainesSansAccueilAnnee(c, debut);
+    if (debut >= regStart && attendu > 0 && saisies === 0) manque += attendu;
+  }
+  if (manque > 0) {
+    alertes.push(`Régularisation non calculée : il manque ${manque} semaine${manque > 1 ? 's' : ''} sans accueil dans le contrat. Saisis-les d’abord, sinon les vacances compteraient comme des semaines accueillies.`);
+  } else if (finTerms.yearType === 'incomplete') {
+    alertes.push('Vérifie que toutes les semaines sans accueil de la dernière année sont saisies : une semaine non saisie compte comme accueillie dans la régularisation.');
+  }
+  const regularisation_ = finTerms.yearType === 'incomplete' && manque === 0 ? reg.montant : 0;
+  if (finTerms.yearType === 'complete' && regulMinutes > 60) {
+    alertes.push('Année complète : la régularisation ne s’applique pas en principe, vérifie le planning du contrat.');
+  }
+
+  // Congés non pris
+  const cpt = compteur(endCtx, dernierJour, enfants);
+  const y = cpPeriodStartYear(dernierJour);
+  const acq = acquisition(endCtx, y, enfants);
+  const restantsPrec = Math.max(0, cpt.reste);
+  let cpIndemnite = 0;
+  let cpExplication = '';
+  // Période précédente : jours restants, moins ce qui a déjà été versé.
+  let precMontant = 0;
+  if (restantsPrec > 0) {
+    if (finTerms.yearType === 'complete') {
+      // Les jours pris ont été payés dans le salaire, le complément du dixième en juin : reste le maintien.
+      precMontant = maintien(endCtx, restantsPrec, dernierJour);
+    } else {
+      const indPrev = y - 1 >= cpPeriodStartYear(c.trackedFrom) ? indemnite(endCtx, y - 1, enfants) : null;
+      if (indPrev && indPrev.jours) {
+        let deja = 0;
+        for (const m of monthsBetween(`${y}-06`, monthOf(dernierJour))) deja += cpForMonth(endCtx, m, enfants).indemnite;
+        precMontant = Math.max(0, indPrev.montant - deja);
+      } else {
+        precMontant = maintien(endCtx, restantsPrec, dernierJour);
+      }
+    }
+  }
+  // Période en cours : dixième de la base à date, ou maintien, le plus favorable. La base comprend la régularisation
+  // versée à la rupture, qui est du salaire de la période (fiche DDETS 31 « Régularisation » du 05/11/2024, p. 4 ; fiche
+  // congés payés 5/5 du 05/11/2024 : « la somme due est à intégrer dans la base de calcul de l'ICCP selon la méthode du
+  // dixième » ; fiche « Accueil sur 46 semaines ou moins » du 30/03/2023 : 285,71 €).
+  // L'indemnité compensatrice de la période précédente n'y est PAS ajoutée : les sources officielles se contredisent
+  // (oui pour les fiches DDETS 31 de 2023 et 5/5 de 2024 ; non pour le guide DREETS Bourgogne-Franche-Comté d'août 2026,
+  // p. 40-41 : 1/10 × 780 × 3 = 234 € et 1/10 × (384 × 3 + 270,50) = 142,25 €). Divergence M-5 d'AUDIT-SUIVI.md,
+  // question écrite au service de renseignements. Pas de jours pour enfants à charge avant la fin de la période.
+  const joursCur = acq.joursADate;
+  const baseCur = baseDixieme(endCtx, y, enfants).base + regularisation_;
+  const curMontant = Math.max(Math.round(baseCur / 10), maintien(endCtx, joursCur, dernierJour));
+  cpIndemnite = curMontant + precMontant;
+  cpExplication = `${joursCur} jour${joursCur > 1 ? 's' : ''} acquis depuis le 1er juin (${cpPeriod(y).from.slice(0, 4)})` +
+    (restantsPrec ? ` et ${restantsPrec} jour${restantsPrec > 1 ? 's' : ''} de la période précédente non pris` : '') +
+    ' : on retient le plus favorable entre le dixième et le maintien de salaire.';
+
+  // Assiette de l'indemnité de rupture : salaires bruts du contrat, régularisation et indemnité compensatrice de congés
+  // comprises (fiches DDETS 31 « Accueil sur 52 semaines » : 11 662,78 € avec l'ICCP, et « Accueil sur 46 semaines ou
+  // moins » : 9 148,57 € avec la régularisation et l'ICCP, version du 30/03/2023 ; fiche « Régularisation » du 05/11/2024 :
+  // la régularisation « devra être intégrée dans la base de calcul de ces deux indemnités »). Elles sont payées sur le
+  // dernier bulletin : déjà comprises si ce bulletin est couvert par le total saisi ou lu.
+  const dernierMois = monthOf(dernierJour);
+  if (!couvert(dernierMois) && !(bruts.parMois?.[dernierMois] != null && bruts.parMois[dernierMois]! > 0)) {
+    totalBrut += netToBrut(cpIndemnite + regularisation_, lastDay(dernierMois));
+  }
+
   // Indemnité de rupture. Ancienneté appréciée à la date d'envoi de la lettre (ou au décès), comme pour le préavis.
   let indemniteRupture = 0;
   let ruptureExplication = '';
@@ -165,65 +241,6 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   } else {
     ruptureExplication = 'Pas d’indemnité pendant la période d’essai.';
   }
-
-  // Régularisation : heures réellement dues (planning, hors absences retenues) contre heures payées,
-  // depuis l'embauche, le début du suivi ou le dernier passage d'une année à l'autre (C-001 : les autres avenants ne coupent pas).
-  const finTerms = termsAt(c, dernierJour);
-  const regStart = regulStart(c, addDays(dernierJour, 1));
-  const reg = regularisation(endCtx, regStart, dernierJour);
-  const regulMinutes = reg.minutes;
-  // C-002 : sans toutes les semaines sans accueil, les semaines non saisies compteraient comme accueillies.
-  let manque = finTerms.yearType === 'incomplete' ? semainesSansAccueilManquantes(c, regStart, dernierJour) : 0;
-  // Dernière année de contrat non terminée : aucune semaine sans accueil saisie alors qu'il en faut = blocage
-  // (seconde relecture, point 5b : sinon les vacances déjà passées compteraient comme accueillies).
-  if (finTerms.yearType === 'incomplete') {
-    let debut = c.start;
-    while (addMonthsToDate(debut, 12) <= dernierJour) debut = addMonthsToDate(debut, 12);
-    const { attendu, saisies } = semainesSansAccueilAnnee(c, debut);
-    if (debut >= regStart && attendu > 0 && saisies === 0) manque += attendu;
-  }
-  if (manque > 0) {
-    alertes.push(`Régularisation non calculée : il manque ${manque} semaine${manque > 1 ? 's' : ''} sans accueil dans le contrat. Saisis-les d’abord, sinon les vacances compteraient comme des semaines accueillies.`);
-  } else if (finTerms.yearType === 'incomplete') {
-    alertes.push('Vérifie que toutes les semaines sans accueil de la dernière année sont saisies : une semaine non saisie compte comme accueillie dans la régularisation.');
-  }
-  const regularisation_ = finTerms.yearType === 'incomplete' && manque === 0 ? reg.montant : 0;
-  if (finTerms.yearType === 'complete' && regulMinutes > 60) {
-    alertes.push('Année complète : la régularisation ne s’applique pas en principe, vérifie le planning du contrat.');
-  }
-
-  // Congés non pris
-  const cpt = compteur(endCtx, dernierJour, enfants);
-  const y = cpPeriodStartYear(dernierJour);
-  const acq = acquisition(endCtx, y, enfants);
-  const restantsPrec = Math.max(0, cpt.reste);
-  let cpIndemnite = 0;
-  let cpExplication = '';
-  // Période en cours : dixième de la base à date, ou maintien, le plus favorable
-  const indCur = indemnite(endCtx, y, enfants);
-  const joursCur = acq.joursADate;
-  const curMontant = Math.max(Math.round(indCur.dixieme), maintien(endCtx, joursCur, dernierJour));
-  // Période précédente : jours restants, moins ce qui a déjà été versé.
-  let precMontant = 0;
-  if (restantsPrec > 0) {
-    if (finTerms.yearType === 'complete') {
-      // Les jours pris ont été payés dans le salaire, le complément du dixième en juin : reste le maintien.
-      precMontant = maintien(endCtx, restantsPrec, dernierJour);
-    } else {
-      const indPrev = y - 1 >= cpPeriodStartYear(c.trackedFrom) ? indemnite(endCtx, y - 1, enfants) : null;
-      if (indPrev && indPrev.jours) {
-        let deja = 0;
-        for (const m of monthsBetween(`${y}-06`, monthOf(dernierJour))) deja += cpForMonth(endCtx, m, enfants).indemnite;
-        precMontant = Math.max(0, indPrev.montant - deja);
-      } else {
-        precMontant = maintien(endCtx, restantsPrec, dernierJour);
-      }
-    }
-  }
-  cpIndemnite = curMontant + precMontant;
-  cpExplication = `${joursCur} jour${joursCur > 1 ? 's' : ''} acquis depuis le 1er juin (${cpPeriod(y).from.slice(0, 4)})` +
-    (restantsPrec ? ` et ${restantsPrec} jour${restantsPrec > 1 ? 's' : ''} de la période précédente non pris` : '') +
-    ' : on retient le plus favorable entre le dixième et le maintien de salaire.';
 
   return {
     ancienneteMois: anc, preavisLabel, preavisFin, dernierJour, indemniteRupture, ruptureExplication, totalBrut, brutsEstimes,
