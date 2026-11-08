@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { deleteContract, logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
 import { addMonthsToDate, deMois, firstDay, mondayOf, monthOf, shortDate, today, JOUR_NOMS, type Month } from '../engine/dates';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, semainesSansAccueilAnnee, termsAt, weeklyMinutes } from '../engine/payroll';
@@ -11,6 +11,10 @@ import { Icon } from '../ui/icons';
 import { BROUILLON_CONTRAT } from './Simulateur';
 import { PartageCard } from './PartageCard';
 import { de } from '../engine/texte';
+import { ALSACE_MOSELLE_NON_GEREE, PAJEMPLOI_PLUS_AIDE } from '../legal';
+
+/** Contrat qui vient d'être créé : sa page s'ouvre sur la carte du lien parent */
+let montrerLienDe: string | undefined;
 
 /** Conditions venues du simulateur (lues une seule fois) : son planning, ou des journées égales à partir de 8 h (anciennes versions). */
 function brouillon(): Partial<Contract> | null {
@@ -62,6 +66,11 @@ export function Contrat({ id }: { id?: string }) {
   const reprise = c.start < curMonthStart;
   const wk = weeklyMinutes(c.planning);
   const rates = ratesAt(today());
+  useEffect(() => {
+    if (!existing || montrerLienDe !== existing.id) return;
+    montrerLienDe = undefined;
+    requestAnimationFrame(() => document.getElementById('partage-t')?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+  }, [existing?.id]);
   // Saisie simplifiée des congés à la reprise : seulement les jours déjà pris depuis le 1er juin (nouveaux contrats).
   const [cpManuel, setCpManuel] = useState(!isNew);
   const [prisDepuisJuin, setPris] = useState(0);
@@ -102,7 +111,12 @@ export function Contrat({ id }: { id?: string }) {
     const prev = await putContract(toSave);
     logUsage(isNew ? 'contrat_cree' : 'contrat_modifie', 'contrat');
     toast(isNew ? `Contrat ${de(toSave.child)} créé` : 'Contrat enregistré', prev ? async () => { await putContract(prev); } : async () => { await deleteContract(toSave.id); });
-    location.hash = isNew && reprise ? `#/historique/${toSave.id}` : '#/plus';
+    if (isNew && reprise) location.hash = `#/historique/${toSave.id}`;
+    else if (isNew) {
+      // Juste après la création, la page du contrat s'ouvre sur « Lien pour les parents » : c'est le moment de l'envoyer.
+      montrerLienDe = toSave.id;
+      location.hash = `#/contrat/${toSave.id}`;
+    } else location.hash = '#/plus';
   }
 
   return (
@@ -148,6 +162,7 @@ export function Contrat({ id }: { id?: string }) {
           <fieldset>
             <legend>Le contrat</legend>
             <DateInput label="Date de début réelle" hint="Le premier jour d’accueil, même si c’était il y a longtemps" value={c.start} onChange={(v) => set({ start: v })} />
+            {isNew && <p class="hint">{ALSACE_MOSELLE_NON_GEREE}</p>}
             {!isNew && <DateInput label="Date de fin (si le contrat est terminé)" value={c.end ?? ''} onChange={(v) => set({ end: v || undefined })} />}
             <Seg label="Accueil sur l’année" value={c.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(c.weeks, 46) || 46 })}
               options={[{ v: 'complete', l: 'Toute l’année (52 sem.)' }, { v: 'incomplete', l: 'Année incomplète' }]} />
@@ -201,6 +216,7 @@ export function Contrat({ id }: { id?: string }) {
                 options={[{ v: 'juin', l: 'En juin' }, { v: 'principale', l: 'À la prise principale' }, { v: 'fur', l: 'Au fur et à mesure' }]} />
             )}
             <Switch label="Enfant en situation de handicap ou de maladie" hint="Abattement fiscal majoré (4 SMIC par jour au lieu de 3)" checked={c.majoreFiscal} onChange={(v) => set({ majoreFiscal: v })} />
+            <Switch label="Les parents ont adhéré à Pajemploi+" hint={PAJEMPLOI_PLUS_AIDE} checked={!!c.pajemploiPlus} onChange={(v) => set({ pajemploiPlus: v })} />
           </fieldset>
         </section>
 

@@ -275,6 +275,28 @@ describe('congés payés (art. 48 et 102)', () => {
     const ctx = makeCtx(contract({ start: '2026-09-01', trackedFrom: '2026-09-01' }), [], [], '2027-06-15');
     expect(acquisition(ctx, 2026).jours).toBe(25);
   });
+  it('arrêt maladie de l’AM : 2 jours par mois au lieu de 2,5 (loi d’avril 2024)', () => {
+    // 1er sept. 2026 → 31 mai 2027 : 39 semaines, dont 4 d'arrêt : 35 ÷ 4 × 2,5 + 4 ÷ 4 × 2 = 23,875 → 24 (25 sans arrêt)
+    const c = contract({ start: '2026-09-01', trackedFrom: '2026-09-01' });
+    const ctx = makeCtx(c, [], [{ id: 'm', type: 'am_malade', from: '2026-11-02', to: '2026-11-29' }], '2027-06-15');
+    expect(acquisition(ctx, 2026).jours).toBe(24);
+  });
+  it('arrêt maladie en année incomplète : au prorata des semaines programmées', () => {
+    // 46 semaines ; 8 semaines d'arrêt = 56 ÷ 365 × 46 = 7,06 semaines programmées → 27,87 → 28 (29 sans arrêt)
+    const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', yearType: 'incomplete', weeks: 46 });
+    const ctx = makeCtx(c, [], [{ id: 'm', type: 'am_malade', from: '2025-10-06', to: '2025-11-30' }], '2026-06-15');
+    expect(acquisition(ctx, 2025).jours).toBe(28);
+  });
+  it('arrêt maladie toute la période : 24 jours au plus', () => {
+    const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01' });
+    const ctx = makeCtx(c, [], [{ id: 'm', type: 'am_malade', from: '2025-06-01', to: '2026-05-31' }], '2026-06-15');
+    expect(acquisition(ctx, 2025).jours).toBe(24);
+  });
+  it('les autres absences de l’AM ne changent pas l’acquisition', () => {
+    const c = contract({ start: '2026-09-01', trackedFrom: '2026-09-01' });
+    const ctx = makeCtx(c, [], [{ id: 'e', type: 'evenement', from: '2026-11-02', to: '2026-11-06' }], '2027-06-15');
+    expect(acquisition(ctx, 2026).jours).toBe(25);
+  });
   it('jours ouvrables : lundi à samedi hors fériés', () => {
     expect(joursOuvrables('2026-08-10', '2026-08-23').length).toBe(11); // 15 août férié (samedi)
   });
@@ -900,5 +922,13 @@ describe('audit C-017, relecture contradictoire', () => {
   it('inaptitude notifiée avant le 1er mai 2026 : alerte', () => {
     expect(finDeContrat(ctx(), '2026-04-15', 'inaptitude_pro').alertes.join(' ')).toMatch(/avant le 1er mai 2026/);
     expect(finDeContrat(ctx(), '2026-05-04', 'inaptitude_pro').alertes.join(' ')).not.toMatch(/avant le 1er mai 2026/);
+  });
+});
+
+describe('barèmes provisoires', () => {
+  it('avertit au-delà du dernier barème vérifié', async () => {
+    const { baremesProvisoires, BAREMES_VERIFIES_JUSQU_AU } = await import('../src/engine/rates');
+    expect(baremesProvisoires(BAREMES_VERIFIES_JUSQU_AU)).toBe(false);
+    expect(baremesProvisoires('2027-01-01')).toBe(true);
   });
 });

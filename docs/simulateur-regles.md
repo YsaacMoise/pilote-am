@@ -11,7 +11,7 @@ Formule (D531-18) : CMG = coût mensuel × (1 − revenus mensuels × taux d'eff
 - Coût mensuel C : salaire net + indemnités d'entretien + frais de repas (D531-18 1°). Il est retenu dans la limite du plafond horaire × heures payées.
 - Plafond horaire : 8,00 € (décret), 8,09 € depuis le 1er avril 2026 (revalorisation SMIC ; secondaire : Weblex 30/03/2026 citant l'Urssaf du 24/03/2026, et 8 × 12,02 / 11,88 = 8,09).
 - Coût horaire de référence : 4,85 € (décret), 4,91 € depuis le 1er avril 2026 (mêmes sources ; 4,85 × 12,02 / 11,88 = 4,91).
-- Revenus : ressources mensuelles connues de la CAF (revenus nets catégoriels de l'année N-2, art. R532-1 à R532-7, en pratique le revenu imposable ÷ 12), arrondies à l'euro, bornées entre un plancher (815 € en 2025 ; 821 € depuis avril 2026 par le calcul RSA, non publié officiellement) et un plafond de 8 500 €.
+- Revenus : ressources mensuelles connues de la CAF (revenus nets catégoriels de l'année N-2, art. R532-1 à R532-7, en pratique le revenu imposable ÷ 12), arrondies à l'euro, bornées entre un plancher (815 € en 2025 ; 821 € depuis avril 2026 : RSA d'un couple sans enfant, 651,69 € × 1,5 = 977,54 €, moins le forfait logement de 16 %, soit 821,13 € ; RSA personne seule au 1er avril 2026 vérifié sur solidarites.gouv.fr le 07/11/2026 ; le montant de 977,45 € cité par un rapport de l'Assemblée est le RSA brut, pas le plancher) et un plafond de 8 500 €.
 - Taux d'effort (assistante maternelle) : 1 enfant à charge 0,0619 % ; 2 : 0,0516 % ; 3 : 0,0413 % ; 4 à 7 : 0,0310 % ; 8 à 10 : 0,0206 %. Chaque enfant ouvrant droit à l'AEEH fait passer au taux immédiatement inférieur.
 - Plus de majoration pour parent seul ni pour l'AAH (intégrées dans la formule). Enfant de 3 à 6 ans : même calcul qu'avant 3 ans (plus de division par deux). Parent seul : CMG ouvert jusqu'aux 12 ans de l'enfant (FAQ CAF, service-public F39152, communiqué Cnaf du 14/10/2025).
 - Condition d'activité des parents, avec exceptions (études, AAH, RSA, ASS…) : rappelée à l'écran, non vérifiée par le simulateur.
@@ -98,7 +98,7 @@ Cinq cas passés au simulateur Urssaf avec les montants produits par notre moteu
 
 ## Points ouverts
 
-- Plancher de ressources 2026 (815 ou 821 €) : sans effet au-dessus de 821 € de revenus mensuels.
+- Plancher de ressources 2026 : 821 € retenu (calcul ci-dessus, recoupé le 07/11/2026) ; aucune publication officielle du montant trouvée. Sans effet au-dessus de 821 € de revenus mensuels.
 - Heures majorées : comptées une fois dans les heures du CMG, comme le simulateur Urssaf (confirmé à l'étape 5).
 - Congés payés en année incomplète : la moyenne mensuelle du résumé les répartit sur 12 mois ; le calendrier (étape 4) les montre au mois réel de versement.
 - Congés payés et CMG : depuis janvier 2026 (LFSS 2026), ils ne comptent plus pour le test du plafond horaire ; leur place dans le coût aidé n'est pas documentée.

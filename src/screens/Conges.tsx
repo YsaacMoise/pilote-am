@@ -20,7 +20,7 @@ export function Conges() {
     <>
       <Topbar title="Congés et absences" back="#/plus" screen="conges" />
       <main>
-        <p class="muted">Période en cours : du 1er juin {y} au 31 mai {y + 1}. Tu gagnes 2,5 jours ouvrables par mois d’accueil (30 au plus), à prendre l’année suivante.</p>
+        <p class="muted">Période en cours : du 1er juin {y} au 31 mai {y + 1}. Tu gagnes 2,5 jours ouvrables par mois d’accueil (30 au plus), et 2 par mois pendant un arrêt maladie, à prendre l’année suivante.</p>
         {list.map((c) => {
           const ctx = ctxFor(c);
           const k = compteur(ctx, t, s.settings.enfantsACharge);

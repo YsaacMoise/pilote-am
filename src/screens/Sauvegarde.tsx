@@ -4,9 +4,12 @@ import { buildBackup, checkBackup, type BackupFile } from '../backup';
 import { shareFile } from '../share';
 import { Banner, Sheet, Topbar, useErreurAffichee } from '../ui/kit';
 import { Icon } from '../ui/icons';
+import { useCloud } from '../cloud-state';
 
 export function Sauvegarde() {
   const s = useStore();
+  const cloud = useCloud();
+  const enLigne = cloud.status !== 'off';
   const [snaps, setSnaps] = useState<Snapshot[]>([]);
   const [pending, setPending] = useState<{ backup: BackupFile; summary: string } | null>(null);
   const [pendingSnap, setPendingSnap] = useState<Snapshot | null>(null);
@@ -35,7 +38,9 @@ export function Sauvegarde() {
       <main>
         <section class="card stack">
           <h2>Sauvegarde de la semaine</h2>
-          <p>Tes données ne sont que sur ce téléphone. Une fois par semaine, enregistre une copie dans l’app Fichiers (iCloud Drive) : si le téléphone est perdu, tu pourras tout récupérer.</p>
+          <p>{enLigne
+            ? 'Ton compte garde déjà une copie en ligne de tes données. Une copie dans l’app Fichiers (iCloud Drive), une fois par semaine, te protège aussi si le compte n’est plus accessible.'
+            : 'Sans compte, tes données ne sont que sur ce téléphone. Une fois par semaine, enregistre une copie dans l’app Fichiers (iCloud Drive) : si le téléphone est perdu, tu pourras tout récupérer.'}</p>
           <p class="muted">{last ? `Dernière sauvegarde : ${new Date(last).toLocaleDateString('fr-FR', { dateStyle: 'full' })}.` : 'Aucune sauvegarde pour l’instant.'}</p>
           <button class="btn btn-primary btn-lg btn-block" onClick={backup}><Icon name="share" />Sauvegarder dans Fichiers</button>
           <p class="hint">Dans la feuille de partage, choisis « Enregistrer dans Fichiers », puis iCloud Drive.</p>
