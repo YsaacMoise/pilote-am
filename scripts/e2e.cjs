@@ -42,7 +42,14 @@ async function run(scheme) {
   const creer = p.getByRole('button', { name: 'Créer mon compte gratuit' }).first();
   await creer.waitFor();
   assert(await creer.isVisible(), 'accueil : création de compte proposée');
+  // Conditions d'utilisation lisibles avant le compte, depuis le pied de page, puis retour à l'accueil
+  await p.locator('.site-footer').getByRole('link', { name: 'Conditions d’utilisation' }).click();
+  await p.getByRole('heading', { name: 'Contrat de traitement des données' }).waitFor();
+  assert(await p.locator('.prose-page').getByText(/Mise à jour le \d{1,2} \S+ \d{4}\./).isVisible(), 'conditions d’utilisation : page datée, contrat de traitement présent');
+  await p.getByRole('link', { name: 'Retour' }).click();
+  await creer.waitFor();
   await creer.click();
+  assert(await p.getByRole('link', { name: 'Conditions d’utilisation' }).first().isVisible(), 'création du compte : lien vers les conditions d’utilisation');
   await p.getByLabel('Adresse e-mail').fill(`parcours-${scheme}-${Date.now()}@exemple.fr`);
   await p.getByLabel('Mot de passe', { exact: true }).fill('Motdepasse-solide1');
   await p.getByRole('button', { name: 'Créer mon compte', exact: true }).click();
