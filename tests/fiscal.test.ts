@@ -188,9 +188,11 @@ describe('C-008 : brut estimé affiché comme une estimation, brut réel demand�
     const novembre = finDeContrat(ctx(), '2026-11-02', 'retrait', 0, undefined, { total: 1, jusqua: '2026-10' }).totalBrut - 1;
     expect(novembre).toBeGreaterThan(0);
     expect(f.totalBrut).toBe(865935 + novembre);
-    // 8 659,35 € est l'estimation de janvier à octobre : le total retombe sur l'estimation complète (9 117,10 €).
+    // 8 659,35 € est l'estimation de janvier à octobre : le total retombe sur l'estimation complète (9 117,10 € de
+    // salaires), plus l'indemnité compensatrice de congés payés de la rupture, comprise dans l'assiette depuis le lot 3
+    // (fiches DDETS 31 du 30/03/2023, voir tests/exemples-officiels.test.ts) : 10 125,42 €.
     expect(f.totalBrut).toBe(f0.totalBrut);
-    expect(f.totalBrut).toBe(911710);
+    expect(f.totalBrut).toBe(1012542);
   });
   it('arrondi à l’euro : 1 234,50 € → « 1 235 € », 154,31 € → « 154 € »', () => {
     expect(eurosArrondis(123450)).toBe('1\u00a0235\u00a0€');

@@ -1,7 +1,7 @@
 // Congés payés (art. 48 et 102) : acquisition, compteur, indemnité.
-import { addDays, addMonths, cpPeriod, cpPeriodStartYear, daysBetween, eachDay, monthOf, monthsBetween, weekday, type ISODate, type Month } from './dates';
+import { addDays, addMonths, addMonthsToDate, cpPeriod, cpPeriodStartYear, daysBetween, eachDay, mondayOf, monthOf, monthsBetween, weekday, type ISODate, type Month } from './dates';
 import { holidayName } from './holidays';
-import { H45, makeCtx, monthBase, termsAt, weeklyMinutes, weeksPerYear, type Ctx } from './payroll';
+import { H45, makeCtx, monthBase, semainesSansAccueilAnnee, termsAt, toutesSemainesSansAccueil, weeklyMinutes, weeksPerYear, type Ctx } from './payroll';
 import type { Contract } from './model';
 
 /** Jours ouvrables (lundi → samedi, hors fériés) d'un intervalle */
@@ -29,13 +29,43 @@ export interface Acquisition {
   enfantsBonus: number;
 }
 
+/** Toutes les semaines sans accueil des années de contrat qui touchent [s, e] sont saisies (52 − N par année) */
+function semainesToutesSaisies(c: Contract, s: ISODate, e: ISODate): boolean {
+  if (!toutesSemainesSansAccueil(c).size) return false;
+  for (let i = 0; ; i++) {
+    const a = addMonthsToDate(c.start, 12 * i);
+    if (a > e) break;
+    const b = addDays(addMonthsToDate(c.start, 12 * (i + 1)), -1);
+    if (b < s) continue;
+    const { attendu, saisies } = semainesSansAccueilAnnee(c, a);
+    if (saisies < attendu) return false;
+  }
+  return true;
+}
+
+/** Jours ouvrables de congés payés pris dans [s, e] pendant des semaines sans accueil, dans la limite des droits */
+function cpAssimiles(ctx: Ctx, s: ISODate, e: ISODate, off: Set<ISODate>): number {
+  let n = 0;
+  for (let y = cpPeriodStartYear(s); y <= cpPeriodStartYear(e); y++) {
+    if (y < cpPeriodStartYear(ctx.c.trackedFrom)) continue;
+    const p = cpPeriod(y);
+    const droits = Math.max(0, Math.ceil(droitsAPrendre(ctx, y) - 1e-9));
+    const payes = cpPrisEntre(ctx, debutDecompte(ctx, y), p.to).slice(0, droits);
+    n += payes.filter((d) => d >= s && d <= e && off.has(mondayOf(d))).length;
+  }
+  return n;
+}
+
 function weeksIn(ctx: Ctx, from: ISODate, to: ISODate): number {
   const { c } = ctx;
   const a = from < c.start ? c.start : from;
   const b = c.end && c.end < to ? c.end : to;
   if (b < a) return 0;
-  // Un avenant peut changer le type d'année : chaque morceau est compté selon ses propres conditions.
-  const cuts = [...new Set((c.avenants ?? []).map((x) => x.from).filter((d) => d > a && d <= b))].sort();
+  // Un avenant peut changer le type d'année : chaque morceau est compté selon ses propres conditions. Coupure aussi à
+  // chaque date anniversaire du contrat : les semaines sans accueil d'une année peuvent être saisies, l'année suivante pas encore.
+  const anniv: ISODate[] = [];
+  for (let i = 1; addMonthsToDate(c.start, 12 * i) <= b; i++) anniv.push(addMonthsToDate(c.start, 12 * i));
+  const cuts = [...new Set([...(c.avenants ?? []).map((x) => x.from), ...anniv].filter((d) => d > a && d <= b))].sort();
   const bounds = [a, ...cuts];
   let total = 0;
   bounds.forEach((s, i) => {
@@ -43,7 +73,19 @@ function weeksIn(ctx: Ctx, from: ISODate, to: ISODate): number {
     const t = termsAt(c, s);
     const days = daysBetween(s, e) + 1;
     if (t.yearType === 'complete') { total += days / 7; return; }
-    // Année incomplète : semaines programmées au prorata de la période de référence (365 ou 366 jours)
+    // Année incomplète, semaines sans accueil toutes saisies : semaines réellement programmées (jours hors semaines
+    // sans accueil ÷ 7), plus les congés payés pris pendant ces semaines dans la limite des droits (assimilés à du
+    // travail effectif, 6 jours ouvrables = 1 semaine). Fiche DDETS 31 « Accueil sur 46 semaines ou moins »
+    // (30/03/2023) : 31 semaines du 01/09/2021 au 31/05/2022 → 20 jours ; « 11 semaines (dont les 2 semaines de
+    // congés payés pris […] en août) et 3 jours » du 01/06 au 30/09/2022 → 8 jours.
+    if (semainesToutesSaisies(c, s, e)) {
+      const off = toutesSemainesSansAccueil(c);
+      let jours = 0;
+      for (const d of eachDay(s, e)) if (!off.has(mondayOf(d))) jours++;
+      total += jours / 7 + cpAssimiles(ctx, s, e, off) / 6;
+      return;
+    }
+    // Sinon : semaines programmées au prorata de la période de référence (365 ou 366 jours)
     const p = cpPeriod(cpPeriodStartYear(s));
     const periodDays = daysBetween(p.from, p.to) + 1;
     total += (Math.min(days, periodDays) / periodDays) * weeksPerYear(t);
@@ -221,7 +263,11 @@ export function indemnite(ctx: Ctx, y: number, enfants = 0): IndemniteCP {
   return memo(ctx, `ind${y}|${enfants}`, () => {
     const acq = acquisition(ctx, y, enfants);
     const { base, manquants } = baseDixieme(ctx, y, enfants);
-    const dix = Math.round(base / 10);
+    // Jours pour enfants à charge : le dixième est porté « proportionnellement à la durée du congé effectivement dû »
+    // (C. trav. L3141-24 ; fiches DDETS 31 « Accueil sur 52 semaines » : 767,61 × 27 ÷ 25 = 829,01 € et
+    // « Accueil sur 46 semaines ou moins » : 531,42 × 24 ÷ 20 = 637,70 €, version du 30/03/2023).
+    const joursBase = acq.jours - acq.enfantsBonus;
+    const dix = Math.round(joursBase > 0 ? (base * acq.jours) / joursBase / 10 : base / 10);
     const mt = maintien(ctx, acq.jours, `${y + 1}-06-01`);
     return {
       startYear: y, jours: acq.jours, dixieme: dix, maintien: mt, montant: Math.max(dix, mt),
