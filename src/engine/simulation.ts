@@ -22,7 +22,8 @@ interface CmgParams {
 
 const CMG: CmgParams[] = [
   { from: '2025-09-01', plafondHoraire: 800, coutReference: 485, plancher: 815, plafond: 8500 },
-  // Revalorisation au 1er avril 2026 (évolution du SMIC) ; plancher recalculé sur le RSA d'avril 2026.
+  // Revalorisation au 1er avril 2026 (évolution du SMIC) ; plancher = RSA couple d'avril 2026 (977,54 €) moins le forfait
+  // logement de 16 % = 821 € (docs/simulateur-regles.md). Prochaine revalorisation le 1er avril 2027 : voir BAREMES_VERIFIES_JUSQU_AU.
   { from: '2026-04-01', plafondHoraire: 809, coutReference: 491, plancher: 821, plafond: 8500 },
 ];
 

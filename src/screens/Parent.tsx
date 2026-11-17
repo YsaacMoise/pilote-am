@@ -333,7 +333,7 @@ function MoisVue({ mois, am }: { mois: MoisParent; am: string }) {
       </section>
       <section class="card stack-sm" aria-labelledby="decl-p">
         <h2 id="decl-p" class="ph-h2">Votre déclaration Pajemploi</h2>
-        <p class="hint">Recopiez chaque case dans l’ordre du site Pajemploi. Le bouton copie la valeur.</p>
+        <p class="hint">À faire entre le 25 et le 5 du mois suivant. Recopiez chaque case dans l’ordre du site Pajemploi. Le bouton copie la valeur.</p>
         {mois.lignes.map((l) => {
           const v = aCopier(l.value);
           return (

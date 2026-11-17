@@ -5,7 +5,7 @@ import { dayInfo } from '../engine/payroll';
 import type { Contract, Journal } from '../engine/model';
 import {
   A_APPORTER, KIND_LABEL, choseApporter, detailApporter, detailReveilOublie, estApporter, dureeLabel, insecable, reveilOublie, detailBiberon, detailSieste, detailTemperature, estFievre, hh, parseMl, parseTemperature, resumeJour,
-  siesteEnCours, temperatureLabel, type Kind,
+  premierJourCarnet, siesteEnCours, temperatureLabel, type Kind,
 } from '../engine/carnet';
 import { Gommette, Sheet, Topbar } from '../ui/kit';
 import { Icon, type IconName } from '../ui/icons';
@@ -63,8 +63,6 @@ const APPORTER: KindDef = { k: 'note', l: 'À apporter', icon: 'sac', options: A
 const kindDef = (k: Kind) => KINDS.find((x) => x.k === k)!;
 const defDe = (e: Journal) => (estApporter(e) ? APPORTER : kindDef(e.kind));
 
-/** Plus ancien jour consultable dans le carnet */
-const JOURS_HISTORIQUE = 60;
 
 export function Carnet() {
   const s = useStore();
@@ -80,7 +78,7 @@ export function Carnet() {
   const c = all ? undefined : kids.find((k) => k.id === cid) ?? kids[0];
   const targets: Contract[] = all ? present : c ? [c] : [];
   const entries = c ? s.journal.filter((j) => j.cid === c.id && j.date === jour).sort((a, b) => a.time.localeCompare(b.time)) : [];
-  const plusAncien = addDays(t, -JOURS_HISTORIQUE);
+  const plusAncien = premierJourCarnet(s.contracts, s.journal, t);
   // Sommeil commencé et pas terminé (un seul enfant, aujourd'hui) : la fiche propose alors le réveil
   const dort = c && !all && estAuj ? [...entries].reverse().find(siesteEnCours) : undefined;
   // Tous les enfants qui dorment en ce moment, quel que soit l'enfant choisi : le réveil est toujours en haut
@@ -111,11 +109,14 @@ export function Carnet() {
     toast(`Réveil noté à ${hh(fin)}`, undo);
   }
 
-  function changerJour(n: number) {
-    const d = addDays(jour, n);
-    if (d > t || d < plusAncien) return;
+  function allerAu(d: ISODate) {
+    if (!d || d > t || d < plusAncien) return;
     setJour(d);
     if (d !== t && cid === 'tous') setCid(undefined);
+  }
+
+  function changerJour(n: number) {
+    allerAu(addDays(jour, n));
   }
 
   return (
@@ -130,6 +131,10 @@ export function Carnet() {
           <span class="day-nav-label">
             <b>{estAuj ? 'Aujourd’hui' : cap(dayLabel(jour))}</b>
             {!estAuj && <button class="btn btn-ghost btn-sm" onClick={() => setJour(t)}>Revenir à aujourd’hui</button>}
+            {plusAncien < t && (
+              <input class="input" type="date" aria-label="Aller à un autre jour du carnet" value={jour} min={plusAncien} max={t}
+                onInput={(e) => allerAu((e.target as HTMLInputElement).value as ISODate)} />
+            )}
           </span>
           <button class="icon-btn" aria-label="Jour suivant" disabled={estAuj} onClick={() => changerJour(1)}>
             <Icon name="right" />

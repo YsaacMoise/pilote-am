@@ -45,7 +45,7 @@ Pour découvrir sans rien saisir : **« Voir avec des enfants d’exemple »** s
 | 5 | Contrôle du bulletin déclaré, brut compris (cohérence net/brut, minimum conventionnel). | Mois › Contrôler le bulletin |
 | 6 | Congés payés : compteur (à prendre, pris, restants, en cours) et indemnité (dixième contre maintien). | Plus › Congés |
 | 7 | Fin de contrat : préavis, indemnité de rupture, régularisation, congés non pris. Aucun document officiel. | Plus › Fin de contrat |
-| 8 | Carnet de liaison : boutons rapides (repas, sieste, change, humeur, soin, note), dictée par le micro du clavier, résumé du jour partagé aux parents (présence, soins, total de sieste, repas en tête). Historique jour par jour sur 60 jours (ajout d’une note oubliée la veille), modification d’une note en la touchant, sieste avec endormissement, réveil et durée, biberon en ml, température en °C avec fièvre signalée dès 38 °C. | Carnet |
+| 8 | Carnet de liaison : boutons rapides (repas, sieste, change, humeur, soin, note), dictée par le micro du clavier, résumé du jour partagé aux parents (présence, soins, total de sieste, repas en tête). Historique jour par jour depuis le début du plus ancien contrat, sans limite de durée, avec un saut direct à une date (ajout d’une note oubliée la veille), modification d’une note en la touchant, sieste avec endormissement, réveil et durée, biberon en ml, température en °C avec fièvre signalée dès 38 °C. | Carnet |
 | 9 | Compteur fiscal : abattement spécifique et revenu imposable estimé, par enfant et au total. | Plus › Impôts |
 | 10 | Données du pilote : bouton « Ça coince » en haut de chaque écran, journal d’usage local, export mensuel anonymisé (enfants A/B/C, aucun prénom, aucune note du carnet, prénoms effacés des remarques). | Partout, Plus › Données du pilote |
 
@@ -86,7 +86,7 @@ Deux sous-agents ont relu le travail sans voir mes conclusions : l’un sur le m
 - **Copies automatiques** : une copie complète par jour d’utilisation dans IndexedDB, les 7 dernières gardées, restaurables ; une copie de sécurité est faite avant toute restauration.
 - **Sauvegarde hebdomadaire** : rappel après 7 jours ; fichier JSON partagé **seul**, sans texte ni titre (contournement du bug WebKit 244408) ; repli en téléchargement. La restauration vérifie le format, la version et chaque contrat avant de remplacer quoi que ce soit (testé).
 - **Hors ligne** : service worker généré au build avec la liste exacte des fichiers (dont pdf.js et son worker), enregistré en relatif (`./sw.js`, portée `./`). Une mise à jour s’annonce par un toast « Mettre à jour » au lieu de recharger d’autorité.
-- **Aucun serveur, aucun compte, aucune analytique.** Le journal d’usage est local ; seul l’export anonymisé, partagé à la main, en sort.
+- **Compte facultatif.** Sans compte, tout reste sur le téléphone. Avec un compte (Firebase, données en France), une copie en ligne est tenue à jour entre les appareils (src/sync/, src/cloud.ts) et le lien parent est chiffré de bout en bout. Mesure d’usage pseudonyme, activée par défaut pour les AM inscrites et désactivable dans Réglages (src/analytics.ts).
 
 ## Interprétations de paie (CCN IDCC 3239)
 
@@ -122,7 +122,7 @@ Sources vérifiées le 28/10/2026 : fiche DREETS Pays de la Loire du 12/06/2026 
 - Hors Alsace-Moselle (fériés et cotisations différents). Pas de gestion des absences de longue durée (maternité, accident du travail), ni de l’accueil occasionnel.
 - Les semaines sans accueil d’une année incomplète (52 moins les semaines programmées) sont à saisir pour chaque année de contrat ; elles peuvent être ajoutées plus tard (art. 98.1.2). Tant qu’une année terminée en manque, la régularisation n’est pas calculée.
 - La date de début du suivi par l’app est le 1er du mois de création du contrat ; les mois antérieurs viennent de l’historique.
-- Phase 2 (jusqu’à 4 AM) : rien n’empêche d’installer l’app sur 4 téléphones ; il n’y a volontairement pas de synchronisation.
+- Plusieurs AM : chacune a son compte ; la synchronisation se fait entre les appareils d’une même AM, jamais entre AM.
 
 ## Développement
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Journal } from '../src/engine/model';
 import {
-  insecable, reveilOublie, detailReveilOublie, detailBiberon, detailSieste, detailTemperature, dureeLabel, estFievre, minutesSieste, parseMl, parseTemperature, demandesApporter, detailApporter, resumeJour, siesteEnCours, sommeilTotal,
+  insecable, reveilOublie, detailReveilOublie, detailBiberon, detailSieste, detailTemperature, dureeLabel, estFievre, minutesSieste, parseMl, parseTemperature, demandesApporter, detailApporter, resumeJour, siesteEnCours, sommeilTotal, premierJourCarnet,
 } from '../src/engine/carnet';
 
 const j = (o: Partial<Journal>): Journal => ({ id: 'x', cid: 'c1', date: '2026-11-02', time: '12:00', kind: 'note', detail: '', ...o });
@@ -150,5 +150,15 @@ describe('carnet : réveil oublié', () => {
   it('résumé d’un jour terminé : pas « en cours »', () => {
     const t = resumeJour({ enfant: 'Rose', jour: 'dimanche 1 novembre', notes: [ouvert], jourTermine: true });
     expect(t).toContain('Sommeil (endormissement à 13h10, réveil non noté)');
+  });
+});
+
+describe('historique du carnet sans limite de durée', () => {
+  it('remonte au début du plus ancien contrat ou à la plus ancienne note', () => {
+    expect(premierJourCarnet([{ start: '2024-09-02' }, { start: '2025-01-06' }], [{ date: '2024-10-01' }], '2026-11-08')).toBe('2024-09-02');
+    expect(premierJourCarnet([{ start: '2025-01-06' }], [{ date: '2023-05-04' }], '2026-11-08')).toBe('2023-05-04');
+  });
+  it('sans contrat ni note, reste sur aujourd’hui', () => {
+    expect(premierJourCarnet([], [], '2026-11-08')).toBe('2026-11-08');
   });
 });

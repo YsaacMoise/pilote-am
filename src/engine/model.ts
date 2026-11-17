@@ -77,6 +77,11 @@ export interface Contract {
   cpMode: CpPayMode;
   /** Enfant ouvrant droit à l'abattement fiscal majoré (handicap, maladie, inadaptation) */
   majoreFiscal: boolean;
+  /**
+   * Le parent a adhéré à Pajemploi+ : l'Urssaf prélève le parent et verse le salaire à l'AM.
+   * Condition du CMG à partir du 1er septembre 2027 (LFSS 2026, article 101). Non renseigné sur les anciens contrats.
+   */
+  pajemploiPlus?: boolean;
   /** Date à partir de laquelle l'app suit le contrat (avant : historique) */
   trackedFrom: ISODate;
   balances: StartBalances;

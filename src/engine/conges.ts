@@ -97,6 +97,40 @@ function round(x: number): number {
   return Math.min(30, Math.ceil(x - 1e-9));
 }
 
+/** Arrêt maladie non professionnel : 2 jours ouvrables par mois, 24 au plus par période (C. trav. L3141-5 7° et L3141-5-1, loi 2024-364) */
+export const CP_MALADIE_PAR_4_SEMAINES = 2;
+export const CP_MALADIE_PLAFOND = 24;
+
+/** Semaines d'arrêt maladie de l'AM (« je suis malade ») comprises dans [from, to], comptées comme `weeksIn` */
+function semainesMaladie(ctx: Ctx, from: ISODate, to: ISODate): number {
+  const jours = new Set<ISODate>();
+  for (const l of ctx.leaves) {
+    if (l.type !== 'am_malade') continue;
+    const a = l.from > from ? l.from : from;
+    const b = l.to < to ? l.to : to;
+    if (b < a) continue;
+    for (const d of eachDay(a, b)) jours.add(d);
+  }
+  if (!jours.size) return 0;
+  // Regroupe les jours en intervalles continus, puis les compte comme le reste du contrat
+  const tri = [...jours].sort();
+  let total = 0, debut = tri[0], prec = tri[0];
+  for (const d of tri.slice(1)) {
+    if (d === addDays(prec, 1)) { prec = d; continue; }
+    total += weeksIn(ctx, debut, prec);
+    debut = prec = d;
+  }
+  return total + weeksIn(ctx, debut, prec);
+}
+
+/** Jours bruts acquis sur [from, to] : 2,5 jours par 4 semaines travaillées, 2 par 4 semaines d'arrêt maladie (24 au plus) */
+function joursBruts(ctx: Ctx, from: ISODate, to: ISODate): number {
+  const semaines = weeksIn(ctx, from, to);
+  const malade = Math.min(semaines, semainesMaladie(ctx, from, to));
+  const auTitreMaladie = Math.min(CP_MALADIE_PLAFOND, (malade / 4) * CP_MALADIE_PAR_4_SEMAINES);
+  return ((semaines - malade) / 4) * 2.5 + auTitreMaladie;
+}
+
 /** Acquisition pour la période de référence commençant le 1er juin `y` */
 export function acquisition(ctx: Ctx, y: number, enfantsACharge = 0): Acquisition {
   return memo(ctx, `acq${y}|${enfantsACharge}`, () => {
@@ -107,12 +141,12 @@ export function acquisition(ctx: Ctx, y: number, enfantsACharge = 0): Acquisitio
     const upTo = ctx.today < p.to ? ctx.today : p.to;
     if (y === trackedY && c.trackedFrom > c.start) {
       semaines = weeksIn(ctx, c.trackedFrom, p.to);
-      raw = c.balances.cpEnCours + (semaines / 4) * 2.5;
-      rawADate = c.balances.cpEnCours + (weeksIn(ctx, c.trackedFrom, upTo) / 4) * 2.5;
+      raw = c.balances.cpEnCours + joursBruts(ctx, c.trackedFrom, p.to);
+      rawADate = c.balances.cpEnCours + joursBruts(ctx, c.trackedFrom, upTo);
     } else {
       semaines = weeksIn(ctx, p.from, p.to);
-      raw = (semaines / 4) * 2.5;
-      rawADate = (weeksIn(ctx, p.from, upTo) / 4) * 2.5;
+      raw = joursBruts(ctx, p.from, p.to);
+      rawADate = joursBruts(ctx, p.from, upTo);
     }
     const base = round(raw);
     // Salarié de 21 ans et plus : 2 jours par enfant à charge, sans dépasser 30 jours au total.
