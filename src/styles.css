@@ -243,6 +243,11 @@ main {
 .sync-banner p { margin: 0; flex: 1; min-width: 0; }
 .sync-banner + .app .topbar { padding-top: 8px; }
 .sync-banner button { flex: none; min-height: 44px; padding: 0 14px; border-radius: var(--r-btn); border: 1.5px solid currentColor; background: transparent; color: inherit; font-weight: 700; }
+.cond-banner { flex-wrap: wrap; background: var(--surface); border-bottom: 1px solid var(--line); }
+.cond-banner > svg { color: var(--accent-ink); }
+.cond-banner p { flex: 1 1 calc(100% - 40px); }
+.cond-actions { display: flex; gap: 8px; margin-left: auto; }
+.cond-lire { display: inline-flex; align-items: center; min-height: 44px; padding: 0 14px; color: inherit; font-weight: 700; }
 .demo-banner button { margin-left: auto; min-height: 44px; padding: 0 14px; border-radius: var(--r-btn); border: 1.5px solid #1e201d; background: transparent; color: #1e201d; font-weight: 700; }
 
 /* ---------- Boutons ---------- */
@@ -626,6 +631,8 @@ h1:focus { outline: none; }
 .site-links { display: none; gap: 24px; font-size: 14px; font-weight: 500; }
 .site-links a { color: var(--ink-2); text-decoration: none; padding: 10px 0; }
 .site-links a:hover { color: var(--ink); }
+/* Quatre liens (dont les conditions d'utilisation) : moins d'espace entre eux sur les écrans moyens */
+@media (max-width: 1099px) { .site-links { gap: 14px; } }
 .btn-sm { min-height: 44px; padding: 0 16px; font-size: 15px; border-radius: 12px; }
 
 .landing-main { display: flex; flex-direction: column; gap: 24px; }
