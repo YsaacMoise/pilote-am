@@ -155,3 +155,36 @@ describe('T-038 suite (G-4) : le total « Mois par mois » ne compte pas en sile
     expect(c.total).toBe(c.mois.reduce((t, m) => t + m.net, 0));
   });
 });
+
+// T-038 suite (G-5). La page Urssaf « Préparer le contrat » (12/03/2026, relue) donne les formules sans exemple chiffré :
+// les attendus sont ces formules appliquées aux chiffres du contrat, sans passer par le code. Contrat de base : 40 h par
+// semaine sur 52 semaines, soit 40 × 52 ÷ 12 = 173,33 h mensualisées (art. 109). Février 2027 : 160 h prévues (20 jours
+// de 8 h, aucun férié). 40 h faites : salaire dû = S − S × 120 ÷ 160 = S ÷ 4.
+describe('T-038 suite (G-5) : tests de l’adaptation renforcés', () => {
+  const i = { ...base, debut: '2027-02', adaptationHeures: 40, adaptationJours: 5 };
+  it('étape 2 (rémunération due ÷ taux net) : 173,33 h ÷ 4 = 43,33 h ; étape 3 (heures effectuées) : 40 h ; les deux dans le message', () => {
+    const r = simuler(i, D);
+    const a = moisAdaptation(i, r, '2027-02', r.parEnfant.salaire);
+    expect(a.heures).toBeCloseTo((40 * 52) / 12 / 4, 1);
+    expect(a.heuresFaites).toBe(40);
+    expect(a.aConfirmer).toContain('(43,33 h) ou les heures effectuées (40 h)');
+  });
+  it('embauche le lundi 15/02/2027 : les heures avant l’embauche sont des heures non faites, même dénominateur de 160 h ; le 2e mois (mars) a le sien, 184 h', () => {
+    // Du 15 au 28/02 l'AM fait 40 h ; l'adaptation (30 jours calendaires, art. 94) court jusqu'au 16/03 : 46 h faites en mars.
+    const j = { ...i, adaptationHeures2: 46, adaptationJours2: 6 };
+    const r = simuler(j, D);
+    const S = r.parEnfant.salaire;
+    expect(moisAdaptation(j, r, '2027-02', S).salaire).toBe(Math.round(S / 4));
+    expect(moisAdaptation({ ...j, adaptationHeures: 46 }, r, '2027-03', S, 2).salaire).toBe(Math.round(S - (S * 138) / 184));
+  });
+  it('46 semaines ou moins (A-08) : le montant reste chiffré, à part du total, et marqué à confirmer', () => {
+    const inc = { ...i, yearType: 'incomplete' as const, semainesAbsence: 4 };
+    const r = simuler(inc, D);
+    const a = moisAdaptation(inc, r, '2027-02', r.parEnfant.salaire);
+    expect(a.salaire).toBe(Math.round(r.parEnfant.salaire / 4));
+    const c = calendrier(inc, D);
+    expect(c.mois[0].aConfirmer).toContain('46 semaines');
+    expect(c.totalAConfirmer).toBe(c.mois[0].net);
+    expect(c.mois[0].net).toBeGreaterThan(0);
+  });
+});
