@@ -137,3 +137,13 @@ describe('T-038 R-1 : décès de l’enfant, indemnité égale au préavis, prem
     expect(f.indemnitePreavis).toBe(salaireMensualise(c));
   });
 });
+
+describe('T-038 M-5 : pas de régularisation d’avenant si une absence non gérée tombe dans sa période', () => {
+  it('accident du travail les 10 et 11/03/2026, avenant vers l’année complète au 01/09/2026 : rien versé, refus clair', () => {
+    const av = { avenants: [{ id: 'a1', from: '2026-09-01', changes: { yearType: 'complete' as const, weeks: 52 } }] };
+    const at: AmLeave = { id: 'at', type: 'accident_travail', from: '2026-03-10', to: '2026-03-11' };
+    const b = monthBase(makeCtx(contract(av), [], [at], '2026-11-18'), '2026-09');
+    expect(b.regulAvenant).toBeUndefined();
+    expect(b.alerts.some((a) => a.startsWith('Régularisation à l’avenant du 01/09 non calculée : un cas non géré'))).toBe(true);
+  });
+});

@@ -687,6 +687,13 @@ function applyAvenantRegul(ctx: Ctx, m: Month, r: MonthBase, firstPart?: MonthBa
       continue;
     }
     const start = regulStart(c, a.from);
+    // T-038 (M-5, relecture V4) : une absence non gérée (maternité, accident du travail…) n'a pas de branche dans computeDay :
+    // ses jours compteraient comme travaillés. Pas de régularisation, refus clair (même règle que les mois, T-031).
+    const ng = nonGeresPeriode(c, ctx.leaves, start, veille);
+    if (ng.length) {
+      r.alerts.push(`Régularisation à l’avenant du ${a.from.slice(8, 10)}/${a.from.slice(5, 7)} non calculée : un cas non géré par l’app touche la période depuis le ${start.split('-').reverse().join('/')}. ${ng.join(' ')} Calcule-la avec les parents.`);
+      continue;
+    }
     const cur = a.from.slice(8) !== '01' && firstPart ? { m, payees: firstPart.base, aConfirmer: firstPart.evenementAConfirmer } : undefined;
     const lect = regularisationLectures(ctx, start, veille, cur);
     if (!lect.sure) {
