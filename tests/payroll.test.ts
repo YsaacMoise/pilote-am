@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AmLeave, Contract, DayRec, Planning } from '../src/engine/model';
-import { makeCtx, salaireMensualise, joursMensualises, mensuelMinutes, monthBase, sickDeductible, sickLectures, dayInfo } from '../src/engine/payroll';
+import { makeCtx, messageSansSoldeEnfant, salaireMensualise, joursMensualises, mensuelMinutes, monthBase, sickDeductible, sickLectures, dayInfo } from '../src/engine/payroll';
 import { computeMonth, declarationLines } from '../src/engine/month';
 import { acquisition, compteur, cpForMonth, indemnite, joursOuvrables } from '../src/engine/conges';
 import { finDeContrat } from '../src/engine/fin';
@@ -79,6 +79,17 @@ describe('retenue pour absence (art. 111)', () => {
   it('absence voulue par les parents : payée', () => {
     const ctx = makeCtx(contract(), [rec('2026-10-14', { abs: 'parents' })], [], '2026-11-15');
     expect(monthBase(ctx, '2026-10').base).toBe(68250);
+  });
+  // T-035b. CCN art. 105 al. 1 : « les temps d'absence non prévus sont rémunérés » ; CASF L423-20 ; service-public F12812
+  // (« Autre cas ») : jours prévus non effectués du fait de l'absence de l'enfant = rémunérés. Salaire attendu : art. 109,
+  // 45 h × 52 ÷ 12 = 195 h à 3,50 € = 682,50 €.
+  it('absence de l’enfant notée « sans solde » (saisie d’avant) : payée, et signalée', () => {
+    const ctx = makeCtx(contract(), [rec('2026-10-14', { abs: 'sans_solde_enfant' })], [], '2026-11-15');
+    const b = monthBase(ctx, '2026-10');
+    expect(b.base).toBe(68250);
+    expect(b.deductedDays).toBe(0);
+    expect(b.alerts).toContain(messageSansSoldeEnfant('2026-10-14'));
+    expect(b.alerts.join(' ')).toMatch(/avenant/);
   });
   it('jour férié chômé : payé et compté dans le diviseur (audit C-006, fiches DREETS Occitanie et DDETS 31)', () => {
     const ctx = makeCtx(contract(), [], [], '2026-12-15');
@@ -184,10 +195,12 @@ describe('seuil des 45 h selon les absences de la semaine (art. 96-4, 99 ; Cass.
     expect(b.complMin).toBe(240);
     expect(b.majMin).toBe(0);
   });
-  it('absence sans solde de l’enfant : le jour ne compte pas', () => {
+  // T-035b : CCN art. 105 al. 1, absence non prévue = rémunérée ; plus de retenue. Le jour noté « sans solde » est traité
+  // comme l'absence voulue par les parents.
+  it('absence de l’enfant notée « sans solde » : payée, le jour compte comme une absence voulue par les parents', () => {
     const b = semaine([rec('2026-10-05', { abs: 'sans_solde_enfant' }), ...plus4h]);
-    expect(b.complMin).toBe(240);
-    expect(b.majMin).toBe(0);
+    expect(b.complMin).toBe(0);
+    expect(b.majMin).toBe(240);
   });
   it('congés payés de l’AM avec droits acquis : le jour compte (Cass. soc. 10/09/2025)', () => {
     const cp: AmLeave[] = [{ id: 'l', type: 'cp', from: '2026-10-05', to: '2026-10-05' }];
@@ -967,7 +980,8 @@ describe('audit C-003 : un avenant en cours de mois ne change pas les jours d’
   });
   it('avenant en cours de mois avec un jour retenu : un jour de moins', () => {
     const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', avenants: [{ id: 'a1', from: '2026-11-16', changes: { rateNet: 400 } }] });
-    const days = [rec('2026-11-20', { abs: 'sans_solde_enfant' })];
+    // T-035b : le jour retenu est une absence pour maladie avec certificat (art. 105), et non plus un jour « sans solde ».
+    const days = [rec('2026-11-20', { abs: 'malade_certif' })];
     expect(monthBase(makeCtx(c, days, [], '2026-12-15'), '2026-11').joursActivite).toBe(21);
   });
   it('entrée dans le mois : jours réellement prévus, inchangé', () => {

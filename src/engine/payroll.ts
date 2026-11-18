@@ -154,9 +154,15 @@ export interface DayInfo {
    * mois et affiché « à confirmer » ; la raison dit quoi renseigner.
    */
   aConfirmer?: string;
+  /** T-035b : absence de l'enfant notée « sans solde » (ancienne option), désormais payée */
+  sansSoldeEnfantPaye?: boolean;
 }
 
 /** T-030 : nature du salaire mis « à confirmer » dans le mois (événement familial, congés au-delà des droits, ou les deux) */
+/** T-035b : alerte du jour noté « sans solde » avant la correction (CCN art. 105 ; CASF L423-20). */
+export const messageSansSoldeEnfant = (d: ISODate): string =>
+  `Absence du ${d.slice(8, 10)}/${d.slice(5, 7)} notée « sans solde » : elle est payée. La convention (article 105) ne permet de retenir une absence de l’enfant qu’en cas de maladie avec certificat. Pour ne plus payer ces jours, il faut un avenant signé qui change le planning.`;
+
 export function libelleSalaireAConfirmer(b: Pick<MonthBase, 'joursCpAConfirmer' | 'joursEvenementAConfirmer'> & Partial<Pick<MonthBase, 'joursMaladieAConfirmer'>>, et = 'et'): string {
   return joindre(naturesAConfirmer(b).map((n) => ({ evenement: 'd’événement familial', cp: 'de congés', maladie: 'd’enfant malade' })[n]), et);
 }
@@ -235,7 +241,11 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
     info.kind = 'absent';
     if (plannedMin > 0) {
       info.inDivisor = true;
-      if (rec.abs === 'sans_solde_enfant') info.deducted = true;
+      // T-035b : plus de retenue. CCN art. 105 al. 1 : « les temps d'absence non prévus sont rémunérés » ; seule exception,
+      // l'absence justifiée par certificat médical ou bulletin d'hospitalisation (art. 105 al. 2 et 3). CASF L423-20 : maintien
+      // de la rémunération sauf fait de l'AM ou maladie attestée. Aucun texte ne prévoit de retenue sur accord écrit. Le jour
+      // noté « sans solde » (saisies d'avant) est payé comme une absence voulue par les parents, et signalé.
+      if (rec.abs === 'sans_solde_enfant') info.sansSoldeEnfantPaye = true;
       if (rec.abs === 'malade_certif') {
         const sick = sickLectures(ctx);
         info.deducted = sick.retenus.has(d);
@@ -771,6 +781,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     // T-025 C-4 : un férié pendant un congé pour événement familial reste un férié chômé (art. 47) : payé, pas compté.
     if (di.inDivisor && !di.deducted && !di.aConfirmer && di.kind !== 'ferie' && !(di.kind === 'am' && di.ferie)) actDays++;
     if (di.cpSansDroits) cpSansDroits++;
+    if (di.sansSoldeEnfantPaye && di.plannedMin > 0) r.alerts.push(messageSansSoldeEnfant(d));
     if (di.departOublie) forgotten.push(d);
     if (di.ferieNonPaye) r.alerts.push(`Férié du ${d.slice(8, 10)}/${d.slice(5, 7)} non payé : tu étais absente le jour prévu juste avant ou juste après (article 47 de la convention).`);
     if (di.rec?.abs === 'malade_certif' && !di.deducted && di.plannedMin > 0) r.sickPaidNotice = true;

@@ -371,11 +371,11 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
               <label for="sim-debut">Premier mois du contrat</label>
               <input id="sim-debut" class="input num" type="month" value={i.debut} onInput={(e) => { const v = (e.target as HTMLInputElement).value; if (/^\d{4}-\d{2}$/.test(v)) set({ debut: v }); }} />
             </div>
-            <Switch label="Adaptation le premier mois" hint="Payée aux heures réellement faites, 30 jours au plus (convention collective)." checked={i.adaptationHeures > 0}
+            <Switch label="Adaptation le premier mois" hint="30 jours au plus. Le salaire du mois est réduit des heures non faites (convention collective, article 108.1)." checked={i.adaptationHeures > 0}
               onChange={(on) => set(on ? { adaptationHeures: Math.round(r.heuresMoisMin / 60 / 3), adaptationJours: Math.max(1, Math.round(r.joursMois / 2)) } : { adaptationHeures: 0, adaptationJours: 0 })} />
             {i.adaptationHeures > 0 && (
               <div class="grid2">
-                <NumberInput label="Heures ce mois-là" value={i.adaptationHeures} min={1} max={300} onChange={(v) => set({ adaptationHeures: v ?? 0 })} />
+                <NumberInput label="Heures faites ce mois-là" value={i.adaptationHeures} min={1} max={300} onChange={(v) => set({ adaptationHeures: v ?? 0 })} />
                 <NumberInput label="Jours d’accueil" value={i.adaptationJours} min={1} max={31} onChange={(v) => set({ adaptationJours: v ?? 0 })} />
               </div>
             )}
@@ -446,6 +446,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             <h2 id="sim-cal" style={{ marginBottom: '4px' }}>Mois par mois</h2>
             <p class="hint">Ce que la famille paie chaque mois, après l’aide de la CAF, et le crédit d’impôt le mois où il arrive. {eurosRond(cal.total)} sur {cal.mois.length} mois.</p>
             {premierCredit && <Banner tone="info">Le premier crédit d’impôt n’arrive qu’en {monthLabel(premierCredit.mois)} : jusque-là, la famille paie sans lui.{premiereAvance ? ` En ${monthLabel(premiereAvance.mois)}, l’avance de 60 % se calcule sur la première année, souvent incomplète : elle est faible, le solde arrive l’été.` : ''}</Banner>}
+            {cal.mois.find((m) => m.aConfirmer) && <Banner tone="warn">{cal.mois.find((m) => m.aConfirmer)!.aConfirmer}</Banner>}
             <ol class="cal-list">
               {cal.mois.map((m) => (
                 <li class={`cal-row ${m.evenements.length ? 'is-event' : ''}`}>
@@ -457,6 +458,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
                   <span class="decl-hint">
                     {`payé ${eurosRond(m.verse + m.cotisationsReste)}`}{m.cmg ? ` · CAF −${eurosRond(m.cmg)}` : ''}{m.autresAides ? ` · aides −${eurosRond(m.autresAides)}` : ''}{m.credit ? ` · crédit ${m.credit > 0 ? '−' : '+'}${eurosRond(Math.abs(m.credit))}` : ''}
                     {m.evenements.length > 0 && <> · <span class="cal-ev">{m.evenements.map((e) => EVENEMENTS[e]).join(', ')}{m.conges ? ` ${eurosRond(m.conges)}` : ''}</span></>}
+                    {m.aConfirmer && <> · <b>à confirmer</b></>}
                   </span>
                 </li>
               ))}
