@@ -803,6 +803,13 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   r.forgotten = forgotten;
 
   // Méthode des heures (année complète) ou des jours (année incomplète) — art. 111.
+  // T-034 : l'embauche et la fin de contrat en cours de mois suivent cette même déduction d'absence. Fiches DREETS
+  // Occitanie (DDETS 31) du 19/01/2023, « Accueil sur 52 semaines » et « Accueil sur 46 semaines ou moins », section 3 :
+  // « Les absences non rémunérées qui nécessitent le calcul d'une déduction d'absence sont notamment les suivantes :
+  // - Embauche et fin de contrat en cours de mois ». Année complète : « Salaire mensualisé x nombre d'heures non
+  // travaillées dans le mois […] ÷ par le nombre d'heures qui auraient été réellement travaillées dans le mois
+  // considéré » ; année incomplète : même formule en jours, les semaines de non-accueil comptées au diviseur.
+  // Les jours du mois hors contrat sont les jours non travaillés : (segMin − min) / fullMin = 1 − non travaillé ÷ diviseur.
   const fractionHors = (days: number, min: number): number => {
     const f = complete ? (fullMin > 0 ? (segMin - min) / fullMin : startsOrEndsInMonth ? 0 : 1)
       : (fullDays > 0 ? (segDays - days) / fullDays : startsOrEndsInMonth ? 0 : 1);
