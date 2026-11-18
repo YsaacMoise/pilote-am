@@ -28,6 +28,11 @@ export interface FinResult {
   ancienneteMois: number;
   preavisLabel: string;
   preavisFin: ISODate;
+  /**
+   * PREAVIS-DATE-FIN (regles/triage-f3.md) : aucun texte ne dit si le premier jour du préavis compte, ni comment compter
+   * « un mois ». La date calculée est gardée, affichée « à confirmer ». Absent : pas de préavis à faire.
+   */
+  preavisFinAConfirmer?: string;
   dernierJour: ISODate;
   indemniteRupture: number;
   ruptureExplication: string;
@@ -49,6 +54,10 @@ export interface FinResult {
   /** T-031 : cas non gérés pendant le contrat. Rempli : aucun montant n'est donné (tous à 0), le calcul est refusé. */
   nonGere?: string[];
 }
+
+/** PREAVIS-DATE-FIN : méthode de l'app sans texte (premier jour compté ; un mois de date à date, du 15/10 au 14/11) */
+export const MESSAGE_PREAVIS_FIN =
+  'Date de fin du préavis à confirmer. Aucun texte ne dit si le jour où la lettre est présentée compte comme premier jour, ni comment compter un mois. L’app compte ce jour comme le premier. Vérifie la date avec les parents : le dernier salaire en dépend.';
 
 /** Durée du préavis selon l'ancienneté, rupture par l'employeur (R-FIN-02, CCN art. 120) */
 function preavisEmployeur(anc: number): { label: string; jours?: number } {
@@ -95,6 +104,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // (T-023 : la démission avant 3 mois a aussi 8 jours ; le conflit CASF L423-26 / CCN 120 de 3 mois à 1 an relève de T-024).
   // Inaptitude (avenant n° 10 du 9 septembre 2025, art. 119-5 et 64-4) : rupture sans préavis, à la date d'envoi.
   let preavisFin = notif;
+  let preavisFinAConfirmer: string | undefined;
   let preavisLabel = 'Pas de préavis';
   if (motif === 'inaptitude' || motif === 'inaptitude_pro') {
     preavisLabel = 'Pas de préavis en cas d’inaptitude : le contrat s’arrête à l’envoi de la lettre';
@@ -102,6 +112,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     const p = preavisEmployeur(anc);
     preavisLabel = p.label;
     preavisFin = finPreavis(depart, p);
+    preavisFinAConfirmer = MESSAGE_PREAVIS_FIN;
   }
   // Décès de l'enfant (R-FIN-07, CCN art. 119.4.2 ; Urssaf « motifs de fin de contrat » ; service-public.fr F16842) :
   // le contrat s'arrête le jour du décès, sans préavis à faire ; l'employeur verse une indemnité égale à l'indemnité
@@ -272,13 +283,13 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   const nonGere = nonGeresPeriode(c, ctx.leaves, c.start, dernierJour);
   if (nonGere.length) {
     return {
-      ancienneteMois: anc, preavisLabel, preavisFin, dernierJour, indemniteRupture: 0, ruptureExplication: 'Non calculée : cas non géré.',
+      ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture: 0, ruptureExplication: 'Non calculée : cas non géré.',
       totalBrut: 0, indemnitePreavis: 0, regularisation: 0, regulMinutes: 0, cpJoursRestants: 0, cpIndemnite: 0,
       cpExplication: 'Non calculés : cas non géré.', manquants, alertes, nonGere,
     };
   }
   return {
-    ancienneteMois: anc, preavisLabel, preavisFin, dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, totalBrut,
+    ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, totalBrut,
     indemnitePreavis, indemnitePreavisExplication,
     regularisation: regularisation_, regulMinutes, cpJoursRestants: joursCur + restantsPrec, cpIndemnite, cpExplication, cpAConfirmer, manquants, alertes,
   };

@@ -141,3 +141,18 @@ describe('A-01 : accueil de 47 à 51 semaines (CCN art. 97.1, question 2 posée 
     expect(computeMonth(makeCtx(c, [], [], '2026-10-31'), '2026-07').nonGere.join(' ')).toMatch(/47 à 51/);
   });
 });
+
+describe('PREAVIS-DATE-FIN : date de fin du préavis sans texte (regles/triage-f3.md)', () => {
+  const ctx = () => makeCtx(ok({ start: '2024-09-01', trackedFrom: '2024-09-01' }), [], [], '2026-10-31');
+  it('retrait et démission : date gardée, signalée à confirmer', () => {
+    for (const motif of ['retrait', 'demission'] as const) {
+      const f = finDeContrat(ctx(), '2026-10-15', motif);
+      expect(f.preavisFin > '2026-10-15').toBe(true);
+      expect(f.preavisFinAConfirmer).toMatch(/Date de fin du préavis à confirmer/);
+    }
+  });
+  it('inaptitude et décès : pas de préavis à faire, rien à confirmer', () => {
+    expect(finDeContrat(ctx(), '2026-10-15', 'inaptitude').preavisFinAConfirmer).toBeUndefined();
+    expect(finDeContrat(ctx(), '2026-10-15', 'deces').preavisFinAConfirmer).toBeUndefined();
+  });
+});
