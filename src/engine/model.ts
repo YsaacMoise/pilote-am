@@ -92,6 +92,16 @@ export interface Contract {
    * Condition du CMG à partir du 1er septembre 2027 (LFSS 2026, article 101). Non renseigné sur les anciens contrats.
    */
   pajemploiPlus?: boolean;
+  /**
+   * T-031 : cas que l'app ne gère pas, demandés à la création du contrat. Vrai : tous les mois calculés du contrat sont
+   * refusés (« non géré »). Absent (contrats d'avant T-031) : réponse à donner, signalée dans chaque mois.
+   * L'AM travaille dans le Bas-Rhin, le Haut-Rhin ou la Moselle.
+   */
+  alsaceMoselle?: boolean;
+  /** Horaires qui changent d'une semaine à l'autre (semaines A et B, planning remis par écrit, CCN art. 98.1.2) */
+  planningVariable?: boolean;
+  /** Accueil occasionnel : « de courte durée et n'a pas de caractère régulier » (CCN art. 97.2) */
+  accueilOccasionnel?: boolean;
   /** Date à partir de laquelle l'app suit le contrat (avant : historique) */
   trackedFrom: ISODate;
   balances: StartBalances;
@@ -102,7 +112,13 @@ export interface Contract {
 }
 
 export type ChildAbs = 'malade_certif' | 'malade' | 'parents' | 'sans_solde_enfant';
-export type AmAbs = 'cp' | 'am_malade' | 'am_enfant_malade' | 'evenement' | 'sans_solde';
+export type AmAbs = 'cp' | 'am_malade' | 'am_enfant_malade' | 'evenement' | 'sans_solde' | AmAbsNonGeree;
+/**
+ * Absences de l'AM que l'app ne calcule pas (T-031, charte verrou 6) : elles se saisissent pour que l'app refuse les mois,
+ * les congés et la fin de contrat concernés, au lieu de payer les jours comme travaillés.
+ */
+export type AmAbsNonGeree = 'maternite' | 'paternite' | 'naissance_supp' | 'accident_travail';
+export const AM_ABS_NON_GEREES: AmAbsNonGeree[] = ['maternite', 'paternite', 'naissance_supp', 'accident_travail'];
 
 export interface Presence { a?: string; d?: string }
 
@@ -211,4 +227,8 @@ export const AM_ABS_LABEL: Record<AmAbs, string> = {
   am_enfant_malade: 'Mon enfant est malade',
   evenement: 'Événement familial',
   sans_solde: 'Congé sans solde',
+  maternite: 'Congé maternité',
+  paternite: 'Congé paternité et d’accueil de l’enfant',
+  naissance_supp: 'Congé supplémentaire de naissance',
+  accident_travail: 'Accident du travail ou maladie professionnelle',
 };

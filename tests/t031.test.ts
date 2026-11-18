@@ -3,8 +3,12 @@
 // ce sont des choix de l'app (refus, signal), pas des montants tirés d'un texte. Aucun montant attendu n'est calculé ici.
 import { describe, expect, it } from 'vitest';
 import type { AmLeave, Contract, Planning } from '../src/engine/model';
-import { makeCtx } from '../src/engine/payroll';
+import { makeCtx, monthBase } from '../src/engine/payroll';
 import { fiscalYear } from '../src/engine/fiscal';
+import { computeMonth, declarationLines, declarationText } from '../src/engine/month';
+import { acquisition, cpForMonth, indemnite, soldesDeDepart } from '../src/engine/conges';
+import { finDeContrat } from '../src/engine/fin';
+import { buildSnapshot } from '../src/partage/snapshot';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
   const p: Planning = {};
@@ -35,5 +39,90 @@ describe('T-028 : congés payés à confirmer dans le compteur fiscal', () => {
   it('sans congés à confirmer, rien n’est signalé', () => {
     const f = fiscalYear(makeCtx(contract(), [], [], '2026-10-31'), 2026);
     expect(f.nonGere ?? '').not.toMatch(/Congés payés à confirmer/);
+  });
+});
+
+// Contrat qui a répondu aux questions T-031 : aucun cas non géré
+const ok = (over: Partial<Contract> = {}) => contract({ alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, ...over });
+const leave = (type: AmLeave['type'], from: string, to: string): AmLeave => ({ id: type, type, from, to });
+
+describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
+  for (const [nom, over, motif] of [
+    ['Alsace-Moselle', { alsaceMoselle: true }, /Alsace-Moselle .* non géré/],
+    ['horaires qui changent (semaines A et B)', { planningVariable: true }, /semaines A et B.*non géré/],
+    ['accueil occasionnel (CCN art. 97.2)', { accueilOccasionnel: true }, /Accueil occasionnel : non géré/],
+  ] as [string, Partial<Contract>, RegExp][]) {
+    it(`${nom} : mois refusé, aucune case, aucun montant envoyé`, () => {
+      const ctx = makeCtx(ok(over), [], [], '2026-10-31');
+      const r = computeMonth(ctx, '2026-03');
+      expect(r.nonGere.join(' ')).toMatch(motif);
+      expect(declarationLines(ctx, r)).toEqual([]);
+      expect(declarationText(ctx, r, 'Nadia')).not.toMatch(/€/);
+    });
+  }
+  it('contrat sans cas non géré : aucun refus, aucune alerte « à compléter »', () => {
+    const r = computeMonth(makeCtx(ok(), [], [], '2026-10-31'), '2026-03');
+    expect(r.nonGere).toEqual([]);
+    expect(r.alerts.join(' ')).not.toMatch(/Contrat à compléter/);
+  });
+  it('contrat d’avant T-031 (questions sans réponse) : signalé dans chaque mois calculé', () => {
+    const r = computeMonth(makeCtx(contract(), [], [], '2026-10-31'), '2026-03');
+    expect(r.alerts.join(' ')).toMatch(/Contrat à compléter/);
+  });
+  it('mois repris d’un bulletin réel : pas refusé (le bulletin fait foi)', () => {
+    const c = ok({ alsaceMoselle: true, trackedFrom: '2026-01-01', history: [{ month: '2025-12', net: 50000, source: 'manuel' }] });
+    const b = monthBase(makeCtx(c, [], [], '2026-10-31'), '2025-12');
+    expect(b.fromHistory).toBe(true);
+    expect(b.nonGere).toEqual([]);
+  });
+  it('congés : jours acquis et indemnité à confirmer, juin sans complément versé', () => {
+    const ctx = makeCtx(ok({ alsaceMoselle: true }), [], [], '2026-10-31');
+    expect(acquisition(ctx, 2025).aConfirmer?.message).toMatch(/Alsace-Moselle/);
+    expect(indemnite(ctx, 2025).aConfirmer).toBeDefined();
+    const juin = cpForMonth(ctx, '2026-06');
+    expect(juin.complement).toBe(0);
+    expect(juin.aConfirmer).toBeDefined();
+  });
+  it('soldes de départ (reprise) : pas proposés', () => {
+    const s = soldesDeDepart(ok({ alsaceMoselle: true, start: '2024-09-01' }), '2026-10-01', 0);
+    expect(s.aConfirmer).toMatch(/Alsace-Moselle/);
+  });
+  it('fin de contrat : aucun montant', () => {
+    const f = finDeContrat(makeCtx(ok({ planningVariable: true }), [], [], '2026-10-31'), '2026-10-15', 'retrait');
+    expect(f.nonGere?.join(' ')).toMatch(/non géré/);
+    expect(f.indemniteRupture + f.cpIndemnite + f.regularisation + f.indemnitePreavis).toBe(0);
+  });
+  it('compteur fiscal : mois refusés non comptés et signalés', () => {
+    const f = fiscalYear(makeCtx(ok({ accueilOccasionnel: true }), [], [], '2026-10-31'), 2026);
+    expect(f.recu).toBe(0);
+    expect(f.jours).toBe(0);
+    expect(f.nonGere).toMatch(/Mars 2026 n’est pas calculé \(cas non géré\)/);
+  });
+  it('page des parents : mois marqué non calculé, sans montant ni case', () => {
+    const snap = buildSnapshot({ ctx: makeCtx(ok({ alsaceMoselle: true }), [], [], '2026-10-20'), journal: [], amName: 'Nadia', enfants: 0, now: 0 });
+    expect(snap.mois.length).toBeGreaterThan(0);
+    for (const m of snap.mois) { expect(m.nonGere).toBe(true); expect(m.total).toBe(0); expect(m.lignes).toEqual([]); }
+  });
+});
+
+describe('T-031 : absences non gérées (congé maternité, paternité, de naissance, accident du travail)', () => {
+  for (const type of ['maternite', 'paternite', 'naissance_supp', 'accident_travail'] as AmLeave['type'][]) {
+    it(`${type} : seuls les mois touchés sont refusés`, () => {
+      const ctx = makeCtx(ok(), [], [leave(type, '2026-03-02', '2026-04-10')], '2026-10-31');
+      expect(computeMonth(ctx, '2026-03').nonGere.join(' ')).toMatch(/du 02\/03.* au 10\/04.*: non géré/);
+      expect(computeMonth(ctx, '2026-04').nonGere.length).toBe(1);
+      expect(computeMonth(ctx, '2026-05').nonGere).toEqual([]);
+      expect(computeMonth(ctx, '2026-02').nonGere).toEqual([]);
+    });
+  }
+  it('la période de congés qui contient l’absence passe à confirmer, la suivante non', () => {
+    const ctx = makeCtx(ok(), [], [leave('maternite', '2026-03-02', '2026-04-10')], '2027-10-31');
+    expect(acquisition(ctx, 2025).aConfirmer?.message).toMatch(/Congé maternité/);
+    expect(acquisition(ctx, 2026).aConfirmer).toBeUndefined();
+  });
+  it('fin de contrat après une absence non gérée : aucun montant', () => {
+    const f = finDeContrat(makeCtx(ok(), [], [leave('accident_travail', '2026-03-02', '2026-03-20')], '2026-10-31'), '2026-10-15', 'retrait');
+    expect(f.nonGere?.join(' ')).toMatch(/Accident du travail/);
+    expect(f.cpIndemnite).toBe(0);
   });
 });

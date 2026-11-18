@@ -1,5 +1,6 @@
 // Fin de contrat : préavis (art. 120), indemnité de rupture (art. 121), régularisation (art. 109.2),
 // indemnité de congés non pris. Aucun document officiel n'est produit.
+import { nonGeresPeriode } from './nonGeres';
 import {
   addDays, addMonthsToDate, cpPeriod, cpPeriodStartYear, fullMonthsBetween, lastDay, monthOf, monthsBetween, shortDate,
   type ISODate, type Month,
@@ -45,6 +46,8 @@ export interface FinResult {
   cpAConfirmer?: string;
   manquants: Month[];
   alertes: string[];
+  /** T-031 : cas non gérés pendant le contrat. Rempli : aucun montant n'est donné (tous à 0), le calcul est refusé. */
+  nonGere?: string[];
 }
 
 /** Durée du préavis selon l'ancienneté, rupture par l'employeur (R-FIN-02, CCN art. 120) */
@@ -264,6 +267,16 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     cpExplication = 'À confirmer : le nombre de jours de congés n’est pas tranché. L’app ne donne pas de montant.';
   }
 
+  // T-031 : un cas non géré pendant le contrat (Alsace-Moselle, horaires variables, accueil occasionnel, congé maternité,
+  // accident du travail…) fausse les salaires de référence, l'ancienneté retenue ou les congés : aucun montant.
+  const nonGere = nonGeresPeriode(c, ctx.leaves, c.start, dernierJour);
+  if (nonGere.length) {
+    return {
+      ancienneteMois: anc, preavisLabel, preavisFin, dernierJour, indemniteRupture: 0, ruptureExplication: 'Non calculée : cas non géré.',
+      totalBrut: 0, indemnitePreavis: 0, regularisation: 0, regulMinutes: 0, cpJoursRestants: 0, cpIndemnite: 0,
+      cpExplication: 'Non calculés : cas non géré.', manquants, alertes, nonGere,
+    };
+  }
   return {
     ancienneteMois: anc, preavisLabel, preavisFin, dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, totalBrut,
     indemnitePreavis, indemnitePreavisExplication,

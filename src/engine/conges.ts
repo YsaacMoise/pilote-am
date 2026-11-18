@@ -7,6 +7,7 @@ import {
   toutesSemainesSansAccueil, weeklyMinutes, weeksPerYear, type Ctx,
 } from './payroll';
 import type { AmLeave, Contract } from './model';
+import { nonGeresContrat, nonGeresPeriode } from './nonGeres';
 
 /** Jours ouvrables (lundi → samedi, hors fériés) d'un intervalle */
 export function joursOuvrables(from: ISODate, to: ISODate): ISODate[] {
@@ -407,6 +408,12 @@ export function acquisition(ctx: Ctx, y: number, enfantsACharge = 0): Acquisitio
         }
       }
     }
+    // T-031 : un cas non géré touche la période (Alsace-Moselle, horaires variables, accueil occasionnel, congé maternité,
+    // accident du travail…) : les jours acquis ne sont pas calculés. `jours` reste une borne interne, jamais affichée ni payée.
+    const ng = nonGeresPeriode(c, ctx.leaves, p.from, p.to);
+    if (ng.length) {
+      out.aConfirmer = { message: `Jours de congés acquis à confirmer. ${ng.join(' ')}`, lectures: [], raison: 'un cas non géré par l’app touche la période' };
+    }
     return out;
   });
 }
@@ -478,6 +485,10 @@ export function soldesDeDepart(c: Contract, trackedFrom: ISODate, prisDepuisJuin
   const debut = c.start > p.from ? c.start : p.from;
   const cpEnCours = trackedFrom > debut ? Math.round((weeksIn(ctx, debut, addDays(trackedFrom, -1)) / 4) * 2.5 * 100) / 100 : 0;
   const incomplete = touchesIncomplete(c, c.start, addDays(trackedFrom, -1));
+  const ng = nonGeresContrat(c);
+  if (ng.length) {
+    return { droitsAnDernier, cpRestants: 0, cpEnCours: 0, depuis: p.from, aConfirmer: `${ng.join(' ')} L’app ne calcule pas tes jours de congés de départ : saisis-les toi-même, à partir de tes bulletins.` };
+  }
   return {
     droitsAnDernier, cpRestants: Math.max(0, droitsAnDernier - Math.max(0, prisDepuisJuin)), cpEnCours, depuis: p.from,
     aConfirmer: incomplete || acqPrec?.aConfirmer

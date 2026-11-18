@@ -4,6 +4,7 @@ import { cpForMonth } from './conges';
 import { monthBase, termsAt, type Ctx, type MonthBase } from './payroll';
 import { netToBrut } from './rates';
 import { euros, hoursLabel } from './money';
+import { CONTRAT_A_COMPLETER, contratACompleter } from './nonGeres';
 
 export interface MonthResult extends MonthBase {
   cpJours: number;
@@ -21,9 +22,12 @@ export function computeMonth(ctx: Ctx, m: Month, enfants = 0): MonthResult {
   const b = monthBase(ctx, m);
   const cp = cpForMonth(ctx, m, enfants);
   const netTotal = b.net + cp.indemnite + cp.complement;
+  const alerts = cp.aConfirmer ? [...b.alerts, cp.aConfirmer] : [...b.alerts];
+  // T-031 : contrat d'avant T-031, sans réponse aux questions sur les cas non gérés : le dire à chaque mois calculé.
+  if (b.active && !b.fromHistory && contratACompleter(ctx.c)) alerts.push(CONTRAT_A_COMPLETER);
   return {
     ...b,
-    alerts: cp.aConfirmer ? [...b.alerts, cp.aConfirmer] : b.alerts,
+    alerts,
     cpAConfirmer: cp.aConfirmer,
     cpJours: cp.jours,
     cpIndemnite: cp.indemnite,
@@ -38,6 +42,8 @@ export interface DeclLine { label: string; value: string; hint?: string }
 
 /** Les cases de la déclaration Pajemploi, dans l'ordre */
 export function declarationLines(ctx: Ctx, r: MonthResult): DeclLine[] {
+  // T-031 : mois refusé (cas non géré) : aucune case à déclarer n'est proposée.
+  if (r.nonGere.length) return [];
   const t = termsAt(ctx.c, `${r.month}-01`);
   const complete = t.yearType === 'complete';
   const majCompl = t.majorationCompl ?? 0;
@@ -69,6 +75,15 @@ export function declarationLines(ctx: Ctx, r: MonthResult): DeclLine[] {
 /** Texte envoyé au parent : clair, sans jargon, avec le détail du salaire */
 export function declarationText(ctx: Ctx, r: MonthResult, amName: string): string {
   const c = ctx.c;
+  if (r.nonGere.length) {
+    return [
+      `Bonjour, l’application Arvela ne calcule pas ${monthLabel(r.month)} pour ${c.child} : c’est un cas qu’elle ne gère pas.`,
+      '',
+      'Faisons ensemble la déclaration Pajemploi de ce mois, sans l’application.',
+      '',
+      `Merci ! ${amName}`.trim(),
+    ].join('\n');
+  }
   const lines = declarationLines(ctx, r);
   const out: string[] = [];
   out.push(`Bonjour, voici les éléments à déclarer sur Pajemploi pour ${c.child}, ${monthLabel(r.month)} :`);

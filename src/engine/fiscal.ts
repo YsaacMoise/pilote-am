@@ -57,6 +57,11 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
     const r = computeMonth(ctx, m, enfants);
     if (!r.active) continue;
     if (r.missing) { partiel = true; continue; }
+    // T-031 : mois refusé (cas non géré) : ni ses sommes ni ses jours ne sont comptés, et c'est dit.
+    if (r.nonGere.length) {
+      nonGere.add(`${monthLabel(m).replace(/^./, (x) => x.toUpperCase())} n’est pas calculé (cas non géré) : ses sommes et ses jours d’accueil ne sont pas comptés. Ajoute-les à partir du bulletin de salaire.`);
+      continue;
+    }
     net += r.netTotal + Math.round(r.brutEstime * PART_NON_DEDUCTIBLE);
     // T-025 C-5 : un salaire d'événement familial à confirmer n'est pas dans ce net : le dire, ne pas le compter en silence.
     // T-028 : des congés payés à confirmer ne sont pas dans ce net (comme l'événement familial) : le dire.

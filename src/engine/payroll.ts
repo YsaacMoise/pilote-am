@@ -9,6 +9,7 @@ import { statutJourEvenement } from './evenements';
 import { controleKm, indemniteKmJour } from './km';
 import { euros } from './money';
 import { cpAConfirmerEntre, cpExces } from './conges';
+import { nonGeresPeriode } from './nonGeres';
 import type { AmAbs, AmLeave, Contract, DayRec, Plage, Planning } from './model';
 
 export interface Ctx {
@@ -435,10 +436,20 @@ export interface MonthBase {
   alerts: string[];
   forgotten: ISODate[];
   sickPaidNotice: boolean;
+  /**
+   * T-031 : cas non gérés qui touchent ce mois (Alsace-Moselle, horaires variables, accueil occasionnel, absence non
+   * gérée). Non vide : le mois est refusé, aucun montant ne doit être affiché, envoyé ni additionné.
+   */
+  nonGere: string[];
 }
 
 export function monthBase(ctx: Ctx, m: Month): MonthBase {
-  return memo(ctx, 'mb' + m, () => computeMonthBase(ctx, m));
+  return memo(ctx, 'mb' + m, () => {
+    const r = computeMonthBase(ctx, m);
+    // T-031 : les mois repris de l'historique gardent les montants du bulletin réel ; les mois calculés sont refusés.
+    if (r.active && !r.fromHistory) r.nonGere = nonGeresPeriode(ctx.c, ctx.leaves, firstDay(m), lastDay(m));
+    return r;
+  });
 }
 
 function emptyBase(m: Month): MonthBase {
@@ -447,7 +458,7 @@ function emptyBase(m: Month): MonthBase {
     divisorMin: 0, contractDays: 0, contractMin: 0, deductedDays: 0, deductedMin: 0, paidFraction: 0, base: 0,
     retenue: 0, heuresNormales: 0, joursActivite: 0, complMin: 0, majMin: 0, majContratMin: 0, complAmount: 0, majAmount: 0,
     ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, evenementAConfirmer: 0, kmAConfirmer: 0, net: 0,
-    alerts: [], forgotten: [], sickPaidNotice: false,
+    alerts: [], forgotten: [], sickPaidNotice: false, nonGere: [],
   };
 }
 

@@ -43,6 +43,8 @@ export interface MoisParent {
   lignes: LigneDecl[];
   /** T-025 C-5 : parts sorties du total, à confirmer (« l’événement familial », « les kilomètres »…). Absent : aucune. */
   aConfirmer?: string[];
+  /** T-031 : mois que l'app ne calcule pas (cas non géré) : aucun montant ni aucune case n'est envoyé */
+  nonGere?: boolean;
   joursAccueil: number;
   absences: number;
 }
@@ -87,6 +89,9 @@ function moisParent(ctx: Ctx, m: Month, enfants: number): MoisParent | null {
   const r = computeMonth(ctx, m, enfants);
   if (!r.active || r.fromHistory) return null;
   const absences = [...ctx.days.values()].filter((x) => monthOf(x.date) === m && x.abs && inContract(ctx.c, x.date)).length;
+  if (r.nonGere.length) {
+    return { month: m, termine: m < monthOf(ctx.today), total: 0, net: 0, entretien: 0, repas: 0, km: 0, lignes: [], nonGere: true, joursAccueil: r.presenceDays, absences };
+  }
   return {
     month: m,
     termine: m < monthOf(ctx.today),
