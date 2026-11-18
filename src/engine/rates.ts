@@ -102,6 +102,38 @@ export function ratesConnus(d: ISODate): Rates {
   return r;
 }
 
+/**
+ * T-025 C-3. Minimum horaire brut à la date `d` : le plus haut de la grille de l'annexe 5 et du minimum légal.
+ * CASF D423-9 (en vigueur depuis le 01/05/2008, lu le 18/11/2026) : « la rémunération des assistants maternels ne peut
+ * être inférieure à 0,281 fois le montant du salaire minimum de croissance par enfant et par heure d'accueil ».
+ * Annexe 5, art. 2 : la grille reste applicable « dès lors qu'elles sont au moins aussi favorables que les dispositions
+ * légales et réglementaires relatives au salaire minimum statutaire ».
+ * Aucun texte lu ne dit comment arrondir 0,281 × SMIC au centime. `certain` : le minimum arrondi au centime le plus
+ * proche (un taux plus bas est sous le minimum dans toute lecture). `doute` : le centime supérieur, quand il dépasse
+ * `certain` ; un taux entre les deux est « à confirmer ». `legal` : valeur exacte, en centimes non arrondis.
+ */
+export interface MinimumBrut { certain: number; doute?: number; legal: number; conv: number; source: 'grille' | 'legal' }
+export function minimumBrut(d: ISODate): MinimumBrut | undefined {
+  const r = ratesAt(d);
+  if (!r) return undefined;
+  const legal = (281 * r.smic) / 1000;
+  const certain = Math.max(r.minConvBrut, Math.round(legal));
+  const haut = Math.ceil(legal - 1e-9);
+  return { certain, doute: haut > certain ? haut : undefined, legal, conv: r.minConvBrut, source: Math.round(legal) > r.minConvBrut ? 'legal' : 'grille' };
+}
+
+/** Libellé court du minimum brut, pour les écrans et les contrôles */
+export function libelleMinimumBrut(m: MinimumBrut): string {
+  const exact = (m.legal / 100).toFixed(3).replace('.', ',');
+  if (m.source === 'legal') {
+    return `${eurosCts(m.certain)} brut (minimum légal : 0,281 × SMIC = ${exact} €, au-dessus de la grille de la convention à ${eurosCts(m.conv)})${m.doute ? `, ${eurosCts(m.doute)} si l’on arrondit au centime supérieur` : ''}`;
+  }
+  return `${eurosCts(m.certain)} brut${m.doute ? ` (0,281 × SMIC = ${exact} € : ${eurosCts(m.doute)} si l’on arrondit au centime supérieur)` : ''}`;
+}
+function eurosCts(c: number): string {
+  return `${(c / 100).toFixed(2).replace('.', ',')} €`;
+}
+
 /** Plancher d'entretien pour une journée de `min` minutes d'accueil : max(2,65 €, MG/10 par heure). `undefined` : période non gérée. */
 export function entretienPlancher(d: ISODate, min: number): number | undefined {
   const r = ratesAt(d);

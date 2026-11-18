@@ -10,7 +10,7 @@ import { controleKm } from '../src/engine/km';
 import type { DayRec } from '../src/engine/model';
 import { controle } from '../src/engine/controle';
 import { fiscalYear } from '../src/engine/fiscal';
-import { entretienPlancher, PREMIERE_DATE_GEREE, ratesAt } from '../src/engine/rates';
+import { entretienPlancher, minimumBrut, PREMIERE_DATE_GEREE, ratesAt } from '../src/engine/rates';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
   const p: Planning = {};
@@ -346,5 +346,46 @@ describe('T-025 C-2 : partage des km seulement si plusieurs employeurs demandent
   });
   it('saisie d’avant T-025 avec 1 seul enfant : une seule famille demandeuse possible, indemnité entière', () => {
     expect(mois({ kmEnfants: 1 }).km).toBe(492);
+  });
+});
+
+describe('T-025 C-3 : minimum horaire brut = le plus haut de la grille et de 0,281 × SMIC (CASF D423-9)', () => {
+  // CASF D423-9 (en vigueur depuis le 01/05/2008, lu le 18/11/2026) : « ne peut être inférieure à 0,281 fois le montant
+  // du salaire minimum de croissance par enfant et par heure d'accueil ». Annexe 5, art. 2 : la grille s'applique « dès
+  // lors qu'elles sont au moins aussi favorables » que le minimum statutaire. SMIC : arrêtés du 19/04/2022 (10,85 €)
+  // et du 29/07/2022 (11,07 €), décret du 22/12/2021 (10,57 €). Grille : 2,97 € puis 3,06 € (avenant n° 1, 01/07/2022).
+  it('mai-juin 2022 : 0,281 × 10,85 € = 3,04885 € → 3,05 € dans toute lecture de l’arrondi, au-dessus de 2,97 €', () => {
+    const m = minimumBrut('2022-05-15')!;
+    expect(m.certain).toBe(305);
+    expect(m.doute).toBeUndefined();
+    expect(m.source).toBe('legal');
+  });
+  it('août 2022 : 0,281 × 11,07 € = 3,11067 € → 3,11 € certain, 3,12 € si arrondi au centime supérieur', () => {
+    const m = minimumBrut('2022-08-15')!;
+    expect(m.certain).toBe(311);
+    expect(m.doute).toBe(312);
+  });
+  it('janvier-avril 2022 : 0,281 × 10,57 € = 2,97017 € : la grille de 2,97 € vaut, 2,98 € si arrondi au centime supérieur', () => {
+    const m = minimumBrut('2022-03-15')!;
+    expect(m.certain).toBe(297);
+    expect(m.doute).toBe(298);
+    expect(m.source).toBe('grille');
+  });
+  it('juillet 2022 : grille de 3,06 € au-dessus de 3,04885 € ; octobre 2026 : grille de 4,20 € au-dessus de 0,281 × 12,31 €', () => {
+    expect(minimumBrut('2022-07-15')).toMatchObject({ certain: 306, doute: undefined, source: 'grille' });
+    expect(minimumBrut('2026-10-15')).toMatchObject({ certain: 420, doute: undefined, source: 'grille' });
+  });
+  it('contrôle d’un bulletin de juin 2022 : le repère donné est 3,05 € (minimum légal), pas 2,97 €', () => {
+    const c = contract({ start: '2022-01-03', trackedFrom: '2022-01-03', rateNet: 240 });
+    const r = computeMonth(makeCtx(c, [], [], '2022-07-31'), '2022-06');
+    const b: Bulletin = { id: 'b', cid: 'c1', month: '2022-06', source: 'manuel' };
+    expect(controle(b, r, 240).find((x) => x.title === 'Minimum net non contrôlé')?.detail).toMatch(/3,05 € brut \(minimum légal/);
+  });
+  it('contrôle d’un bulletin de mai 2022 à 3,00 € brut de l’heure : alerte « sous le minimum » (3,05 €), que la grille seule ne donnait pas', () => {
+    const c = contract({ start: '2022-01-03', trackedFrom: '2022-01-03', rateNet: 234 });
+    const r = computeMonth(makeCtx(c, [], [], '2022-07-31'), '2022-05');
+    expect(r.cpIndemnite + r.cpComplement + r.complMin + r.majContratMin + r.majMin).toBe(0);
+    const b: Bulletin = { id: 'b', cid: 'c1', month: '2022-05', source: 'manuel', heures: 100, brut: 30000, net: r.netTotal };
+    expect(controle(b, r, 234).find((x) => x.title === 'Brut horaire sous le minimum')?.detail).toMatch(/3,05 €/);
   });
 });
