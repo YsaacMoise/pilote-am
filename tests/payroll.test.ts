@@ -382,6 +382,15 @@ describe('fin de contrat (art. 120, 121, 124)', () => {
     expect(f.regulMinutes).toBeGreaterThan(0);
     expect(f.regularisation).toBe(Math.round((f.regulMinutes * 350) / 60));
   });
+  it('T-033 : régularisation à confirmer quand elle change si le préavis finit un jour plus tard (date de fin à confirmer)', () => {
+    const ete = ['2026-07-20', '2026-07-27', '2026-08-03', '2026-08-10', '2026-08-17', '2026-08-24'];
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', yearType: 'incomplete', weeks: 46, weeksOff: ete });
+    // Lettre présentée le dimanche 22/03 : 8 jours, fin le dimanche 29/03 ; le lendemain est un lundi accueilli.
+    const f = finDeContrat(makeCtx(c, [], [], '2026-04-30'), '2026-03-22', 'retrait');
+    expect(f.preavisFinAConfirmer).toBeDefined();
+    expect(f.regularisation).toBe(0);
+    expect(f.regularisationAConfirmer).toMatch(/Régularisation à confirmer.*29\/03.*30\/03/);
+  });
   it('audit C-002 (cas M3c) : une année terminée sans ses semaines sans accueil bloque la régularisation, avec une alerte', () => {
     const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01', yearType: 'incomplete', weeks: 46 });
     const f = finDeContrat(makeCtx(c, [], [], '2026-11-30'), '2026-10-01', 'retrait');

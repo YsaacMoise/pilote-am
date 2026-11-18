@@ -1,6 +1,7 @@
 // Fin de contrat : préavis (art. 120), indemnité de rupture (art. 121), régularisation (art. 109.2),
 // indemnité de congés non pris. Aucun document officiel n'est produit.
 import { nonGeresPeriode } from './nonGeres';
+import { euros } from './money';
 import {
   addDays, addMonthsToDate, cpPeriod, cpPeriodStartYear, fullMonthsBetween, lastDay, monthOf, monthsBetween, shortDate,
   type ISODate, type Month,
@@ -49,6 +50,12 @@ export interface FinResult {
   cpExplication: string;
   /** Congés non pris à confirmer : `cpIndemnite` vaut 0 et n'est pas compté (T-019) */
   cpAConfirmer?: string;
+  /**
+   * T-033 (décision de la direction, 18/11/2026) : la date de fin du préavis est « à confirmer » (PREAVIS-DATE-FIN). Si la
+   * régularisation change quand le préavis finit un jour plus tard (seconde lecture : le jour de présentation ne compte pas,
+   * ou le mois finit à la même date), elle n'est ni donnée ni comptée : `regularisation` vaut 0.
+   */
+  regularisationAConfirmer?: string;
   manquants: Month[];
   alertes: string[];
   /** T-031 : cas non gérés pendant le contrat. Rempli : aucun montant n'est donné (tous à 0), le calcul est refusé. */
@@ -241,7 +248,17 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   } else if (finTerms.yearType === 'incomplete') {
     alertes.push('Vérifie que toutes les semaines sans accueil de la dernière année sont saisies : une semaine non saisie compte comme accueillie dans la régularisation.');
   }
-  const regularisation_ = finTerms.yearType === 'incomplete' && manque === 0 ? reg.montant : 0;
+  let regularisation_ = finTerms.yearType === 'incomplete' && manque === 0 ? reg.montant : 0;
+  let regularisationAConfirmer: string | undefined;
+  if (preavisFinAConfirmer && finTerms.yearType === 'incomplete' && manque === 0) {
+    const autreFin = addDays(dernierJour, 1);
+    const autreCtx: Ctx = { ...ctx, c: { ...c, end: autreFin }, cache: new Map() };
+    const autre = regularisation(autreCtx, regulStart(c, addDays(autreFin, 1)), autreFin);
+    if (autre.montant !== reg.montant) {
+      regularisationAConfirmer = `Régularisation à confirmer : elle dépend de la date de fin du préavis, elle-même à confirmer. Fin le ${shortDate(dernierJour)} : ${euros(reg.montant)} ; fin le ${shortDate(autreFin)} : ${euros(autre.montant)}. Elle n'est pas comptée dans le total.`;
+      regularisation_ = 0;
+    }
+  }
   if (finTerms.yearType === 'complete' && regulMinutes > 60) {
     alertes.push('Année complète : la régularisation ne s’applique pas en principe, vérifie le planning du contrat.');
   }
@@ -306,6 +323,6 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   return {
     ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, totalBrut,
     indemnitePreavis, indemnitePreavisExplication,
-    regularisation: regularisation_, regulMinutes, cpJoursRestants: joursCur + restantsPrec, cpIndemnite, cpExplication, cpAConfirmer, manquants, alertes, cddNonGere: ALERTE_CDD,
+    regularisation: regularisation_, regulMinutes, cpJoursRestants: joursCur + restantsPrec, cpIndemnite, cpExplication, cpAConfirmer, regularisationAConfirmer, manquants, alertes, cddNonGere: ALERTE_CDD,
   };
 }
