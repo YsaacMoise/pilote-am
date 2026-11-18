@@ -94,3 +94,32 @@ describe('T-038 AC-2 : date de fin du préavis à confirmer, indemnité de cong�
     expect(f.cpAConfirmer).toContain('Fin le 24/10/2026 : nombre de jours à confirmer');
   });
 });
+
+describe('T-038 AC-1 : démission de 3 mois à 1 an, durée en conflit (CASF L423-26 : un mois ; CCN art. 120 : 15 jours)', () => {
+  it('retrait à 4 mois (15 jours, sans conflit) : indemnité de congés non pris comptée', () => {
+    const f = finC('2026-10-05', 'retrait');
+    expect(f.dernierJour).toBe('2026-10-19');
+    expect(f.cpAConfirmer).toBeUndefined();
+    expect(f.cpIndemnite).toBeGreaterThan(0);
+  });
+  it('démission à la même date : le préavis d’un mois finirait le 04/11/2026 ; l’indemnité change, elle est à confirmer', () => {
+    const f = finC('2026-10-05', 'demission');
+    const retrait = finC('2026-10-05', 'retrait');
+    expect(f.dernierJour).toBe('2026-10-19');
+    expect(f.cpIndemnite).toBe(0);
+    expect(f.cpAConfirmer).toMatch(/^Indemnité de congés non pris à confirmer : elle dépend de la durée du préavis et de sa date de fin/);
+    expect(f.cpAConfirmer).toContain(`Fin le 19/10/2026 : ${euros(retrait.cpIndemnite)}`);
+    expect(f.cpAConfirmer).toContain('Préavis d’un mois, fin le 04/11/2026');
+  });
+  it('année incomplète : la régularisation est calculée pour les deux durées et mise à confirmer si elle change', () => {
+    const c = contract({ start: '2026-03-02', trackedFrom: '2026-03-02' });
+    const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-14', 'demission');
+    const r = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-14', 'retrait');
+    expect(f.dernierJour).toBe(r.dernierJour);
+    expect(r.regularisationAConfirmer).toBeUndefined();
+    expect(f.regularisation).toBe(0);
+    expect(f.regularisationAConfirmer).toMatch(/^Régularisation à confirmer : elle dépend de la durée du préavis et de sa date de fin/);
+    expect(f.regularisationAConfirmer).toContain(`Fin le 28/10/2026 : ${euros(r.regularisation)}`);
+    expect(f.regularisationAConfirmer).toContain('Préavis d’un mois, fin le 13/11/2026');
+  });
+});

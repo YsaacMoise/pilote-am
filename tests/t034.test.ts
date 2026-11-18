@@ -117,9 +117,9 @@ describe('T-034 point 5 : préavis de démission de 3 mois à 1 an, durée en co
     expect(f.preavisFinAConfirmer).toContain(MESSAGE_PREAVIS_FIN);
     expect(f.preavisFinAConfirmer).toMatch(/L423-26\) prévoit un mois, la convention \(article 120\) 15 jours/);
   });
-  it('mêmes montants qu’avant : seul le message change', () => {
+  it('date de fin calculée avec 15 jours, premier jour compté (méthode de l’app)', () => {
     const f = finDeContrat(ctxDepuis('2026-04-01'), '2026-10-15', 'demission');
-    expect(f.preavisFin).toBe('2026-10-29'); // 15 jours, premier jour compté (méthode de l'app inchangée)
+    expect(f.preavisFin).toBe('2026-10-29');
   });
   it('démission à plus d’un an, ou avant 3 mois, et retrait de 3 mois à 1 an : pas de conflit de durée', () => {
     expect(finDeContrat(ctxDepuis('2025-01-06'), '2026-10-15', 'demission').preavisFinAConfirmer).toBe(MESSAGE_PREAVIS_FIN);
