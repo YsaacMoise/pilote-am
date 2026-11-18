@@ -427,7 +427,17 @@ describe('contrôle du bulletin', () => {
     const ctx = makeCtx(contract({ rateNet: 400 }), [], [], '2026-11-01');
     const r = computeMonth(ctx, '2026-10');
     const checks = controle({ id: 'b', cid: 'c1', month: '2026-10', net: r.netTotal, brut: netToBrut(r.netTotal, '2026-10-31'), heures: r.heuresNormales, jours: r.joursActivite, source: 'manuel' }, r, 400);
-    expect(checks.every((x) => x.level === 'ok')).toBe(true);
+    // T-033 : seule une information reste, le minimum ne compte pas la majoration du titre (Urssaf, renvoi *)
+    expect(checks.filter((x) => x.level !== 'ok').map((x) => x.title)).toEqual(['Minimum vérifié sans le titre']);
+    expect(checks.find((x) => x.level === 'info')!.detail).toMatch(/majoration de 4 %.*« Assistant maternel - garde d’enfants »/);
+  });
+  it('T-033 : taux sous le minimum, le message dit que la majoration du titre n’est pas comptée', () => {
+    const ctx = makeCtx(contract({ rateNet: 300 }), [], [], '2026-11-01');
+    const r = computeMonth(ctx, '2026-10');
+    const checks = controle({ id: 'b', cid: 'c1', month: '2026-10', source: 'manuel' }, r, 300);
+    const w = checks.find((x) => x.title === 'Taux du contrat sous le minimum')!;
+    expect(w.detail).toMatch(/minimum conventionnel net \(3,28\s€\)/); // Urssaf, au 1er juin 2026 : « Salaire horaire net 3,28 € »
+    expect(w.detail).toMatch(/ne compte pas la majoration de 4 %/);
   });
 });
 

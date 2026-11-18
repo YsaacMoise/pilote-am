@@ -125,6 +125,14 @@ export function minimumBrut(d: ISODate): MinimumBrut | undefined {
 }
 
 /** Libellé court du minimum brut, pour les écrans et les contrôles */
+/**
+ * T-033 (NET-01 à NET-03) : Urssaf, « Rémunérer un salarié à domicile ou un assistant maternel », tableau des minimums
+ * des assistants maternels, renvoi * : « Le montant horaire minimum peut être majoré de 4 % (sauf à Mayotte) si
+ * l'assistant maternel est titulaire du titre « Assistant maternel - garde d'enfants ». » L'app ne demande pas si l'AM a
+ * ce titre : ses contrôles du minimum ne comptent pas cette majoration, et le disent. Aucun montant n'en dépend.
+ */
+export const MINIMUM_SANS_TITRE = 'Ce minimum ne compte pas la majoration de 4 % prévue quand l’assistante maternelle a le titre « Assistant maternel - garde d’enfants » (Urssaf). Si tu as ce titre, ton minimum est plus haut : vérifie ton taux.';
+
 export function libelleMinimumBrut(m: MinimumBrut): string {
   const exact = (m.legal / 100).toFixed(3).replace('.', ',');
   if (m.source === 'legal') {
