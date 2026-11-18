@@ -222,3 +222,24 @@ describe('T-038 G-1 : mois terminé avec un jour noté « sans solde » (retenu 
     expect(b.alerts).not.toContain(messageMoisSansSoldeChange(1));
   });
 });
+
+describe('T-038 suite, point 1 : indemnité de rupture d’un retrait quand la fin du préavis bouge d’un jour', () => {
+  // Début le 03/06/2024 (début de période de référence) : les congés de la période sont sûrs, l'assiette est complète.
+  const c = complete({ start: '2024-06-03', trackedFrom: '2024-06-03' });
+  it('fin le jeudi 12/11/2026 ou le vendredi 13/11/2026 : deux montants, « à confirmer », non comptée', () => {
+    const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-13', 'retrait');
+    const lendemain = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-13', 'retrait', 0, '2026-10-14');
+    expect(f.dernierJour).toBe('2026-11-12');
+    expect(lendemain.dernierJour).toBe('2026-11-13');
+    expect(f.ruptureAConfirmer).toBe(true);
+    expect(f.ruptureVariantes).toContain(`Fin le 12/11/2026 : ${euros(f.indemniteRupture)}`);
+    expect(f.ruptureVariantes).toContain(`Fin le 13/11/2026 : ${euros(lendemain.indemniteRupture)}`);
+    expect(lendemain.indemniteRupture).not.toBe(f.indemniteRupture);
+  });
+  it('fin le vendredi 13/11/2026 : le samedi n’est pas un jour d’accueil, même montant, comptée', () => {
+    const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-14', 'retrait');
+    expect(f.ruptureVariantes).toBeUndefined();
+    expect(f.ruptureAConfirmer).toBeFalsy();
+    expect(f.indemniteRupture).toBeGreaterThan(0);
+  });
+});

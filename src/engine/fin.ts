@@ -39,6 +39,8 @@ export interface FinResult {
   ruptureExplication: string;
   /** L'assiette de l'indemnité de rupture ne contient pas des congés payés encore à confirmer (T-019) */
   ruptureAConfirmer?: boolean;
+  /** T-038 suite : l'indemnité change avec la date de fin à confirmer ; message avec les valeurs (non comptée) */
+  ruptureVariantes?: string;
   /** Décès de l'enfant : indemnité égale au préavis (R-FIN-07, CCN art. 119.4.2), 0 pour les autres motifs */
   indemnitePreavis: number;
   indemnitePreavisExplication?: string;
@@ -105,6 +107,19 @@ function indemniteCompensatricePreavis(c: Ctx['c'], from: ISODate, to: ISODate):
   return total;
 }
 
+
+/** T-038 suite : total des salaires bruts (salaires et congés versés) du début du contrat au `fin`, comme dans `finDeContrat`. */
+function brutJusqua(endCtx: Ctx, c: Ctx['c'], fin: ISODate, enfants: number): number {
+  let total = 0;
+  for (const m of monthsBetween(monthOf(c.start), monthOf(fin))) {
+    const b = monthBase(endCtx, m);
+    if (!b.active || b.missing) continue;
+    total += monthBrut(endCtx, m);
+    const cp = cpForMonth(endCtx, m, enfants);
+    total += netToBrut(cp.indemnite + cp.complement, lastDay(m));
+  }
+  return total;
+}
 
 /**
  * Indemnité de congés non pris à la fin `dernierJour` (T-038 : sortie de `finDeContrat` pour être recalculée à une autre
@@ -288,7 +303,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     ruptureExplication = 'Pas d’indemnité pendant la période d’essai.';
   }
 
-  const ruptureAConfirmer = (cpManquants || evenementManquant) && indemniteRupture > 0;
+  let ruptureAConfirmer = (cpManquants || evenementManquant) && indemniteRupture > 0;
   if (ruptureAConfirmer) {
     const natures = (['evenement', 'cp', 'maladie'] as const).filter((n) => naturesManquantes.has(n))
       .map((n) => ({ evenement: 'd’événement familial', cp: 'de congés pris au-delà des droits', maladie: 'd’enfant malade' })[n]);
@@ -368,6 +383,18 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     }
   }
 
+  // T-038 suite (point 3 remonté au DG) : l'indemnité de rupture (1/80 ou 2/80 des salaires bruts jusqu'à la fin) change si la
+  // fin du préavis, à confirmer, bouge d'un jour. Même mécanisme qu'AC-2 : si elle change, « à confirmer » avec les valeurs.
+  let ruptureVariantes: string | undefined;
+  if (indemniteRupture > 0 && !ruptureAConfirmer && variantes.length > 1) {
+    const facteur = motif === 'inaptitude_pro' ? 2 : 1;
+    const autres = variantes.map((v) => ({ ...v, montant: v.fin === dernierJour ? indemniteRupture : Math.round((brutJusqua(ctxFin(v.fin), c, v.fin, enfants) * facteur) / 80) }));
+    if (autres.some((v) => v.montant !== indemniteRupture)) {
+      ruptureVariantes = `Indemnité de rupture à confirmer : elle dépend de la date de fin du préavis, à confirmer. ${autres.map((v) => `${v.libelle.replace(/^./, (x) => x.toUpperCase())} : ${euros(v.montant)}`).join(' ; ')}. Elle n'est pas comptée dans le total.`;
+      ruptureAConfirmer = true;
+    }
+  }
+
   // T-031 : un cas non géré pendant le contrat (Alsace-Moselle, horaires variables, accueil occasionnel, congé maternité,
   // accident du travail…) fausse les salaires de référence, l'ancienneté retenue ou les congés : aucun montant.
   const nonGere = nonGeresPeriode(c, ctx.leaves, c.start, dernierJour);
@@ -379,7 +406,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     };
   }
   return {
-    ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, totalBrut,
+    ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, ruptureVariantes, totalBrut,
     indemnitePreavis, indemnitePreavisExplication, indemnitePreavisAConfirmer,
     regularisation: regularisation_, regulMinutes, cpJoursRestants, cpIndemnite, cpExplication, cpAConfirmer, regularisationAConfirmer, manquants, alertes,
   };
