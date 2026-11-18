@@ -37,7 +37,11 @@ export interface Calendrier {
   /** Crédit d'impôt calculé par année de dépenses */
   creditParAnnee: Record<number, number>;
   /** Total payé sur la période affichée, après aides et crédit reçus */
+  /** Somme des mois sûrs (T-038 suite, G-4 : les mois « à confirmer » n'y sont pas) */
   total: number;
+  /** Somme des mois « à confirmer », donnée à part */
+  totalAConfirmer: number;
+  moisAConfirmer: string[];
 }
 
 /** Durée du calendrier affiché : 24 mois, pour voir le premier crédit d'impôt et la première avance de janvier. */
@@ -135,7 +139,7 @@ export function calendrier(i: SimInput, d: ISODate, r: SimResult = simuler(i, d)
   const n = r.nbEnfants;
   const out: MoisCalendrier[] = [];
   const creditParAnnee: Record<number, number> = {};
-  if (!n || r.minutesSemaine <= 0) return { mois: out, creditParAnnee, total: 0 };
+  if (!n || r.minutesSemaine <= 0) return { mois: out, creditParAnnee, total: 0, totalAConfirmer: 0, moisAConfirmer: [] };
 
   const debut = /^\d{4}-\d{2}$/.test(i.debut) ? i.debut : d.slice(0, 7);
   const params = cmgParams(d);
@@ -239,7 +243,10 @@ export function calendrier(i: SimInput, d: ISODate, r: SimResult = simuler(i, d)
   }
 
   const mois = lignes.filter((l) => l.mois <= fin).map(({ depenses: _, ...l }) => ({ ...l, net: l.reste - l.credit }));
-  return { mois, creditParAnnee, total: mois.reduce((t, l) => t + l.net, 0) };
+  // T-038 suite (G-4) : un mois « à confirmer » n'entre pas en silence dans le total : son montant est donné à part.
+  const sur = mois.filter((l) => !l.aConfirmer);
+  const aConf = mois.filter((l) => l.aConfirmer);
+  return { mois, creditParAnnee, total: sur.reduce((t, l) => t + l.net, 0), totalAConfirmer: aConf.reduce((t, l) => t + l.net, 0), moisAConfirmer: aConf.map((l) => l.mois) };
 }
 
 /** Reste à payer et coût réel selon le revenu fiscal de la famille (pour le lien envoyé avant de connaître ses revenus). */

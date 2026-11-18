@@ -456,9 +456,11 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
         {cal.mois.length > 0 && (
           <section class="card" aria-labelledby="sim-cal">
             <h2 id="sim-cal" style={{ marginBottom: '4px' }}>Mois par mois</h2>
-            <p class="hint">Ce que la famille paie chaque mois, après l’aide de la CAF, et le crédit d’impôt le mois où il arrive. {eurosRond(cal.total)} sur {cal.mois.length} mois.</p>
+            <p class="hint">Ce que la famille paie chaque mois, après l’aide de la CAF, et le crédit d’impôt le mois où il arrive. {cal.moisAConfirmer.length
+              ? `${eurosRond(cal.total)} sur ${cal.mois.length - cal.moisAConfirmer.length} mois sûrs, plus ${eurosRond(cal.totalAConfirmer)} à confirmer (${cal.moisAConfirmer.map(monthLabel).join(', ')}), non compris.`
+              : `${eurosRond(cal.total)} sur ${cal.mois.length} mois.`}</p>
             {premierCredit && <Banner tone="info">Le premier crédit d’impôt n’arrive qu’en {monthLabel(premierCredit.mois)} : jusque-là, la famille paie sans lui.{premiereAvance ? ` En ${monthLabel(premiereAvance.mois)}, l’avance de 60 % se calcule sur la première année, souvent incomplète : elle est faible, le solde arrive l’été.` : ''}</Banner>}
-            {cal.mois.find((m) => m.aConfirmer) && <Banner tone="warn">{cal.mois.find((m) => m.aConfirmer)!.aConfirmer}</Banner>}
+            {cal.mois.filter((m) => m.aConfirmer).map((m) => <Banner tone="warn">{m.aConfirmer}</Banner>)}
             <ol class="cal-list">
               {cal.mois.map((m) => (
                 <li class={`cal-row ${m.evenements.length ? 'is-event' : ''}`}>

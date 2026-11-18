@@ -141,3 +141,17 @@ describe('T-038 G-2 : adaptation qui déborde sur le 2e mois', () => {
     expect(c.mois[1].aConfirmer).toContain('férié');
   });
 });
+
+describe('T-038 suite (G-4) : le total « Mois par mois » ne compte pas en silence un mois à confirmer', () => {
+  it('46 semaines (A-08) : le 1er mois est à part, total = somme des autres mois', () => {
+    const c = calendrier({ ...base, debut: '2027-02', yearType: 'incomplete' as const, semainesAbsence: 4, adaptationHeures: 40, adaptationJours: 5 }, D);
+    expect(c.moisAConfirmer).toEqual(['2027-02']);
+    expect(c.totalAConfirmer).toBe(c.mois[0].net);
+    expect(c.total).toBe(c.mois.slice(1).reduce((t, m) => t + m.net, 0));
+  });
+  it('sans adaptation : aucun mois à part', () => {
+    const c = calendrier({ ...base, debut: '2027-02' }, D);
+    expect(c.moisAConfirmer).toEqual([]);
+    expect(c.total).toBe(c.mois.reduce((t, m) => t + m.net, 0));
+  });
+});
