@@ -64,3 +64,18 @@ describe('T-030 HC-03 à HC-06 : heures complémentaires au taux du contrat', ()
     expect(monthBase(makeCtx(c, jours, [], '2026-12-31'), '2026-10').net).toBe(40350);
   });
 });
+
+import { acquisition } from '../src/engine/conges';
+describe('T-030 CPA-03 : jours pour enfant à charge acquis au 31 mai seulement', () => {
+  // CCN 48.1.3.3 : « déterminé et acquis à l'issue de la période de référence (…) soit au 31 mai de chaque année ».
+  // S-DURAND p. 8 (C-CPA-03) : période du 1er juin au 30 septembre 2022, « Pas de jours enfant à charge ».
+  const durand = (over: Partial<Contract> = {}) => contract({ start: '2021-09-01', trackedFrom: '2021-09-01', majoration: 15, ...over });
+  it('C-CPA-03 : contrat rompu le 30 septembre 2022, aucun jour pour enfant sur la période en cours', () => {
+    const a = acquisition(makeCtx(durand({ end: '2022-09-30' }), [], [], '2022-12-31', 1), 2022, 1);
+    expect(a.enfantsBonus).toBe(0);
+  });
+  it('C-CPA-02 : période complète au 31 mai 2022, 2 jours pour un enfant (25 + 2 = 27 jours, S-DURAND p. 5)', () => {
+    const a = acquisition(makeCtx(durand({ end: '2022-09-30' }), [], [], '2022-12-31', 1), 2021, 1);
+    expect(a.enfantsBonus).toBe(2);
+  });
+});

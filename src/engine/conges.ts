@@ -361,10 +361,14 @@ function messageAcquisition(lectures: LectureCP[], raison?: string): string {
 }
 
 /** Acquisition pour la période de référence commençant le 1er juin `y` */
-export function acquisition(ctx: Ctx, y: number, enfantsACharge = 0): Acquisition {
-  return memo(ctx, `acq${y}|${enfantsACharge}`, () => {
+export function acquisition(ctx: Ctx, y: number, enfantsAChargeSaisis = 0): Acquisition {
+  return memo(ctx, `acq${y}|${enfantsAChargeSaisis}`, () => {
     const { c } = ctx;
     const p = cpPeriod(y);
+    // T-030 (C-CPA-03) : CCN 48.1.3.3, « Le droit aux jours de congés pour enfant(s) à charge est déterminé et acquis à
+    // l'issue de la période de référence (…) soit au 31 mai de chaque année ». Une période arrêtée avant le 31 mai (fin
+    // du contrat) n'ouvre pas ces jours. S-DURAND p. 8 : « Pas de jours enfant à charge » pour juin-septembre 2022.
+    const enfantsACharge = c.end && c.end < p.to ? 0 : enfantsAChargeSaisis;
     const trackedY = cpPeriodStartYear(c.trackedFrom);
     let raw: number, rawADate: number, semaines: number;
     const upTo = ctx.today < p.to ? ctx.today : p.to;
