@@ -78,3 +78,56 @@ Rendu à l'écran non vérifié : le navigateur intégré tourne sur l'ordinateu
 - Couvert : M-6 (art. 105 et renvoi 119.1 lus en entier, guide DREETS BFC lu, ambiguïté listée, message précisé, testé) ; R-2 (tous les textes de src/ qui citent un montant ou une date de barème, plus un défaut du contrôle du bulletin).
 - Non couvert : rendu visuel des écrans (raison ci-dessus) ; relecture à la source de la valeur 4,37 € (hors tâche) ; date de début du certificat (point résiduel du § 2, à décider).
 - URL consultées : les quatre du § 1.
+
+## 6. Suite (demande de la direction, 18/11/2026)
+
+### 6.1 Dates du certificat que l'app ne connaît pas (art. 105)
+
+Règle appliquée (charte : « le moteur ne devine jamais »). Quand la fenêtre de 14 jours calendaires, le classement court ou long ou le compte des 5 jours dépend d'une date que l'app ne connaît pas, le jour concerné passe en « à confirmer ». Il n'est plus retenu ni payé en silence. Aucune saisie n'a été ajoutée.
+
+Mécanisme (payroll.ts, `sickLectures`). L'app calcule 16 combinaisons :
+- lecture 1 ou lecture 2 du texte (T-033) ;
+- début du certificat : premier jour d'accueil manqué, ou au plus tôt le lendemain du dernier jour d'accueil prévu avant l'absence ;
+- fin du certificat : dernier jour manqué, ou au plus tard la veille du retour prévu ;
+- un férié chômé ou un congé de l'AM entre deux absences : couvert par le même certificat (une seule absence) ou non (deux absences).
+
+Un jour retenu dans les 16 combinaisons est retenu. Un jour payé dans les 16 est payé. Sinon il est « à confirmer ». Le message nomme la date en cause (« le premier jour du certificat (entre le 04/04 et le 07/04) », « si un même certificat couvre aussi le férié du 06/04 ») et chiffre les lectures en jours (« 9 à 10 jours de cette absence sont retenus »). Le montant en euros est déjà donné par le mois (« X € de salaire à confirmer, non compris dans le total »).
+
+Le compteur des 12 mois glissants est couvert aussi. La période de 12 mois d'une absence est prise à la date de début de chaque combinaison. Un certificat qui a pu commencer avant la date anniversaire change donc de période, et le jour passe « à confirmer ».
+
+Tests écrits avant la correction. Ils ont d'abord échoué (« expected true to be false » et « expected [] to deeply equal [...] »), puis réussi après le commit e1cd63f :
+- lundi de Pâques 6 avril 2026 férié, absence du mardi 7 au lundi 20 : le lundi 20 était retenu en silence ; il est maintenant « à confirmer », et 9 jours sont retenus ;
+- absence du 30 mars au 3 avril, puis du 7 au 10 avril, avec le férié du 6 entre les deux : les 4 jours d'avril étaient payés en silence (la lecture 1 sur une seule absence les retient) ; ils sont maintenant « à confirmer » ;
+- planning régulier sans férié (9 au 23 mars) : inchangé ;
+- avril 2026 : 1 jour d'enfant malade à confirmer, chiffré à part ; fin de contrat (9 mois d'ancienneté) : « Indemnité de rupture à confirmer », qui cite le salaire d'enfant malade.
+
+Le message du constat M-6 (commit 3aeb056) est remplacé par ce message général : « le dernier jour du certificat (entre le 20/03 et le 22/03) ». Le test M-6 a été mis à jour.
+
+Contrôle des autres endroits :
+- Régularisation à l'avenant : elle lit les jours via `dayInfo` et `monthBase` (lectures « dus » et « retenus »). Les nouveaux jours à confirmer y passent sans code ajouté.
+- Fin de contrat : même chemin (`naturesAConfirmer`, nature « maladie »), vérifié par test. La fin de contrat borne la fin possible du certificat au dernier jour du contrat.
+- Compteur des 12 mois : traité ci-dessus.
+- Ambiguïtés restantes, sans lien avec une date inconnue, non tranchées :
+  - (a) une absence qui chevauche la date anniversaire est comptée en entier dans la période de son premier jour ;
+  - (b) une absence de 5 jours prévus ou moins, mais de 14 jours calendaires ou plus (accueil 1 ou 2 jours par semaine), est toujours traitée en absence courte, car `ep.length > 5` est exigé dans les deux lectures ;
+  - (c) le solde « jours déjà déduits avant l'app » ne dit pas si ces jours venaient d'une absence courte ou longue.
+  Le texte ne règle aucun de ces trois cas. Les cas (a) et (b) peuvent changer un jour retenu. Je les remonte à la direction sans les corriger, car ils dépassent la demande.
+
+### 6.2 Valeur 4,37 € du titre (relue à la source)
+
+La valeur est juste, mais le libellé de l'app était faux.
+
+Source : Urssaf, « Rémunérer un salarié à domicile ou un assistant maternel », « Mis à jour le 01 juin 2026 ». https://www.urssaf.fr/accueil/particulier/particulier-employeur/embaucher-un-salarie/remunerer-salarie-domicile.html . Lue le 18/11/2026 dans le navigateur intégré, page entière, tableaux dépliés.
+- Le tableau « Salaire horaire minimum pour l'emploi d'un assistant maternel », « Au 1er juin 2026 », porte : « Salaire horaire brut majoré (4 %)* 4,37 € ». C'est la même valeur en métropole et Drom et en Bas-Rhin, Haut-Rhin et Moselle. Mayotte : « Non concerné ». Net majoré : 3,41 € (3,35 € en Alsace-Moselle).
+- Renvoi * : « Le montant horaire minimum peut être majoré de 4 % (sauf à Mayotte) si l'assistant maternel est titulaire du titre « Assistant maternel - garde d'enfants ». »
+- Date d'effet : 1er juin 2026.
+
+Défaut corrigé. L'écran nommait le titre « AM-AP » (Assistant maternel – Assistant parental), alors que la source dit « Assistant maternel - garde d'enfants ». Le libellé est corrigé, et la source est citée dans rates.ts (`MINIMUM_TITRE_AM_AP`). Le simulateur ne s'applique déjà pas à Mayotte (`MESSAGE_ZONE_SIMULATEUR`). Je n'ai pas cherché l'avenant de la CCN sur Légifrance : la source Urssaf, admise, suffit à fixer le montant et la date.
+
+Commit 05e8d28.
+
+### 6.3 Contrôles de la suite
+
+- npm test : 486 tests réussis (22 fichiers). tsc : aucune erreur. npm run build : construit.
+- Comparateur (copie /home/claude/m10-comp, A = m10 au commit 05e8d28) : 5 884 sorties, F1 4 071, F2 48, F3 850, F4 24, N 891 ; cas officiels F1 35, F2 0, F3 32, F4 16, N 22, ERREUR 0. Identique à la base de départ. Les situations du comparateur ne contiennent pas d'absence d'enfant malade autour d'un férié ou d'un planning irrégulier.
+- URL de la suite : la page Urssaf ci-dessus. L'art. 105 avait déjà été lu en entier (§ 1).
