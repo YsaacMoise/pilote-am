@@ -125,3 +125,17 @@ describe('T-030 A-23 : acquisition en année complète, mois ou périodes de 4 s
     expect(a.jours).toBe(30);
   });
 });
+
+import { indemnite } from '../src/engine/conges';
+describe('T-030 A-26 : formule du maintien en année incomplète', () => {
+  // CCN 48.1.1.5 et 102.1.2.2 : pas de formule. Urssaf et DREETS Occitanie : jours ÷ 6 × heures × taux ;
+  // DREETS Bourgogne-Franche-Comté (C-CPI-13 : « 13/26 X 540 € =270 € ») : jours ÷ 26 × salaire mensualisé.
+  it('C-CPI-13 : 46 s, 40 h, 4,50 €, 36 semaines, 13 jours : 390 € (semaines) ou 270 € (1/26) : indemnité à confirmer', () => {
+    // Contrat d'un an commencé le 1er juin 2025, semaines sans accueil saisies : jours acquis sûrs, seul le maintien diffère.
+    const off = ['2025-07-07', '2025-07-14', '2025-07-21', '2025-07-28', '2025-08-04', '2025-08-11', '2025-08-18', '2025-08-25',
+      '2025-10-27', '2025-12-22', '2025-12-29', '2026-02-16', '2026-02-23', '2026-04-13', '2026-04-20', '2026-05-04'];
+    const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', yearType: 'incomplete', weeks: 36, weeksOff: off, rateNet: 450 });
+    const ind = indemnite(makeCtx(c, [], [], '2026-12-31'), 2025);
+    expect(ind.aConfirmer?.message).toMatch(/1\/26/);
+  });
+});

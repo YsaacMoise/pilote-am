@@ -121,13 +121,14 @@ describe('T-019 (2) acquisition en année incomplète : « à confirmer », SUS-
     // La formule en semaines donne 7 (« 11 semaines ÷ 4 … = 6,87 » « arrondis à 7 ») : elle reste un contrôle.
     expect(a.controles).toContain(7);
   });
-  it('C-CPI-03 (versement au fur et à mesure) : 12 jours pris en août, 400 € dans les deux lectures, donc versés', () => {
-    // S-BERTRAND page 8 : au fur et à mesure, « 600 € » + « 400 € brut ». Les deux lectures donnent ce même montant.
+  it('C-CPI-03 (versement au fur et à mesure) : 12 jours pris en août, à confirmer (T-030, formule du maintien A-26)', () => {
+    // S-BERTRAND page 8 : au fur et à mesure, « 600 € » + « 400 € brut » (maintien en heures). Les deux lectures des jours
+    // acquis donnent ce montant. T-030 : la fiche DREETS Bourgogne-Franche-Comté calcule le maintien au 1/26 du salaire
+    // mensualisé en année incomplète (C-CPI-13), ce qui change le versement : rien n'est versé, le mois est à confirmer.
     const ctx = makeCtx(bertrand({ cpMode: 'fur' }), [], [cp('a', '2022-08-01', '2022-08-13')], '2022-12-31');
     const aout = cpForMonth(ctx, '2022-08');
-    expect(aout.aConfirmer).toBeUndefined();
-    expect(aout.jours).toBe(12);
-    expect(aout.indemnite).toBe(40000);
+    expect(aout.aConfirmer).toMatch(/1\/26/);
+    expect(aout.indemnite).toBe(0);
   });
   it('SUS-11 : aucun montant faux en juin ; la déclaration affiche « à confirmer »', () => {
     const ctx = makeCtx(bertrand(), [], [], '2022-12-31');
