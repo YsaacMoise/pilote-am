@@ -220,7 +220,8 @@ export const CHILD_ABS_LABEL: Record<ChildAbs, string> = {
   malade_certif: 'Malade, avec certificat',
   malade: 'Malade, sans certificat',
   parents: 'Absent à la demande des parents',
-  sans_solde_enfant: 'Absence sans solde (accord écrit)',
+  // T-035b : ancienne option, plus proposée à la saisie ; les jours déjà notés ainsi sont payés (CCN art. 105).
+  sans_solde_enfant: 'Absent, noté « sans solde »',
 };
 
 export const AM_ABS_LABEL: Record<AmAbs, string> = {
