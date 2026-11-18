@@ -1,7 +1,8 @@
 // T-041 : constats M-6 et R-2 de la relecture V4 (regles/t036-relecture.md).
 // M-6 : CCN IDCC 3239, socle AM, art. 105, lu en entier sur Légifrance le 18/11/2026 (KALISCTA000043941866) :
 // « en cas d'absence durant 14 jours calendaires consécutifs ». Le texte ne dit pas si les jours sans accueil prévu
-// couverts par le certificat après le dernier jour d'absence comptent : les jours restent « à confirmer », le message le dit.
+// couverts par le certificat après le dernier jour d'absence comptent : les jours restent « à confirmer », le message le dit
+// (texte du message revu par la suite T-041 : « le dernier jour du certificat (entre le … et le …) »).
 import { describe, expect, it } from 'vitest';
 import type { Contract, DayRec, Planning } from '../src/engine/model';
 import { makeCtx, sickDeductible, sickLectures } from '../src/engine/payroll';
@@ -9,6 +10,7 @@ import { RATES, dateLongue, entretienHoraireMin, minConvDepuis, minimumTitreAmAp
 import { eurosTexte } from '../src/engine/money';
 import { controle } from '../src/engine/controle';
 import { computeMonth } from '../src/engine/month';
+import { finDeContrat } from '../src/engine/fin';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
   const p: Planning = {};
@@ -35,14 +37,15 @@ describe('T-041 M-6 : art. 105, certificat qui couvre le week-end après le dern
     expect([...retenus].sort()).toEqual(['2026-03-09', '2026-03-10', '2026-03-11', '2026-03-12', '2026-03-13']);
     expect([...aConfirmer.keys()].sort()).toEqual(['2026-03-16', '2026-03-17', '2026-03-18', '2026-03-19', '2026-03-20']);
     const raison = aConfirmer.get('2026-03-16')!;
-    expect(raison).toMatch(/jusqu’au 22\/03, l’absence dure 14 jours calendaires/);
-    expect(raison).toMatch(/l’app ne les compte pas et ne tranche pas/);
+    expect(raison).toMatch(/dernier jour du certificat \(entre le 20\/03 et le 22\/03\)/);
+    expect(raison).toMatch(/L’app ne devine pas/);
+    expect(raison).toMatch(/5 à 10 jours de cette absence sont retenus/);
   });
   it('lundi 9 au mercredi 18 mars : l’enfant revient le jeudi, pas de jours sans accueil à ajouter, pas de phrase en plus', () => {
     const ctx = makeCtx(contract(), malade(['09', '10', '11', '12', '13', '16', '17', '18']), [], '2026-04-01');
     const { aConfirmer } = sickLectures(ctx);
     expect(aConfirmer.size).toBe(3);
-    expect(aConfirmer.get('2026-03-16')!).not.toMatch(/sans accueil jusqu’au/);
+    expect(aConfirmer.get('2026-03-16')!).not.toMatch(/dernier jour du certificat/);
   });
   it('absence de 14 jours calendaires mesurée sur les jours prévus : inchangée (longue, retenue dans les deux lectures)', () => {
     const ctx = makeCtx(contract(), malade(['09', '10', '11', '12', '13', '16', '17', '18', '19', '20', '23']), [], '2026-04-01');
@@ -109,5 +112,54 @@ describe('T-041 R-2 : contrôle du bulletin, date du minimum net', () => {
     } finally {
       RATES.splice(RATES.indexOf(dec), 1);
     }
+  });
+});
+
+// Suite T-041 (direction, 18/11/2026) : la charte interdit de deviner. Quand la fenêtre de 14 jours calendaires ou le
+// compte des 5 jours dépend d'une date que l'app ne connaît pas (début ou fin réels du certificat, certificat qui couvre
+// un férié), les jours concernés sont « à confirmer », jamais retenus ni payés en silence. CCN art. 105 al. 3.
+describe('T-041 suite : dates du certificat inconnues de l’app', () => {
+  const malades = (jours: string[]) => jours.map((d) => rec(d, { abs: 'malade_certif' }));
+  it('certificat qui peut commencer avant le premier jour prévu (lundi de Pâques et week-end) : le dernier jour de la fenêtre est à confirmer', () => {
+    // Lundi 6 avril 2026 férié chômé. Premier jour prévu manqué : mardi 7. Le certificat peut commencer dès le samedi 4.
+    // Fenêtre depuis le 7 : jusqu'au lundi 20 inclus ; depuis le 4 : jusqu'au vendredi 17. Le lundi 20 dépend de cette date.
+    const jours = ['2026-04-07', '2026-04-08', '2026-04-09', '2026-04-10', '2026-04-13', '2026-04-14', '2026-04-15', '2026-04-16', '2026-04-17', '2026-04-20'];
+    const ctx = makeCtx(contract(), malades(jours), [], '2026-05-01');
+    const { retenus, aConfirmer } = sickLectures(ctx);
+    expect(retenus.has('2026-04-20')).toBe(false);
+    expect(aConfirmer.has('2026-04-20')).toBe(true);
+    expect(aConfirmer.get('2026-04-20')!).toMatch(/premier jour du certificat/);
+    expect([...retenus].length).toBe(9);
+  });
+  it('absences avant et après un férié : une seule absence si le certificat couvre le férié ; jours à confirmer, pas payés en silence', () => {
+    // Du lundi 30 mars au vendredi 3 avril, puis du mardi 7 au vendredi 10 avril (lundi 6 férié).
+    const jours = ['2026-03-30', '2026-03-31', '2026-04-01', '2026-04-02', '2026-04-03', '2026-04-07', '2026-04-08', '2026-04-09', '2026-04-10'];
+    const ctx = makeCtx(contract(), malades(jours), [], '2026-05-01');
+    const { retenus, aConfirmer } = sickLectures(ctx);
+    expect([...retenus].sort()).toEqual(jours.slice(0, 5));
+    expect([...aConfirmer.keys()].sort()).toEqual(jours.slice(5));
+    expect(aConfirmer.get('2026-04-07')!).toMatch(/férié du 06\/04/);
+  });
+  it('planning régulier sans férié : rien ne change (absence longue du 9 au 20 mars retenue, aucun jour à confirmer)', () => {
+    const jours = ['09', '10', '11', '12', '13', '16', '17', '18', '19', '20', '23'].map((d) => `2026-03-${d}`);
+    const ctx = makeCtx(contract(), malades(jours), [], '2026-04-01');
+    expect(sickDeductible(ctx).size).toBe(10);
+    expect(sickLectures(ctx).aConfirmer.size).toBe(0);
+  });
+});
+
+describe('T-041 suite : les jours à confirmer passent dans le mois, la régularisation et la fin de contrat', () => {
+  const jours = ['2026-04-07', '2026-04-08', '2026-04-09', '2026-04-10', '2026-04-13', '2026-04-14', '2026-04-15', '2026-04-16', '2026-04-17', '2026-04-20'];
+  const recs = jours.map((d) => rec(d, { abs: 'malade_certif' }));
+  it('avril 2026 : 1 jour d’enfant malade à confirmer, chiffré à part et hors du total', () => {
+    const r = computeMonth(makeCtx(contract(), recs, [], '2026-05-01'), '2026-04');
+    expect(r.joursMaladieAConfirmer).toBe(1);
+    expect(r.evenementAConfirmer).toBeGreaterThan(0);
+  });
+  it('fin de contrat après cette absence : le salaire d’enfant malade à confirmer est signalé comme manquant', () => {
+    // Contrat depuis le 02/06/2025 : 9 mois d'ancienneté atteints, l'indemnité de rupture (1/80e) est due.
+    const f = finDeContrat(makeCtx(contract({ start: '2025-06-02', trackedFrom: '2025-06-02' }), recs, [], '2026-06-20'), '2026-05-20', 'retrait');
+    expect(f.alertes.join(' ')).toMatch(/Indemnité de rupture à confirmer/);
+    expect(JSON.stringify(f)).toMatch(/d’enfant malade/);
   });
 });
