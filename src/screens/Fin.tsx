@@ -2,7 +2,7 @@ import { termsAt } from '../engine/payroll';
 import { useState } from 'preact/hooks';
 import { ctxFor, useStore } from '../store';
 import { shortDate, today } from '../engine/dates';
-import { finDeContrat, MOTIF_LABEL, type Motif } from '../engine/fin';
+import { finDeContrat, MOTIF_LABEL, type DemandeurInexecution, type Motif } from '../engine/fin';
 import { euros, hoursLabel } from '../engine/money';
 import { Banner, Choices, DateInput, Gommette, Topbar } from '../ui/kit';
 
@@ -14,6 +14,9 @@ export function Fin({ id }: { id?: string }) {
   const [remise, setRemise] = useState<'recommande' | 'main_propre'>('recommande');
   // Première présentation : suit la date d'envoi tant qu'elle n'est pas saisie (relecture contradictoire, point 1).
   const [presentation, setPresentation] = useState<string | null>(null);
+  // T-045 : préavis fait en entier ou non (CCN art. 64 et 64.2) et dernier jour travaillé.
+  const [preavisFait, setPreavisFait] = useState<'oui' | DemandeurInexecution>('oui');
+  const [dernierTravaille, setDernierTravaille] = useState<string | null>(null);
   const changeEnvoi = (v: string) => { setNotif(v); if (presentation && presentation < v) setPresentation(null); };
   const c = s.contracts.find((x) => x.id === cid);
   if (!c) return <><Topbar title="Fin de contrat" back="#/plus" screen="fin" /><main><div class="card empty"><p>Aucun contrat.</p></div></main></>;
@@ -25,7 +28,8 @@ export function Fin({ id }: { id?: string }) {
   const avecPreavis = motif === 'retrait' || motif === 'demission';
   const presVue = presentation && presentation > envoi ? presentation : envoi;
   const pres = avecPreavis && remise === 'recommande' ? presVue : envoi;
-  const f = finDeContrat(ctxFor(c), envoi, motif, s.settings.enfantsACharge, pres);
+  const inexecution = avecPreavis && preavisFait !== 'oui' ? { demandeur: preavisFait, dernierJourTravaille: dernierTravaille ?? envoi } : undefined;
+  const f = finDeContrat(ctxFor(c), envoi, motif, s.settings.enfantsACharge, pres, inexecution);
   const total = (f.ruptureAConfirmer ? 0 : f.indemniteRupture) + f.regularisation + f.cpIndemnite + f.indemnitePreavis;
   const aConfirmer = !!f.cpAConfirmer || !!f.ruptureAConfirmer || !!f.regularisationAConfirmer || !!f.indemnitePreavisAConfirmer;
   return (
@@ -58,6 +62,15 @@ export function Fin({ id }: { id?: string }) {
                 ) : (
                   <DateInput label="Date de remise de la lettre contre décharge" hint="Le préavis part de ce jour, pas de l’annonce orale." value={notif} min={c.start} onChange={changeEnvoi} />
                 )}
+                <Choices label="Le préavis est-il fait en entier ?" value={preavisFait} onChange={setPreavisFait} options={[
+                  { v: 'oui', l: 'Oui, ou il est en cours' },
+                  { v: 'am_acceptee', l: 'Non, à ma demande, et les parents ont accepté', sub: 'Le contrat finit à ton dernier jour travaillé' },
+                  { v: 'employeur', l: 'Non, les parents m’en dispensent', sub: 'Ils te doivent une indemnité égale au préavis' },
+                  { v: 'am_sans_accord', l: 'Non, je pars sans leur accord' },
+                ]} />
+                {preavisFait !== 'oui' && (
+                  <DateInput label="Dernier jour travaillé" hint="Le dernier jour où tu as accueilli l’enfant." value={dernierTravaille ?? envoi} min={envoi} onChange={(v) => setDernierTravaille(v || null)} />
+                )}
               </>
             ) : avecLettre ? (
               <DateInput label="Date d’envoi ou de remise de la lettre" hint="Pas de préavis pour ce motif : le contrat s’arrête à cette date." value={notif} min={c.start} onChange={changeEnvoi} />
@@ -74,7 +87,7 @@ export function Fin({ id }: { id?: string }) {
           </section>
         ) : <>
         {f.alertes.map((a) => <Banner tone="warn">{a} <a href={`#/historique/${c.id}`}>Ouvrir l’historique</a></Banner>)}
-        {f.preavisFinAConfirmer && <Banner tone="warn">{f.preavisFinAConfirmer}</Banner>}
+        {f.preavisFinAConfirmer && !inexecution && <Banner tone="warn">{f.preavisFinAConfirmer}</Banner>}
         {f.cpAConfirmer && <Banner tone="warn">{f.cpAConfirmer}</Banner>}
         {f.regularisationAConfirmer && <Banner tone="warn">{f.regularisationAConfirmer}</Banner>}
         {f.indemnitePreavisAConfirmer && <Banner tone="warn">{f.indemnitePreavisAConfirmer}</Banner>}
@@ -84,7 +97,7 @@ export function Fin({ id }: { id?: string }) {
           <dl class="kv">
             <dt>{avecLettre ? 'Ancienneté à l’envoi de la lettre' : 'Ancienneté'}</dt><dd>{f.ancienneteMois} mois</dd>
             <dt>Préavis</dt><dd>{f.preavisLabel}</dd>
-            <dt>{motif === 'deces' ? 'Dernier jour' : 'Dernier jour (préavis inclus)'}</dt><dd>{shortDate(f.dernierJour)}{f.preavisFinAConfirmer ? ' (à confirmer)' : ''}</dd>
+            <dt>{motif === 'deces' || inexecution ? 'Dernier jour' : 'Dernier jour (préavis inclus)'}</dt><dd>{shortDate(f.dernierJour)}{f.preavisFinAConfirmer && !inexecution ? ' (à confirmer)' : ''}</dd>
           </dl>
           <div class="decl">
             <div class="decl-line"><span class="decl-label"><span>Indemnité de rupture</span><span class="decl-hint">{f.ruptureExplication}</span></span><span class="decl-value">{f.ruptureAConfirmer ? 'à confirmer' : euros(f.indemniteRupture)}</span></div>
