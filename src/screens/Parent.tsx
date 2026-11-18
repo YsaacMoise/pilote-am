@@ -317,6 +317,15 @@ function Mois({ snap, jour }: { snap: ParentSnapshot; jour: string }) {
 
 function MoisVue({ mois, am }: { mois: MoisParent; am: string }) {
   const [copie, setCopie] = useState<string | null>(null);
+  // T-031 : mois non calculé par l'app (cas non géré) : aucun montant n'est montré.
+  if (mois.nonGere) {
+    return (
+      <section class="card stack-sm">
+        <h2 class="ph-h2">{cap(monthLabel(mois.month))} : non calculé</h2>
+        <p>Arvela ne calcule pas ce mois : c’est un cas que l’application ne gère pas. Faites la déclaration Pajemploi avec {am}, sans l’application.</p>
+      </section>
+    );
+  }
   const detail = [
     `salaire net ${euros(mois.net)}`,
     mois.entretien ? `entretien ${euros(mois.entretien)}` : '',

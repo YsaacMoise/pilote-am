@@ -68,6 +68,18 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
     );
   }
 
+  // T-031 : cas non géré : aucun montant, aucune case, pas d'envoi au parent.
+  if (r.nonGere.length) {
+    return (
+      <section class="card stack" aria-labelledby="ng-t">
+        <h2 id="ng-t">Ce mois n’est pas calculé</h2>
+        {r.nonGere.map((t) => <Banner tone="warn">{t}</Banner>)}
+        <p class="hint">L’app ne donne aucun montant pour ce mois. Déclare-le avec les parents, sans l’app.</p>
+        <a class="btn btn-outline" href={`#/contrat/${c.id}`}>Ouvrir le contrat</a>
+      </section>
+    );
+  }
+
   const exceptions = eachDay(firstDay(month), lastDay(month))
     .map((d) => dayInfo(ctx, d))
     .filter((di) => di.rec || di.kind === 'am' || di.kind === 'ferie' || di.departOublie);
