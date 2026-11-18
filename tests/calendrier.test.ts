@@ -188,3 +188,26 @@ describe('T-038 suite (G-5) : tests de l’adaptation renforcés', () => {
     expect(c.mois[0].net).toBeGreaterThan(0);
   });
 });
+
+describe('T-038 suite 2 (décision du DG) : crédit d’impôt calculé avec un mois à confirmer', () => {
+  const inc = { ...base, debut: '2027-02', yearType: 'incomplete' as const, semainesAbsence: 4, adaptationHeures: 40, adaptationJours: 5 };
+  it('année 2027 avec le mois d’adaptation à confirmer : le crédit versé en juillet 2028 est à part, signalé, hors total', () => {
+    const c = calendrier(inc, D);
+    const juillet = c.mois.find((m) => m.mois === '2028-07')!;
+    expect(juillet.credit).toBe(0);
+    expect(juillet.creditAConfirmer).toBe(c.creditParAnnee[2027]);
+    expect(juillet.aConfirmer).toMatch(/^Crédit d’impôt à confirmer : il compte les dépenses de 2027/);
+    // L'avance de janvier 2029 (60 % du crédit de 2027, service-public F35936) dépend aussi de 2027 : à part elle aussi.
+    expect(c.moisCreditAConfirmer).toEqual(['2028-07', '2029-01']);
+    expect(c.creditAConfirmer).toBe(c.creditParAnnee[2027] + Math.round(c.creditParAnnee[2027] * 0.6));
+    // Le coût sûr de juillet 2028 reste dans le total ; seul le mois d'adaptation en est sorti.
+    expect(c.moisAConfirmer).toEqual(['2027-02']);
+    expect(juillet.net).toBe(juillet.reste);
+  });
+  it('sans mois à confirmer : crédit versé normalement', () => {
+    const c = calendrier({ ...inc, adaptationHeures: 0, adaptationJours: 0 }, D);
+    const juillet = c.mois.find((m) => m.mois === '2028-07')!;
+    expect(juillet.credit).toBe(c.creditParAnnee[2027]);
+    expect(c.moisCreditAConfirmer).toEqual([]);
+  });
+});

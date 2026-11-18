@@ -458,7 +458,8 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             <h2 id="sim-cal" style={{ marginBottom: '4px' }}>Mois par mois</h2>
             <p class="hint">Ce que la famille paie chaque mois, après l’aide de la CAF, et le crédit d’impôt le mois où il arrive. {cal.moisAConfirmer.length
               ? `${eurosRond(cal.total)} sur ${cal.mois.length - cal.moisAConfirmer.length} mois sûrs, plus ${eurosRond(cal.totalAConfirmer)} à confirmer (${cal.moisAConfirmer.map(monthLabel).join(', ')}), non compris.`
-              : `${eurosRond(cal.total)} sur ${cal.mois.length} mois.`}</p>
+              : `${eurosRond(cal.total)} sur ${cal.mois.length} mois.`}
+              {cal.moisCreditAConfirmer.length > 0 && ` Crédit d’impôt à confirmer : ${eurosRond(Math.abs(cal.creditAConfirmer))} ${cal.creditAConfirmer < 0 ? 'à rembourser' : 'à recevoir'} (${cal.moisCreditAConfirmer.map(monthLabel).join(', ')}), non compris.`}</p>
             {premierCredit && <Banner tone="info">Le premier crédit d’impôt n’arrive qu’en {monthLabel(premierCredit.mois)} : jusque-là, la famille paie sans lui.{premiereAvance ? ` En ${monthLabel(premiereAvance.mois)}, l’avance de 60 % se calcule sur la première année, souvent incomplète : elle est faible, le solde arrive l’été.` : ''}</Banner>}
             {cal.mois.filter((m) => m.aConfirmer).map((m) => <Banner tone="warn">{m.aConfirmer}</Banner>)}
             <ol class="cal-list">
@@ -470,7 +471,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
                     <b class="cal-net">{euros(m.net)}</b>
                   </div>
                   <span class="decl-hint">
-                    {`payé ${eurosRond(m.verse + m.cotisationsReste)}`}{m.cmg ? ` · CAF −${eurosRond(m.cmg)}` : ''}{m.autresAides ? ` · aides −${eurosRond(m.autresAides)}` : ''}{m.credit ? ` · crédit ${m.credit > 0 ? '−' : '+'}${eurosRond(Math.abs(m.credit))}` : ''}
+                    {`payé ${eurosRond(m.verse + m.cotisationsReste)}`}{m.cmg ? ` · CAF −${eurosRond(m.cmg)}` : ''}{m.autresAides ? ` · aides −${eurosRond(m.autresAides)}` : ''}{m.credit ? ` · crédit ${m.credit > 0 ? '−' : '+'}${eurosRond(Math.abs(m.credit))}` : ''}{m.creditAConfirmer ? ` · crédit à confirmer ${m.creditAConfirmer > 0 ? '−' : '+'}${eurosRond(Math.abs(m.creditAConfirmer))}` : ''}
                     {m.evenements.length > 0 && <> · <span class="cal-ev">{m.evenements.map((e) => EVENEMENTS[e]).join(', ')}{m.conges ? ` ${eurosRond(m.conges)}` : ''}</span></>}
                     {m.aConfirmer && <> · <b>à confirmer</b></>}
                   </span>
