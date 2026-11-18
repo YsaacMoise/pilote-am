@@ -57,3 +57,35 @@ describe('T-034 point 2 : embauche ou fin de contrat en cours de mois, déductio
     expect(b.base).toBe(51429);
   });
 });
+
+describe('T-034 point 3 : congé sans solde de l’AM, déduction d’absence (fiches DREETS Occitanie, Urssaf)', () => {
+  it('année complète, exemple Urssaf : 416 € − 416 × 64 h ÷ 136 h = 220,24 €', () => {
+    // Josette : du mardi au vendredi de 9 h à 17 h (32 h), 3 € net, 52 semaines : 416 € pour 139 heures mensualisées.
+    // Août 2027 : 17 jours prévus (136 h) ; absente sans solde deux semaines, 8 jours (64 h).
+    const c = contract({ start: '2027-01-05', trackedFrom: '2027-01-05', planning: week('09:00', '17:00', [2, 3, 4, 5]), rateNet: 300 });
+    expect(salaireMensualise(c)).toBe(41600);
+    const b = monthBase(makeCtx(c, [], [leave('sans_solde', '2027-08-02', '2027-08-15')], '2027-12-31'), '2027-08');
+    expect(b.deductedDays).toBe(8);
+    expect(b.base).toBe(22024);
+  });
+  it('année incomplète, exemple Urssaf : 370 € − 370 × 8 jours ÷ 16 jours = 185 €', () => {
+    // Josette : lundi, mardi, jeudi, vendredi de 8 h 30 à 18 h 30 (40 h), 3 € net, 37 semaines : 370 €.
+    // Février 2027 : 16 jours prévus ; absente sans solde deux semaines, 8 jours.
+    const c = contract({ start: '2027-01-04', trackedFrom: '2027-01-04', yearType: 'incomplete', weeks: 37,
+      planning: week('08:30', '18:30', [1, 2, 4, 5]), rateNet: 300 });
+    expect(salaireMensualise(c)).toBe(37000);
+    const b = monthBase(makeCtx(c, [], [leave('sans_solde', '2027-02-01', '2027-02-14')], '2027-12-31'), '2027-02');
+    expect(b.deductedDays).toBe(8);
+    expect(b.base).toBe(18500);
+  });
+  it('année complète, exemple DREETS (3 jours d’absence en octobre 2021, motif sans solde) : 742,86 €', () => {
+    const c = durand();
+    const b = monthBase(makeCtx(c, [], [leave('sans_solde', '2021-10-13', '2021-10-15')], '2021-12-31'), '2021-10');
+    expect(b.base).toBe(74286);
+  });
+  it('année incomplète, exemple DREETS (3 jours d’absence en octobre 2021, motif sans solde) : 514,29 €', () => {
+    const c = bertrand();
+    const b = monthBase(makeCtx(c, [], [leave('sans_solde', '2021-10-13', '2021-10-15')], '2021-12-31'), '2021-10');
+    expect(b.base).toBe(51429);
+  });
+});

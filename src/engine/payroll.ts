@@ -205,6 +205,10 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
         info.aConfirmer = MESSAGE_CP_AU_DELA_A_CONFIRMER;
         info.cpAConfirmer = true;
       } else if (amLeave === 'am_malade' || amLeave === 'am_enfant_malade' || amLeave === 'sans_solde') {
+        // T-034 : congé sans solde = absence non rémunérée, retenue par la déduction d'absence de l'art. 111. Fiches DREETS
+        // Occitanie du 19/01/2023, section 3 : « Absence du salarié pour congés sans solde » ; Urssaf « gérer les absences
+        // de votre salarié » (17/09/2026) : « raison personnelle » parmi « Les absences engendrant une minoration de la
+        // rémunération », formule en heures (52 semaines) ou en jours (46 semaines ou moins).
         info.deducted = true;
         info.inDivisor = true;
       } else if (amLeave === 'evenement') {
