@@ -42,6 +42,8 @@ export interface FinResult {
   /** Décès de l'enfant : indemnité égale au préavis (R-FIN-07, CCN art. 119.4.2), 0 pour les autres motifs */
   indemnitePreavis: number;
   indemnitePreavisExplication?: string;
+  /** T-038 (R-1) : le montant change selon le premier jour retenu ; `indemnitePreavis` vaut 0 et n'est pas compté */
+  indemnitePreavisAConfirmer?: string;
   totalBrut: number;
   regularisation: number;
   regulMinutes: number;
@@ -195,6 +197,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // du décès est payé avec le dernier salaire.
   let indemnitePreavis = 0;
   let indemnitePreavisExplication: string | undefined;
+  let indemnitePreavisAConfirmer: string | undefined;
   if (motif === 'deces') {
     const p = preavisEmployeur(anc);
     const debut = addDays(notif, 1);
@@ -202,7 +205,17 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     indemnitePreavis = indemniteCompensatricePreavis(c, debut, fin);
     preavisLabel = `${p.label} : pas de préavis à faire, les parents te versent une indemnité égale au préavis`;
     indemnitePreavisExplication = `Égale au salaire que tu aurais touché pendant ${p.jours ? `${p.jours} jours` : 'un mois'}, du ${shortDate(debut)} au ${shortDate(fin)}.`;
-    alertes.push(`Décès de l’enfant : l’indemnité égale au préavis est calculée du ${shortDate(debut)} au ${shortDate(fin)}. Aucun texte ne fixe le premier jour : fais-la vérifier.`);
+    // T-038 (R-1, relecture V4) : le premier jour n'est fixé par aucun texte. Seconde lecture : la période part du jour du
+    // décès. Si le montant change, il n'est ni donné ni compté.
+    const fin2 = finPreavis(notif, p);
+    const autre = indemniteCompensatricePreavis(c, notif, fin2);
+    if (autre !== indemnitePreavis) {
+      indemnitePreavisAConfirmer = `Indemnité égale au préavis à confirmer : aucun texte ne fixe son premier jour. Du ${shortDate(debut)} au ${shortDate(fin)} (lendemain du décès) : ${euros(indemnitePreavis)} ; du ${shortDate(notif)} au ${shortDate(fin2)} (jour du décès) : ${euros(autre)}. Elle n'est pas comptée dans le total. Vois-la avec les parents.`;
+      indemnitePreavis = 0;
+      indemnitePreavisExplication = 'À confirmer : le montant dépend du premier jour retenu.';
+    } else {
+      alertes.push(`Décès de l’enfant : l’indemnité égale au préavis est calculée du ${shortDate(debut)} au ${shortDate(fin)}. Aucun texte ne fixe le premier jour ; à partir du jour du décès, le montant serait le même.`);
+    }
   }
   const dernierJour = preavisFin;
   const endCtx: Ctx = { ...ctx, c: { ...c, end: dernierJour }, cache: new Map() };
@@ -367,7 +380,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   }
   return {
     ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, totalBrut,
-    indemnitePreavis, indemnitePreavisExplication,
+    indemnitePreavis, indemnitePreavisExplication, indemnitePreavisAConfirmer,
     regularisation: regularisation_, regulMinutes, cpJoursRestants, cpIndemnite, cpExplication, cpAConfirmer, regularisationAConfirmer, manquants, alertes,
   };
 }

@@ -27,7 +27,7 @@ export function Fin({ id }: { id?: string }) {
   const pres = avecPreavis && remise === 'recommande' ? presVue : envoi;
   const f = finDeContrat(ctxFor(c), envoi, motif, s.settings.enfantsACharge, pres);
   const total = (f.ruptureAConfirmer ? 0 : f.indemniteRupture) + f.regularisation + f.cpIndemnite + f.indemnitePreavis;
-  const aConfirmer = !!f.cpAConfirmer || !!f.ruptureAConfirmer || !!f.regularisationAConfirmer;
+  const aConfirmer = !!f.cpAConfirmer || !!f.ruptureAConfirmer || !!f.regularisationAConfirmer || !!f.indemnitePreavisAConfirmer;
   return (
     <>
       <Topbar title="Fin de contrat" back="#/plus" screen="fin" />
@@ -77,6 +77,7 @@ export function Fin({ id }: { id?: string }) {
         {f.preavisFinAConfirmer && <Banner tone="warn">{f.preavisFinAConfirmer}</Banner>}
         {f.cpAConfirmer && <Banner tone="warn">{f.cpAConfirmer}</Banner>}
         {f.regularisationAConfirmer && <Banner tone="warn">{f.regularisationAConfirmer}</Banner>}
+        {f.indemnitePreavisAConfirmer && <Banner tone="warn">{f.indemnitePreavisAConfirmer}</Banner>}
         <section class="card stack" aria-labelledby="fin-res" aria-live="polite">
           <h2 id="fin-res">Ce qui t’est dû</h2>
           <dl class="kv">
@@ -86,7 +87,7 @@ export function Fin({ id }: { id?: string }) {
           </dl>
           <div class="decl">
             <div class="decl-line"><span class="decl-label"><span>Indemnité de rupture</span><span class="decl-hint">{f.ruptureExplication}</span></span><span class="decl-value">{f.ruptureAConfirmer ? 'à confirmer' : euros(f.indemniteRupture)}</span></div>
-            {motif === 'deces' && <div class="decl-line"><span class="decl-label"><span>Indemnité égale au préavis</span><span class="decl-hint">{f.indemnitePreavisExplication}</span></span><span class="decl-value">{euros(f.indemnitePreavis)}</span></div>}
+            {motif === 'deces' && <div class="decl-line"><span class="decl-label"><span>Indemnité égale au préavis</span><span class="decl-hint">{f.indemnitePreavisExplication}</span></span><span class="decl-value">{f.indemnitePreavisAConfirmer ? 'à confirmer' : euros(f.indemnitePreavis)}</span></div>}
             <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint">{f.regularisation > 0 || termsAt(c, f.dernierJour).yearType === 'incomplete' ? (f.regulMinutes ? `${hoursLabel(f.regulMinutes)} accueillies mais non payées par la mensualisation` : 'Pas d’heures accueillies au-delà de ce qui a été payé') : 'Année complète : pas de régularisation'}</span></span><span class="decl-value">{f.regularisationAConfirmer ? 'à confirmer' : euros(f.regularisation)}</span></div>
             <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{f.cpAConfirmer ? 'à confirmer' : euros(f.cpIndemnite)}</span></div>
           </div>

@@ -123,3 +123,17 @@ describe('T-038 AC-1 : démission de 3 mois à 1 an, durée en conflit (CASF L42
     expect(f.regularisationAConfirmer).toContain('Préavis d’un mois, fin le 13/11/2026');
   });
 });
+
+describe('T-038 R-1 : décès de l’enfant, indemnité égale au préavis, premier jour non fixé par un texte', () => {
+  const c = complete({ start: '2024-09-02', trackedFrom: '2024-09-02' });
+  it('décès le mercredi 14/10/2026 : un mois du 15/10 ou du 14/10, montants différents, rien n’est compté', () => {
+    const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-14', 'deces');
+    expect(f.indemnitePreavis).toBe(0);
+    expect(f.indemnitePreavisAConfirmer).toMatch(/Du 15\/10\/2026 au 14\/11\/2026 \(lendemain du décès\) : .* ; du 14\/10\/2026 au 13\/11\/2026 \(jour du décès\) : /);
+  });
+  it('décès le samedi 31/10/2026 : même montant quel que soit le premier jour (novembre entier, R-FIN-05), compté', () => {
+    const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-31', 'deces');
+    expect(f.indemnitePreavisAConfirmer).toBeUndefined();
+    expect(f.indemnitePreavis).toBe(salaireMensualise(c));
+  });
+});
