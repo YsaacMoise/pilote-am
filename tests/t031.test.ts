@@ -7,7 +7,7 @@ import { makeCtx, monthBase } from '../src/engine/payroll';
 import { fiscalYear } from '../src/engine/fiscal';
 import { computeMonth, declarationLines, declarationText } from '../src/engine/month';
 import { acquisition, cpForMonth, indemnite, soldesDeDepart } from '../src/engine/conges';
-import { finDeContrat } from '../src/engine/fin';
+import { ALERTE_CDD, finDeContrat } from '../src/engine/fin';
 import { buildSnapshot } from '../src/partage/snapshot';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
@@ -162,5 +162,20 @@ describe('PREAVIS-DATE-FIN : date de fin du préavis sans texte (regles/triage-f
   it('inaptitude et décès : pas de préavis à faire, rien à confirmer', () => {
     expect(finDeContrat(ctx(), '2026-10-15', 'inaptitude').preavisFinAConfirmer).toBeUndefined();
     expect(finDeContrat(ctx(), '2026-10-15', 'deces').preavisFinAConfirmer).toBeUndefined();
+  });
+});
+
+describe('T-033 point 5 : CDD (cas officiel C-FIN-11)', () => {
+  it('la fin de contrat dit que le CDD n’est pas géré, calculée ou non, sans montant de précarité', () => {
+    const f = finDeContrat(makeCtx(ok({ start: '2026-01-05', trackedFrom: '2026-01-05' }), [], [], '2026-12-31'), '2026-10-14', 'retrait');
+    expect(f.nonGere).toBeUndefined();
+    expect(f.cddNonGere).toBe(ALERTE_CDD);
+    const g = finDeContrat(makeCtx(ok({ start: '2026-01-05', trackedFrom: '2026-01-05', alsaceMoselle: true }), [], [], '2026-12-31'), '2026-10-14', 'demission');
+    expect(g.nonGere?.length).toBeGreaterThan(0);
+    expect(g.cddNonGere).toBe(ALERTE_CDD);
+    // Urssaf : « Dans le cas d'un contrat à durée déterminée (CDD), vous devez verser [...] « indemnité de précarité » »
+    expect(ALERTE_CDD).toMatch(/CDD\) : non géré/);
+    expect(ALERTE_CDD).toMatch(/précarité/);
+    expect(ALERTE_CDD).not.toMatch(/€|%/);
   });
 });
