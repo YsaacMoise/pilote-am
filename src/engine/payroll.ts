@@ -598,6 +598,10 @@ export interface MonthBase {
   kmAConfirmer: number;
   /** T-044 : part de l'indemnité d'entretien qui dépend d'une lecture non tranchée (tarif par jour, jour d'une autre durée) ; hors du total */
   entretienAConfirmer: number;
+  /** T-044c : jours dont l'entretien est à confirmer, par raison (durée d'accueil ou de travail ; tarif par jour et durée différente du planning ; jour hors planning au tarif par jour) */
+  entretienJoursDuree: number;
+  entretienJoursTarifJour: number;
+  entretienJoursHorsPlanning: number;
   /** Salaire net hors congés payés */
   net: number;
   /** Régularisation versée avec un avenant (année incomplète qui se termine) */
@@ -631,7 +635,7 @@ function emptyBase(m: Month): MonthBase {
     month: m, active: false, fromHistory: false, missing: false, salaireMens: 0, mensuelMin: 0, divisorDays: 0,
     divisorMin: 0, contractDays: 0, contractMin: 0, deductedDays: 0, deductedMin: 0, paidFraction: 0, base: 0,
     retenue: 0, heuresNormales: 0, joursActivite: 0, complMin: 0, majMin: 0, majContratMin: 0, complAmount: 0, majAmount: 0,
-    ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, evenementAConfirmer: 0, joursCpAConfirmer: 0, joursEvenementAConfirmer: 0, joursMaladieAConfirmer: 0, kmAConfirmer: 0, entretienAConfirmer: 0, net: 0,
+    ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, evenementAConfirmer: 0, joursCpAConfirmer: 0, joursEvenementAConfirmer: 0, joursMaladieAConfirmer: 0, kmAConfirmer: 0, entretienAConfirmer: 0, entretienJoursDuree: 0, entretienJoursTarifJour: 0, entretienJoursHorsPlanning: 0, net: 0,
     alerts: [], forgotten: [], sickPaidNotice: false, nonGere: [],
   };
 }
@@ -808,7 +812,7 @@ function hoursMin(min: number): string {
 }
 
 const SUM_KEYS = ['base', 'retenue', 'majContratMin', 'joursActivite', 'complMin', 'majMin', 'complAmount', 'majAmount', 'ferieAmount',
-  'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'evenementAConfirmer', 'joursCpAConfirmer', 'joursEvenementAConfirmer', 'joursMaladieAConfirmer', 'kmAConfirmer', 'entretienAConfirmer', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
+  'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'evenementAConfirmer', 'joursCpAConfirmer', 'joursEvenementAConfirmer', 'joursMaladieAConfirmer', 'kmAConfirmer', 'entretienAConfirmer', 'entretienJoursDuree', 'entretienJoursTarifJour', 'entretienJoursHorsPlanning', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
 
 function mergeParts(m: Month, parts: MonthBase[], cuts: ISODate[]): MonthBase {
   const r = emptyBase(m);
@@ -956,9 +960,9 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
         if (pAccueil !== undefined && brutAccueil < pAccueil) { entretienSousMin++; entretienMinVerse += pAccueil - brutAccueil; }
         if (ecart > 0) {
           entretienAConfExact += ecart; entretienJoursAConf++;
-          if (durees.length > 1) entretienCauses.add('base');
-          if (!parHeure && di.plannedMin > 0 && di.presentMin !== di.plannedMin) entretienCauses.add('jour');
-          if (lectures.some((l) => l.cause === 'hors')) entretienCauses.add('hors');
+          if (durees.length > 1) { entretienCauses.add('base'); r.entretienJoursDuree++; }
+          if (!parHeure && di.plannedMin > 0 && di.presentMin !== di.plannedMin) { entretienCauses.add('jour'); r.entretienJoursTarifJour++; }
+          if (lectures.some((l) => l.cause === 'hors')) { entretienCauses.add('hors'); r.entretienJoursHorsPlanning++; }
         }
         const nbRepas = di.rec?.repas ?? c.repasParJour;
         r.repas += nbRepas * c.repasPrix;

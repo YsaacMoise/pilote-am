@@ -271,7 +271,7 @@ Adaptateur de /home/claude/v11/tests/comparateur-ab : il transmet `entretien_hor
 - /home/claude/m10-c-avant, avec A = 1dff034 ;
 - /home/claude/m10-c-apres, avec A = 66b3011.
 
-Le moteur B est celui de v11. Les deux copies donnent le même résultat : 6 073 sorties, F1 4 736, F3 271, F4 84, N 982 ; cas officiels F1 52, F2 0, F3 15, F4 16, N 22. Je les ai comparées sortie par sortie : aucune sortie ne diffère. Aucune situation du comparateur n'a de présence plus courte que le planning avec entretien, ni de jour hors planning au tarif par jour. Les nouvelles parts « à confirmer » ne sont donc exercées que par les tests.
+Moteur B : celui de v11. CORRECTION (T-044c, constat de la direction) : la comparaison que j'avais publiée ici était faussée et ne vaut rien. J'avais conclu que les copies donnaient le même résultat et qu'aucune sortie ne différait. Mais les deux lancements, faits en même temps, construisaient A dans le même dossier /tmp du comparateur : l'un a pu utiliser le A de l'autre. Le comparateur utilise maintenant un dossier unique. La direction l'a relancé avec A = 66b3011 : F1 4 724, F2 6, F4 90. Les situations X-ENTH-* sortent bien en « à confirmer ».
 
 fin.ts n'est pas modifié (branche m11).
 
@@ -281,3 +281,14 @@ Non tranché, remonté au DG :
 3. niveau d'arrondi, jusqu'à la réponse de la DDETS (ARR-01 appliqué au jour).
 
 Constat mineur n-3 (nom de constante `MINIMUM_TITRE_AM_AP`) : non changé, c'est cosmétique.
+
+## 9. T-044c : libellé de la raison de l'entretien à confirmer — voir le commit ci-dessous
+
+Constat de la direction. Sur la situation X-ENTH-DEPART-5H (contrat « par heure », 0,60 €), le texte aux parents disait « tarif du contrat par jour, journées d'une autre durée que le planning ». C'était faux : l'écart vient de la durée retenue, présence de l'enfant ou temps de travail.
+
+Correction :
+- Le mois compte maintenant les jours à confirmer par raison : durée d'accueil ou de travail ; tarif par jour avec une durée différente du planning ; jour hors planning au tarif par jour. Ces compteurs sont sommés quand un avenant coupe le mois.
+- Le texte aux parents (month.ts, `raisonsEntretienAConfirmer`) donne seulement les raisons du mois. Contrat « par heure » : « une journée comptée en temps de présence de l'enfant ou en temps de travail, selon la lecture ». Contrat « par jour » : on y ajoute « tarif du contrat par jour, journée d'une autre durée que le planning », ou « hors planning » selon le cas.
+- L'alerte du mois (payroll.ts) distinguait déjà ces raisons. Elle ne change pas.
+
+Tests : tests/t044.test.ts, bloc « T-044c » (départ après 5 h ; contrat par heure à 0,60 €, puis contrat par jour). Les deux tests échouaient avec le month.ts d'avant et passent maintenant. npm test : 500 tests réussis. tsc sans erreur. Build construit.

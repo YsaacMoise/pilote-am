@@ -101,3 +101,20 @@ describe('T-044b : durée d’accueil ou durée de travail, mois passés, impôt
     expect(f.nonGere ?? '').toMatch(/Indemnité d’entretien à confirmer : .* en septembre 2026 ne sont pas comptés/);
   });
 });
+
+import { declarationText } from '../src/engine/month';
+// T-044c (direction) : le texte aux parents donne la vraie raison de la part d'entretien à confirmer.
+describe('T-044c : raison de la part d’entretien à confirmer dans le texte aux parents', () => {
+  const depart = rec('2026-09-07', { pres: [{ a: '08:00', d: '13:00' }] });
+  it('contrat « par heure » 0,60 €, enfant parti après 5 h : présence ou travail, jamais « tarif par jour »', () => {
+    const ctx = makeCtx(contract({ entretienJour: 0, entretienHeure: 60, entretienMode: 'heure' }), [depart], [], '2026-10-05');
+    const t = declarationText(ctx, computeMonth(ctx, '2026-09'), 'Nadia');
+    expect(t).toMatch(/Indemnité d’entretien : .* à confirmer ensemble \(une journée comptée en temps de présence de l’enfant ou en temps de travail, selon la lecture\)/);
+    expect(t).not.toMatch(/tarif du contrat par jour/);
+  });
+  it('contrat « par jour », même départ : les deux raisons', () => {
+    const ctx = makeCtx(contract(), [depart], [], '2026-10-05');
+    const t = declarationText(ctx, computeMonth(ctx, '2026-09'), 'Nadia');
+    expect(t).toMatch(/temps de travail, selon la lecture ; tarif du contrat par jour, journée d’une autre durée que le planning/);
+  });
+});

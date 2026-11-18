@@ -99,7 +99,7 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   if (r.cpAConfirmer) out.push('• Indemnité de congés payés : à confirmer ensemble');
   if (r.evenementAConfirmer) out.push(`• Salaire ${libelleSalaireAConfirmer(r)} : ${euros(r.evenementAConfirmer)} à confirmer ensemble`);
   out.push('');
-  if (r.entretienAConfirmer) out.push(`• Indemnité d’entretien : ${euros(r.entretienAConfirmer)} à confirmer ensemble (tarif du contrat par jour, journées d’une autre durée que le planning)`);
+  if (r.entretienAConfirmer) out.push(`• Indemnité d’entretien : ${euros(r.entretienAConfirmer)} à confirmer ensemble (${raisonsEntretienAConfirmer(r)})`);
   if (r.kmAConfirmer) out.push(`• Frais kilométriques : ${r.kmAConfirmer} km à confirmer ensemble (familles qui ont demandé le trajet, enfants dans la voiture)`);
   const aConfirmer = partsAConfirmer(r);
   out.push(`Total à me verser : ${euros(r.netTotal + r.entretien + r.repas + r.km)}${aConfirmer.length ? `, sans ${aConfirmer.join(' ni ')} à confirmer` : ''}`);
@@ -108,6 +108,15 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   out.push('');
   out.push(`Merci ! ${amName}`.trim());
   return out.join('\n');
+}
+
+/** T-044c : raisons de la part d'entretien à confirmer, selon le cas (contrat par heure ou par jour) */
+export function raisonsEntretienAConfirmer(r: Pick<MonthResult, 'entretienJoursDuree' | 'entretienJoursTarifJour' | 'entretienJoursHorsPlanning'>): string {
+  const out: string[] = [];
+  if (r.entretienJoursDuree) out.push(`${r.entretienJoursDuree > 1 ? 'des journées comptées' : 'une journée comptée'} en temps de présence de l’enfant ou en temps de travail, selon la lecture`);
+  if (r.entretienJoursTarifJour) out.push(`tarif du contrat par jour, ${r.entretienJoursTarifJour > 1 ? 'journées' : 'journée'} d’une autre durée que le planning`);
+  if (r.entretienJoursHorsPlanning) out.push(`tarif du contrat par jour, ${r.entretienJoursHorsPlanning > 1 ? 'journées' : 'journée'} hors planning`);
+  return out.join(' ; ');
 }
 
 /** Parts du mois sorties du total parce qu'elles sont à confirmer (T-025 C-5 : à dire partout où le total s'affiche) */
