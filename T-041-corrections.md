@@ -200,3 +200,84 @@ Comparateur après le commit 7cf046d : identique à la base (F1 4 071, F2 48, F3
 - npm test : 494 tests réussis, 23 fichiers. tsc : aucune erreur. npm run build : construit.
 - Rendu des écrans (saisie par heure ou par jour) : non vu dans un navigateur. Le typage et la construction passent.
 - URL consultées pour la suite 2 : les quatre du § 7.2, en plus de l'art. 105 (§ 1).
+
+## 8. T-044b : corrections après la relecture V5 (périmètre 2) — commit 66b3011
+
+Constats traités : /home/claude/v5-relecture.md, « Périmètre 2 » (P2-B1, C2-1, C2-2, C2-3), plus la demande de la direction de ne pas présélectionner le mode « par heure ».
+
+### 8.1 P2-B1 : durée d'accueil ou durée de travail
+
+Sources (déjà lues en entier au § 7.2, plus l'art. 98.1.1 relu par V5 sur la même page Légifrance) :
+- CCN 98.1.1 : « Les périodes de travail correspondent au temps d'accueil de l'enfant ».
+- CCN 114.1 : l'indemnité couvre « les frais occasionnés par l'accueil de l'enfant », et elle est versée « par heure de travail ».
+- CASF D423-7 : « durée effective d'accueil quotidien ».
+- Urssaf : « proratisable en fonction du nombre d'heures d'accueil par jour ».
+- service-public F12812 : « varie en fonction de la durée d'accueil ».
+- CCN 99 : décompte du temps de travail (heure prévue, ou arrivée plus tôt, ou départ plus tard).
+
+Conclusion. Aucun texte ne dit si la durée qui sert à l'entretien est le temps de présence de l'enfant ou le temps de travail de l'art. 99. En T-044, j'avais retenu l'art. 99 seul : c'était une lecture appliquée en silence. Je l'ai retirée.
+
+Correction (payroll.ts, `computeRange`). Pour chaque jour d'accueil, l'app calcule toutes les lectures non tranchées :
+- les deux durées : présence de l'enfant, ou travail selon l'art. 99 ;
+- avec un tarif par jour, deux valeurs de ce tarif : pour la journée entière, ou pour les heures prévues ;
+- avec un tarif par jour, un jour hors planning n'a aucune durée de référence : seul le minimum est certain.
+
+Chaque montant est porté au minimum du jour, calculé sur la même durée, puis arrondi (§ 8.4). L'app verse le plus bas. L'écart avec le plus haut est « à confirmer », hors du total. Le message donne le montant versé, le montant le plus haut possible et la raison de chaque écart.
+
+Sonde V5 reprise en test : contrat à 0,50 € de l'heure, enfant parti à midi. L'app verse 2,65 € (4 h de présence, au minimum) et met 1,35 € « à confirmer » (4,00 € sur 8 h de travail). Avant, elle versait 4,00 € sans rien dire.
+
+La contradiction relevée par V5 est levée. Une absence de toute la journée ne donne aucun entretien : c'est la règle de l'Urssaf (« Elle n'est pas versée en cas d'absence de l'enfant ») et de la CCN 114.1 (« en cas de travail effectif »). Une demi-journée n'est plus payée comme une journée travaillée : seule la part de présence est certaine, le reste est « à confirmer ».
+
+Mode « par heure » ou « par jour » : choix explicite, sans valeur présélectionnée (EntretienSaisie.tsx, liste de choix). Chaque option a une phrase qui explique la différence. Le choix est obligatoire pour enregistrer un nouveau contrat (« Indique si l'indemnité d'entretien est fixée par heure ou par jour. »). Le nouveau champ `entretienMode` fait partie des conditions d'avenant. Le simulateur ne transmet le mode que si un montant y a été saisi.
+
+### 8.2 C2-1 : aucun mois passé modifié en silence
+
+- Moteur. Le montant versé est le plus bas des lectures. L'ancien calcul (tarif du jour, au minimum sur la présence) est toujours l'une de ces lectures. Si le montant versé change par rapport à l'ancien calcul, c'est donc que les lectures diffèrent, et une part est « à confirmer ». Pour un mois terminé, cette part déclenche l'alerte « Si ce mois est déjà déclaré à Pajemploi… » (test sur la sonde S3 de V5 : tarif de 3,00 € par jour, enfant parti à midi).
+- Écrans. Sur un contrat existant, le mode et le montant de l'entretien sont affichés en lecture seule, avec le renvoi : « Pour la changer, fais un avenant daté : les mois d'avant gardent leur calcul. » Dans l'avenant, si la date est avant le mois en cours et que l'entretien change, un bandeau dit que les mois passés seront recalculés et redonne la consigne « mois déjà déclaré ».
+
+### 8.3 C2-2 : récapitulatif des impôts
+
+fiscal.ts affiche maintenant deux messages :
+- « Indemnité d'entretien à confirmer : X en <mois> ne sont pas comptés. Ajoute-les une fois confirmés avec les parents. »
+- pour les km à confirmer : « ils ne sont pas comptés, comme tous les frais kilométriques dans ce récapitulatif ». Les km ne sont jamais dans les sommes reçues de ce récapitulatif ; le message évite seulement qu'ils disparaissent sans un mot.
+
+### 8.4 C2-3 : arrondi (décision ARR-01 du DG)
+
+Niveau d'arrondi : chaque montant du jour, au centime le plus proche. Trois raisons :
+- la décision ARR-01 du DG (18/11/2026, journal) fixe le centime le plus proche, jusqu'à la réponse de la DDETS ;
+- le DG a gardé l'arrondi jour par jour pour les km (« arrondi jour par jour gardé, décision ARR-01 étendue ») ;
+- le minimum de l'entretien est un montant journalier (CCN 114.1, « le montant journalier […] ne peut pas être inférieur à 2,65 € »), déjà arrondi par jour dans l'app.
+
+Quand l'arrondi du seul total du mois donnerait un autre montant, l'app le dit : « Indemnité d'entretien : X en arrondissant chaque jour au centime le plus proche. En arrondissant seulement le total du mois, elle serait de Y. Aucun texte ne dit à quel moment arrondir… ». Exemple G-C52 avec un contrat « par heure » à 0,50 € : 72,52 € versés, 72,50 € avec l'arrondi du mois (4 jours de 9 h 45 à 4,875 € chacun). Avec un tarif par jour, les montants du jour sont déjà en centimes : pas d'écart (sondes V5 S1, S7, S8).
+
+### 8.5 Tests
+
+Tests ajoutés dans tests/t044.test.ts, bloc « T-044b ». Avec le moteur de 1dff034 (payroll.ts, fiscal.ts et model.ts remis temporairement), trois échouent :
+- P2-B1 ;
+- C2-1 ;
+- C2-2.
+
+Un quatrième (absence toute la journée = 0 €) passait déjà : c'est un garde-fou. Tous passent après la correction.
+
+Deux tests de T-044 ont changé d'attendu, par décision et non par régression :
+- G-C52 « par heure » : 72,52 € avec l'alerte d'arrondi (au lieu de 72,50 €) ;
+- enfant parti à midi avec un tarif sous le minimum : 2,65 € versés et 0,83 € à confirmer (au lieu de 3,48 € versés).
+
+Résultats : npm test 498 tests réussis (23 fichiers), tsc sans erreur, npm run build construit. Les écrans (choix du mode, lecture seule, bandeau de l'avenant) n'ont pas été vus dans un navigateur : seuls le typage et la construction les vérifient.
+
+### 8.6 Comparateur
+
+Adaptateur de /home/claude/v11/tests/comparateur-ab : il transmet `entretien_horaire` en `entretienHeure` quand A le connaît. Deux copies à moi :
+- /home/claude/m10-c-avant, avec A = 1dff034 ;
+- /home/claude/m10-c-apres, avec A = 66b3011.
+
+Le moteur B est celui de v11. Les deux copies donnent le même résultat : 6 073 sorties, F1 4 736, F3 271, F4 84, N 982 ; cas officiels F1 52, F2 0, F3 15, F4 16, N 22. Je les ai comparées sortie par sortie : aucune sortie ne diffère. Aucune situation du comparateur n'a de présence plus courte que le planning avec entretien, ni de jour hors planning au tarif par jour. Les nouvelles parts « à confirmer » ne sont donc exercées que par les tests.
+
+fin.ts n'est pas modifié (branche m11).
+
+Non tranché, remonté au DG :
+1. durée d'accueil ou durée de travail pour l'entretien (P2-B1) ;
+2. valeur d'un tarif par jour pour une journée d'une autre durée ;
+3. niveau d'arrondi, jusqu'à la réponse de la DDETS (ARR-01 appliqué au jour).
+
+Constat mineur n-3 (nom de constante `MINIMUM_TITRE_AM_AP`) : non changé, c'est cosmétique.
