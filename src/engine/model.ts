@@ -79,6 +79,11 @@ export interface Contract {
   avenants?: Avenant[];
   /** Indemnité kilométrique (centimes par km) */
   kmTaux: number;
+  /**
+   * Puissance fiscale de la voiture de l'AM (CV), pour contrôler le tarif contre les barèmes (CCN art. 57, T-017).
+   * Non renseignée : contrôle impossible, signalé.
+   */
+  kmCv?: number;
   cpMode: CpPayMode;
   /** Enfant ouvrant droit à l'abattement fiscal majoré (handicap, maladie, inadaptation) */
   majoreFiscal: boolean;
@@ -115,6 +120,11 @@ export interface DayRec {
   ferieTravaille?: boolean;
   repas?: number;
   km?: number;
+  /**
+   * Enfants présents dans la voiture pour ces km, y compris ceux de l'AM si le trajet répond à leurs besoins
+   * (CCN art. 113 : indemnité « au prorata du nombre d'enfants transportés », T-017). Absent : km à confirmer, non payés.
+   */
+  kmEnfants?: number;
 }
 
 /** Nature d'un événement familial (CCN art. 48.1.3.1.1 et 48.1.3.1.2 ; C. trav. L3142-4) : la durée payée en dépend (T-023) */

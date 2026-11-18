@@ -180,7 +180,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
   const joursAuMinimum = r.parJour.filter((j) => j.entretien > (i.entretienMode === 'heure' ? Math.round((i.entretien * j.minutes) / 60) : i.entretien)).map((j) => j.jour);
   const repasParSemaine = (t: TypeRepas) => r.parJour.filter((j) => j.repas.includes(t)).length;
   const kmAn = i.kmMois * 12;
-  const kmHorsBornes = i.kmMois > 0 && (i.kmTaux * 10 < r.kmBornes.min || i.kmTaux * 10 > r.kmBornes.max);
+  const kmHorsBornes = i.kmMois > 0 && ((r.kmBornes.min !== null && i.kmTaux * 10 < r.kmBornes.min) || (r.kmBornes.max !== null && i.kmTaux * 10 > r.kmBornes.max));
   const cal = calendrier(i, d, r);
   const maxNet = Math.max(1, ...cal.mois.map((m) => Math.abs(m.net)));
   const premierCredit = cal.mois.find((m) => m.evenements.includes('credit'));
@@ -283,7 +283,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
               </>
             )}
             <Switch label="L’assistante maternelle transporte l’enfant en voiture" hint="École, activités : indemnités kilométriques à la charge de la famille." checked={kmOuvert}
-              onChange={(on) => { setKmOuvert(on); set(on ? { kmMois: 40, kmTaux: Math.ceil(bornesKm(i.cv, 480).min / 10) } : { kmMois: 0 }); }} />
+              onChange={(on) => { setKmOuvert(on); set(on ? { kmMois: 40, kmTaux: Math.ceil((bornesKm(i.cv, 480, d).min ?? 0) / 10) } : { kmMois: 0 }); }} />
             {kmOuvert && (
               <>
                 <div class="grid2">
@@ -291,8 +291,8 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
                   <EuroInput label="Tarif par km" cents={i.kmTaux || undefined} allowEmpty onChange={(v) => set({ kmTaux: v ?? 0 })} />
                 </div>
                 <Stepper label="Puissance fiscale de la voiture" value={i.cv} min={3} max={8} unit={i.cv >= 8 ? 'CV et +' : 'CV'} onChange={(v) => set({ cv: v })} />
-                <p class="hint">Pour {nf.format(kmAn)} km par an : au moins {prixKm(r.kmBornes.min)} par km (barème de l’administration), au plus {prixKm(r.kmBornes.max)} (barème fiscal).</p>
-                {kmHorsBornes && <Banner tone="warn">Ce tarif sort de la fourchette légale : entre {prixKm(r.kmBornes.min)} et {prixKm(r.kmBornes.max)} par km.</Banner>}
+                <p class="hint">Si l’assistante maternelle ne fait que ces {nf.format(kmAn)} km dans l’année : au moins {r.kmBornes.min !== null ? prixKm(r.kmBornes.min) : '(barème de l’administration à vérifier pour cette date)'} par km (barème de l’administration), au plus {r.kmBornes.max !== null ? prixKm(r.kmBornes.max) : '(barème fiscal à vérifier)'} (barème fiscal, voiture non électrique). Avec d’autres trajets dans l’année, la tranche peut changer.</p>
+                {kmHorsBornes && <Banner tone="warn">Ce tarif sort de la fourchette légale pour ce kilométrage{r.kmBornes.min !== null && r.kmBornes.max !== null ? ` : entre ${prixKm(r.kmBornes.min)} et ${prixKm(r.kmBornes.max)} par km` : ''}.</Banner>}
               </>
             )}
           </fieldset>

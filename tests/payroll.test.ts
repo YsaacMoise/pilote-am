@@ -253,7 +253,8 @@ describe('indemnité d’entretien (art. 114.1)', () => {
   });
   it('repas et kilomètres', () => {
     const c = contract({ repasPrix: 300, repasParJour: 1, kmTaux: 41 });
-    const ctx = makeCtx(c, [rec('2026-10-05', { repas: 2, km: 12 })], [], '2026-11-01');
+    // T-017 : un seul enfant dans la voiture (CCN art. 113) → 12 km × 0,41 € en entier
+    const ctx = makeCtx(c, [rec('2026-10-05', { repas: 2, km: 12, kmEnfants: 1 })], [], '2026-11-01');
     const b = monthBase(ctx, '2026-10');
     expect(b.repas).toBe(23 * 300);
     expect(b.km).toBe(492);

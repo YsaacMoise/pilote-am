@@ -6,6 +6,8 @@ import type { AmLeave, Bulletin, Contract, NatureEvenement, Planning } from '../
 import { makeCtx } from '../src/engine/payroll';
 import { computeMonth, declarationLines, declarationText } from '../src/engine/month';
 import { dureeEvenement } from '../src/engine/evenements';
+import { controleKm } from '../src/engine/km';
+import type { DayRec } from '../src/engine/model';
 import { controle } from '../src/engine/controle';
 import { fiscalYear } from '../src/engine/fiscal';
 import { entretienPlancher, PREMIERE_DATE_GEREE, ratesAt } from '../src/engine/rates';
@@ -172,5 +174,66 @@ describe('T-023 (2) événements familiaux, R-ABS-06', () => {
     const r = computeMonth(makeCtx(contract({ start: '2023-09-04', trackedFrom: '2023-09-04' }), [], [ev('2024-03-04', '2024-03-04', 'naissance')], '2024-12-31'), '2024-03');
     expect(r.evenementAConfirmer).toBeGreaterThan(0);
     expect(r.alerts.join(' ')).toMatch(/période non gérée/);
+  });
+});
+
+describe('T-017 indemnité kilométrique (CCN art. 57 et 113)', () => {
+  // Barème de l'administration, 5 CV et moins : 0,32 / 0,40 / 0,23 € (arrêté du 14 mars 2022, dès le 01/01/2022) ;
+  // 0,33 / 0,41 / 0,24 € (arrêté du 29 mai 2026, du 01/06 au 31/12/2026). Barème fiscal 5 CV : d × 0,636 jusqu'à 5 000 km ;
+  // (d × 0,357) + 1 395 € de 5 001 à 20 000 km ; d × 0,427 au-delà ; + 20 % pour une voiture électrique (CGI ann. IV art. 6 B, II).
+  it('puissance fiscale non renseignée : contrôle impossible, dit quoi renseigner', () => {
+    const k = controleKm(undefined, 41, '2026-10-01');
+    expect(k.niveau).toBe('impossible');
+    expect(k.messages[0]).toMatch(/renseigne la puissance fiscale/);
+  });
+  it('0,20 € en 5 CV : sous le plancher pour toutes les tranches (au moins 0,23 €) → alerte certaine', () => {
+    const k = controleKm(5, 20, '2026-03-10');
+    expect(k.niveau).toBe('alerte');
+    expect(k.messages[0]).toMatch(/0,23 €/);
+  });
+  it('0,35 € en 5 CV avant juin 2026 : sous 0,40 € seulement de 2 001 à 10 000 km → à vérifier avec la tranche', () => {
+    const k = controleKm(5, 35, '2026-03-10');
+    expect(k.niveau).toBe('a_verifier');
+    expect(k.messages.join(' ')).toMatch(/de 2 001 à 10 000 km \(0,40 €\)/);
+  });
+  it('barème majoré du 01/06/2026 : 0,24 € n’est plus sous le plancher de la 3e tranche, il l’est sous 0,33 et 0,41', () => {
+    const k = controleKm(5, 24, '2026-07-10');
+    expect(k.niveau).toBe('a_verifier');
+    expect(k.messages.join(' ')).toMatch(/jusqu’à 2 000 km \(0,33 €\) ou de 2 001 à 10 000 km \(0,41 €\)/);
+  });
+  it('0,64 € en 5 CV : au-dessus de 0,636 €, sauf voiture électrique (+ 20 %) → à vérifier', () => {
+    const k = controleKm(5, 64, '2026-10-01');
+    expect(k.niveau).toBe('a_verifier');
+    expect(k.messages.join(' ')).toMatch(/électrique/);
+  });
+  it('0,80 € en 5 CV : au-dessus de 0,636 × 1,2 pour toutes les tranches → alerte certaine', () => {
+    expect(controleKm(5, 80, '2026-10-01').niveau).toBe('alerte');
+  });
+  it('0,50 € en 5 CV : au-dessus du barème fiscal dès 9 756 km dans l’année ((d × 0,357) + 1 395 € < d × 0,50)', () => {
+    const k = controleKm(5, 50, '2026-10-01');
+    expect(k.niveau).toBe('a_verifier');
+    expect(k.messages.join(' ')).toMatch(/9.756 km/);
+  });
+  it('après le 31/12/2026 : barèmes à vérifier, aucune valeur supposée', () => {
+    const k = controleKm(5, 41, '2027-02-01');
+    expect(k.niveau).toBe('a_verifier');
+    expect(k.messages.join(' ')).toMatch(/barème de l’administration à vérifier/);
+  });
+
+  const c = contract({ kmTaux: 41 });
+  const rec = (date: string, r: Partial<DayRec>): DayRec => ({ key: `c1|${date}`, cid: 'c1', date, ...r });
+  it('art. 113 : 12 km avec 3 enfants transportés → un tiers de 12 × 0,41 € pour cet accueil', () => {
+    const r = computeMonth(makeCtx({ ...c, kmCv: 5 }, [rec('2026-10-05', { km: 12, kmEnfants: 3 })], [], '2026-11-01'), '2026-10');
+    expect(r.km).toBe(164); // 4,92 € ÷ 3 = 1,64 €
+    expect(r.kmAConfirmer).toBe(0);
+  });
+  it('art. 113 : km sans le nombre d’enfants → non payés, « à confirmer », jamais en entier par défaut', () => {
+    const ctx = makeCtx(c, [rec('2026-10-05', { km: 12 })], [], '2026-11-01');
+    const r = computeMonth(ctx, '2026-10');
+    expect(r.km).toBe(0);
+    expect(r.kmAConfirmer).toBe(12);
+    expect(declarationLines(ctx, r).find((l) => l.label === 'Frais kilométriques')!.value).toMatch(/12 km à confirmer/);
+    // Puissance non renseignée sur ce contrat : le contrôle du tarif le signale
+    expect(r.alerts.join(' ')).toMatch(/renseigne la puissance fiscale/);
   });
 });

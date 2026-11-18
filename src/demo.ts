@@ -35,7 +35,7 @@ export async function seedDemo() {
   const ines: Contract = {
     id: 'demo-ines', child: 'Rose', family: 'Diallo', color: 1, start: firstDay(addMonths(cur, -7)), yearType: 'incomplete', weeks: 36, weeksOff: [],
     planning: week([1, 2, 4, 5], [{ start: '07:30', end: '08:30' }, { start: '16:30', end: '18:30' }]), rateNet: 380, majoration: 10,
-    entretienJour: 0, repasPrix: 0, repasParJour: 0, repasParents: true, kmTaux: 41, cpMode: 'juin', majoreFiscal: false, trackedFrom: firstDay(addMonths(cur, -7)),
+    entretienJour: 0, repasPrix: 0, repasParJour: 0, repasParents: true, kmTaux: 41, kmCv: 5, cpMode: 'juin', majoreFiscal: false, trackedFrom: firstDay(addMonths(cur, -7)),
     balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 2,
   };
   const malo: Contract = {
@@ -55,7 +55,7 @@ export async function seedDemo() {
   rec(leo, y3, { abs: 'malade_certif' });
   rec(leo, y6, { abs: 'parents' });
   rec(malo, y2, { pres: [{ a: '08:30' }] }); // départ oublié
-  rec(ines, y1, { pres: [{ a: '07:30', d: '08:30' }, { a: '16:30', d: '19:00' }], km: 6 });
+  rec(ines, y1, { pres: [{ a: '07:30', d: '08:30' }, { a: '16:30', d: '19:00' }], km: 6, kmEnfants: 1 });
   if (weekday(t) <= 5) rec(leo, t, { pres: [{ a: '07:58' }] });
 
   const leaves: AmLeave[] = [

@@ -212,6 +212,7 @@ export function Contrat({ id }: { id?: string }) {
               </div>
             )}
             <EuroInput label="Indemnité kilométrique (par km)" hint="0 si tu ne transportes pas l’enfant" cents={c.kmTaux} onChange={(v) => set({ kmTaux: v ?? 0 })} />
+            {c.kmTaux > 0 && <NumberInput label="Puissance fiscale de ta voiture (CV)" hint="Sur la carte grise. Sert à vérifier le tarif : entre le barème de l’administration et le barème fiscal (article 57)." value={c.kmCv} min={1} max={30} onChange={(v) => set({ kmCv: v || undefined })} />}
             <NumberInput label="Majoration après 45 h par semaine (%)" hint="10 % au minimum" value={c.majoration} min={10} max={100} onChange={(v) => set({ majoration: v ?? 10 })} />
             <NumberInput label="Majoration des heures complémentaires (%)" hint="Heures en plus jusqu’à 45 h par semaine. Seulement si ton contrat la prévoit, sinon laisse 0." value={c.majorationCompl ?? 0} min={0} max={100} onChange={(v) => set({ majorationCompl: v ?? 0 })} />
             {c.yearType === 'incomplete' && (

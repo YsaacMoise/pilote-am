@@ -268,6 +268,7 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
   const [abs, setAbs] = useState<ChildAbs | 'none'>(rec?.abs ?? 'none');
   const [repas, setRepas] = useState<number>(rec?.repas ?? c.repasParJour);
   const [km, setKm] = useState<number>(rec?.km ?? 0);
+  const [kmEnfants, setKmEnfants] = useState<number>(rec?.kmEnfants ?? 0);
   const [ferieT, setFerieT] = useState<boolean>(!!rec?.ferieTravaille);
   const [err, setErr] = useState('');
   const future = day > today();
@@ -289,6 +290,7 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
       }
       if (repas !== c.repasParJour) next.repas = repas; else delete next.repas;
       if (km) next.km = km; else delete next.km;
+      if (km && kmEnfants >= 1) next.kmEnfants = kmEnfants; else delete next.kmEnfants;
       if (ferieT) next.ferieTravaille = true; else delete next.ferieTravaille;
       return next;
     });
@@ -333,6 +335,8 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
         <>
           {c.repasPrix > 0 && <Stepper label="Repas fournis" value={repas} onChange={setRepas} max={4} />}
           {c.kmTaux > 0 && <Stepper label="Kilomètres" value={km} onChange={setKm} max={500} unit="km" />}
+          {c.kmTaux > 0 && km > 0 && <Stepper label="Enfants dans la voiture" value={kmEnfants} onChange={setKmEnfants} max={8} />}
+          {c.kmTaux > 0 && km > 0 && <p class="hint">Tous les enfants transportés, les tiens compris si le trajet est pour eux : l’indemnité est partagée entre les familles (article 113). À 0, les km restent à confirmer.</p>}
         </>
       )}
       <button class="btn btn-primary btn-block btn-lg" onClick={save}>Enregistrer</button>

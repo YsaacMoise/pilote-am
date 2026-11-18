@@ -6,6 +6,7 @@ import { holidaysOf } from './holidays';
 import type { Contract, Plage, Planning } from './model';
 import { daysPerWeek, plageMin, salaireMensualise, weeklyMinutes } from './payroll';
 import { entretienPlancher, ratesConnus } from './rates';
+import { bornesKm } from './km';
 
 /** Paramètres du CMG « emploi direct » d'une assistante maternelle (CSS D531-18, décret 2025-515), datés. */
 interface CmgParams {
@@ -262,18 +263,8 @@ export function repasDuJour(plages: Plage[], type: TypeRepas): boolean {
   }
 }
 
-/** Indemnités kilométriques (CCN art. 113 ; service-public F12812, vérifié le 17 juin 2026) */
-/** Barème administratif, limite basse (€ par km × 1 000) : ≤ 5 CV, 6-7 CV, ≥ 8 CV ; jusqu'à 2 000 km, 2 001 à 10 000 km, au-delà */
-const KM_ADMIN: number[][] = [[320, 400, 230], [410, 510, 300], [450, 550, 320]];
-/** Barème fiscal, limite haute jusqu'à 5 000 km par an (€ par km × 1 000) : 3, 4, 5, 6, 7 CV et plus (arrêté du 27 mars 2023, reconduit en 2026) */
-const KM_FISCAL: Record<number, number> = { 3: 529, 4: 606, 5: 636, 6: 665, 7: 697 };
-
-/** Fourchette légale du tarif kilométrique (millièmes d'euro par km) pour une puissance et un kilométrage annuel. */
-export function bornesKm(cv: number, kmAn: number): { min: number; max: number } {
-  const g = cv <= 5 ? 0 : cv <= 7 ? 1 : 2;
-  const t = kmAn <= 2000 ? 0 : kmAn <= 10000 ? 1 : 2;
-  return { min: KM_ADMIN[g][t], max: KM_FISCAL[Math.max(3, Math.min(7, Math.round(cv)))] };
-}
+/** Indemnités kilométriques : barèmes datés dans km.ts (T-017) */
+export { bornesKm } from './km';
 
 /** Jours fériés des 12 mois qui suivent `d`, par jour de la semaine (1 = lundi … 7 = dimanche). */
 export function feriesParJour(d: ISODate, alsaceMoselle: boolean): number[] {
@@ -392,7 +383,8 @@ export interface SimResult {
   repas: number;
   /** Indemnités kilométriques du mois, et la fourchette légale du tarif (millièmes d'euro par km) */
   km: number;
-  kmBornes: { min: number; max: number };
+  /** `null` : barème non connu à la date de la simulation, à vérifier */
+  kmBornes: { min: number | null; max: number | null };
   /** À verser à l'assistante maternelle, en moyenne par mois : salaire, congés, réduction, entretien, repas */
   verse: number;
   /** Cotisations sociales du mois (salariales et patronales) */
@@ -554,7 +546,7 @@ export function simuler(i: SimInput, d: ISODate): SimResult {
   const repas = Math.round(repasMontantAn / 12);
   const kmMois = Math.max(0, i.kmMois || 0);
   const km = Math.round(kmMois * Math.max(0, i.kmTaux || 0));
-  const kmBornes = bornesKm(i.cv || 5, kmMois * 12);
+  const kmBornes = bornesKm(i.cv || 5, kmMois * 12, d);
   // Année incomplète : congés payés en plus du salaire mensualisé (≈ 10 % du salaire de l'année), répartis ici sur 12 mois.
   const congesAnnuels = i.yearType === 'incomplete' ? Math.round(salaire * 12 * 0.1) : 0;
   const congesMois = Math.round(congesAnnuels / 12);

@@ -6,6 +6,7 @@ import {
 import { holidayName, isMayDay } from './holidays';
 import { entretienPlancher, MESSAGE_PERIODE_NON_GEREE, netToBrut } from './rates';
 import { statutJourEvenement } from './evenements';
+import { controleKm } from './km';
 import { euros } from './money';
 import { cpAConfirmerEntre, cpExces } from './conges';
 import type { AmAbs, AmLeave, Contract, DayRec, Plage, Planning } from './model';
@@ -420,6 +421,8 @@ export interface MonthBase {
    * Les heures et jours déclarés sont calculés sans ces jours. Les raisons sont dans `alerts`.
    */
   evenementAConfirmer: number;
+  /** Kilomètres saisis sans le nombre d'enfants transportés (CCN art. 113) : non payés, à confirmer (T-017) */
+  kmAConfirmer: number;
   /** Salaire net hors congés payés */
   net: number;
   /** Régularisation versée avec un avenant (année incomplète qui se termine) */
@@ -443,7 +446,7 @@ function emptyBase(m: Month): MonthBase {
     month: m, active: false, fromHistory: false, missing: false, salaireMens: 0, mensuelMin: 0, divisorDays: 0,
     divisorMin: 0, contractDays: 0, contractMin: 0, deductedDays: 0, deductedMin: 0, paidFraction: 0, base: 0,
     retenue: 0, heuresNormales: 0, joursActivite: 0, complMin: 0, majMin: 0, majContratMin: 0, complAmount: 0, majAmount: 0,
-    ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, evenementAConfirmer: 0, net: 0,
+    ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, evenementAConfirmer: 0, kmAConfirmer: 0, net: 0,
     alerts: [], forgotten: [], sickPaidNotice: false,
   };
 }
@@ -590,7 +593,7 @@ function hoursMin(min: number): string {
 }
 
 const SUM_KEYS = ['base', 'retenue', 'majContratMin', 'joursActivite', 'complMin', 'majMin', 'complAmount', 'majAmount', 'ferieAmount',
-  'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'evenementAConfirmer', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
+  'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'evenementAConfirmer', 'kmAConfirmer', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
 
 function mergeParts(m: Month, parts: MonthBase[], cuts: ISODate[]): MonthBase {
   const r = emptyBase(m);
@@ -663,7 +666,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
 
   let cDays = 0, cMin = 0, dedDays = 0, dedMin = 0, actDays = 0, cpSansDroits = 0;
   let entretienNonVerifie = false;
-  let suspDays = 0, suspMin = 0;
+  let suspDays = 0, suspMin = 0, kmJours = 0;
   const suspRaisons: string[] = [];
   const forgotten: ISODate[] = [];
   for (const d of allDays) {
@@ -698,7 +701,12 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
         r.ferieDays.push(d);
       }
     }
-    if (di.rec?.km) r.km += Math.round(di.rec.km * c.kmTaux);
+    // CCN art. 113 : part de cet accueil = km × tarif ÷ enfants transportés. Sans ce nombre, rien n'est payé en silence.
+    if (di.rec?.km) {
+      kmJours++;
+      if (di.rec.kmEnfants && di.rec.kmEnfants >= 1) r.km += Math.round((di.rec.km * c.kmTaux) / di.rec.kmEnfants);
+      else r.kmAConfirmer += di.rec.km;
+    }
   }
   // Jours (heures) de la période payés par la mensualisation, avant retenues
   r.contractDays = segDays;
@@ -744,6 +752,8 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     r.alerts.push(...suspRaisons);
     r.alerts.push(`Événement familial : ${dayCountLabel(suspDays)} ni payé${suspDays > 1 ? 's' : ''} ni retenu${suspDays > 1 ? 's' : ''}, ${euros(r.evenementAConfirmer)} de salaire à confirmer (non compris dans le total).`);
   }
+  if (r.kmAConfirmer) r.alerts.push(`${r.kmAConfirmer} km sans le nombre d’enfants dans la voiture : non comptés. Indique-le pour chaque jour ; l’indemnité est partagée entre les enfants transportés (article 113 de la convention).`);
+  if (kmJours && c.kmTaux > 0) for (const m of controleKm(ctx.c.kmCv, c.kmTaux, segFrom).messages) if (!r.alerts.includes(m)) r.alerts.push(m);
   if (entretienNonVerifie) r.alerts.push(`${MESSAGE_PERIODE_NON_GEREE} Indemnité d’entretien : l’app retient le montant du contrat, sans contrôle du minimum légal ; vérifie-le avec les parents.`);
   // R-CP-09 : un congé dont le décompte reste ambigu est signalé, pas tranché (T-019).
   for (const a of cpAConfirmerEntre(ctx, segFrom, segTo)) if (!r.alerts.includes(a)) r.alerts.push(a);
