@@ -44,6 +44,29 @@ export interface Avenant {
   changes: Partial<Terms>;
 }
 
+/** Motif de fin de contrat (écran Fin) */
+export type Motif = 'retrait' | 'demission' | 'deces' | 'inaptitude' | 'inaptitude_pro' | 'faute_grave' | 'essai';
+/**
+ * T-045 : préavis non exécuté en tout ou en partie (CCN art. 64 et 64.2).
+ * - `am_acceptee` : l'AM a demandé à ne pas faire tout ou partie du préavis et les parents l'ont accepté (art. 64.2, al. 2).
+ * - `employeur` : les parents dispensent l'AM de tout ou partie du préavis (art. 64.2, al. 1).
+ * - `am_sans_accord` : l'AM ne fait pas son préavis sans l'accord des parents (art. 64.2, al. 2, fin).
+ */
+export type DemandeurInexecution = 'am_acceptee' | 'employeur' | 'am_sans_accord';
+/**
+ * T-045b (P3-B1) : réponses de l'écran Fin enregistrées avec le contrat. Le calcul des mois s'en sert pour savoir si la date
+ * de fin saisie concorde avec le préavis.
+ */
+export interface Rupture {
+  motif: Motif;
+  /** Date d'envoi de la lettre (ou de remise, ou du décès) */
+  notif: ISODate;
+  /** Date de première présentation de la lettre recommandée, si elle est après l'envoi */
+  presentation?: ISODate;
+  preavis: 'execute' | DemandeurInexecution;
+  dernierJourTravaille?: ISODate;
+}
+
 export interface Contract {
   id: string;
   /** Prénom de l'enfant (copié dans le compte de l'AM ; jamais envoyé à la mesure d'usage) */
@@ -53,6 +76,8 @@ export interface Contract {
   color: number;
   start: ISODate;
   end?: ISODate;
+  /** T-045b : réponses de l'écran Fin (lettre, préavis), enregistrées avec la date de fin */
+  rupture?: Rupture;
   yearType: YearType;
   /** Semaines d'accueil programmées par an (52 en année complète, ≤ 46 sinon) */
   weeks: number;

@@ -1,6 +1,8 @@
 // Fin de contrat : préavis (art. 120), indemnité de rupture (art. 121), régularisation (art. 109.2),
 // indemnité de congés non pris. Aucun document officiel n'est produit.
 import { nonGeresPeriode } from './nonGeres';
+import { finPreavis, finsAdmises, preavisEmployeur } from './preavis';
+import type { DemandeurInexecution, Motif } from './model';
 import { euros } from './money';
 import {
   addDays, addMonthsToDate, cpPeriod, cpPeriodStartYear, fullMonthsBetween, lastDay, monthOf, monthsBetween, shortDate,
@@ -13,7 +15,7 @@ import { netToBrut } from './rates';
 /** Entrée en vigueur de l'avenant n° 10 du 9 septembre 2025 (inaptitude) */
 const AVENANT_10 = '2026-05-01';
 
-export type Motif = 'retrait' | 'demission' | 'deces' | 'inaptitude' | 'inaptitude_pro' | 'faute_grave' | 'essai';
+export type { DemandeurInexecution, Motif } from './model';
 
 export const MOTIF_LABEL: Record<Motif, string> = {
   retrait: 'Les parents retirent l’enfant',
@@ -32,7 +34,6 @@ export const MOTIF_LABEL: Record<Motif, string> = {
  * - `employeur` : les parents dispensent l'AM de tout ou partie du préavis (art. 64.2, al. 1).
  * - `am_sans_accord` : l'AM ne fait pas son préavis sans l'accord des parents (art. 64.2, al. 2, fin).
  */
-export type DemandeurInexecution = 'am_acceptee' | 'employeur' | 'am_sans_accord';
 export interface Inexecution { demandeur: DemandeurInexecution; dernierJourTravaille: ISODate }
 
 export interface FinResult {
@@ -90,28 +91,13 @@ export const MESSAGE_PREAVIS_FIN =
 export const MESSAGE_PREAVIS_DEMISSION_3_12 =
   'Durée du préavis à confirmer. Pour une démission entre 3 mois et 1 an d’accueil, la loi (code de l’action sociale et des familles, article L423-26) prévoit un mois, la convention (article 120) 15 jours. La question a été posée à la DDETS le 18/11/2026. L’app applique 15 jours : si c’est un mois, la date de fin et le dernier salaire changent, et la régularisation et l’indemnité de congés non pris peuvent changer aussi (elles sont alors à confirmer).';
 
-/** Durée du préavis selon l'ancienneté, rupture par l'employeur (R-FIN-02, CCN art. 120) */
-function preavisEmployeur(anc: number): { label: string; jours?: number } {
-  if (anc < 3) return { label: '8 jours calendaires', jours: 8 };
-  if (anc < 12) return { label: '15 jours calendaires', jours: 15 };
-  return { label: '1 mois' };
-}
-
-/** Dernier jour d'un préavis qui commence le jour `depart` (méthode de l'app, voir PREAVIS-DATE-FIN) */
-function finPreavis(depart: ISODate, p: { jours?: number }): ISODate {
-  if (p.jours) return addDays(depart, p.jours - 1);
-  // Un mois de date à date : du 15/10 au 14/11 ; du 31/10 au 30/11 (pas de 31 novembre).
-  const cible = addMonthsToDate(depart, 1);
-  return cible.slice(8) < depart.slice(8) ? cible : addDays(cible, -1);
-}
-
 /**
  * Indemnité compensatrice de préavis (R-FIN-05, CCN art. 64.2, 66, 122) : salaire mensualisé de chaque mois couvert,
  * réduit au prorata des heures (année complète) ou des jours (année incomplète) prévus quand le préavis ne couvre qu'une
  * partie du mois (art. 111, comme un mois d'entrée ou de sortie).
  */
 function indemniteCompensatricePreavis(c: Ctx['c'], from: ISODate, to: ISODate): number {
-  const h = makeCtx({ ...c, start: from, end: to, trackedFrom: from, history: [] }, [], [], to);
+  const h: Ctx = { ...makeCtx({ ...c, start: from, end: to, trackedFrom: from, history: [] }, [], [], to), finControlee: true };
   let total = 0;
   for (const m of monthsBetween(monthOf(from), monthOf(to))) total += monthBase(h, m).base;
   return total;
@@ -270,10 +256,18 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     }
   }
   // T-045 (B-2) : une date de fin du contrat déjà saisie avant la fin calculée n'est jamais dépassée en silence.
+  // T-045b (C3-1) : une date saisie après la fin calculée non plus. Admises : la fin calculée et les autres fins possibles du
+  // préavis fait en entier (lendemain, préavis d'un mois de la démission de 3 mois à 1 an), dont les montants sont déjà
+  // donnés « à confirmer » ; avec un préavis non fait à la demande de l'AM, seul le dernier jour travaillé.
+  const finAdmise = (e: ISODate) => e === dernierJour || (!finAuDernierJourTravaille && finsAdmises(c.start, { motif, notif, presentation }).admises.includes(e));
+  if (!refusFin.length && c.end && c.end > dernierJour && !finAdmise(c.end)) {
+    refusFin.push(`La date de fin du contrat (${shortDate(c.end)}) est après ${finAuDernierJourTravaille ? 'le dernier jour travaillé indiqué' : 'la fin du préavis'} (${shortDate(dernierJour)}). L’app ne calcule pas au-delà, ni en deçà : corrige la date de fin du contrat, ou vérifie les dates de la lettre et du préavis.`);
+  }
   if (!refusFin.length && c.end && c.end < dernierJour) {
     refusFin.push(`La date de fin du contrat (${shortDate(c.end)}) est avant ${finAuDernierJourTravaille ? 'le dernier jour travaillé indiqué' : 'la fin du préavis'} (${shortDate(dernierJour)}). Si le préavis n’a pas été fait en entier, dis-le dans la question sur le préavis ; sinon corrige la date de fin du contrat. L’app ne calcule rien tant que les deux dates ne concordent pas.`);
   }
-  const endCtx: Ctx = { ...ctx, c: { ...c, end: dernierJour }, cache: new Map() };
+  // T-045b : contextes dont la date de fin vient de ce calcul, contrôlée ci-dessus (finControlee).
+  const endCtx: Ctx = { ...ctx, c: { ...c, end: dernierJour }, cache: new Map(), finControlee: true };
 
   // Salaires bruts depuis le début du contrat
   let totalBrut = 0;
@@ -368,7 +362,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     variantes.push({ fin: finMois, libelle: `préavis d’un mois, fin le ${shortDate(finMois)}` });
     variantes.push({ fin: addDays(finMois, 1), libelle: `préavis d’un mois, fin le ${shortDate(addDays(finMois, 1))}` });
   }
-  const ctxFin = (fin: ISODate): Ctx => (fin === dernierJour ? endCtx : { ...ctx, c: { ...c, end: fin }, cache: new Map() });
+  const ctxFin = (fin: ISODate): Ctx => (fin === dernierJour ? endCtx : { ...ctx, c: { ...c, end: fin }, cache: new Map(), finControlee: true });
   const regPour = (fin: ISODate) => regularisationLectures(ctxFin(fin), regulStart(c, addDays(fin, 1)), fin);
   const reg = regPour(dernierJour);
   const regulMinutes = reg.dus.minutes;
@@ -438,7 +432,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
 
   // T-031 : un cas non géré pendant le contrat (Alsace-Moselle, horaires variables, accueil occasionnel, congé maternité,
   // accident du travail…) fausse les salaires de référence, l'ancienneté retenue ou les congés : aucun montant.
-  const nonGere = [...refusFin, ...nonGeresPeriode(c, ctx.leaves, c.start, dernierJour)];
+  const nonGere = [...refusFin, ...nonGeresPeriode(c, ctx.leaves, c.start, dernierJour, 'non')];
   if (nonGere.length) {
     return {
       ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture: 0, ruptureExplication: 'Non calculée : cas non géré.',

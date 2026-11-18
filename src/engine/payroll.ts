@@ -22,6 +22,11 @@ export interface Ctx {
   /** Dernière année où l'AM avait moins de 21 ans au 30 avril, si elle l'a cochée : jours pour enfants à charge (R-CP-03) */
   amMoins21Jusqu?: number;
   cache?: Map<string, unknown>;
+  /**
+   * T-045b : contexte construit par le calcul de fin de contrat (fin.ts), dont la date de fin vient de ce calcul et a déjà
+   * été contrôlée face au préavis. Le contrôle de la date de fin saisie (controleFinContrat) n'y est pas refait.
+   */
+  finControlee?: boolean;
 }
 
 /** Contrat tel qu'il s'applique le jour d (avenants en vigueur compris) */
@@ -619,7 +624,7 @@ export function monthBase(ctx: Ctx, m: Month): MonthBase {
   return memo(ctx, 'mb' + m, () => {
     const r = computeMonthBase(ctx, m);
     // T-031 : les mois repris de l'historique gardent les montants du bulletin réel ; les mois calculés sont refusés.
-    if (r.active && !r.fromHistory) r.nonGere = nonGeresPeriode(ctx.c, ctx.leaves, firstDay(m), lastDay(m));
+    if (r.active && !r.fromHistory) r.nonGere = nonGeresPeriode(ctx.c, ctx.leaves, firstDay(m), lastDay(m), ctx.finControlee ? 'non' : 'tout');
     return r;
   });
 }
@@ -779,7 +784,7 @@ function applyAvenantRegul(ctx: Ctx, m: Month, r: MonthBase, firstPart?: MonthBa
     const start = regulStart(c, a.from);
     // T-038 (M-5, relecture V4) : une absence non gérée (maternité, accident du travail…) n'a pas de branche dans computeDay :
     // ses jours compteraient comme travaillés. Pas de régularisation, refus clair (même règle que les mois, T-031).
-    const ng = nonGeresPeriode(c, ctx.leaves, start, veille);
+    const ng = nonGeresPeriode(c, ctx.leaves, start, veille, ctx.finControlee ? 'non' : 'tout');
     if (ng.length) {
       r.alerts.push(`Régularisation à l’avenant du ${a.from.slice(8, 10)}/${a.from.slice(5, 7)} non calculée : un cas non géré par l’app touche la période depuis le ${start.split('-').reverse().join('/')}. ${ng.join(' ')} Calcule-la avec les parents.`);
       continue;

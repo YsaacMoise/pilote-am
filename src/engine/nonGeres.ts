@@ -1,6 +1,7 @@
 // T-031 : cas que l'app ne gère pas (charte, verrou 6 : « tout ce qui n'a pas passé les verrous 1 à 5 affiche non géré »).
 // Le moteur ne calcule pas ces cas : il les nomme et dit quoi faire. Aucune règle de paie n'est écrite ici.
 import { shortDate, type ISODate } from './dates';
+import { controleFinContrat } from './preavis';
 import { AM_ABS_LABEL, AM_ABS_NON_GEREES, type AmAbsNonGeree, type AmLeave, type Contract } from './model';
 
 export const NON_GERE_ALSACE =
@@ -54,7 +55,12 @@ export function contratACompleter(c: Pick<Contract, 'alsaceMoselle' | 'planningV
 }
 
 /** Cas non gérés qui touchent la période [from, to] du contrat : contrat à compléter, cas du contrat, puis absences non gérées */
-export function nonGeresPeriode(c: Contract, leaves: AmLeave[], from: ISODate, to: ISODate): string[] {
+/**
+ * `controleFin` (T-045b) : `tout` (défaut), contrôle de la date de fin saisie face au préavis, y compris sans réponse sur le
+ * préavis ; `connu`, seulement quand une réponse enregistrée ne concorde pas (jours de congés acquis : aucun montant n'est
+ * versé sans passer par le mois ou la fin de contrat, qui font le contrôle complet) ; `non`, contexte de fin.ts déjà contrôlé.
+ */
+export function nonGeresPeriode(c: Contract, leaves: AmLeave[], from: ISODate, to: ISODate, controleFin: 'tout' | 'connu' | 'non' = 'tout'): string[] {
   const out = nonGeresContrat(c);
   // Décision du DG du 18/11/2026 : sans réponse aux 4 questions, l'app ne sait pas si le cas est géré : rien n'est calculé.
   if (contratACompleter(c)) out.unshift(CONTRAT_A_COMPLETER);
@@ -65,6 +71,11 @@ export function nonGeresPeriode(c: Contract, leaves: AmLeave[], from: ISODate, t
     if (!estAbsenceNonGeree(l) || l.to < a || l.from > b) continue;
     const m = messageAbsenceNonGeree(l);
     if (!out.includes(m)) out.push(m);
+  }
+  // T-045b (P3-B1, C3-1 de V5) : date de fin saisie qui ne concorde pas avec le préavis, ou préavis sans réponse.
+  if (controleFin !== 'non' && (controleFin === 'tout' || c.rupture)) {
+    const f = controleFinContrat(c);
+    if (f && f.du <= to && f.au >= from) out.push(f.message);
   }
   return out;
 }
