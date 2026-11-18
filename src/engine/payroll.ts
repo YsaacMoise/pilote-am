@@ -596,6 +596,8 @@ export interface MonthBase {
   joursMaladieAConfirmer: number;
   /** Kilomètres saisis sans le nombre d'enfants transportés (CCN art. 113) : non payés, à confirmer (T-017) */
   kmAConfirmer: number;
+  /** T-044 : part de l'indemnité d'entretien qui dépend d'une lecture non tranchée (tarif par jour, jour d'une autre durée) ; hors du total */
+  entretienAConfirmer: number;
   /** Salaire net hors congés payés */
   net: number;
   /** Régularisation versée avec un avenant (année incomplète qui se termine) */
@@ -629,7 +631,7 @@ function emptyBase(m: Month): MonthBase {
     month: m, active: false, fromHistory: false, missing: false, salaireMens: 0, mensuelMin: 0, divisorDays: 0,
     divisorMin: 0, contractDays: 0, contractMin: 0, deductedDays: 0, deductedMin: 0, paidFraction: 0, base: 0,
     retenue: 0, heuresNormales: 0, joursActivite: 0, complMin: 0, majMin: 0, majContratMin: 0, complAmount: 0, majAmount: 0,
-    ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, evenementAConfirmer: 0, joursCpAConfirmer: 0, joursEvenementAConfirmer: 0, joursMaladieAConfirmer: 0, kmAConfirmer: 0, net: 0,
+    ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, evenementAConfirmer: 0, joursCpAConfirmer: 0, joursEvenementAConfirmer: 0, joursMaladieAConfirmer: 0, kmAConfirmer: 0, entretienAConfirmer: 0, net: 0,
     alerts: [], forgotten: [], sickPaidNotice: false, nonGere: [],
   };
 }
@@ -806,7 +808,7 @@ function hoursMin(min: number): string {
 }
 
 const SUM_KEYS = ['base', 'retenue', 'majContratMin', 'joursActivite', 'complMin', 'majMin', 'complAmount', 'majAmount', 'ferieAmount',
-  'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'evenementAConfirmer', 'joursCpAConfirmer', 'joursEvenementAConfirmer', 'joursMaladieAConfirmer', 'kmAConfirmer', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
+  'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'evenementAConfirmer', 'joursCpAConfirmer', 'joursEvenementAConfirmer', 'joursMaladieAConfirmer', 'kmAConfirmer', 'entretienAConfirmer', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
 
 function mergeParts(m: Month, parts: MonthBase[], cuts: ISODate[]): MonthBase {
   const r = emptyBase(m);
@@ -884,6 +886,8 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   let cDays = 0, cMin = 0, dedDays = 0, dedMin = 0, actDays = 0, cpSansDroits = 0;
   let entretienNonVerifie = false;
   let entretienSousMin = 0, entretienMinVerse = 0;
+  // T-044 : montants exacts (centimes non arrondis), arrondis une seule fois sur le mois.
+  let entretienExact = 0, entretienAConfExact = 0, entretienJoursAConf = 0, entretienHorsPlanning = 0;
   let suspDays = 0, suspMin = 0, kmJours = 0, sansSoldePayes = 0;
   const suspRaisons: string[] = [];
   const forgotten: ISODate[] = [];
@@ -909,13 +913,32 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
       if (di.presentMin > 0) {
         r.presenceDays++;
         if (di.plannedMin === 0) r.extraDays++;
-        const plancher = entretienPlancher(d, di.presentMin);
+        // T-044. Durée de travail du jour, CCN art. 99 : le travail débute à l'heure prévue ou à l'arrivée de l'enfant « si
+        // celle-ci est antérieure », et prend fin à l'heure prévue ou à son départ « si celle-ci est postérieure ». Soit les
+        // heures prévues plus la présence hors des plages prévues ; hors planning, la présence.
+        const travailMin = di.plannedMin > 0 ? di.plannedMin + di.extraMin : di.presentMin;
+        const plancher = entretienPlancher(d, travailMin);
         // T-023 : avant les barèmes vérifiés, le plancher légal n'est pas connu. L'app retient le montant du contrat et le dit.
         if (plancher === undefined) entretienNonVerifie = true;
-        // T-034 (ENTRETIEN-SOUS-MINIMUM) : le tarif du contrat sous le minimum est remplacé par le minimum (montant
-        // inchangé) et signalé, pour que le contrat soit corrigé.
-        if (plancher !== undefined && c.entretienJour < plancher) { entretienSousMin++; entretienMinVerse += plancher - c.entretienJour; }
-        r.entretien += Math.max(c.entretienJour, plancher ?? 0);
+        const p = plancher ?? 0;
+        if (c.entretienHeure && c.entretienHeure > 0) {
+          // CCN art. 114.1 : « versée en cas de travail effectif, par heure de travail » ; montant horaire prévu au contrat.
+          const tarif = (c.entretienHeure * travailMin) / 60;
+          if (plancher !== undefined && tarif < plancher) { entretienSousMin++; entretienMinVerse += plancher - tarif; }
+          entretienExact += Math.max(tarif, p);
+        } else {
+          // Tarif par jour : la CCN fixe un montant horaire. Lecture 1 : le tarif vaut pour la journée, quelle que soit sa
+          // durée. Lecture 2 : il vaut pour les heures prévues ce jour-là et suit la durée de travail (« Il varie en fonction
+          // de la durée de travail effectif »). Hors planning, aucune durée de référence : seul le minimum est certain.
+          // T-034 (ENTRETIEN-SOUS-MINIMUM) : le tarif du contrat sous le minimum est remplacé par le minimum et signalé.
+          if (plancher !== undefined && c.entretienJour < plancher) { entretienSousMin++; entretienMinVerse += plancher - c.entretienJour; }
+          const lecture1 = Math.max(c.entretienJour, p);
+          const lecture2 = di.plannedMin > 0 ? Math.max((c.entretienJour * travailMin) / di.plannedMin, p) : undefined;
+          const certain = lecture2 === undefined ? (plancher === undefined ? lecture1 : p) : Math.min(lecture1, lecture2);
+          const ecart = (lecture2 === undefined ? lecture1 : Math.max(lecture1, lecture2)) - certain;
+          entretienExact += certain;
+          if (ecart > 0) { entretienAConfExact += ecart; entretienJoursAConf++; if (lecture2 === undefined) entretienHorsPlanning++; }
+        }
         const nbRepas = di.rec?.repas ?? c.repasParJour;
         r.repas += nbRepas * c.repasPrix;
       }
@@ -986,9 +1009,11 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     const objet = joindre(naturesAConfirmer(r).map((n) => ({ evenement: 'événement familial', cp: 'congés', maladie: 'enfant malade' })[n])).replace(/^./, (x) => x.toUpperCase());
     r.alerts.push(`${objet} : ${dayCountLabel(suspDays)} ni payé${suspDays > 1 ? 's' : ''} ni retenu${suspDays > 1 ? 's' : ''}, ${euros(r.evenementAConfirmer)} de salaire à confirmer (non compris dans le total).`);
   }
+  r.entretien = Math.round(entretienExact);
+  r.entretienAConfirmer = Math.round(entretienAConfExact);
   if (r.kmAConfirmer) r.alerts.push(`${r.kmAConfirmer} km à confirmer, non comptés. Pour chaque jour, indique si une autre famille a aussi demandé le trajet. Si oui, indique aussi les enfants dans la voiture : l’indemnité est alors partagée entre eux (article 113 de la convention). Si non, elle est due en entier.`);
   // T-025 C-7 : mois terminé, peut-être déjà déclaré à Pajemploi avant la mise à jour qui a rendu ces montants « à confirmer ».
-  if ((r.evenementAConfirmer || r.kmAConfirmer) && to < ctx.today && !r.alerts.includes(MESSAGE_MOIS_DEJA_DECLARE)) r.alerts.push(MESSAGE_MOIS_DEJA_DECLARE);
+  if ((r.evenementAConfirmer || r.kmAConfirmer || r.entretienAConfirmer) && to < ctx.today && !r.alerts.includes(MESSAGE_MOIS_DEJA_DECLARE)) r.alerts.push(MESSAGE_MOIS_DEJA_DECLARE);
   // T-038 (G-1, relecture V4 du diff m8) : mois terminé avec des jours notés « sans solde » avant la mise à jour T-035b. Il a
   // pu être déclaré à Pajemploi avec la retenue ; son salaire affiché est maintenant plus haut. Le dire, et quoi faire.
   if (sansSoldePayes && to < ctx.today) {
@@ -998,7 +1023,10 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   if (kmJours && c.kmTaux > 0) for (const m of controleKm(ctx.c.kmCv, c.kmTaux, segFrom).messages) if (!r.alerts.includes(m)) r.alerts.push(m);
   // CCN art. 114.1 : « le montant journalier de cette indemnité ne peut pas être inférieur à 2,65 € » et le montant horaire
   // ne peut être « inférieur à 90 % du minimum garanti lorsque la durée de travail journalière est de 9 heures ».
-  if (entretienSousMin) r.alerts.push(`Indemnité d’entretien : le montant du contrat (${euros(c.entretienJour)} par jour) est sous le minimum de la convention (article 114.1) pour ${dayCountLabel(entretienSousMin)}. L’app verse le minimum, soit ${euros(entretienMinVerse)} de plus que le contrat ce mois-ci. Fais corriger le contrat avec les parents, par un avenant.`);
+  if (r.entretienAConfirmer) {
+    r.alerts.push(`Indemnité d’entretien : ${euros(r.entretienAConfirmer)} à confirmer, non compris dans le total, pour ${dayCountLabel(entretienJoursAConf)} dont la durée de travail n’est pas celle du planning${entretienHorsPlanning ? ` (dont ${dayCountLabel(entretienHorsPlanning)} hors planning)` : ''}. Le contrat donne un montant par jour, mais la convention (article 114.1) prévoit un montant par heure de travail, qui varie avec la durée du jour. L’app verse la part certaine : le plus bas des deux calculs, et au moins le minimum. Le reste dépend de ce que vaut ton tarif du jour : pour la journée entière, ou pour les heures prévues. Le plus simple : un avenant qui fixe un montant par heure.`);
+  }
+  if (entretienSousMin) r.alerts.push(`Indemnité d’entretien : le montant du contrat (${c.entretienHeure ? `${euros(c.entretienHeure)} par heure` : `${euros(c.entretienJour)} par jour`}) est sous le minimum de la convention (article 114.1) pour ${dayCountLabel(entretienSousMin)}. L’app verse le minimum, soit ${euros(Math.round(entretienMinVerse))} de plus que le contrat ce mois-ci. Fais corriger le contrat avec les parents, par un avenant.`);
   if (entretienNonVerifie) r.alerts.push(`${MESSAGE_PERIODE_NON_GEREE} Indemnité d’entretien : l’app retient le montant du contrat, sans contrôle du minimum légal ; vérifie-le avec les parents.`);
   // R-CP-09 : un congé dont le décompte reste ambigu est signalé, pas tranché (T-019).
   for (const a of cpAConfirmerEntre(ctx, segFrom, segTo)) if (!r.alerts.includes(a)) r.alerts.push(a);

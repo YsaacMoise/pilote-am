@@ -207,7 +207,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
       const prixRepas = TYPES_REPAS.map((t) => i.repas[t]).filter((x) => x > 0);
       sessionStorage.setItem(BROUILLON_CONTRAT, JSON.stringify({
         planning: i.planning, yearType: i.yearType, weeks: r.semaines, majoration: i.majoration, rateNet: r.tauxNet,
-        entretienJour: i.entretienMode === 'jour' ? i.entretien : 0, repasPrix: prixRepas[0] ?? 0, repasParJour: prixRepas.length, kmTaux: r.km > 0 ? i.kmTaux : 0,
+        entretienJour: i.entretienMode === 'jour' ? i.entretien : 0, ...(i.entretienMode === 'heure' && i.entretien ? { entretienHeure: i.entretien } : {}), repasPrix: prixRepas[0] ?? 0, repasParJour: prixRepas.length, kmTaux: r.km > 0 ? i.kmTaux : 0,
       }));
     } catch { /* stockage indisponible : le contrat partira des valeurs par défaut */ }
     logUsage('simulateur_contrat', 'simulateur');

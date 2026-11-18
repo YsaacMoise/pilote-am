@@ -141,7 +141,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
             {r.cpIndemnite > 0 && (<><dt>Congés payés</dt><dd>{euros(r.cpIndemnite)}</dd></>)}
             {r.cpComplement > 0 && (<><dt>Complément congés</dt><dd>{euros(r.cpComplement)}</dd></>)}
             <dt>Salaire net</dt><dd>{euros(r.netTotal)}</dd>
-            <dt>Entretien ({r.presenceDays} j)</dt><dd>{euros(r.entretien)}</dd>
+            <dt>Entretien ({r.presenceDays} j)</dt><dd>{euros(r.entretien)}{r.entretienAConfirmer ? ` + ${euros(r.entretienAConfirmer)} à confirmer` : ''}</dd>
             {r.repas > 0 && (<><dt>Repas</dt><dd>{euros(r.repas)}</dd></>)}
             {r.km > 0 && (<><dt>Kilomètres</dt><dd>{euros(r.km)}</dd></>)}
           </dl>

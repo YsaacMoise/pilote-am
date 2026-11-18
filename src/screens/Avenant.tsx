@@ -7,6 +7,7 @@ import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, terms
 import { libelleMinimumBrut, MESSAGE_PERIODE_NON_GEREE, MINIMUM_SANS_TITRE, minimumBrut, ratesAt } from '../engine/rates';
 import { euros, hoursLabel } from '../engine/money';
 import { TERM_KEYS, type Avenant as Av, type Contract, type Planning, type Terms } from '../engine/model';
+import { EntretienSaisie } from './EntretienSaisie';
 import { Banner, Choices, DateInput, EuroInput, NumberInput, Seg, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { PlanDay, avenantSummary } from './Contrat';
@@ -100,7 +101,7 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
             <EuroInput label="Taux horaire net" hint={!rates ? MESSAGE_PERIODE_NON_GEREE : rates.minConvNet === undefined ? `Minimum en ${monthLabel(month)} : ${libelleMinimumBrut(minimumBrut(date)!)} (pas de repère net dans l’app)` : `Minimum conventionnel en ${monthLabel(month)} : ${euros(rates.minConvNet)} net`} cents={t.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
             {t.rateNet > 0 && rates?.minConvNet !== undefined && t.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel.</Banner>}
             {rates?.minConvNet !== undefined && <p class="hint">{MINIMUM_SANS_TITRE}</p>}
-            <EuroInput label="Indemnité d’entretien par jour" cents={t.entretienJour} onChange={(v) => set({ entretienJour: v ?? 0 })} />
+            <EntretienSaisie t={t} set={set} />
             <Choices label="Qui fournit les repas de l’enfant ?" value={t.repasParents === undefined ? undefined : t.repasParents ? 'parents' : 'am'}
               onChange={(v) => set(v === 'parents' ? { repasParents: true, repasPrix: 0, repasParJour: 0 } : { repasParents: false })}
               options={[{ v: 'am', l: 'Moi' }, { v: 'parents', l: 'Les parents' }]} />

@@ -31,8 +31,8 @@ export interface StartBalances {
 }
 
 /** Conditions du contrat qu'un avenant peut changer */
-export type Terms = Pick<Contract, 'planning' | 'rateNet' | 'majoration' | 'majorationCompl' | 'entretienJour' | 'repasPrix' | 'repasParJour' | 'repasParents' | 'kmTaux' | 'yearType' | 'weeks' | 'weeksOff'>;
-export const TERM_KEYS: (keyof Terms)[] = ['planning', 'rateNet', 'majoration', 'majorationCompl', 'entretienJour', 'repasPrix', 'repasParJour', 'repasParents', 'kmTaux', 'yearType', 'weeks', 'weeksOff'];
+export type Terms = Pick<Contract, 'planning' | 'rateNet' | 'majoration' | 'majorationCompl' | 'entretienJour' | 'entretienHeure' | 'repasPrix' | 'repasParJour' | 'repasParents' | 'kmTaux' | 'yearType' | 'weeks' | 'weeksOff'>;
+export const TERM_KEYS: (keyof Terms)[] = ['planning', 'rateNet', 'majoration', 'majorationCompl', 'entretienJour', 'entretienHeure', 'repasPrix', 'repasParJour', 'repasParents', 'kmTaux', 'yearType', 'weeks', 'weeksOff'];
 
 /** Avenant : nouvelles conditions à partir d'une date */
 export interface Avenant {
@@ -70,6 +70,12 @@ export interface Contract {
   majorationCompl?: number;
   /** Indemnité d'entretien prévue au contrat par jour (centimes) — le plancher légal s'applique s'il est supérieur */
   entretienJour: number;
+  /**
+   * T-044 : indemnité d'entretien prévue au contrat par heure de travail (centimes). CCN art. 114.1 : « versée en cas de
+   * travail effectif, par heure de travail. Le montant horaire de cette indemnité est prévu dans le contrat de travail ».
+   * Renseignée (> 0), elle remplace `entretienJour`. Absente sur les anciens contrats : tarif par jour.
+   */
+  entretienHeure?: number;
   /** Prix d'un repas fourni (centimes) et nombre de repas par jour d'accueil */
   repasPrix: number;
   repasParJour: number;

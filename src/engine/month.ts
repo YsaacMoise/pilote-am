@@ -63,7 +63,7 @@ export function declarationLines(ctx: Ctx, r: MonthResult): DeclLine[] {
       hint: `Au-delà de 45 h dans la semaine, prévues au contrat ou en plus, +${termsAt(ctx.c, `${r.month}-01`).majoration}\u00a0%`,
     },
     { label: 'Salaire net', value: `${euros(r.netTotal)}${r.cpAConfirmer ? ' + congés à confirmer' : ''}${r.evenementAConfirmer ? ` + ${euros(r.evenementAConfirmer)} ${libelleSalaireAConfirmer(r)} à confirmer` : ''}` },
-    { label: 'Indemnités d’entretien', value: euros(r.entretien), hint: `${r.presenceDays} jour${r.presenceDays > 1 ? 's' : ''} d’accueil` },
+    { label: 'Indemnités d’entretien', value: r.entretienAConfirmer ? `${euros(r.entretien)} + ${euros(r.entretienAConfirmer)} à confirmer` : euros(r.entretien), hint: `${r.presenceDays} jour${r.presenceDays > 1 ? 's' : ''} d’accueil` },
     { label: 'Frais de repas', value: euros(r.repas) },
     { label: 'Frais kilométriques', value: r.kmAConfirmer ? `${euros(r.km)} + ${r.kmAConfirmer} km à confirmer` : euros(r.km) },
   ];
@@ -99,6 +99,7 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   if (r.cpAConfirmer) out.push('• Indemnité de congés payés : à confirmer ensemble');
   if (r.evenementAConfirmer) out.push(`• Salaire ${libelleSalaireAConfirmer(r)} : ${euros(r.evenementAConfirmer)} à confirmer ensemble`);
   out.push('');
+  if (r.entretienAConfirmer) out.push(`• Indemnité d’entretien : ${euros(r.entretienAConfirmer)} à confirmer ensemble (tarif du contrat par jour, journées d’une autre durée que le planning)`);
   if (r.kmAConfirmer) out.push(`• Frais kilométriques : ${r.kmAConfirmer} km à confirmer ensemble (familles qui ont demandé le trajet, enfants dans la voiture)`);
   const aConfirmer = partsAConfirmer(r);
   out.push(`Total à me verser : ${euros(r.netTotal + r.entretien + r.repas + r.km)}${aConfirmer.length ? `, sans ${aConfirmer.join(' ni ')} à confirmer` : ''}`);
@@ -110,10 +111,10 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
 }
 
 /** Parts du mois sorties du total parce qu'elles sont à confirmer (T-025 C-5 : à dire partout où le total s'affiche) */
-export function partsAConfirmer(r: Pick<MonthResult, 'cpAConfirmer' | 'evenementAConfirmer' | 'kmAConfirmer'> & Partial<Pick<MonthResult, 'joursCpAConfirmer' | 'joursEvenementAConfirmer' | 'joursMaladieAConfirmer'>>): string[] {
+export function partsAConfirmer(r: Pick<MonthResult, 'cpAConfirmer' | 'evenementAConfirmer' | 'kmAConfirmer'> & Partial<Pick<MonthResult, 'joursCpAConfirmer' | 'joursEvenementAConfirmer' | 'joursMaladieAConfirmer' | 'entretienAConfirmer'>>): string[] {
   // T-030 : un salaire à confirmer peut venir de congés pris peut-être au-delà des droits (année complète, A-23).
   // T-033 : ou de jours d'enfant malade (art. 105, lectures divergentes).
   const salaire = !r.evenementAConfirmer ? [] : naturesAConfirmer(r).map((n) => ({
     evenement: 'l’événement familial', cp: 'les congés pris au-delà des droits', maladie: 'les jours d’enfant malade' })[n]);
-  return [r.cpAConfirmer ? 'les congés payés' : '', ...salaire, r.kmAConfirmer ? 'les kilomètres' : ''].filter(Boolean);
+  return [r.cpAConfirmer ? 'les congés payés' : '', ...salaire, r.entretienAConfirmer ? 'une part de l’entretien' : '', r.kmAConfirmer ? 'les kilomètres' : ''].filter(Boolean);
 }
