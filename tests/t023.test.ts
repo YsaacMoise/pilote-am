@@ -237,3 +237,52 @@ describe('T-017 indemnité kilométrique (CCN art. 57 et 113)', () => {
     expect(r.alerts.join(' ')).toMatch(/renseigne la puissance fiscale/);
   });
 });
+
+describe('T-025 C-1 : durée d’un événement familial comptée par événement, pas par absence saisie', () => {
+  // CCN 48.1.3.1.1 (en vigueur étendu, relu le 18/11/2026) : « 4 jours ouvrables pour son mariage » ; « 3 jours ouvrables
+  // pour le décès […] d'un frère ou d'une sœur » ; « Ces congés sont pris au moment de l'événement ou, en accord avec le
+  // particulier employeur, dans les jours qui entourent l'événement. » Octobre 2026 : aucun jour férié.
+  const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01' });
+  let id = 0;
+  const ev = (from: string, to: string, nature: NatureEvenement): AmLeave => ({ id: `e${++id}`, type: 'evenement', from, to, nature });
+  const mois = (leaves: AmLeave[], m = '2026-10') => computeMonth(makeCtx(c, [], leaves, '2026-12-31'), m);
+  const sansAbsence = mois([]);
+
+  it('mariage saisi en deux absences (05-06/10 puis 07-09/10) : 4 jours payés, le 5e à confirmer, comme en une seule saisie', () => {
+    const une = mois([ev('2026-10-05', '2026-10-09', 'mariage')]);
+    const deux = mois([ev('2026-10-05', '2026-10-06', 'mariage'), ev('2026-10-07', '2026-10-09', 'mariage')]);
+    expect(deux.retenue).toBe(0);
+    expect(deux.evenementAConfirmer).toBeGreaterThan(0);
+    expect(deux.evenementAConfirmer).toBe(une.evenementAConfirmer);
+    expect(deux.net).toBe(une.net);
+    expect(deux.joursActivite).toBe(sansAbsence.joursActivite - 1);
+    expect(deux.alerts.join(' ')).toMatch(/autre absence pour le même type d’événement/);
+  });
+
+  it('mariage du jeudi 08/10 au vendredi 09/10 puis du lundi 12/10 au mardi 13/10 : le samedi compte comme en une saisie, le 13/10 à confirmer', () => {
+    // Jours ouvrables comptés : 08, 09, samedi 10, 12 → 4 ; le 13/10 dépasse.
+    const deux = mois([ev('2026-10-08', '2026-10-09', 'mariage'), ev('2026-10-12', '2026-10-13', 'mariage')]);
+    const une = mois([ev('2026-10-08', '2026-10-13', 'mariage')]);
+    expect(deux.evenementAConfirmer).toBe(une.evenementAConfirmer);
+    expect(deux.joursActivite).toBe(sansAbsence.joursActivite - 1);
+  });
+
+  it('deux décès d’un proche à 12 jours d’écart : la seconde absence est à confirmer (même événement ou non), jamais payée en silence', () => {
+    // 05-07/10 : 3 jours ouvrables, payés. 19-21/10 : même nature, 12 jours après → reliée ; à confirmer.
+    const r = mois([ev('2026-10-05', '2026-10-07', 'deces_proche'), ev('2026-10-19', '2026-10-21', 'deces_proche')]);
+    expect(r.retenue).toBe(0);
+    expect(r.joursActivite).toBe(sansAbsence.joursActivite - 3);
+    expect(r.alerts.join(' ')).toMatch(/si c’est un autre événement, il est dû/);
+  });
+
+  it('deux décès d’un proche à plus de 15 jours d’écart : deux événements, chacun ses 3 jours payés', () => {
+    const r = mois([ev('2026-09-07', '2026-09-09', 'deces_proche'), ev('2026-10-05', '2026-10-07', 'deces_proche')]);
+    expect(r.evenementAConfirmer).toBe(0);
+    expect(r.net).toBe(sansAbsence.net);
+  });
+
+  it('natures différentes (naissance puis mariage) : pas reliées', () => {
+    const r = mois([ev('2026-10-05', '2026-10-07', 'naissance'), ev('2026-10-08', '2026-10-09', 'mariage')]);
+    expect(r.evenementAConfirmer).toBe(0);
+  });
+});

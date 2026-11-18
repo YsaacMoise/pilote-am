@@ -3,7 +3,7 @@
 // L3142-4 (plancher : la durée conventionnelle « ne peut être inférieure à »), rendu applicable aux AM par CASF L423-2, 12°.
 // On retient la plus favorable à l'AM. Les jours sont des jours ouvrables (CCN 48.1.3.1.1 ; L3142-4, dernier alinéa).
 // Textes relus le 18/11/2026 : projet/moteur/correctifs-t023.md, section 1.3.
-import { eachDay, weekday, type ISODate } from './dates';
+import { addDays, daysBetween, eachDay, weekday, type ISODate } from './dates';
 import { holidayName } from './holidays';
 import type { AmLeave, NatureEvenement } from './model';
 
@@ -51,23 +51,90 @@ export function dureeEvenement(nature: NatureEvenement, d: ISODate): number | un
 /** Jour ouvrable : lundi → samedi, hors jours fériés (même règle que le décompte des congés payés, conges.ts) */
 const ouvrable = (d: ISODate) => weekday(d) <= 6 && !holidayName(d);
 
-/** Statut d'un jour d'événement familial : payé comme événement, ou à confirmer avec la raison et ce qu'il faut faire */
-export function statutJourEvenement(l: AmLeave, d: ISODate): { paye: true } | { paye: false; raison: string } {
+/**
+ * T-025 C-1 : la durée se compte par événement, pas par absence saisie (CCN 48.1.3.1.1 : « 4 jours ouvrables pour son
+ * mariage » ; « Ces congés sont pris au moment de l'événement ou […] dans les jours qui entourent l'événement » ;
+ * naissance : « dans les 15 jours entourant l'événement »). L'app ne sait pas si deux absences de même nature sont le
+ * même événement. Choix sans texte (signalé) : deux absences « événement » de même nature séparées de 15 jours
+ * calendaires au plus sont reliées ; leurs jours se cumulent. Ce qui dépasse la durée est « à confirmer », jamais payé
+ * ni retenu en silence.
+ */
+export const LIEN_EVENEMENT_JOURS = 15;
+
+/** Absences de même nature reliées à `l` (elle comprise), de la plus ancienne à `l` */
+export function chaineEvenement(l: AmLeave, leaves: AmLeave[]): AmLeave[] {
+  const chaine = [l];
+  let cur = l;
+  for (;;) {
+    let prev: AmLeave | undefined;
+    for (const p of leaves) {
+      if (p === cur || p.id === cur.id || p.type !== 'evenement' || p.nature !== l.nature || p.from >= cur.from) continue;
+      if (daysBetween(p.to, cur.from) > LIEN_EVENEMENT_JOURS) continue;
+      if (!prev || p.to > prev.to) prev = p;
+    }
+    if (!prev || chaine.includes(prev)) return chaine;
+    chaine.unshift(prev);
+    cur = prev;
+  }
+}
+
+/**
+ * Jours comptés pour la durée, jusqu'à `d` compris : les jours des absences reliées, plus les jours entre deux absences
+ * qui se suivent sans jour ouvré entre elles (un week-end ou un férié : même compte que si une seule absence avait été
+ * saisie). Le jour `d` doit être dans la dernière absence de la chaîne.
+ */
+function joursCouverts(chaine: AmLeave[], d: ISODate): ISODate[] {
+  const set = new Set<ISODate>();
+  chaine.forEach((x, i) => {
+    for (const j of eachDay(x.from, x.to < d ? x.to : d)) set.add(j);
+    const suiv = chaine[i + 1];
+    if (suiv && x.to < suiv.from) {
+      const entre = eachDay(addDays(x.to, 1), addDays(suiv.from, -1));
+      if (entre.every((j) => weekday(j) === 7 || weekday(j) === 6 || holidayName(j))) for (const j of entre) set.add(j);
+    }
+  });
+  return [...set].filter((j) => j <= d).sort();
+}
+
+/**
+ * Statut d'un jour d'événement familial : payé comme événement, ou à confirmer avec la raison et ce qu'il faut faire.
+ * `leaves` : toutes les absences de l'AM, pour relier les saisies d'un même événement (T-025 C-1).
+ */
+export function statutJourEvenement(l: AmLeave, d: ISODate, leaves: AmLeave[] = [l]): { paye: true } | { paye: false; raison: string } {
   const qui = `Événement familial du ${jjmm(l.from)} au ${jjmm(l.to)}`;
   if (!l.nature) {
     return { paye: false, raison: `${qui} : la nature de l’événement n’est pas renseignée : la durée payée en dépend. Dans Congés, supprime cette absence et saisis-la à nouveau avec sa nature (mariage, naissance, décès…).` };
   }
-  if (l.from < EVENEMENTS_GERES_DEPUIS) {
+  const chaine = chaineEvenement(l, leaves);
+  const debut = chaine[0];
+  if (debut.from < EVENEMENTS_GERES_DEPUIS) {
     return { paye: false, raison: `${qui} : période non gérée (avant le 01/05/2024, la version applicable de l’article 48.1.3.1.1 n’est pas tranchée). Vérifie la durée avec les parents.` };
   }
-  const duree = dureeEvenement(l.nature, l.from);
+  const duree = dureeEvenement(l.nature, debut.from);
   if (duree === undefined) {
     return { paye: false, raison: `${qui} : congé de deuil non géré par l’app. La sécurité sociale verse des indemnités journalières ; l’employeur maintient le salaire en les déduisant (article 48.1.3.1.3). Calcule-le avec les parents.` };
   }
-  const n = eachDay(l.from, d).filter(ouvrable).length;
+  const n = joursCouverts(chaine, d).filter(ouvrable).length;
   if (ouvrable(d) && n <= duree) return { paye: true };
   if (!ouvrable(d) && n < duree) {
     return { paye: false, raison: `${qui} : un jour prévu au planning tombe un dimanche ou un férié pendant le congé ; l’app ne sait pas s’il est couvert. Vérifie-le avec les parents.` };
+  }
+  const autres = chaine.slice(0, -1);
+  if (autres.length) {
+    // Lecture « autre événement » : la durée se compte depuis cette seule absence.
+    const dureeSeule = dureeEvenement(l.nature, l.from) ?? 0;
+    const nSeule = eachDay(l.from, d).filter(ouvrable).length;
+    const dates = autres.map((x) => `du ${jjmm(x.from)} au ${jjmm(x.to)}`).join(', ');
+    if (ouvrable(d) && nSeule <= dureeSeule) {
+      return {
+        paye: false,
+        raison: `${qui} : une autre absence pour le même type d’événement est saisie ${dates}. Si c’est le même événement, ce jour dépasse les ${dureeLabel(duree)} prévus (convention, article 48.1.3.1.1) ; si c’est un autre événement, il est dû. Vérifie avec les parents. Si c’est le même, saisis ce jour en congé payé ou sans solde, selon votre accord.`,
+      };
+    }
+    return {
+      paye: false,
+      raison: `${qui} : ${dureeLabel(duree)} au plus pour cet événement (convention, article 48.1.3.1.1, et Code du travail L3142-4), en comptant l’absence saisie ${dates}. Les jours en plus ne sont pas payés comme événement : saisis-les en congé payé ou sans solde, selon votre accord.`,
+    };
   }
   return {
     paye: false,

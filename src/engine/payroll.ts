@@ -184,7 +184,7 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
         info.inDivisor = true;
       } else if (amLeave === 'evenement') {
         info.inDivisor = true;
-        const st = statutJourEvenement(amLeaveAt(ctx.leaves, d)!, d);
+        const st = statutJourEvenement(amLeaveAt(ctx.leaves, d)!, d, ctx.leaves);
         if (!st.paye) info.aConfirmer = st.raison;
       }
     }
