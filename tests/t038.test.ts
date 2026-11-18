@@ -69,3 +69,28 @@ describe('T-038 B-1 : la régularisation ne verse jamais en silence un salaire �
     expect(alerte).toContain(`${euros(retenu.regulAvenant!)} s’ils ne le sont pas`);
   });
 });
+
+// Année complète, 40 h du lundi au vendredi, 5 € net, contrat commencé le 01/06/2026 (début de la période de référence).
+const complete = (over: Partial<Contract> = {}) => contract({ start: '2026-06-01', trackedFrom: '2026-06-01', yearType: 'complete', weeks: 52, weeksOff: [], ...over });
+const finC = (notif: string, motif: 'retrait' | 'demission', presentation?: string) => finDeContrat(makeCtx(complete(), [], [], '2027-01-18'), notif, motif, 0, presentation);
+
+describe('T-038 AC-2 : date de fin du préavis à confirmer, indemnité de congés non pris comparée à la fin J+1', () => {
+  it('fin le 22/10/2026 ou le 23/10/2026 : même indemnité, elle reste comptée', () => {
+    const f = finC('2026-10-08', 'retrait');
+    expect(f.dernierJour).toBe('2026-10-22');
+    expect(f.cpAConfirmer).toBeUndefined();
+    expect(f.cpIndemnite).toBeGreaterThan(0);
+  });
+  it('fin le 23/10/2026 : le lendemain, le nombre de jours acquis devient à confirmer ; rien n’est compté', () => {
+    const f = finC('2026-10-09', 'retrait');
+    const lendemain = finC('2026-10-09', 'retrait', '2026-10-10');
+    expect(f.dernierJour).toBe('2026-10-23');
+    expect(lendemain.dernierJour).toBe('2026-10-24');
+    // À la fin du 24/10, l'acquisition elle-même est à confirmer (A-23, deux fiches DREETS) : pas de montant.
+    expect(lendemain.cpAConfirmer).toMatch(/Tes jours de congés de cette période sont à confirmer/);
+    expect(f.cpIndemnite).toBe(0);
+    expect(f.cpAConfirmer).toMatch(/^Indemnité de congés non pris à confirmer/);
+    expect(f.cpAConfirmer).toMatch(/Fin le 23\/10\/2026 : [\d\s\u202f\u00a0]+,\d\d\u00a0€/);
+    expect(f.cpAConfirmer).toContain('Fin le 24/10/2026 : nombre de jours à confirmer');
+  });
+});

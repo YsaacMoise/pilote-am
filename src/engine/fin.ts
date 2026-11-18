@@ -285,8 +285,8 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // depuis l'embauche, le début du suivi ou le dernier passage d'une année à l'autre (C-001 : les autres avenants ne coupent pas).
   const finTerms = termsAt(c, dernierJour);
   const regStart = regulStart(c, addDays(dernierJour, 1));
-  // T-038 : chaque date de fin possible (fin calculée ; fin un jour plus tard si la date est à confirmer, T-033) donne sa
-  // régularisation. Un montant qui change d'une variante à l'autre, ou selon les jours « à confirmer » (B-1), n'est ni donné
+  // T-038 : chaque date de fin possible (fin calculée ; fin un jour plus tard si la date est à confirmer, T-033 et AC-2) donne
+  // sa régularisation et ses congés non pris. Un montant qui change d'une variante à l'autre, ou selon les jours « à confirmer » (B-1), n'est ni donné
   // ni compté : il est « à confirmer » avec ses valeurs.
   const variantes: { fin: ISODate; libelle: string }[] = [{ fin: dernierJour, libelle: `fin le ${shortDate(dernierJour)}` }];
   if (preavisFinAConfirmer) variantes.push({ fin: addDays(dernierJour, 1), libelle: `fin le ${shortDate(addDays(dernierJour, 1))}` });
@@ -333,8 +333,18 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // Congés non pris
   const cpPour = (fin: ISODate) => congesNonPris(ctxFin(fin), c, fin, enfants);
   const cp = cpPour(dernierJour);
-  const { cpIndemnite, cpExplication, cpAConfirmer } = cp;
+  let { cpIndemnite, cpExplication, cpAConfirmer } = cp;
   const cpJoursRestants = cp.jours;
+  if (!cpAConfirmer && variantes.length > 1) {
+    // T-038 (AC-2) : l'indemnité de congés non pris dépend aussi de la date de fin (acquisition, base du dixième).
+    const autres = variantes.map((v) => ({ ...v, x: v.fin === dernierJour ? cp : cpPour(v.fin) }));
+    if (autres.some((v) => v.x.cpAConfirmer || v.x.cpIndemnite !== cp.cpIndemnite)) {
+      cpAConfirmer = `Indemnité de congés non pris à confirmer : elle dépend de la date de fin du préavis, à confirmer. `
+        + `${autres.map((v) => `${v.libelle.replace(/^./, (x) => x.toUpperCase())} : ${v.x.cpAConfirmer ? 'nombre de jours à confirmer' : euros(v.x.cpIndemnite)}`).join(' ; ')}. Elle n'est pas comptée dans le total.`;
+      cpIndemnite = 0;
+      cpExplication = 'À confirmer : le montant dépend de la date de fin du contrat. L’app ne donne pas de montant.';
+    }
+  }
 
   // T-031 : un cas non géré pendant le contrat (Alsace-Moselle, horaires variables, accueil occasionnel, congé maternité,
   // accident du travail…) fausse les salaires de référence, l'ancienneté retenue ou les congés : aucun montant.
