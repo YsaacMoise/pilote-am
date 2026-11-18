@@ -163,3 +163,34 @@ describe('T-041 suite : les jours à confirmer passent dans le mois, la régular
     expect(JSON.stringify(f)).toMatch(/d’enfant malade/);
   });
 });
+
+// T-041 suite 2 (direction) : ambiguïtés (a), (b), (c) de l'art. 105. Le texte (lu en entier, Légifrance
+// KALISCTA000043941866) ne les tranche pas : quand le résultat change selon la lecture, les jours sont « à confirmer ».
+describe('T-041 suite 2 : art. 105, lectures non tranchées (a), (b), (c)', () => {
+  const malades = (jours: string[]) => jours.map((d) => rec(d, { abs: 'malade_certif' }));
+  it('(a) absence à cheval sur la date anniversaire (11/03) : les jours d’après l’anniversaire sont à confirmer', () => {
+    // 5 jours courts déjà retenus en février (période 1), puis absence du lundi 9 au vendredi 13 mars 2026.
+    const c = contract({ start: '2025-03-11', trackedFrom: '2025-03-11' });
+    const jours = ['2026-02-02', '2026-02-03', '2026-02-04', '2026-02-05', '2026-02-06', '2026-03-09', '2026-03-10', '2026-03-11', '2026-03-12', '2026-03-13'];
+    const { retenus, aConfirmer } = sickLectures(makeCtx(c, malades(jours), [], '2026-04-01'));
+    expect([...retenus].sort()).toEqual(jours.slice(0, 5));
+    expect([...aConfirmer.keys()].sort()).toEqual(['2026-03-11', '2026-03-12', '2026-03-13']);
+    expect(aConfirmer.get('2026-03-11')!).toMatch(/date anniversaire du contrat \(11\/03\)/);
+  });
+  it('(b) accueil le lundi seulement : absence de 3 lundis (15 jours calendaires), courte ou de 14 jours ? à confirmer', () => {
+    const c = contract({ planning: week('08:00', '17:00', [1]) });
+    // 4 lundis isolés (un lundi de présence entre chacun), puis 3 lundis d'affilée : 2, 9 et 16 mars (lundi 23 février présent).
+    const jours = ['2026-01-05', '2026-01-19', '2026-02-02', '2026-02-16', '2026-03-02', '2026-03-09', '2026-03-16'];
+    const { retenus, aConfirmer } = sickLectures(makeCtx(c, malades(jours), [], '2026-04-01'));
+    expect([...retenus].sort()).toEqual(jours.slice(0, 5));
+    expect([...aConfirmer.keys()]).toEqual(['2026-03-09']);
+    expect(aConfirmer.get('2026-03-09')!).toMatch(/5 jours d’accueil ou moins/);
+  });
+  it('(c) 6 jours déjà retenus avant l’app : courts ou absence longue ? les 3 jours suivants sont à confirmer', () => {
+    const c = contract({ start: '2025-09-01', trackedFrom: '2026-01-05', balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 6 } });
+    const { retenus, aConfirmer } = sickLectures(makeCtx(c, malades(['2026-03-02', '2026-03-03', '2026-03-04']), [], '2026-04-01'));
+    expect(retenus.size).toBe(0);
+    expect(aConfirmer.size).toBe(3);
+    expect(aConfirmer.get('2026-03-02')!).toMatch(/6 jours déjà retenus avant le suivi par l’app/);
+  });
+});
