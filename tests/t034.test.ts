@@ -96,8 +96,10 @@ describe('T-034 point 4 : indemnité d’entretien du contrat sous le minimum (C
   it('tarif de 1 € par jour : le minimum est versé (montant inchangé) et l’alerte est affichée', () => {
     const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', planning: week('08:00', '12:00'), entretienJour: 100 });
     const avec = monthBase(makeCtx(c, [], [], '2026-12-31'), '2026-03');
-    expect(avec.presenceDays).toBeGreaterThan(0);
-    expect(avec.entretien).toBeGreaterThanOrEqual(265 * avec.presenceDays);
+    // T-038 (M-4) : attendu exact. Mars 2026 : 22 jours du lundi au vendredi, aucun férié ; 4 h par jour ; MG 4,25 €
+    // (rates.ts, 01/01/2026) : max(2,65 €, 4,25 € × 240 min ÷ 600) = max(2,65 €, 1,70 €) = 2,65 € par jour (art. 114.1).
+    expect(avec.presenceDays).toBe(22);
+    expect(avec.entretien).toBe(265 * 22);
     expect(avec.alerts.join(' ')).toMatch(/Indemnité d’entretien : le montant du contrat \(1,00\s€ par jour\) est sous le minimum de la convention \(article 114\.1\)/);
   });
   it('tarif au-dessus du minimum : aucune alerte', () => {
