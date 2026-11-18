@@ -399,7 +399,19 @@ export function sickLectures(ctx: Ctx): { retenus: Set<ISODate>; aConfirmer: Map
     for (const ep of episodes) {
       const diff = ep.filter((d) => l1.has(d) !== l2.has(d));
       if (!diff.length) continue;
-      const raison = `Enfant malade du ${jjmm(ep[0])} au ${jjmm(ep.at(-1)!)} : ${dayCountLabel(diff.length)} ni payé${diff.length > 1 ? 's' : ''} ni retenu${diff.length > 1 ? 's' : ''}. La convention (article 105) prévoit 5 jours d’absences courtes et une absence de 14 jours calendaires consécutifs. Elle ne dit pas où classer une absence de plus de 5 jours qui dure moins de 14 jours, ni comment cela compte pour les absences suivantes. Selon la lecture, ces jours sont retenus ou payés, et aucune source officielle ne tranche. Mets-toi d’accord avec les parents, par écrit, avant de déclarer.`;
+      // T-041 (M-6, relecture V4) : l'app mesure l'absence du premier au dernier jour d'accueil prévu. Art. 105 : « en cas
+      // d'absence durant 14 jours calendaires consécutifs » ; le texte ne dit pas si les jours sans accueil prévu qui
+      // suivent le dernier jour d'absence (week-end couvert par le certificat) comptent dans ces 14 jours. Rien n'est
+      // tranché : les jours restent « à confirmer », et le message le dit quand ces jours font atteindre 14 jours.
+      const fin = ep.at(-1)!;
+      let veilleRetour = fin;
+      for (let x = addDays(fin, 1), n = 0; n < 14 && plannedPlages(c, x).length === 0; x = addDays(x, 1), n++) veilleRetour = x;
+      const calendaires = daysBetween(ep[0], fin) + 1;
+      const jusquauRetour = daysBetween(ep[0], veilleRetour) + 1;
+      const certificatSurJoursSansAccueil = calendaires < 14 && jusquauRetour >= 14
+        ? ` Si le certificat médical couvre aussi les jours sans accueil jusqu’au ${jjmm(veilleRetour)}, l’absence dure ${jusquauRetour} jours calendaires. La convention ne dit pas si ces jours sans accueil comptent dans les 14 jours : l’app ne les compte pas et ne tranche pas.`
+        : '';
+      const raison = `Enfant malade du ${jjmm(ep[0])} au ${jjmm(fin)} : ${dayCountLabel(diff.length)} ni payé${diff.length > 1 ? 's' : ''} ni retenu${diff.length > 1 ? 's' : ''}. La convention (article 105) prévoit 5 jours d’absences courtes et une absence de 14 jours calendaires consécutifs. Elle ne dit pas où classer une absence de plus de 5 jours qui dure moins de 14 jours, ni comment cela compte pour les absences suivantes. Selon la lecture, ces jours sont retenus ou payés, et aucune source officielle ne tranche.${certificatSurJoursSansAccueil} Mets-toi d’accord avec les parents, par écrit, avant de déclarer.`;
       for (const d of diff) aConfirmer.set(d, raison);
     }
     return { retenus, aConfirmer };
