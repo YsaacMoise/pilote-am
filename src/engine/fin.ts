@@ -66,6 +66,15 @@ export interface FinResult {
 export const MESSAGE_PREAVIS_FIN =
   'Date de fin du préavis à confirmer. Aucun texte ne dit si le jour où la lettre est présentée compte comme premier jour, ni comment compter un mois. L’app compte ce jour comme le premier. Vérifie la date avec les parents : le dernier salaire en dépend.';
 
+/**
+ * PREAVIS-DEMISSION-3-12 (T-034, décision du DG) : démission de 3 mois à moins d'un an d'accueil. La durée elle-même est en
+ * conflit : CASF L423-26 (« un enfant qui lui était confié depuis au moins trois mois est subordonnée […] à un préavis
+ * d'un mois ») ; CCN art. 120 (« 15 jours calendaires si l'enfant est accueilli depuis 3 mois et jusqu'à moins d'un an »).
+ * L'app applique 15 jours, le dit, et garde la date de fin à confirmer (MESSAGE_PREAVIS_FIN). Aucun montant changé.
+ */
+export const MESSAGE_PREAVIS_DEMISSION_3_12 =
+  'Durée du préavis à confirmer. Pour une démission entre 3 mois et 1 an d’accueil, la loi (code de l’action sociale et des familles, article L423-26) prévoit un mois, la convention (article 120) 15 jours. La question a été posée à la DDETS le 18/11/2026. L’app applique 15 jours : si c’est un mois, la date de fin et le dernier salaire changent.';
+
 /** Durée du préavis selon l'ancienneté, rupture par l'employeur (R-FIN-02, CCN art. 120) */
 function preavisEmployeur(anc: number): { label: string; jours?: number } {
   if (anc < 3) return { label: '8 jours calendaires', jours: 8 };
@@ -120,7 +129,9 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     const p = preavisEmployeur(anc);
     preavisLabel = p.label;
     preavisFin = finPreavis(depart, p);
-    preavisFinAConfirmer = MESSAGE_PREAVIS_FIN;
+    preavisFinAConfirmer = motif === 'demission' && anc >= 3 && anc < 12
+      ? `${MESSAGE_PREAVIS_DEMISSION_3_12} ${MESSAGE_PREAVIS_FIN}`
+      : MESSAGE_PREAVIS_FIN;
   }
   // Décès de l'enfant (R-FIN-07, CCN art. 119.4.2 ; Urssaf « motifs de fin de contrat » ; service-public.fr F16842) :
   // le contrat s'arrête le jour du décès, sans préavis à faire ; l'employeur verse une indemnité égale à l'indemnité

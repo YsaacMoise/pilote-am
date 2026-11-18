@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AmLeave, Contract, Planning } from '../src/engine/model';
 import { makeCtx, monthBase, salaireMensualise } from '../src/engine/payroll';
+import { finDeContrat, MESSAGE_PREAVIS_DEMISSION_3_12, MESSAGE_PREAVIS_FIN } from '../src/engine/fin';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
   const p: Planning = {};
@@ -104,5 +105,25 @@ describe('T-034 point 4 : indemnité d’entretien du contrat sous le minimum (C
     const b = monthBase(makeCtx(c, [], [], '2026-12-31'), '2026-03');
     expect(b.entretien).toBe(500 * b.presenceDays);
     expect(b.alerts.join(' ')).not.toMatch(/sous le minimum de la convention/);
+  });
+});
+
+describe('T-034 point 5 : préavis de démission de 3 mois à 1 an, durée en conflit (CASF L423-26 / CCN art. 120)', () => {
+  const ctxDepuis = (start: string) => makeCtx(contract({ start, trackedFrom: start }), [], [], '2026-12-31');
+  it('démission à 6 mois : le message dit le conflit de durée, les 15 jours appliqués et la date de fin à confirmer', () => {
+    const f = finDeContrat(ctxDepuis('2026-04-01'), '2026-10-15', 'demission');
+    expect(f.preavisLabel).toBe('15 jours calendaires');
+    expect(f.preavisFinAConfirmer).toContain(MESSAGE_PREAVIS_DEMISSION_3_12);
+    expect(f.preavisFinAConfirmer).toContain(MESSAGE_PREAVIS_FIN);
+    expect(f.preavisFinAConfirmer).toMatch(/L423-26\) prévoit un mois, la convention \(article 120\) 15 jours/);
+  });
+  it('mêmes montants qu’avant : seul le message change', () => {
+    const f = finDeContrat(ctxDepuis('2026-04-01'), '2026-10-15', 'demission');
+    expect(f.preavisFin).toBe('2026-10-29'); // 15 jours, premier jour compté (méthode de l'app inchangée)
+  });
+  it('démission à plus d’un an, ou avant 3 mois, et retrait de 3 mois à 1 an : pas de conflit de durée', () => {
+    expect(finDeContrat(ctxDepuis('2025-01-06'), '2026-10-15', 'demission').preavisFinAConfirmer).toBe(MESSAGE_PREAVIS_FIN);
+    expect(finDeContrat(ctxDepuis('2026-09-01'), '2026-10-15', 'demission').preavisFinAConfirmer).toBe(MESSAGE_PREAVIS_FIN);
+    expect(finDeContrat(ctxDepuis('2026-04-01'), '2026-10-15', 'retrait').preavisFinAConfirmer).toBe(MESSAGE_PREAVIS_FIN);
   });
 });
