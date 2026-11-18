@@ -10,6 +10,7 @@ import { makeCtx, monthBase, salaireMensualise } from '../src/engine/payroll';
 import { finDeContrat } from '../src/engine/fin';
 import { euros } from '../src/engine/money';
 import { ratesAt } from '../src/engine/rates';
+import { RULES } from '../src/screens/Regles';
 import { acquisition } from '../src/engine/conges';
 import { libelleDureeSaisie, statutJourEvenement } from '../src/engine/evenements';
 
@@ -188,5 +189,20 @@ describe('T-038 M-1, M-2 : repères nets du minimum AM lus sur la page Urssaf (m
     expect(ratesAt('2026-10-15')).toMatchObject({ minConvBrut: 420, minConvNet: 328 });
     expect(ratesAt('2026-10-15')!.source).toMatch(/Urssaf/);
     expect(ratesAt('2025-02-15')!.source).toMatch(/Urssaf/);
+  });
+});
+
+describe('T-038 M-3 : écran Règles complété', () => {
+  const regle = (debut: string) => RULES.find((x) => x.t.startsWith(debut))!;
+  it('fin de contrat : conflit de durée de la démission (CASF L423-26 / CCN art. 120) et montants à confirmer', () => {
+    expect(regle('Fin de contrat').r).toMatch(/L423-26\) prévoit un mois, la convention 15 jours/);
+    expect(regle('Fin de contrat').choix).toMatch(/ne sont pas comptés dans le total/);
+  });
+  it('congés payés : jours pour enfant à charge acquis au 31 mai (CCN 48.1.3.3, CPA-03)', () => {
+    expect(regle('Congés payés').choix).toMatch(/acquis au 31 mai.*48\.1\.3\.3/);
+  });
+  it('impôts : SMIC en vigueur le jour de la garde, comme fiscal.ts (BOI-RSA-CHAMP-10-20-10 § 490)', () => {
+    expect(regle('Impôts').choix).toMatch(/SMIC horaire en vigueur le jour de la garde/);
+    expect(regle('Impôts').choix).not.toMatch(/1er janvier/);
   });
 });
