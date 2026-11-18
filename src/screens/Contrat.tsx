@@ -102,6 +102,7 @@ export function Contrat({ id }: { id?: string }) {
     if (c.alsaceMoselle === undefined) errs.push('Indique où tu travailles (Alsace-Moselle ou non).');
     if (c.planningVariable === undefined) errs.push('Indique si les horaires sont les mêmes chaque semaine.');
     if (c.accueilOccasionnel === undefined) errs.push('Indique si l’accueil est régulier.');
+    if (c.cdd === undefined) errs.push('Indique si le contrat est un CDI ou un CDD.');
     setErrors(errs);
     // C-101 : chaque enregistrement refusé est noté (relecture contradictoire : le deuxième refus passait inaperçu).
     if (errs.length) logErreur('contrat_incomplet');
@@ -188,6 +189,8 @@ export function Contrat({ id }: { id?: string }) {
               options={[{ v: 'oui', l: 'Oui, la même semaine type', sub: 'Sans compter les semaines sans accueil' }, { v: 'non', l: 'Non, ils changent', sub: 'Semaines A et B, planning remis chaque mois : non géré par l’app' }]} />
             <Choices label="L’accueil est-il régulier ?" value={ouiNon(c.accueilOccasionnel === undefined ? undefined : !c.accueilOccasionnel)} onChange={(v) => set({ accueilOccasionnel: v === 'non' })}
               options={[{ v: 'oui', l: 'Oui, régulier' }, { v: 'non', l: 'Non, occasionnel', sub: 'Court et sans régularité (article 97.2 de la convention) : non géré par l’app' }]} />
+            <Choices label="Quel type de contrat ?" value={ouiNon(c.cdd)} onChange={(v) => set({ cdd: v === 'oui' })}
+              options={[{ v: 'non', l: 'CDI', sub: 'Contrat à durée indéterminée, sans date de fin prévue' }, { v: 'oui', l: 'CDD', sub: 'Contrat à durée déterminée : non géré par l’app' }]} />
             {nonGeresContrat(c).map((t) => <Banner tone="warn">{t}</Banner>)}
           </fieldset>
         </section>

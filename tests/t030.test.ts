@@ -16,7 +16,7 @@ function contract(over: Partial<Contract> = {}): Contract {
     planning: week('08:00', '16:00'), rateNet: 500, majoration: 10, entretienJour: 0, repasPrix: 0, repasParJour: 0,
     kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: '2026-09-01',
     balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 0,
-    alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, ...over,
+    alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false, ...over,
   };
 }
 const rec = (date: string, a: string, d: string): DayRec => ({ key: `c1|${date}`, cid: 'c1', date, pres: [{ a, d }] });

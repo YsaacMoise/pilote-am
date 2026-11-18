@@ -102,6 +102,8 @@ export interface Contract {
   planningVariable?: boolean;
   /** Accueil occasionnel : « de courte durée et n'a pas de caractère régulier » (CCN art. 97.2) */
   accueilOccasionnel?: boolean;
+  /** Contrat à durée déterminée (décision du DG du 18/11/2026, T-033) : vrai = non géré ; absent = réponse à donner */
+  cdd?: boolean;
   /** Date à partir de laquelle l'app suit le contrat (avant : historique) */
   trackedFrom: ISODate;
   balances: StartBalances;

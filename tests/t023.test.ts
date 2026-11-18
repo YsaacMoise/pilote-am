@@ -27,7 +27,7 @@ function contract(over: Partial<Contract> = {}): Contract {
     kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: '2025-09-01',
     balances: { cpRestants: 30, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 0,
     // Décision du DG du 18/11/2026 : sans réponse aux 3 questions T-031, le mois n'est pas calculé.
-    alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, ...over,
+    alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false, ...over,
   };
 }
 

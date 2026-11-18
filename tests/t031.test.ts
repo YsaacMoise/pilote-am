@@ -7,7 +7,8 @@ import { makeCtx, monthBase } from '../src/engine/payroll';
 import { fiscalYear } from '../src/engine/fiscal';
 import { computeMonth, declarationLines, declarationText } from '../src/engine/month';
 import { acquisition, cpForMonth, indemnite, soldesDeDepart } from '../src/engine/conges';
-import { ALERTE_CDD, finDeContrat } from '../src/engine/fin';
+import { finDeContrat } from '../src/engine/fin';
+import { NON_GERE_CDD } from '../src/engine/nonGeres';
 import { buildSnapshot } from '../src/partage/snapshot';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
@@ -28,7 +29,7 @@ function contract(over: Partial<Contract> = {}): Contract {
 // Contrat de Mme Bertrand (année incomplète, 36 semaines) : ses congés de juin 2022 sont à confirmer (SUS-11, T-019).
 const BERTRAND_OFF = ['2021-10-25', '2021-11-01', '2021-12-20', '2021-12-27', '2022-02-21', '2022-02-28', '2022-04-25', '2022-05-02',
   '2022-07-04', '2022-07-11', '2022-07-18', '2022-07-25', '2022-08-01', '2022-08-08', '2022-08-15', '2022-08-22'];
-const bertrand = (over: Partial<Contract> = {}) => contract({ alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, start: '2021-09-01', trackedFrom: '2021-09-01', yearType: 'incomplete', weeks: 36,
+const bertrand = (over: Partial<Contract> = {}) => contract({ alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false, start: '2021-09-01', trackedFrom: '2021-09-01', yearType: 'incomplete', weeks: 36,
   weeksOff: BERTRAND_OFF, majoration: 15, ...over });
 
 describe('T-028 : congés payés à confirmer dans le compteur fiscal', () => {
@@ -37,13 +38,13 @@ describe('T-028 : congés payés à confirmer dans le compteur fiscal', () => {
     expect(f.nonGere).toMatch(/Congés payés à confirmer en juin 2022 : ils ne sont pas comptés/);
   });
   it('sans congés à confirmer, rien n’est signalé', () => {
-    const f = fiscalYear(makeCtx(contract({ start: '2025-06-01', trackedFrom: '2025-06-01', alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false }), [], [], '2026-10-31'), 2026);
+    const f = fiscalYear(makeCtx(contract({ start: '2025-06-01', trackedFrom: '2025-06-01', alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false }), [], [], '2026-10-31'), 2026);
     expect(f.nonGere ?? '').not.toMatch(/Congés payés à confirmer/);
   });
 });
 
 // Contrat qui a répondu aux questions T-031 : aucun cas non géré
-const ok = (over: Partial<Contract> = {}) => contract({ alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, ...over });
+const ok = (over: Partial<Contract> = {}) => contract({ alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false, ...over });
 const leave = (type: AmLeave['type'], from: string, to: string): AmLeave => ({ id: type, type, from, to });
 
 describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
@@ -69,7 +70,7 @@ describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
   it('contrat d’avant T-031 (questions sans réponse) : mois non calculé, fin de contrat non plus (décision du DG du 18/11/2026)', () => {
     const ctx = makeCtx(contract(), [], [], '2026-10-31');
     const r = computeMonth(ctx, '2026-03');
-    expect(r.nonGere[0]).toMatch(/Contrat à compléter : ouvre le contrat et réponds aux 3 questions/);
+    expect(r.nonGere[0]).toMatch(/Contrat à compléter : ouvre le contrat et réponds aux 4 questions/);
     expect(declarationLines(ctx, r)).toEqual([]);
     expect(finDeContrat(ctx, '2026-10-15', 'retrait').nonGere?.[0]).toMatch(/Contrat à compléter/);
   });
@@ -165,17 +166,25 @@ describe('PREAVIS-DATE-FIN : date de fin du préavis sans texte (regles/triage-f
   });
 });
 
-describe('T-033 point 5 : CDD (cas officiel C-FIN-11)', () => {
-  it('la fin de contrat dit que le CDD n’est pas géré, calculée ou non, sans montant de précarité', () => {
+describe('T-033 : CDD (cas officiel C-FIN-11, décision du DG du 18/11/2026 : question au contrat)', () => {
+  it('CDI : fin de contrat calculée, aucune alerte CDD', () => {
     const f = finDeContrat(makeCtx(ok({ start: '2026-01-05', trackedFrom: '2026-01-05' }), [], [], '2026-12-31'), '2026-10-14', 'retrait');
     expect(f.nonGere).toBeUndefined();
-    expect(f.cddNonGere).toBe(ALERTE_CDD);
-    const g = finDeContrat(makeCtx(ok({ start: '2026-01-05', trackedFrom: '2026-01-05', alsaceMoselle: true }), [], [], '2026-12-31'), '2026-10-14', 'demission');
-    expect(g.nonGere?.length).toBeGreaterThan(0);
-    expect(g.cddNonGere).toBe(ALERTE_CDD);
+  });
+  it('CDD : mois et fin de contrat refusés, sans montant', () => {
+    const c = ok({ start: '2026-01-05', trackedFrom: '2026-01-05', cdd: true });
+    const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-14', 'retrait');
+    expect(f.nonGere).toContain(NON_GERE_CDD);
+    expect(f.indemniteRupture + f.regularisation + f.cpIndemnite).toBe(0);
+    const r = monthBase(makeCtx(c, [], [], '2026-12-31'), '2026-03');
+    expect(r.nonGere).toContain(NON_GERE_CDD);
     // Urssaf : « Dans le cas d'un contrat à durée déterminée (CDD), vous devez verser [...] « indemnité de précarité » »
-    expect(ALERTE_CDD).toMatch(/CDD\) : non géré/);
-    expect(ALERTE_CDD).toMatch(/précarité/);
-    expect(ALERTE_CDD).not.toMatch(/€|%/);
+    expect(NON_GERE_CDD).toMatch(/CDD\) : non géré/);
+    expect(NON_GERE_CDD).toMatch(/précarité/);
+    expect(NON_GERE_CDD).not.toMatch(/€|%/);
+  });
+  it('sans réponse à la question CDI ou CDD : contrat à compléter, rien calculé', () => {
+    const c = ok({ start: '2026-01-05', trackedFrom: '2026-01-05', cdd: undefined });
+    expect(monthBase(makeCtx(c, [], [], '2026-12-31'), '2026-03').nonGere[0]).toMatch(/réponds aux 4 questions/);
   });
 });

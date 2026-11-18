@@ -60,8 +60,6 @@ export interface FinResult {
   alertes: string[];
   /** T-031 : cas non gérés pendant le contrat. Rempli : aucun montant n'est donné (tous à 0), le calcul est refusé. */
   nonGere?: string[];
-  /** T-033 (C-FIN-11) : le contrat ne dit pas s'il est à durée déterminée ; tout le calcul suit les règles du CDI */
-  cddNonGere: string;
 }
 
 /** PREAVIS-DATE-FIN : méthode de l'app sans texte (premier jour compté ; un mois de date à date, du 15/10 au 14/11) */
@@ -95,13 +93,6 @@ function indemniteCompensatricePreavis(c: Ctx['c'], from: ISODate, to: ISODate):
   return total;
 }
 
-/**
- * T-033 (cas officiel C-FIN-11, M4) : l'app ne sait pas si le contrat est un CDD (aucune question au contrat ; en ajouter
- * une est une décision remontée au DG). Urssaf, « déclarer la fin de contrat », rubrique « L'indemnité de précarité » :
- * « Dans le cas d'un contrat à durée déterminée (CDD), vous devez verser à votre salarié une indemnité de fin de contrat
- * dite « indemnité de précarité » ». Rien de cela n'est calculé : l'alerte le dit, sans chiffre.
- */
-export const ALERTE_CDD = 'Contrat à durée déterminée (CDD) : non géré. Ce calcul suit les règles du contrat à durée indéterminée (CDI). L’app ne sait pas si ton contrat est un CDD. Si c’en est un, ce calcul ne vaut pas : il y manque au moins l’indemnité de fin de contrat (dite « de précarité ») que l’Urssaf demande de verser. Fais alors la fin de contrat sans l’app.';
 
 /**
  * `notif` : date d'envoi de la lettre recommandée ou de remise en main propre contre décharge (date du décès pour
@@ -317,12 +308,12 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     return {
       ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture: 0, ruptureExplication: 'Non calculée : cas non géré.',
       totalBrut: 0, indemnitePreavis: 0, regularisation: 0, regulMinutes: 0, cpJoursRestants: 0, cpIndemnite: 0,
-      cpExplication: 'Non calculés : cas non géré.', manquants, alertes, nonGere, cddNonGere: ALERTE_CDD,
+      cpExplication: 'Non calculés : cas non géré.', manquants, alertes, nonGere,
     };
   }
   return {
     ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, totalBrut,
     indemnitePreavis, indemnitePreavisExplication,
-    regularisation: regularisation_, regulMinutes, cpJoursRestants: joursCur + restantsPrec, cpIndemnite, cpExplication, cpAConfirmer, regularisationAConfirmer, manquants, alertes, cddNonGere: ALERTE_CDD,
+    regularisation: regularisation_, regulMinutes, cpJoursRestants: joursCur + restantsPrec, cpIndemnite, cpExplication, cpAConfirmer, regularisationAConfirmer, manquants, alertes,
   };
 }

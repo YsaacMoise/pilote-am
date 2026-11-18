@@ -70,11 +70,9 @@ export function Fin({ id }: { id?: string }) {
           <section class="card stack" aria-labelledby="fin-ng" aria-live="polite">
             <h2 id="fin-ng">Fin de contrat non calculée</h2>
             {f.nonGere.map((t) => <Banner tone="warn">{t}</Banner>)}
-            <Banner tone="warn">{f.cddNonGere}</Banner>
             <p class="hint">L’app ne donne aucun montant : préavis, indemnités et congés non pris en dépendent. Fais le calcul avec les parents, sans l’app.</p>
           </section>
         ) : <>
-        <Banner tone="warn">{f.cddNonGere}</Banner>
         {f.alertes.map((a) => <Banner tone="warn">{a} <a href={`#/historique/${c.id}`}>Ouvrir l’historique</a></Banner>)}
         {f.preavisFinAConfirmer && <Banner tone="warn">{f.preavisFinAConfirmer}</Banner>}
         {f.cpAConfirmer && <Banner tone="warn">{f.cpAConfirmer}</Banner>}
