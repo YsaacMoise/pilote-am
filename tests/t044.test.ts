@@ -35,8 +35,11 @@ const g52 = [rec('2026-09-07', { pres: [{ a: '08:00', d: '18:00' }] }), ...['14'
 describe('T-044 : entretien au tarif horaire du contrat (CCN art. 114.1)', () => {
   it('contrat « par heure » 0,50 € : septembre 2026 de G-C52-H32-T420-S10 = 72,50 € (lecture horaire du constat)', () => {
     const r = computeMonth(makeCtx(contract({ entretienJour: 0, entretienHeure: 50 }), g52, [], '2026-10-05'), '2026-09');
-    expect(r.entretien).toBe(7250);
+    // T-044b : ARR-01, chaque jour arrondi au centime le plus proche (4 jours de 9 h 45 à 4,875 € → 4,88 €) : 72,52 €.
+    // Arrondi sur le mois : 72,50 €. L'app le dit.
+    expect(r.entretien).toBe(7252);
     expect(r.entretienAConfirmer).toBe(0);
+    expect(r.alerts.join(' ')).toMatch(/72,52\s€ en arrondissant chaque jour.*72,50\s€/);
   });
   it('contrat « par jour » 4,00 € et jour plus long que le planning : la part qui dépend de la lecture est à confirmer', () => {
     // 7 septembre, 10 h : 4,35 € (minimum, MG 4,35 ÷ 10 × 10) au tarif du jour, 5,00 € si les 4 € valent pour les 8 h prévues.
@@ -44,13 +47,15 @@ describe('T-044 : entretien au tarif horaire du contrat (CCN art. 114.1)', () =>
     expect(r.entretienAConfirmer).toBe(65);
     expect(r.alerts.join(' ')).toMatch(/Indemnité d’entretien : 0,65\s€ à confirmer/);
   });
-  it('art. 99 : l’enfant part plus tôt, le travail finit à l’heure prévue ; minimum calculé sur 8 h, pas sur 4 h', () => {
+  it('enfant parti à midi, tarif sous le minimum : 8 h (art. 99) ou 4 h (accueil) ; le plus bas est versé, l’écart à confirmer', () => {
     // Tarif du contrat 2,00 € par jour (sous le minimum). Présence 8 h - 12 h, prévu 8 h - 16 h : minimum 8 × 0,435 = 3,48 €.
     const r = computeMonth(makeCtx(contract({ entretienJour: 200 }), [rec('2026-09-07', { pres: [{ a: '08:00', d: '12:00' }] })], [], '2026-10-05'), '2026-09');
     const jours = r.presenceDays;
     expect(jours).toBeGreaterThan(1);
-    // Jours au planning respecté : 8 h, 3,48 € chacun ; le 7 septembre aussi.
-    expect(r.entretien).toBe(348 * jours);
+    // Jours au planning respecté : 8 h, 3,48 € chacun. Le 7 septembre : 2,65 € (accueil, 4 h) versés, 0,83 € à confirmer
+    // (3,48 € sur 8 h de travail, art. 99). T-044b, relecture V5 P2-B1 : les textes ne tranchent pas.
+    expect(r.entretien).toBe(348 * (jours - 1) + 265);
+    expect(r.entretienAConfirmer).toBe(83);
   });
   it('jour d’accueil hors planning, contrat « par jour » : le minimum est dû, le reste du tarif du jour à confirmer', () => {
     // Mercredi 9 septembre, 8 h - 12 h, non prévu : minimum 2,65 € ; 4,00 € au tarif du jour ; pas de durée de référence.
@@ -66,5 +71,33 @@ describe('T-044 : contrôle du bulletin avec une part d’entretien à confirmer
     const checks = controle({ id: 'b', cid: 'c1', month: '2026-09', entretien: r.entretien + r.entretienAConfirmer, source: 'manuel' }, r, 420);
     expect(checks.some((x) => x.title === 'Indemnités d’entretien différentes')).toBe(false);
     expect(checks.some((x) => x.title === 'Entretien dans la fourchette à confirmer')).toBe(true);
+  });
+});
+
+import { MESSAGE_MOIS_DEJA_DECLARE } from '../src/engine/payroll';
+import { fiscalYear } from '../src/engine/fiscal';
+// T-044b : relecture V5, périmètre 2 (/home/claude/v5-relecture.md). Tests écrits avant la correction.
+describe('T-044b : durée d’accueil ou durée de travail, mois passés, impôts', () => {
+  const midi = rec('2026-09-07', { pres: [{ a: '08:00', d: '12:00' }] });
+  it('P2-B1 : contrat 0,50 € de l’heure, enfant parti à midi : 2,65 € versés, 1,35 € à confirmer (4,00 € sur 8 h de travail)', () => {
+    const r = computeMonth(makeCtx(contract({ entretienJour: 0, entretienHeure: 50, entretienMode: 'heure' }), [midi], [], '2026-10-05'), '2026-09');
+    // 16 jours de 8 h à 4,00 € ; le 7 septembre : 2,65 € (4 h d'accueil, minimum) ou 4,00 € (8 h de travail).
+    expect(r.entretien).toBe(400 * 16 + 265);
+    expect(r.entretienAConfirmer).toBe(135);
+    expect(r.alerts.join(' ')).toMatch(/temps de présence de l’enfant .* ou en temps de travail/);
+  });
+  it('absence de l’enfant toute la journée : pas d’entretien (Urssaf « n’est pas versée en cas d’absence de l’enfant »)', () => {
+    const r = computeMonth(makeCtx(contract({ entretienJour: 0, entretienHeure: 50, entretienMode: 'heure' }), [rec('2026-09-07', { abs: 'parents' })], [], '2026-10-05'), '2026-09');
+    expect(r.entretien).toBe(400 * 16);
+    expect(r.entretienAConfirmer).toBe(0);
+  });
+  it('C2-1 : mois passé dont le montant dépend de la lecture : alerte « mois déjà déclaré »', () => {
+    const r = computeMonth(makeCtx(contract({ entretienJour: 300 }), [midi], [], '2026-11-18'), '2026-09');
+    expect(r.entretienAConfirmer).toBeGreaterThan(0);
+    expect(r.alerts).toContain(MESSAGE_MOIS_DEJA_DECLARE);
+  });
+  it('C2-2 : récapitulatif des impôts : la part d’entretien à confirmer est signalée et non comptée', () => {
+    const f = fiscalYear(makeCtx(contract(), g52, [], '2027-01-10'), 2026);
+    expect(f.nonGere ?? '').toMatch(/Indemnité d’entretien à confirmer : .* en septembre 2026 ne sont pas comptés/);
   });
 });

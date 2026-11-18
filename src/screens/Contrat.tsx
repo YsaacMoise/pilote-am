@@ -6,7 +6,7 @@ import { entretienPlancher, MINIMUM_SANS_TITRE, ratesConnus, repasAvantageAu } f
 import { soldesDeDepart } from '../engine/conges';
 import { euros, eurosTexte, hoursLabel } from '../engine/money';
 import type { Avenant, Contract, Plage, Planning, Terms } from '../engine/model';
-import { EntretienSaisie } from './EntretienSaisie';
+import { EntretienSaisie, libelleEntretien } from './EntretienSaisie';
 import { Banner, CHILD_COLORS, Choices, COLOR_NAMES, couleurLibre, couleursPrises, DateInput, EuroInput, Gommette, NumberInput, Seg, Switch, TextInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { BROUILLON_CONTRAT } from './Simulateur';
@@ -40,7 +40,7 @@ function brouillon(): Partial<Contract> | null {
       pl = {};
       for (let d = 1; d <= n; d++) pl[d] = [{ start: '08:00', end: `${String(Math.floor(fin / 60)).padStart(2, '0')}:${String(fin % 60).padStart(2, '0')}` }];
     }
-    return { planning: pl, yearType: b.yearType, weeks: b.weeks, majoration: b.majoration, rateNet: b.rateNet, entretienJour: b.entretienJour, repasPrix: b.repasPrix, repasParJour: b.repasParJour, kmTaux: b.kmTaux ?? 0 };
+    return { planning: pl, yearType: b.yearType, weeks: b.weeks, majoration: b.majoration, rateNet: b.rateNet, entretienJour: b.entretienJour, entretienHeure: b.entretienHeure ?? 0, ...(b.entretienMode === 'heure' || b.entretienMode === 'jour' ? { entretienMode: b.entretienMode } : {}), repasPrix: b.repasPrix, repasParJour: b.repasParJour, kmTaux: b.kmTaux ?? 0 };
   } catch { return null; }
 }
 
@@ -104,6 +104,8 @@ export function Contrat({ id }: { id?: string }) {
     if (c.planningVariable === undefined) errs.push('Indique si les horaires sont les mêmes chaque semaine.');
     if (c.accueilOccasionnel === undefined) errs.push('Indique si l’accueil est régulier.');
     if (c.cdd === undefined) errs.push('Indique si le contrat est un CDI ou un CDD.');
+    // T-044b : choix explicite du mode de l'indemnité d'entretien sur un nouveau contrat.
+    if (isNew && !c.entretienMode) errs.push('Indique si l’indemnité d’entretien est fixée par heure ou par jour.');
     setErrors(errs);
     // C-101 : chaque enregistrement refusé est noté (relecture contradictoire : le deuxième refus passait inaperçu).
     if (errs.length) logErreur('contrat_incomplet');
@@ -218,7 +220,16 @@ export function Contrat({ id }: { id?: string }) {
             <EuroInput label="Taux horaire net" hint={rates.minConvNet !== undefined ? `Minimum conventionnel : ${euros(rates.minConvNet)} net (${euros(rates.minConvBrut)} brut)` : `Minimum conventionnel : ${euros(rates.minConvBrut)} brut`} cents={c.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
             {c.rateNet > 0 && rates.minConvNet !== undefined && c.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel. Vérifie le contrat.</Banner>}
             {rates.minConvNet !== undefined && <p class="hint">{MINIMUM_SANS_TITRE}</p>}
-            <EntretienSaisie t={c} set={set} hint={`Si le montant est plus bas, l’app verse le minimum légal (${euros(entretienPlancher(today(), 540)!)} pour 9 h).`} />
+            {isNew
+              ? <EntretienSaisie t={c} set={set} hint={`Si le montant est plus bas, l’app verse le minimum légal (${euros(entretienPlancher(today(), 540)!)} pour 9 h).`} />
+              : (
+                <div class="field">
+                  <span class="label">Indemnité d’entretien</span>
+                  <p><b>{libelleEntretien(c)}</b></p>
+                  {/* T-044b (relecture V5, C2-1) : changer ici recalculerait en silence les mois passés. Un avenant daté ne change que la suite. */}
+                  <p class="hint">Pour la changer, fais un avenant daté (plus bas) : les mois d’avant gardent leur calcul.</p>
+                </div>
+              )}
             <Choices label="Qui fournit les repas de l’enfant ?" value={c.repasParents === undefined ? undefined : c.repasParents ? 'parents' : 'am'}
               onChange={(v) => set(v === 'parents' ? { repasParents: true, repasPrix: 0, repasParJour: 0 } : { repasParents: false })}
               options={[
@@ -350,10 +361,9 @@ export function avenantSummary(before: Contract, ch: Partial<Terms>): string[] {
   if (ch.rateNet != null && ch.rateNet !== before.rateNet) out.push(`Taux : ${euros(before.rateNet)} → ${euros(ch.rateNet)} net de l’heure`);
   if (ch.planning) out.push(`Planning : ${hoursLabel(weeklyMinutes(before.planning))} → ${hoursLabel(weeklyMinutes(ch.planning))} par semaine`);
   // T-044 : tarif par jour ou par heure.
-  const tarif = (x: { entretienJour: number; entretienHeure?: number }) => x.entretienHeure ? `${euros(x.entretienHeure)} par heure` : `${euros(x.entretienJour)} par jour`;
-  if (ch.entretienJour != null || ch.entretienHeure != null) {
-    const apres = { entretienJour: ch.entretienJour ?? before.entretienJour, entretienHeure: ch.entretienHeure ?? before.entretienHeure };
-    if (tarif(apres) !== tarif(before)) out.push(`Entretien : ${tarif(before)} → ${tarif(apres)}`);
+  if (ch.entretienJour != null || ch.entretienHeure != null || ch.entretienMode != null) {
+    const apres = { ...before, ...ch };
+    if (libelleEntretien(apres) !== libelleEntretien(before)) out.push(`Entretien : ${libelleEntretien(before)} → ${libelleEntretien(apres)}`);
   }
   if (ch.repasParents != null && ch.repasParents !== before.repasParents) out.push(ch.repasParents ? 'Repas : fournis par les parents' : 'Repas : fournis par toi');
   if (ch.repasPrix != null && ch.repasPrix !== before.repasPrix) out.push(`Prix du repas : ${euros(before.repasPrix)} → ${euros(ch.repasPrix)}`);

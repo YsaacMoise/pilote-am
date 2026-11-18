@@ -31,8 +31,8 @@ export interface StartBalances {
 }
 
 /** Conditions du contrat qu'un avenant peut changer */
-export type Terms = Pick<Contract, 'planning' | 'rateNet' | 'majoration' | 'majorationCompl' | 'entretienJour' | 'entretienHeure' | 'repasPrix' | 'repasParJour' | 'repasParents' | 'kmTaux' | 'yearType' | 'weeks' | 'weeksOff'>;
-export const TERM_KEYS: (keyof Terms)[] = ['planning', 'rateNet', 'majoration', 'majorationCompl', 'entretienJour', 'entretienHeure', 'repasPrix', 'repasParJour', 'repasParents', 'kmTaux', 'yearType', 'weeks', 'weeksOff'];
+export type Terms = Pick<Contract, 'planning' | 'rateNet' | 'majoration' | 'majorationCompl' | 'entretienJour' | 'entretienHeure' | 'entretienMode' | 'repasPrix' | 'repasParJour' | 'repasParents' | 'kmTaux' | 'yearType' | 'weeks' | 'weeksOff'>;
+export const TERM_KEYS: (keyof Terms)[] = ['planning', 'rateNet', 'majoration', 'majorationCompl', 'entretienJour', 'entretienHeure', 'entretienMode', 'repasPrix', 'repasParJour', 'repasParents', 'kmTaux', 'yearType', 'weeks', 'weeksOff'];
 
 /** Avenant : nouvelles conditions à partir d'une date */
 export interface Avenant {
@@ -76,6 +76,8 @@ export interface Contract {
    * Renseignée (> 0), elle remplace `entretienJour`. Absente sur les anciens contrats : tarif par jour.
    */
   entretienHeure?: number;
+  /** T-044b : choix explicite de l'AM, « par heure » ou « par jour » (sans valeur par défaut sur un nouveau contrat). Absent : déduit du montant saisi. */
+  entretienMode?: 'heure' | 'jour';
   /** Prix d'un repas fourni (centimes) et nombre de repas par jour d'accueil */
   repasPrix: number;
   repasParJour: number;

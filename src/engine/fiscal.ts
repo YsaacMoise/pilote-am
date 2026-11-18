@@ -68,6 +68,10 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
     if (r.cpAConfirmer) nonGere.add(`Congés payés à confirmer en ${monthLabel(m)} : ils ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
     if (r.evenementAConfirmer) nonGere.add(`${joindre(naturesAConfirmer(r).map((n) => ({ evenement: 'événement familial', cp: 'congés au-delà des droits', maladie: 'jours d’enfant malade' })[n])).replace(/^./, (x) => x.toUpperCase())} à confirmer : ${euros(r.evenementAConfirmer)} de salaire en ${monthLabel(m)} ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
     er += r.entretien + r.repas;
+    // T-044b (relecture V5, C2-2) : la part d'entretien à confirmer n'est pas dans ces sommes : le dire. Les km ne sont jamais
+    // comptés dans les sommes reçues ; ceux à confirmer sont signalés pour que rien ne disparaisse sans message.
+    if (r.entretienAConfirmer) nonGere.add(`Indemnité d’entretien à confirmer : ${euros(r.entretienAConfirmer)} en ${monthLabel(m)} ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
+    if (r.kmAConfirmer) nonGere.add(`Frais kilométriques à confirmer en ${monthLabel(m)} (${r.kmAConfirmer} km) : ils ne sont pas comptés, comme tous les frais kilométriques dans ce récapitulatif.`);
     if (r.fromHistory) {
       // Sans détail des jours : jours d'activité du bulletin, journées supposées de 8 h ou plus.
       jours += r.joursActivite;
