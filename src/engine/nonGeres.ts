@@ -12,8 +12,9 @@ export const NON_GERE_OCCASIONNEL =
 /** A-01 : CCN art. 97.1 ne connaît que 52 semaines ou 46 semaines et moins ; question 2 posée à la DDETS le 18/11/2026 */
 export const NON_GERE_47_51 =
   'Accueil de 47 à 51 semaines par an : non géré. La convention ne prévoit que 52 semaines, ou 46 semaines et moins (article 97.1). Ne choisis ni 46 semaines ni toute l’année à la place : la paie serait fausse. La question est posée à la DDETS. En attendant, fais la paie sans l’app.';
+/** Décision du DG du 18/11/2026 : contrat d'avant T-031 sans réponse aux 3 questions, mois non calculé */
 export const CONTRAT_A_COMPLETER =
-  'Contrat à compléter : ouvre le contrat et réponds aux questions sur l’Alsace-Moselle, les horaires et l’accueil occasionnel. Si l’un de ces cas te concerne, l’app ne le gère pas et ses montants sont faux.';
+  'Contrat à compléter : ouvre le contrat et réponds aux 3 questions (lieu de travail, horaires, accueil régulier). L’app ne calcule pas ce mois avant.';
 
 /** Message d'une absence non gérée */
 export function messageAbsenceNonGeree(l: AmLeave): string {
@@ -43,9 +44,11 @@ export function contratACompleter(c: Pick<Contract, 'alsaceMoselle' | 'planningV
   return c.alsaceMoselle === undefined || c.planningVariable === undefined || c.accueilOccasionnel === undefined;
 }
 
-/** Cas non gérés qui touchent la période [from, to] du contrat : cas du contrat, puis absences non gérées */
+/** Cas non gérés qui touchent la période [from, to] du contrat : contrat à compléter, cas du contrat, puis absences non gérées */
 export function nonGeresPeriode(c: Contract, leaves: AmLeave[], from: ISODate, to: ISODate): string[] {
   const out = nonGeresContrat(c);
+  // Décision du DG du 18/11/2026 : sans réponse aux 3 questions, l'app ne sait pas si le cas est géré : rien n'est calculé.
+  if (contratACompleter(c)) out.unshift(CONTRAT_A_COMPLETER);
   const a = from > c.start ? from : c.start;
   const b = c.end && c.end < to ? c.end : to;
   if (b < a) return out;

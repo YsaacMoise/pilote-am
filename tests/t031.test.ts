@@ -28,7 +28,7 @@ function contract(over: Partial<Contract> = {}): Contract {
 // Contrat de Mme Bertrand (année incomplète, 36 semaines) : ses congés de juin 2022 sont à confirmer (SUS-11, T-019).
 const BERTRAND_OFF = ['2021-10-25', '2021-11-01', '2021-12-20', '2021-12-27', '2022-02-21', '2022-02-28', '2022-04-25', '2022-05-02',
   '2022-07-04', '2022-07-11', '2022-07-18', '2022-07-25', '2022-08-01', '2022-08-08', '2022-08-15', '2022-08-22'];
-const bertrand = (over: Partial<Contract> = {}) => contract({ start: '2021-09-01', trackedFrom: '2021-09-01', yearType: 'incomplete', weeks: 36,
+const bertrand = (over: Partial<Contract> = {}) => contract({ alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, start: '2021-09-01', trackedFrom: '2021-09-01', yearType: 'incomplete', weeks: 36,
   weeksOff: BERTRAND_OFF, majoration: 15, ...over });
 
 describe('T-028 : congés payés à confirmer dans le compteur fiscal', () => {
@@ -37,7 +37,7 @@ describe('T-028 : congés payés à confirmer dans le compteur fiscal', () => {
     expect(f.nonGere).toMatch(/Congés payés à confirmer en juin 2022 : ils ne sont pas comptés/);
   });
   it('sans congés à confirmer, rien n’est signalé', () => {
-    const f = fiscalYear(makeCtx(contract(), [], [], '2026-10-31'), 2026);
+    const f = fiscalYear(makeCtx(contract({ alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false }), [], [], '2026-10-31'), 2026);
     expect(f.nonGere ?? '').not.toMatch(/Congés payés à confirmer/);
   });
 });
@@ -64,10 +64,18 @@ describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
     const r = computeMonth(makeCtx(ok(), [], [], '2026-10-31'), '2026-03');
     expect(r.nonGere).toEqual([]);
     expect(r.alerts.join(' ')).not.toMatch(/Contrat à compléter/);
+    expect(r.nonGere.join(' ')).not.toMatch(/Contrat à compléter/);
   });
-  it('contrat d’avant T-031 (questions sans réponse) : signalé dans chaque mois calculé', () => {
-    const r = computeMonth(makeCtx(contract(), [], [], '2026-10-31'), '2026-03');
-    expect(r.alerts.join(' ')).toMatch(/Contrat à compléter/);
+  it('contrat d’avant T-031 (questions sans réponse) : mois non calculé, fin de contrat non plus (décision du DG du 18/11/2026)', () => {
+    const ctx = makeCtx(contract(), [], [], '2026-10-31');
+    const r = computeMonth(ctx, '2026-03');
+    expect(r.nonGere[0]).toMatch(/Contrat à compléter : ouvre le contrat et réponds aux 3 questions/);
+    expect(declarationLines(ctx, r)).toEqual([]);
+    expect(finDeContrat(ctx, '2026-10-15', 'retrait').nonGere?.[0]).toMatch(/Contrat à compléter/);
+  });
+  it('une seule question sans réponse suffit à bloquer', () => {
+    const r = computeMonth(makeCtx(ok({ accueilOccasionnel: undefined }), [], [], '2026-10-31'), '2026-03');
+    expect(r.nonGere.join(' ')).toMatch(/Contrat à compléter/);
   });
   it('mois repris d’un bulletin réel : pas refusé (le bulletin fait foi)', () => {
     const c = ok({ alsaceMoselle: true, trackedFrom: '2026-01-01', history: [{ month: '2025-12', net: 50000, source: 'manuel' }] });

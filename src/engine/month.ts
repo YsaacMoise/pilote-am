@@ -4,7 +4,6 @@ import { cpForMonth } from './conges';
 import { monthBase, termsAt, type Ctx, type MonthBase } from './payroll';
 import { netToBrut } from './rates';
 import { euros, hoursLabel } from './money';
-import { CONTRAT_A_COMPLETER, contratACompleter } from './nonGeres';
 
 export interface MonthResult extends MonthBase {
   cpJours: number;
@@ -23,8 +22,6 @@ export function computeMonth(ctx: Ctx, m: Month, enfants = 0): MonthResult {
   const cp = cpForMonth(ctx, m, enfants);
   const netTotal = b.net + cp.indemnite + cp.complement;
   const alerts = cp.aConfirmer ? [...b.alerts, cp.aConfirmer] : [...b.alerts];
-  // T-031 : contrat d'avant T-031, sans réponse aux questions sur les cas non gérés : le dire à chaque mois calculé.
-  if (b.active && !b.fromHistory && contratACompleter(ctx.c)) alerts.push(CONTRAT_A_COMPLETER);
   return {
     ...b,
     alerts,
