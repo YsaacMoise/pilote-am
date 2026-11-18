@@ -3,7 +3,7 @@ import { addDays, addMonths, addMonthsToDate, cpPeriod, cpPeriodStartYear, daysB
 import { holidayName } from './holidays';
 import { euros } from './money';
 import {
-  H45, daysPerWeek, inContract, makeCtx, monthBase, plannedPlages, planningBrutMin, salaireMensualise, semainesSansAccueilAnnee, termsAt,
+  H45, daysPerWeek, inContract, libelleSalaireAConfirmer, makeCtx, monthBase, plannedPlages, planningBrutMin, salaireMensualise, semainesSansAccueilAnnee, termsAt,
   toutesSemainesSansAccueil, weeklyMinutes, weeksPerYear, type Ctx,
 } from './payroll';
 import type { AmLeave, Contract } from './model';
@@ -660,12 +660,12 @@ export function compteur(ctx: Ctx, at: ISODate, enfantsACharge = 0): Compteur {
 }
 
 /** Base du dixième : salaires nets (hors frais) de la période, indemnités de congés versées incluses */
-export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; manquants: Month[]; aConfirmer: boolean; evenementAConfirmer: number; joursCpAConfirmer: number } {
+export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; manquants: Month[]; aConfirmer: boolean; evenementAConfirmer: number; joursCpAConfirmer: number; joursEvenementAConfirmer: number; joursMaladieAConfirmer: number } {
   return memo(ctx, `b10${y}|${enfants}`, () => {
     const p = cpPeriod(y);
     let base = 0;
     let aConfirmer = false;
-    let evenementAConfirmer = 0, joursCpAConfirmer = 0;
+    let evenementAConfirmer = 0, joursCpAConfirmer = 0, joursEvenementAConfirmer = 0, joursMaladieAConfirmer = 0;
     const manquants: Month[] = [];
     for (const m of monthsBetween(monthOf(p.from), monthOf(p.to))) {
       const b = monthBase(ctx, m);
@@ -677,6 +677,9 @@ export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; m
       // T-030 : comprend aussi les congés pris peut-être au-delà des droits (année complète, A-23).
       evenementAConfirmer += b.evenementAConfirmer;
       joursCpAConfirmer += b.joursCpAConfirmer;
+      joursEvenementAConfirmer += b.joursEvenementAConfirmer;
+      // T-033 : jours d'enfant malade à confirmer (art. 105) : payés dans une lecture, retenus dans l'autre.
+      joursMaladieAConfirmer += b.joursMaladieAConfirmer;
       if (!b.fromHistory) {
         const cp = cpForMonth(ctx, m, enfants);
         base += cp.indemnite + cp.complement;
@@ -684,7 +687,7 @@ export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; m
         if (cp.aConfirmer) aConfirmer = true;
       }
     }
-    return { base, manquants, aConfirmer, evenementAConfirmer, joursCpAConfirmer };
+    return { base, manquants, aConfirmer, evenementAConfirmer, joursCpAConfirmer, joursEvenementAConfirmer, joursMaladieAConfirmer };
   });
 }
 
@@ -720,7 +723,8 @@ export interface IndemniteCP {
 export function indemnite(ctx: Ctx, y: number, enfants = 0): IndemniteCP {
   return memo(ctx, `ind${y}|${enfants}`, () => {
     const acq = acquisition(ctx, y, enfants);
-    const { base, manquants, aConfirmer: baseAC, evenementAConfirmer: evAC, joursCpAConfirmer: evCp } = baseDixieme(ctx, y, enfants);
+    const bd = baseDixieme(ctx, y, enfants);
+    const { base, manquants, aConfirmer: baseAC, evenementAConfirmer: evAC } = bd;
     const dix = Math.round(base / 10);
     const at = `${y + 1}-06-01`;
     const mt = maintien(ctx, acq.jours, at);
@@ -774,7 +778,7 @@ export function indemnite(ctx: Ctx, y: number, enfants = 0): IndemniteCP {
     if (evAC > 0) {
       const avec = Math.max(Math.round((base + evAC) / 10), mt);
       if (avec !== out.montant) {
-        const msg = `L’indemnité de congés payés dépend d’un salaire ${evCp ? 'd’événement familial ou de congés pris au-delà des droits' : 'd’événement familial'} encore à confirmer (${euros(evAC)}) : ${euros(avec)} s’il est payé, ${euros(out.montant)} sinon.`;
+        const msg = `L’indemnité de congés payés dépend d’un salaire ${libelleSalaireAConfirmer(bd, 'ou').replace('de congés', 'de congés pris au-delà des droits')} encore à confirmer (${euros(evAC)}) : ${euros(avec)} s’il est payé, ${euros(out.montant)} sinon.`;
         if (out.aConfirmer) {
           out.aConfirmer = { ...out.aConfirmer, message: `${out.aConfirmer.message} ${msg}`, baseSure: false };
         } else {

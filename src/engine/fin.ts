@@ -6,7 +6,7 @@ import {
   type ISODate, type Month,
 } from './dates';
 import { acquisition, compteur, cpForMonth, indemnite, maintien } from './conges';
-import { makeCtx, monthBase, monthBrut, regularisation, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx } from './payroll';
+import { makeCtx, monthBase, naturesAConfirmer, monthBrut, regularisation, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx } from './payroll';
 import { netToBrut } from './rates';
 
 /** Entrée en vigueur de l'avenant n° 10 du 9 septembre 2025 (inaptitude) */
@@ -137,7 +137,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   let totalBrut = 0;
   let cpManquants = false;
   let evenementManquant = false;
-  let cpAuDelaManquant = false;
+  const naturesManquantes = new Set<'evenement' | 'cp' | 'maladie'>();
   const manquants: Month[] = [];
   for (const m of monthsBetween(monthOf(c.start), monthOf(dernierJour))) {
     const b = monthBase(endCtx, m);
@@ -149,7 +149,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     if (cp.aConfirmer) cpManquants = true;
     // T-025 C-5 : salaire d'un événement familial à confirmer, absent de ce total (CCN 48.1.3.1.1 : pas de réduction de la rémunération).
     if (b.evenementAConfirmer) evenementManquant = true;
-    if (b.joursCpAConfirmer) cpAuDelaManquant = true;
+    if (b.evenementAConfirmer) for (const n of naturesAConfirmer(b)) naturesManquantes.add(n);
   }
   if (manquants.length) {
     alertes.push(`Historique incomplet : ${manquants.length} mois sans bulletin. Ajoute les bulletins manquants dans l’historique pour un calcul juste.`);
@@ -203,7 +203,9 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
 
   const ruptureAConfirmer = (cpManquants || evenementManquant) && indemniteRupture > 0;
   if (ruptureAConfirmer) {
-    const evenement = evenementManquant ? (cpAuDelaManquant ? 'le salaire d’événement familial ou de congés pris au-delà des droits' : 'le salaire d’événement familial') : '';
+    const natures = (['evenement', 'cp', 'maladie'] as const).filter((n) => naturesManquantes.has(n))
+      .map((n) => ({ evenement: 'd’événement familial', cp: 'de congés pris au-delà des droits', maladie: 'd’enfant malade' })[n]);
+    const evenement = evenementManquant ? `le salaire ${natures.length > 1 ? `${natures.slice(0, -1).join(', ')} ou ${natures.at(-1)}` : natures[0] ?? 'd’événement familial'}` : '';
     const manque = [cpManquants ? 'les congés payés' : '', evenement].filter(Boolean).join(' ni ');
     alertes.push(`Indemnité de rupture à confirmer : elle ne compte pas encore ${manque} à confirmer.`);
   }

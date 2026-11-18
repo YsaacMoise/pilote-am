@@ -1,7 +1,7 @@
 // Compteur fiscal (CGI art. 80 sexies) : abattement spécifique et revenu imposable estimé.
 import { eachDay, lastDay, monthLabel, monthsBetween, type Month } from './dates';
 import { computeMonth } from './month';
-import { dayInfo, termsAt, type Ctx } from './payroll';
+import { dayInfo, joindre, naturesAConfirmer, termsAt, type Ctx } from './payroll';
 import { MESSAGE_PERIODE_NON_GEREE, ratesAt } from './rates';
 import { euros } from './money';
 
@@ -66,7 +66,7 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
     // T-025 C-5 : un salaire d'événement familial à confirmer n'est pas dans ce net : le dire, ne pas le compter en silence.
     // T-028 : des congés payés à confirmer ne sont pas dans ce net (comme l'événement familial) : le dire.
     if (r.cpAConfirmer) nonGere.add(`Congés payés à confirmer en ${monthLabel(m)} : ils ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
-    if (r.evenementAConfirmer) nonGere.add(`${r.joursCpAConfirmer ? (r.joursEvenementAConfirmer ? 'Événement familial et congés' : 'Congés au-delà des droits') : 'Événement familial'} à confirmer : ${euros(r.evenementAConfirmer)} de salaire en ${monthLabel(m)} ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
+    if (r.evenementAConfirmer) nonGere.add(`${joindre(naturesAConfirmer(r).map((n) => ({ evenement: 'événement familial', cp: 'congés au-delà des droits', maladie: 'jours d’enfant malade' })[n])).replace(/^./, (x) => x.toUpperCase())} à confirmer : ${euros(r.evenementAConfirmer)} de salaire en ${monthLabel(m)} ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
     er += r.entretien + r.repas;
     if (r.fromHistory) {
       // Sans détail des jours : jours d'activité du bulletin, journées supposées de 8 h ou plus.

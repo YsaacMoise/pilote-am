@@ -147,6 +147,8 @@ export interface DayInfo {
   cpSansDroits?: boolean;
   /** Jour de congé payé peut-être au-delà des droits, selon la lecture de l'acquisition (T-030, A-23) : à confirmer */
   cpAConfirmer?: boolean;
+  /** T-033 : jour d'enfant malade (certificat) que les lectures de l'art. 105 retiennent ou paient selon le cas */
+  maladieAConfirmer?: boolean;
   /**
    * Jour d'événement familial à confirmer (T-023, R-ABS-06) : ni payé ni retenu. Son montant est sorti du salaire du
    * mois et affiché « à confirmer » ; la raison dit quoi renseigner.
@@ -155,10 +157,19 @@ export interface DayInfo {
 }
 
 /** T-030 : nature du salaire mis « à confirmer » dans le mois (événement familial, congés au-delà des droits, ou les deux) */
-export function libelleSalaireAConfirmer(b: Pick<MonthBase, 'joursCpAConfirmer' | 'joursEvenementAConfirmer'>): string {
-  if (b.joursCpAConfirmer && b.joursEvenementAConfirmer) return 'd’événement familial et de congés';
-  return b.joursCpAConfirmer ? 'de congés' : 'd’événement familial';
+export function libelleSalaireAConfirmer(b: Pick<MonthBase, 'joursCpAConfirmer' | 'joursEvenementAConfirmer'> & Partial<Pick<MonthBase, 'joursMaladieAConfirmer'>>, et = 'et'): string {
+  return joindre(naturesAConfirmer(b).map((n) => ({ evenement: 'd’événement familial', cp: 'de congés', maladie: 'd’enfant malade' })[n]), et);
 }
+
+/** T-033 : natures des jours mis « à confirmer » dans le mois, dans l'ordre d'affichage (événement par défaut) */
+export function naturesAConfirmer(b: Partial<Pick<MonthBase, 'joursCpAConfirmer' | 'joursEvenementAConfirmer' | 'joursMaladieAConfirmer'>>): ('evenement' | 'cp' | 'maladie')[] {
+  const out: ('evenement' | 'cp' | 'maladie')[] = [];
+  if (b.joursEvenementAConfirmer) out.push('evenement');
+  if (b.joursCpAConfirmer) out.push('cp');
+  if (b.joursMaladieAConfirmer) out.push('maladie');
+  return out.length ? out : ['evenement'];
+}
+export const joindre = (l: string[], et = 'et') => (l.length <= 1 ? l.join('') : `${l.slice(0, -1).join(', ')} ${et} ${l.at(-1)}`);
 
 export function dayInfo(ctx: Ctx, d: ISODate): DayInfo {
   return memo(ctx, 'day' + d, () => computeDay(ctx, d));
@@ -221,7 +232,12 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
     if (plannedMin > 0) {
       info.inDivisor = true;
       if (rec.abs === 'sans_solde_enfant') info.deducted = true;
-      if (rec.abs === 'malade_certif') info.deducted = sickDeductible(ctx).has(d);
+      if (rec.abs === 'malade_certif') {
+        const sick = sickLectures(ctx);
+        info.deducted = sick.retenus.has(d);
+        const raison = sick.aConfirmer.get(d);
+        if (raison) { info.aConfirmer = raison; info.maladieAConfirmer = true; }
+      }
     }
     return info;
   }
@@ -288,8 +304,26 @@ export function ferieNonPaye(ctx: Ctx, d: ISODate): boolean {
 }
 
 /** Jours d'enfant malade avec certificat retenus (art. 105) : par période de 12 mois depuis le début du contrat,
- *  5 jours consécutifs ou non, et une absence de 14 jours calendaires consécutifs. Au-delà : rémunérés. */
+ *  5 jours consécutifs ou non, et une absence de 14 jours calendaires consécutifs. Au-delà : rémunérés.
+ *  T-033 (A-17) : jours retenus dans les deux lectures ci-dessous seulement. */
 export function sickDeductible(ctx: Ctx): Set<ISODate> {
+  return sickLectures(ctx).retenus;
+}
+
+/**
+ * T-033 (A-15, A-17 ; regles/t020-comparatifs.md). CCN art. 105 : « en cas de courtes absences de l'enfant, pas
+ * nécessairement consécutives, dans la limite de 5 jours d'absence » ; « en cas d'absence durant 14 jours calendaires
+ * consécutifs ». Le texte ne dit pas où classer une absence de plus de 5 jours qui dure moins de 14 jours calendaires.
+ * - Lecture 1 (app avant T-033) : toute absence de plus de 5 jours est l'absence longue, retenue en entier (14 jours
+ *   calendaires au plus), sans entamer les 5 jours.
+ * - Lecture 2 (DREETS BFC 2026, fiche 03, IV : « Une absence de 9 jours consécutifs devra ainsi être considérée comme
+ *   une absence courte et les 4 derniers jours devront faire l'objet d'une rémunération ») : seule une absence d'au moins
+ *   14 jours calendaires consécutifs est l'absence longue ; une absence plus courte entame les 5 jours, le reste est payé.
+ * Un jour retenu dans les deux lectures est retenu ; payé dans les deux, payé ; sinon « à confirmer » (ni payé ni
+ * retenu). Le choix de l'une modifie aussi les absences suivantes de la même période de 12 mois : elles sont comparées
+ * de la même façon.
+ */
+export function sickLectures(ctx: Ctx): { retenus: Set<ISODate>; aConfirmer: Map<ISODate, string> } {
   return memo(ctx, 'sick', () => {
     const { c } = ctx;
     const certDays = [...ctx.days.values()]
@@ -297,7 +331,6 @@ export function sickDeductible(ctx: Ctx): Set<ISODate> {
         && !(holidayName(r.date) && !r.ferieTravaille))
       .map((r) => r.date)
       .sort();
-    const out = new Set<ISODate>();
     // Épisodes : jours certifiés consécutifs, en sautant les jours sans accueil prévu.
     const episodes: ISODate[][] = [];
     for (const d of certDays) {
@@ -312,34 +345,50 @@ export function sickDeductible(ctx: Ctx): Set<ISODate> {
       }
       episodes.push([d]);
     }
-    const yearState = new Map<number, { left: number; longUsed: boolean }>();
     const trackedYear = contractYearIndex(c, c.trackedFrom);
+    const lecture = (longueSiPlusDe5: boolean): Set<ISODate> => {
+      const out = new Set<ISODate>();
+      const yearState = new Map<number, { left: number; longUsed: boolean }>();
+      for (const ep of episodes) {
+        const y = contractYearIndex(c, ep[0]);
+        let st = yearState.get(y);
+        if (!st) {
+          const used = y === trackedYear ? Math.min(5, c.balances.maladieDeduits) : 0;
+          st = { left: 5 - used, longUsed: false };
+          yearState.set(y, st);
+        }
+        const calendaires = daysBetween(ep[0], ep.at(-1)!) + 1;
+        const longue = ep.length > 5 && (longueSiPlusDe5 || calendaires >= 14);
+        if (ep.length <= st.left) {
+          ep.forEach((d) => out.add(d));
+          st.left -= ep.length;
+        } else if (longue && !st.longUsed) {
+          // L'absence longue : retenue sur 14 jours calendaires consécutifs au plus, sans entamer les 5 jours.
+          const limit = addDays(ep[0], 13);
+          ep.filter((d) => d <= limit).forEach((d) => out.add(d));
+          st.longUsed = true;
+        } else {
+          ep.slice(0, st.left).forEach((d) => out.add(d));
+          st.left = 0;
+        }
+      }
+      return out;
+    };
+    const l1 = lecture(true);
+    const l2 = lecture(false);
+    const retenus = new Set([...l1].filter((d) => l2.has(d)));
+    const aConfirmer = new Map<ISODate, string>();
     for (const ep of episodes) {
-      const y = contractYearIndex(c, ep[0]);
-      let st = yearState.get(y);
-      if (!st) {
-        const used = y === trackedYear ? Math.min(5, c.balances.maladieDeduits) : 0;
-        st = { left: 5 - used, longUsed: false };
-        yearState.set(y, st);
-      }
-      // Les deux limites se cumulent : 5 jours d'absences courtes « et » une absence de 14 jours calendaires consécutifs
-      // Absence courte : 5 jours prévus au plus. Absence longue : au-delà, une fois par période.
-      if (ep.length <= st.left) {
-        ep.forEach((d) => out.add(d));
-        st.left -= ep.length;
-      } else if (ep.length > 5 && !st.longUsed) {
-        // L'absence longue : retenue sur 14 jours calendaires consécutifs au plus, sans entamer les 5 jours.
-        const limit = addDays(ep[0], 13);
-        ep.filter((d) => d <= limit).forEach((d) => out.add(d));
-        st.longUsed = true;
-      } else {
-        ep.slice(0, st.left).forEach((d) => out.add(d));
-        st.left = 0;
-      }
+      const diff = ep.filter((d) => l1.has(d) !== l2.has(d));
+      if (!diff.length) continue;
+      const raison = `Enfant malade du ${jjmm(ep[0])} au ${jjmm(ep.at(-1)!)} : ${dayCountLabel(diff.length)} ni payé${diff.length > 1 ? 's' : ''} ni retenu${diff.length > 1 ? 's' : ''}. La convention (article 105) prévoit 5 jours d’absences courtes et une absence de 14 jours calendaires consécutifs. Elle ne dit pas où classer une absence de plus de 5 jours qui dure moins de 14 jours, ni comment cela compte pour les absences suivantes. Selon la lecture, ces jours sont retenus ou payés, et aucune source officielle ne tranche. Mets-toi d’accord avec les parents, par écrit, avant de déclarer.`;
+      for (const d of diff) aConfirmer.set(d, raison);
     }
-    return out;
+    return { retenus, aConfirmer };
   });
 }
+
+const jjmm = (d: ISODate) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
 export function contractYearIndex(c: Contract, d: ISODate): number {
   let i = 0;
@@ -439,6 +488,8 @@ export interface MonthBase {
   joursCpAConfirmer: number;
   /** Jours compris dans `evenementAConfirmer` qui sont des jours d'événement familial */
   joursEvenementAConfirmer: number;
+  /** T-033 : jours compris dans `evenementAConfirmer` qui sont des jours d'enfant malade (art. 105, lectures divergentes) */
+  joursMaladieAConfirmer: number;
   /** Kilomètres saisis sans le nombre d'enfants transportés (CCN art. 113) : non payés, à confirmer (T-017) */
   kmAConfirmer: number;
   /** Salaire net hors congés payés */
@@ -474,7 +525,7 @@ function emptyBase(m: Month): MonthBase {
     month: m, active: false, fromHistory: false, missing: false, salaireMens: 0, mensuelMin: 0, divisorDays: 0,
     divisorMin: 0, contractDays: 0, contractMin: 0, deductedDays: 0, deductedMin: 0, paidFraction: 0, base: 0,
     retenue: 0, heuresNormales: 0, joursActivite: 0, complMin: 0, majMin: 0, majContratMin: 0, complAmount: 0, majAmount: 0,
-    ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, evenementAConfirmer: 0, joursCpAConfirmer: 0, joursEvenementAConfirmer: 0, kmAConfirmer: 0, net: 0,
+    ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, evenementAConfirmer: 0, joursCpAConfirmer: 0, joursEvenementAConfirmer: 0, joursMaladieAConfirmer: 0, kmAConfirmer: 0, net: 0,
     alerts: [], forgotten: [], sickPaidNotice: false, nonGere: [],
   };
 }
@@ -621,7 +672,7 @@ function hoursMin(min: number): string {
 }
 
 const SUM_KEYS = ['base', 'retenue', 'majContratMin', 'joursActivite', 'complMin', 'majMin', 'complAmount', 'majAmount', 'ferieAmount',
-  'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'evenementAConfirmer', 'joursCpAConfirmer', 'joursEvenementAConfirmer', 'kmAConfirmer', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
+  'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'evenementAConfirmer', 'joursCpAConfirmer', 'joursEvenementAConfirmer', 'joursMaladieAConfirmer', 'kmAConfirmer', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
 
 function mergeParts(m: Month, parts: MonthBase[], cuts: ISODate[]): MonthBase {
   const r = emptyBase(m);
@@ -708,7 +759,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     if (di.deducted) { dedDays++; dedMin += di.plannedMin; }
     if (di.aConfirmer && di.plannedMin > 0) {
       suspDays++; suspMin += di.plannedMin;
-      if (di.cpAConfirmer) r.joursCpAConfirmer++; else r.joursEvenementAConfirmer++;
+      if (di.cpAConfirmer) r.joursCpAConfirmer++; else if (di.maladieAConfirmer) r.joursMaladieAConfirmer++; else r.joursEvenementAConfirmer++;
       if (!suspRaisons.includes(di.aConfirmer)) suspRaisons.push(di.aConfirmer);
     }
     // Jours d'activité (Pajemploi) : jours prévus et payés, sans les fériés chômés ni les jours à confirmer.
@@ -786,7 +837,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   else r.joursActivite = Math.max(0, joursMensualises(c) - dedDays - suspDays) + r.extraDays;
   if (suspRaisons.length) {
     r.alerts.push(...suspRaisons);
-    const objet = r.joursCpAConfirmer ? (r.joursEvenementAConfirmer ? 'Événement familial et congés' : 'Congés') : 'Événement familial';
+    const objet = joindre(naturesAConfirmer(r).map((n) => ({ evenement: 'événement familial', cp: 'congés', maladie: 'enfant malade' })[n])).replace(/^./, (x) => x.toUpperCase());
     r.alerts.push(`${objet} : ${dayCountLabel(suspDays)} ni payé${suspDays > 1 ? 's' : ''} ni retenu${suspDays > 1 ? 's' : ''}, ${euros(r.evenementAConfirmer)} de salaire à confirmer (non compris dans le total).`);
   }
   if (r.kmAConfirmer) r.alerts.push(`${r.kmAConfirmer} km à confirmer, non comptés. Pour chaque jour, indique si une autre famille a aussi demandé le trajet. Si oui, indique aussi les enfants dans la voiture : l’indemnité est alors partagée entre eux (article 113 de la convention). Si non, elle est due en entier.`);

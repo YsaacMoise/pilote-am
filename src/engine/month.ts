@@ -1,7 +1,7 @@
 // Récapitulatif mensuel par enfant, dans l'ordre de la déclaration Pajemploi.
 import { lastDay, monthLabel, type Month } from './dates';
 import { cpForMonth } from './conges';
-import { libelleSalaireAConfirmer, monthBase, termsAt, type Ctx, type MonthBase } from './payroll';
+import { libelleSalaireAConfirmer, monthBase, naturesAConfirmer, termsAt, type Ctx, type MonthBase } from './payroll';
 import { netToBrut } from './rates';
 import { euros, hoursLabel } from './money';
 
@@ -110,9 +110,10 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
 }
 
 /** Parts du mois sorties du total parce qu'elles sont à confirmer (T-025 C-5 : à dire partout où le total s'affiche) */
-export function partsAConfirmer(r: Pick<MonthResult, 'cpAConfirmer' | 'evenementAConfirmer' | 'kmAConfirmer'> & Partial<Pick<MonthResult, 'joursCpAConfirmer' | 'joursEvenementAConfirmer'>>): string[] {
+export function partsAConfirmer(r: Pick<MonthResult, 'cpAConfirmer' | 'evenementAConfirmer' | 'kmAConfirmer'> & Partial<Pick<MonthResult, 'joursCpAConfirmer' | 'joursEvenementAConfirmer' | 'joursMaladieAConfirmer'>>): string[] {
   // T-030 : un salaire à confirmer peut venir de congés pris peut-être au-delà des droits (année complète, A-23).
-  const salaire = !r.evenementAConfirmer ? '' : r.joursCpAConfirmer && !r.joursEvenementAConfirmer ? 'les congés pris au-delà des droits'
-    : r.joursCpAConfirmer ? 'l’événement familial ni les congés pris au-delà des droits' : 'l’événement familial';
-  return [r.cpAConfirmer ? 'les congés payés' : '', salaire, r.kmAConfirmer ? 'les kilomètres' : ''].filter(Boolean);
+  // T-033 : ou de jours d'enfant malade (art. 105, lectures divergentes).
+  const salaire = !r.evenementAConfirmer ? [] : naturesAConfirmer(r).map((n) => ({
+    evenement: 'l’événement familial', cp: 'les congés pris au-delà des droits', maladie: 'les jours d’enfant malade' })[n]);
+  return [r.cpAConfirmer ? 'les congés payés' : '', ...salaire, r.kmAConfirmer ? 'les kilomètres' : ''].filter(Boolean);
 }
