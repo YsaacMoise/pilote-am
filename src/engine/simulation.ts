@@ -5,7 +5,7 @@ import { addDays, weekday, type ISODate } from './dates';
 import { holidaysOf } from './holidays';
 import type { Contract, Plage, Planning } from './model';
 import { daysPerWeek, plageMin, salaireMensualise, weeklyMinutes } from './payroll';
-import { entretienPlancher, ratesAt } from './rates';
+import { entretienPlancher, ratesConnus } from './rates';
 
 /** Paramètres du CMG « emploi direct » d'une assistante maternelle (CSS D531-18, décret 2025-515), datés. */
 interface CmgParams {
@@ -434,7 +434,7 @@ export interface SimResult {
   /** Plus de 48 h par semaine : accord écrit de l'assistante maternelle nécessaire */
   accordNecessaire: boolean;
   sousMinimum: boolean;
-  minimumNet: number;
+  minimumNet?: number;
   minimumBrut: number;
 }
 
@@ -497,7 +497,8 @@ export function planningDepuisTexte(t: string): Planning | null {
 }
 
 export function simuler(i: SimInput, d: ISODate): SimResult {
-  const rates = ratesAt(d);
+  // Simulation d'un accueil à venir : la date ne peut pas être antérieure aux barèmes vérifiés (sinon erreur, T-023).
+  const rates = ratesConnus(d);
   const cp = cotisParams(d);
   const planning = i.planning ?? {};
   const semaines = semainesAccueil(i);
@@ -535,7 +536,7 @@ export function simuler(i: SimInput, d: ISODate): SimResult {
     const plages = (planning[w] ?? []).filter((p) => plageMin(p) > 0);
     if (!plages.length) continue;
     const minutes = plages.reduce((t, p) => t + plageMin(p), 0);
-    const entretienMinimum = entretienPlancher(d, minutes);
+    const entretienMinimum = entretienPlancher(d, minutes)!; // défini : `ratesConnus(d)` a réussi plus haut
     const prevu = i.entretienMode === 'heure' ? Math.round((i.entretien * minutes) / 60) : i.entretien;
     const ent = Math.max(prevu, entretienMinimum);
     const repasJour = TYPES_REPAS.filter((t) => (i.repas?.[t] ?? 0) > 0 && repasDuJour(plages, t));
@@ -635,7 +636,7 @@ export function naissanceIlYA(d: ISODate, mois: number): string {
 
 /** Valeurs de départ : accueil type au minimum conventionnel. */
 export function simulationParDefaut(d: ISODate): SimInput {
-  const r = ratesAt(d);
+  const r = ratesConnus(d);
   return {
     planning: planningRegulier(5, 45), yearType: 'complete', semainesAbsence: 1, majoration: 10,
     tauxBrut: r.minConvBrut, alsaceMoselle: false, entretien: 0, entretienMode: 'jour',

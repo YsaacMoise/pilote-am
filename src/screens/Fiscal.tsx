@@ -16,6 +16,7 @@ export function Fiscal() {
     .map((c) => ({ c, f: fiscalYear(ctxFor(c), year, s.settings.enfantsACharge, upTo) }));
   const tot = rows.reduce((a, r) => ({ recu: a.recu + r.f.recu, abat: a.abat + r.f.abattement, imp: a.imp + r.f.imposable }), { recu: 0, abat: 0, imp: 0 });
   const partiel = rows.some((r) => r.f.partiel);
+  const nonGere = [...new Set(rows.map((r) => r.f.nonGere).filter(Boolean))];
   return (
     <>
       <Topbar title="Impôts" back="#/plus" screen="fiscal" />
@@ -35,6 +36,7 @@ export function Fiscal() {
           <p class="hint">Avec le régime spécial des assistantes maternelles, tu déclares ce montant au lieu du salaire pré-rempli. Compare avec le pré-rempli : le plus favorable est à retenir.</p>
         </section>
         {partiel && <Banner tone="warn">Des mois manquent dans l’historique : l’estimation est incomplète.</Banner>}
+        {nonGere.map((t) => <Banner tone="warn">{t}</Banner>)}
         {rows.map(({ c, f }) => (
           <section class="card stack" aria-label={`Impôts, ${c.child}`}>
             <div class="row"><Gommette name={c.child} color={c.color} size="sm" /><h2>{c.child}</h2></div>

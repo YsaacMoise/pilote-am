@@ -2,7 +2,7 @@
 import { lastDay } from './dates';
 import type { Bulletin } from './model';
 import type { MonthResult } from './month';
-import { ratesAt } from './rates';
+import { MESSAGE_PERIODE_NON_GEREE, ratesAt } from './rates';
 import { euros } from './money';
 
 export type Level = 'ok' | 'info' | 'warn';
@@ -42,14 +42,19 @@ export function controle(b: Bulletin, r: MonthResult, rateNet: number): Check[] 
     } else {
       out.push({ level: 'ok', title: 'Net et brut cohérents', detail: `Le net représente ${pct} % du brut (attendu : environ 78 %).` });
     }
-    if (b.heures && b.heures > 0) {
+    if (b.heures && b.heures > 0 && rates) {
       const brutHoraire = Math.round((b.brut - r.cpIndemnite / 0.781 - r.cpComplement / 0.781) / (b.heures + r.complMin / 60 + (r.majContratMin + r.majMin) / 60));
       if (brutHoraire + 1 < rates.minConvBrut) {
         out.push({ level: 'warn', title: 'Brut horaire sous le minimum', detail: `Environ ${euros(brutHoraire)} brut de l’heure, le minimum conventionnel est ${euros(rates.minConvBrut)}.` });
       }
     }
   }
-  if (rateNet < rates.minConvNet) {
+  // T-023 : avant les barèmes vérifiés, aucun minimum n'est connu ; sans repère net lu à la source, contrôle sur le brut seulement.
+  if (!rates) {
+    out.push({ level: 'info', title: 'Minimum conventionnel non contrôlé', detail: MESSAGE_PERIODE_NON_GEREE });
+  } else if (rates.minConvNet === undefined) {
+    out.push({ level: 'info', title: 'Minimum net non contrôlé', detail: `Aucun repère net officiel n’est dans l’app pour cette période. Compare le brut horaire du contrat au minimum conventionnel brut : ${euros(rates.minConvBrut)} depuis le ${rates.from.split('-').reverse().join('/')}.` });
+  } else if (rateNet < rates.minConvNet) {
     out.push({ level: 'warn', title: 'Taux du contrat sous le minimum', detail: `Ton taux net (${euros(rateNet)}) est inférieur au minimum conventionnel net (${euros(rates.minConvNet)}) depuis le ${rates.from.split('-').reverse().join('/')}.` });
   }
   return out;

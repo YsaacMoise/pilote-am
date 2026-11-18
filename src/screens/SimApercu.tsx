@@ -4,7 +4,7 @@ import { useState } from 'preact/hooks';
 import { planningRegulier, simuler, simulationParDefaut } from '../engine/simulation';
 import { today } from '../engine/dates';
 import { euros } from '../engine/money';
-import { ratesAt } from '../engine/rates';
+import { ratesConnus } from '../engine/rates';
 import { logUsage } from '../store';
 import { Icon } from '../ui/icons';
 
@@ -16,7 +16,7 @@ const nf = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
 export function SimApercu() {
   const d = today();
   // Curseur par pas de 5 centimes : on part du minimum conventionnel brut arrondi au-dessus, jusqu'à 13,00 € brut.
-  const min = Math.ceil(ratesAt(d).minConvBrut / 5) * 5;
+  const min = Math.ceil(ratesConnus(d).minConvBrut / 5) * 5;
   const [heures, setHeures] = useState(40);
   const [taux, setTaux] = useState(Math.max(min, 510));
   // La CAF compte le revenu imposable de l'année N-2 (avis d'impôt), divisé par 12.

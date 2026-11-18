@@ -2,7 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { deleteContract, logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
 import { addMonthsToDate, deMois, firstDay, mondayOf, monthOf, shortDate, today, JOUR_NOMS, type Month } from '../engine/dates';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, semainesSansAccueilAnnee, termsAt, weeklyMinutes } from '../engine/payroll';
-import { entretienPlancher, ratesAt } from '../engine/rates';
+import { entretienPlancher, ratesConnus } from '../engine/rates';
 import { soldesDeDepart } from '../engine/conges';
 import { euros, hoursLabel } from '../engine/money';
 import type { Avenant, Contract, Plage, Planning, Terms } from '../engine/model';
@@ -46,7 +46,7 @@ function blank(): Contract {
   for (let d = 1; d <= 5; d++) pl[d] = [{ start: '08:30', end: '17:30' }];
   return {
     id: uid(), child: '', family: '', color: couleurLibre(couleursPrises(state.contracts, '', t)), start: t, yearType: 'complete', weeks: 52,
-    weeksOff: [], planning: pl, rateNet: ratesAt(t).minConvNet, majoration: 10, entretienJour: 0, repasPrix: 0, repasParJour: 0,
+    weeksOff: [], planning: pl, rateNet: ratesConnus(t).minConvNet ?? 0, majoration: 10, entretienJour: 0, repasPrix: 0, repasParJour: 0,
     kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: t, balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 },
     history: [], createdAt: Date.now(),
     ...(brouillon() ?? {}),
@@ -65,7 +65,7 @@ export function Contrat({ id }: { id?: string }) {
   const curMonthStart = firstDay(monthOf(today()));
   const reprise = c.start < curMonthStart;
   const wk = weeklyMinutes(c.planning);
-  const rates = ratesAt(today());
+  const rates = ratesConnus(today());
   useEffect(() => {
     if (!existing || montrerLienDe !== existing.id) return;
     montrerLienDe = undefined;
@@ -196,9 +196,9 @@ export function Contrat({ id }: { id?: string }) {
           <fieldset>
             <legend>La rémunération</legend>
             {!!c.avenants?.length && <p class="hint">Ce sont les conditions de départ. Les changements datés sont dans les avenants, plus bas.</p>}
-            <EuroInput label="Taux horaire net" hint={`Minimum conventionnel : ${euros(rates.minConvNet)} net (${euros(rates.minConvBrut)} brut)`} cents={c.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
-            {c.rateNet > 0 && c.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel. Vérifie le contrat.</Banner>}
-            <EuroInput label="Indemnité d’entretien par jour" hint={`Si elle est plus basse, l’app applique le minimum légal (${euros(entretienPlancher(today(), 540))} pour 9 h)`} cents={c.entretienJour} onChange={(v) => set({ entretienJour: v ?? 0 })} />
+            <EuroInput label="Taux horaire net" hint={rates.minConvNet !== undefined ? `Minimum conventionnel : ${euros(rates.minConvNet)} net (${euros(rates.minConvBrut)} brut)` : `Minimum conventionnel : ${euros(rates.minConvBrut)} brut`} cents={c.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
+            {c.rateNet > 0 && rates.minConvNet !== undefined && c.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel. Vérifie le contrat.</Banner>}
+            <EuroInput label="Indemnité d’entretien par jour" hint={`Si elle est plus basse, l’app applique le minimum légal (${euros(entretienPlancher(today(), 540)!)} pour 9 h)`} cents={c.entretienJour} onChange={(v) => set({ entretienJour: v ?? 0 })} />
             <Choices label="Qui fournit les repas de l’enfant ?" value={c.repasParents === undefined ? undefined : c.repasParents ? 'parents' : 'am'}
               onChange={(v) => set(v === 'parents' ? { repasParents: true, repasPrix: 0, repasParJour: 0 } : { repasParents: false })}
               options={[

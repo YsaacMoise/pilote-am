@@ -4,7 +4,7 @@ import {
   type ISODate, type Month,
 } from './dates';
 import { holidayName, isMayDay } from './holidays';
-import { entretienPlancher, netToBrut } from './rates';
+import { entretienPlancher, MESSAGE_PERIODE_NON_GEREE, netToBrut } from './rates';
 import { cpAConfirmerEntre, cpExces } from './conges';
 import type { AmAbs, AmLeave, Contract, DayRec, Plage, Planning } from './model';
 
@@ -644,6 +644,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   r.divisorMin = fullMin;
 
   let cDays = 0, cMin = 0, dedDays = 0, dedMin = 0, actDays = 0, cpSansDroits = 0;
+  let entretienNonVerifie = false;
   const forgotten: ISODate[] = [];
   for (const d of allDays) {
     if (!inSeg(d)) continue;
@@ -660,7 +661,10 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
       if (di.presentMin > 0) {
         r.presenceDays++;
         if (di.plannedMin === 0) r.extraDays++;
-        r.entretien += Math.max(c.entretienJour, entretienPlancher(d, di.presentMin));
+        const plancher = entretienPlancher(d, di.presentMin);
+        // T-023 : avant les barèmes vérifiés, le plancher légal n'est pas connu. L'app retient le montant du contrat et le dit.
+        if (plancher === undefined) entretienNonVerifie = true;
+        r.entretien += Math.max(c.entretienJour, plancher ?? 0);
         const nbRepas = di.rec?.repas ?? c.repasParJour;
         r.repas += nbRepas * c.repasPrix;
       }
@@ -706,6 +710,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   if (entreeSortie) r.joursActivite = actDays + r.extraDays;
   else if (startsOrEndsInMonth) r.joursActivite = Math.max(0, (joursMensualises(c) * (fullDays ? segDays / fullDays : 0)) - dedDays) + r.extraDays;
   else r.joursActivite = Math.max(0, joursMensualises(c) - dedDays) + r.extraDays;
+  if (entretienNonVerifie) r.alerts.push(`${MESSAGE_PERIODE_NON_GEREE} Indemnité d’entretien : l’app retient le montant du contrat, sans contrôle du minimum légal ; vérifie-le avec les parents.`);
   // R-CP-09 : un congé dont le décompte reste ambigu est signalé, pas tranché (T-019).
   for (const a of cpAConfirmerEntre(ctx, segFrom, segTo)) if (!r.alerts.includes(a)) r.alerts.push(a);
   if (cpSansDroits) {

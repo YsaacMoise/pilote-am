@@ -2,7 +2,7 @@
 import { eachDay, lastDay, monthsBetween, type Month } from './dates';
 import { computeMonth } from './month';
 import { dayInfo, termsAt, type Ctx } from './payroll';
-import { ratesAt } from './rates';
+import { MESSAGE_PERIODE_NON_GEREE, ratesAt } from './rates';
 
 export interface FiscalChild {
   cid: string;
@@ -24,6 +24,8 @@ export interface FiscalChild {
   smics: number[];
   facteur: number;
   partiel: boolean;
+  /** T-023 : barème absent pour une partie de l'année (SMIC ou avantage repas) : estimation incomplète, à confirmer */
+  nonGere?: string;
 }
 
 /** CSG non déductible (2,4 %) + CRDS (0,5 %) sur 98,25 % du brut : à réintégrer dans le net imposable */
@@ -33,9 +35,17 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
   const c = ctx.c;
   // SMIC horaire en vigueur le jour de la garde (BOI-RSA-CHAMP-10-20-10 § 490)
   const smics: number[] = [];
+  const nonGere = new Set<string>();
+  // T-023 : jamais le SMIC d'une autre période. Avant les barèmes vérifiés, pas d'abattement calculé pour ce jour.
   const smicAt = (d: string): number => {
-    const v = ratesAt(d).smic;
+    const v = ratesAt(d)?.smic;
+    if (v === undefined) { nonGere.add(`${MESSAGE_PERIODE_NON_GEREE} L’abattement de ces jours n’est pas calculé.`); return 0; }
     if (smics[smics.length - 1] !== v) smics.push(v);
+    return v;
+  };
+  const repasAt = (d: string): number => {
+    const v = ratesAt(d)?.repasAvantage;
+    if (v === undefined) { nonGere.add('Repas fournis par les parents : la valeur officielle du repas pour cette année n’est pas dans l’app. Ils ne sont pas comptés ; ajoute-les toi-même.'); return 0; }
     return v;
   };
   const facteur = c.majoreFiscal ? 4 : 3;
@@ -52,14 +62,14 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
       // Sans détail des jours : jours d'activité du bulletin, journées supposées de 8 h ou plus.
       jours += r.joursActivite;
       abat += r.joursActivite * facteur * smicAt(lastDay(m));
-      if (termsAt(c, `${m}-01`).repasParents) rp += r.joursActivite * ratesAt(lastDay(m)).repasAvantage;
+      if (termsAt(c, `${m}-01`).repasParents) rp += r.joursActivite * repasAt(lastDay(m));
       continue;
     }
     for (const d of eachDay(`${m}-01`, lastDay(m))) {
       const di = dayInfo(ctx, d);
       if (di.presentMin <= 0 || (di.kind !== 'present' && di.kind !== 'prevu')) continue;
       jours++;
-      if (termsAt(c, d).repasParents) rp += ratesAt(d).repasAvantage;
+      if (termsAt(c, d).repasParents) rp += repasAt(d);
       const ratio = Math.min(1, di.presentMin / 480);
       if (ratio < 1) courts++;
       abat += facteur * smicAt(d) * ratio;
@@ -70,6 +80,7 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
   const abattement = Math.min(abattementBrut, recu);
   return {
     cid: c.id, recu, netImposable: net, entretienRepas: er, repasParents: rp, jours, joursCourts: courts, abattementBrut, abattement,
-    imposable: recu - abattement, smic: smics[smics.length - 1] ?? ratesAt(`${year}-01-01`).smic, smics, facteur, partiel,
+    imposable: recu - abattement, smic: smics[smics.length - 1] ?? ratesAt(`${year}-01-01`)?.smic ?? 0, smics, facteur, partiel,
+    nonGere: nonGere.size ? [...nonGere].join(' ') : undefined,
   };
 }

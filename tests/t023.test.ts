@@ -1,0 +1,98 @@
+// T-023 et T-017 : corrections du moteur A (brief M2, rapport projet/moteur/correctifs-t023.md).
+// Chaque attendu vient d'un texte relu à la source le 18/11/2026 (cité dans chaque test) ou d'un cas officiel
+// de tests/cas-officiels-v0.md. Aucun attendu n'est tiré du code.
+import { describe, expect, it } from 'vitest';
+import type { Bulletin, Contract, Planning } from '../src/engine/model';
+import { makeCtx } from '../src/engine/payroll';
+import { computeMonth } from '../src/engine/month';
+import { controle } from '../src/engine/controle';
+import { fiscalYear } from '../src/engine/fiscal';
+import { entretienPlancher, PREMIERE_DATE_GEREE, ratesAt } from '../src/engine/rates';
+
+function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
+  const p: Planning = {};
+  for (const d of days) p[d] = [{ start, end }];
+  return p;
+}
+function contract(over: Partial<Contract> = {}): Contract {
+  return {
+    id: 'c1', child: 'Léa', family: 'Martin', color: 0, start: '2025-09-01', yearType: 'complete', weeks: 52, weeksOff: [],
+    planning: week('08:00', '16:00'), rateNet: 500, majoration: 10, entretienJour: 0, repasPrix: 0, repasParJour: 0,
+    kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: '2025-09-01',
+    balances: { cpRestants: 30, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 0, ...over,
+  };
+}
+
+describe('T-023 (3) barèmes datés avant le 01/04/2025 (BAREME-ABSENT)', () => {
+  it('SMIC et MG : décrets et arrêtés de relèvement, art. 1 à 3 (JORF)', () => {
+    // Décret n° 2021-1741 du 22/12/2021 : « porté à 10,57 euros l'heure » ; MG « 3,76 euros », au 1er janvier 2022
+    expect(ratesAt('2022-01-01')).toMatchObject({ smic: 1057, mg: 376 });
+    // Arrêté du 19/04/2022 : 10,85 € et 3,86 € au 1er mai 2022
+    expect(ratesAt('2022-05-01')).toMatchObject({ smic: 1085, mg: 386 });
+    // Arrêté du 29/07/2022 : 11,07 € et 3,94 € au 1er août 2022
+    expect(ratesAt('2022-08-01')).toMatchObject({ smic: 1107, mg: 394 });
+    // Décret n° 2022-1608 du 22/12/2022 : 11,27 € et 4,01 € au 1er janvier 2023
+    expect(ratesAt('2023-01-01')).toMatchObject({ smic: 1127, mg: 401 });
+    // Arrêté du 26/04/2023 : 11,52 € et 4,10 € au 1er mai 2023
+    expect(ratesAt('2023-05-01')).toMatchObject({ smic: 1152, mg: 410 });
+    // Décret n° 2023-1216 du 20/12/2023 : 11,65 € et 4,15 € au 1er janvier 2024
+    expect(ratesAt('2024-01-01')).toMatchObject({ smic: 1165, mg: 415 });
+    // Décret n° 2024-951 du 23/10/2024 : 11,88 € et 4,22 € au 1er novembre 2024 ; la veille, encore 11,65 €
+    expect(ratesAt('2024-10-31')).toMatchObject({ smic: 1165, mg: 415 });
+    expect(ratesAt('2024-11-01')).toMatchObject({ smic: 1188, mg: 422 });
+    expect(ratesAt('2025-12-31')).toMatchObject({ smic: 1188, mg: 422 });
+  });
+
+  it('minimum conventionnel : annexe 5 et avenants, art. 2 « premier jour calendaire du mois suivant » le JORF de l’arrêté d’extension', () => {
+    const min = (d: string) => ratesAt(d)!.minConvBrut;
+    expect(min('2022-01-01')).toBe(297); // annexe 5, texte de base : 2,97 €
+    expect(min('2022-06-30')).toBe(297);
+    expect(min('2022-07-01')).toBe(306); // avenant n° 1, JORF 14/06/2022
+    expect(min('2022-09-01')).toBe(317); // avenant n° 2, JORF 23/08/2022
+    expect(min('2022-12-01')).toBe(320); // avenant n° 3, JORF 23/11/2022
+    expect(min('2023-04-01')).toBe(326); // avenant n° 4, JORF 1er mars 2023
+    expect(min('2023-05-01')).toBe(336); // avenant n° 5, JORF 18/04/2023
+    expect(min('2023-09-01')).toBe(343); // avenant n° 6, JORF 02/08/2023
+    expect(min('2024-02-01')).toBe(345); // avenant n° 7, JORF 24/01/2024 (C-MENS : « 3,45 € en 2024 »)
+    expect(min('2024-05-01')).toBe(350); // avenant n° 8, JORF 26/04/2024 : 3,50 € (3,64 € = valeur avec titre AM-GE)
+    expect(min('2025-03-31')).toBe(350); // avenant n° 8 encore applicable
+    expect(min('2025-04-01')).toBe(364); // avenant n° 9, JORF 18/03/2025
+  });
+
+  it('cas officiel C-MENS-11 : « 2,97 € (taux 2022) »', () => {
+    expect(ratesAt('2022-03-15')!.minConvBrut).toBe(297);
+  });
+
+  it('avant le 01/01/2022 : période non gérée, jamais les barèmes d’une autre période', () => {
+    expect(PREMIERE_DATE_GEREE).toBe('2022-01-01');
+    expect(ratesAt('2021-12-31')).toBeUndefined();
+    expect(entretienPlancher('2021-12-31', 540)).toBeUndefined();
+  });
+
+  it('plancher d’entretien en 2023 : MG de 4,10 € (arrêté du 26/04/2023), 90 % du MG pour 9 h (CCN art. 114.1)', () => {
+    expect(entretienPlancher('2023-06-15', 540)).toBe(369); // 4,10 × 9 ÷ 10 = 3,69
+  });
+
+  it('mois avant 2022 : entretien du contrat retenu et signalé, sans plancher supposé', () => {
+    const c = contract({ start: '2021-11-01', trackedFrom: '2021-11-01', entretienJour: 300 });
+    const r = computeMonth(makeCtx(c, [], [], '2021-12-31'), '2021-11');
+    expect(r.entretien).toBe(300 * r.presenceDays);
+    expect(r.alerts.join(' ')).toMatch(/Période non gérée/);
+  });
+
+  it('contrôle d’un bulletin de février 2025 : minimum de 3,50 € brut, pas de repère net supposé', () => {
+    const c = contract({ start: '2024-09-02', trackedFrom: '2024-09-02', rateNet: 270 });
+    const r = computeMonth(makeCtx(c, [], [], '2025-03-31'), '2025-02');
+    const b: Bulletin = { id: 'b', cid: 'c1', month: '2025-02', source: 'manuel' };
+    const checks = controle(b, r, 270);
+    expect(checks.some((x) => x.title === 'Taux du contrat sous le minimum')).toBe(false);
+    expect(checks.find((x) => x.title === 'Minimum net non contrôlé')?.detail).toMatch(/3,50/);
+  });
+
+  it('compteur fiscal 2021 : pas d’abattement calculé avec un SMIC d’une autre année', () => {
+    const c = contract({ start: '2021-09-01', trackedFrom: '2021-09-01' });
+    const f = fiscalYear(makeCtx(c, [], [], '2021-12-31'), 2021);
+    expect(f.abattementBrut).toBe(0);
+    expect(f.nonGere).toMatch(/Période non gérée/);
+  });
+});

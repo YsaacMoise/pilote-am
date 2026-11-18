@@ -3,7 +3,7 @@ import { useState } from 'preact/hooks';
 import { logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
 import { addMonths, firstDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, termsAt, weeklyMinutes } from '../engine/payroll';
-import { ratesAt } from '../engine/rates';
+import { MESSAGE_PERIODE_NON_GEREE, ratesAt } from '../engine/rates';
 import { euros, hoursLabel } from '../engine/money';
 import { TERM_KEYS, type Avenant as Av, type Contract, type Planning, type Terms } from '../engine/model';
 import { Banner, Choices, DateInput, EuroInput, NumberInput, Seg, Topbar } from '../ui/kit';
@@ -95,8 +95,8 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
         <section class="card">
           <fieldset>
             <legend>La rémunération</legend>
-            <EuroInput label="Taux horaire net" hint={`Minimum conventionnel en ${monthLabel(month)} : ${euros(rates.minConvNet)} net`} cents={t.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
-            {t.rateNet > 0 && t.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel.</Banner>}
+            <EuroInput label="Taux horaire net" hint={!rates ? MESSAGE_PERIODE_NON_GEREE : rates.minConvNet === undefined ? `Minimum conventionnel en ${monthLabel(month)} : ${euros(rates.minConvBrut)} brut (pas de repère net dans l’app)` : `Minimum conventionnel en ${monthLabel(month)} : ${euros(rates.minConvNet)} net`} cents={t.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
+            {t.rateNet > 0 && rates?.minConvNet !== undefined && t.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel.</Banner>}
             <EuroInput label="Indemnité d’entretien par jour" cents={t.entretienJour} onChange={(v) => set({ entretienJour: v ?? 0 })} />
             <Choices label="Qui fournit les repas de l’enfant ?" value={t.repasParents === undefined ? undefined : t.repasParents ? 'parents' : 'am'}
               onChange={(v) => set(v === 'parents' ? { repasParents: true, repasPrix: 0, repasParJour: 0 } : { repasParents: false })}
