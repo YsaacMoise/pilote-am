@@ -302,9 +302,11 @@ function lecturesAnneeIncomplete(ctx: Ctx, y: number, enfants: number, moins21: 
   }
   if (c.trackedFrom > a) return { lectures: [], raison: 'le suivi par l’app a commencé après le début de la période' };
   const planningType = (d: ISODate) => planningBrutMin(termsAt(c, d), d) > 0;
+  // T-038 (point 10, G-6) : un jour de l'enfant noté « sans solde » n'est plus retenu depuis T-035b (CCN art. 105 al. 1 :
+  // « les temps d'absence non prévus sont rémunérés ») : il est payé comme une absence voulue par les parents, qui ne change
+  // pas ce calcul (les jours comptés sont ceux du planning). Le refus qui le visait n'a plus d'objet.
   const absence = ctx.leaves.some((l) => l.type !== 'cp' && l.from <= b && l.to >= a
-    && eachDay(l.from > a ? l.from : a, l.to < b ? l.to : b).some(planningType))
-    || [...ctx.days.values()].some((r) => r.abs === 'sans_solde_enfant' && r.date >= a && r.date <= b);
+    && eachDay(l.from > a ? l.from : a, l.to < b ? l.to : b).some(planningType));
   if (absence) return { lectures: [], raison: 'une absence (maladie, congé sans solde…) change le calcul' };
   // Semaines sans accueil : toutes celles des années de contrat comprises dans le contrat et qui touchent la période.
   for (let i = 0; ; i++) {

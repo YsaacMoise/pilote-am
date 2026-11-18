@@ -4,7 +4,7 @@ import { activeContracts, ctxFor, logUsage, putLeave, saveSettings, state, toast
 import { addDays, dayLabel, minutes, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NOMS, daysBetween } from '../engine/dates';
 import { dayInfo, type DayInfo } from '../engine/payroll';
 import { AM_ABS_LABEL, AM_ABS_NON_GEREES, CHILD_ABS_LABEL, type AmAbs, type ChildAbs, type Contract, type DayRec, type NatureEvenement, type Presence } from '../engine/model';
-import { dureeEvenement, NATURE_EVENEMENT_LABEL } from '../engine/evenements';
+import { libelleDureeSaisie, NATURE_EVENEMENT_LABEL } from '../engine/evenements';
 import { hoursLabel } from '../engine/money';
 import { Banner, CHILD_COLORS, Choices, DateInput, Gommette, Sheet, Stepper, Switch, Topbar, useErreurAffichee } from '../ui/kit';
 import { evAnnulation, evCorrection, heureCorrigee } from '../usage-events';
@@ -373,10 +373,7 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
       <Choices label="Raison" value={type} options={AM_OPTIONS} onChange={setType} />
       {type === 'evenement' && (
         <Choices label="Quel événement ?" value={nature} onChange={setNature}
-          options={(Object.keys(NATURE_EVENEMENT_LABEL) as NatureEvenement[]).map((v) => {
-            const n = dureeEvenement(v, from);
-            return { v, l: NATURE_EVENEMENT_LABEL[v], sub: n === undefined ? 'Indemnisé par la Sécurité sociale : à calculer avec les parents' : `${n} jour${n > 1 ? 's' : ''} ouvrable${n > 1 ? 's' : ''} payé${n > 1 ? 's' : ''}` };
-          })} />
+          options={(Object.keys(NATURE_EVENEMENT_LABEL) as NatureEvenement[]).map((v) => ({ v, l: NATURE_EVENEMENT_LABEL[v], sub: libelleDureeSaisie(v, from) }))} />
       )}
       {type === 'evenement' && <p class="hint">Déplacement de plus de 600 km aller-retour : le jour en plus est non rémunéré, saisis-le en congé sans solde.</p>}
       {(AM_ABS_NON_GEREES as AmAbs[]).includes(type) ? <Banner tone="warn">{ABSENCE_NON_GEREE_CHOISIE}</Banner> : <p class="hint">{ABSENCES_NON_GEREES}</p>}

@@ -88,13 +88,16 @@ describe('T-023 (3) barèmes datés avant le 01/04/2025 (BAREME-ABSENT)', () => 
     expect(r.alerts.join(' ')).toMatch(/Période non gérée/);
   });
 
-  it('contrôle d’un bulletin de février 2025 : minimum de 3,50 € brut, pas de repère net supposé', () => {
+  // T-038 (M-1) : l'Urssaf publie le repère net de cette période (« Du 1er janvier 2025 au 31 mars 2025 », métropole et
+  // Drom : « Salaire horaire brut 3,50 € » ; « Salaire horaire net 2,74 € », page relue le 18/11/2026).
+  it('contrôle d’un bulletin de février 2025 : repère net de l’Urssaf, 2,74 € ; 2,70 € est sous le minimum', () => {
     const c = contract({ start: '2024-09-02', trackedFrom: '2024-09-02', rateNet: 270 });
     const r = computeMonth(makeCtx(c, [], [], '2025-03-31'), '2025-02');
     const b: Bulletin = { id: 'b', cid: 'c1', month: '2025-02', source: 'manuel' };
     const checks = controle(b, r, 270);
-    expect(checks.some((x) => x.title === 'Taux du contrat sous le minimum')).toBe(false);
-    expect(checks.find((x) => x.title === 'Minimum net non contrôlé')?.detail).toMatch(/3,50/);
+    expect(checks.some((x) => x.title === 'Minimum net non contrôlé')).toBe(false);
+    expect(checks.find((x) => x.title === 'Taux du contrat sous le minimum')?.detail).toMatch(/minimum conventionnel net \(2,74/);
+    expect(controle(b, r, 274).some((x) => x.title === 'Taux du contrat sous le minimum')).toBe(false);
   });
 
   it('compteur fiscal 2021 : pas d’abattement calculé avec un SMIC d’une autre année', () => {

@@ -7,7 +7,7 @@ import {
   type ISODate, type Month,
 } from './dates';
 import { acquisition, compteur, cpForMonth, indemnite, maintien } from './conges';
-import { makeCtx, monthBase, naturesAConfirmer, monthBrut, regularisation, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx } from './payroll';
+import { libelleRegulJoursAConfirmer, makeCtx, monthBase, naturesAConfirmer, monthBrut, regularisationLectures, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx } from './payroll';
 import { netToBrut } from './rates';
 
 /** Entrée en vigueur de l'avenant n° 10 du 9 septembre 2025 (inaptitude) */
@@ -42,6 +42,8 @@ export interface FinResult {
   /** Décès de l'enfant : indemnité égale au préavis (R-FIN-07, CCN art. 119.4.2), 0 pour les autres motifs */
   indemnitePreavis: number;
   indemnitePreavisExplication?: string;
+  /** T-038 (R-1) : le montant change selon le premier jour retenu ; `indemnitePreavis` vaut 0 et n'est pas compté */
+  indemnitePreavisAConfirmer?: string;
   totalBrut: number;
   regularisation: number;
   regulMinutes: number;
@@ -70,10 +72,11 @@ export const MESSAGE_PREAVIS_FIN =
  * PREAVIS-DEMISSION-3-12 (T-034, décision du DG) : démission de 3 mois à moins d'un an d'accueil. La durée elle-même est en
  * conflit : CASF L423-26 (« un enfant qui lui était confié depuis au moins trois mois est subordonnée […] à un préavis
  * d'un mois ») ; CCN art. 120 (« 15 jours calendaires si l'enfant est accueilli depuis 3 mois et jusqu'à moins d'un an »).
- * L'app applique 15 jours, le dit, et garde la date de fin à confirmer (MESSAGE_PREAVIS_FIN). Aucun montant changé.
+ * L'app applique 15 jours, le dit, et garde la date de fin à confirmer (MESSAGE_PREAVIS_FIN). T-038 (AC-1) : la régularisation
+ * et l'indemnité de congés non pris sont aussi calculées avec un préavis d'un mois ; si elles changent, « à confirmer ».
  */
 export const MESSAGE_PREAVIS_DEMISSION_3_12 =
-  'Durée du préavis à confirmer. Pour une démission entre 3 mois et 1 an d’accueil, la loi (code de l’action sociale et des familles, article L423-26) prévoit un mois, la convention (article 120) 15 jours. La question a été posée à la DDETS le 18/11/2026. L’app applique 15 jours : si c’est un mois, la date de fin et le dernier salaire changent.';
+  'Durée du préavis à confirmer. Pour une démission entre 3 mois et 1 an d’accueil, la loi (code de l’action sociale et des familles, article L423-26) prévoit un mois, la convention (article 120) 15 jours. La question a été posée à la DDETS le 18/11/2026. L’app applique 15 jours : si c’est un mois, la date de fin et le dernier salaire changent, et la régularisation et l’indemnité de congés non pris peuvent changer aussi (elles sont alors à confirmer).';
 
 /** Durée du préavis selon l'ancienneté, rupture par l'employeur (R-FIN-02, CCN art. 120) */
 function preavisEmployeur(anc: number): { label: string; jours?: number } {
@@ -104,6 +107,58 @@ function indemniteCompensatricePreavis(c: Ctx['c'], from: ISODate, to: ISODate):
 
 
 /**
+ * Indemnité de congés non pris à la fin `dernierJour` (T-038 : sortie de `finDeContrat` pour être recalculée à une autre
+ * date de fin). `endCtx` : contexte dont le contrat finit le `dernierJour`.
+ */
+function congesNonPris(endCtx: Ctx, c: Ctx['c'], dernierJour: ISODate, enfants: number): { cpIndemnite: number; jours: number; cpExplication: string; cpAConfirmer?: string } {
+  const finTerms = termsAt(c, dernierJour);
+  const cpt = compteur(endCtx, dernierJour, enfants);
+  const y = cpPeriodStartYear(dernierJour);
+  const acq = acquisition(endCtx, y, enfants);
+  const restantsPrec = Math.max(0, cpt.reste);
+  // Période en cours : dixième de la base à date, ou maintien, le plus favorable
+  const indCur = indemnite(endCtx, y, enfants);
+  const joursCur = acq.joursADate;
+  const curMontant = Math.max(Math.round(indCur.dixieme), maintien(endCtx, joursCur, dernierJour));
+  // Période précédente : jours restants, moins ce qui a déjà été versé.
+  let precMontant = 0;
+  if (restantsPrec > 0) {
+    if (finTerms.yearType === 'complete') {
+      // Les jours pris ont été payés dans le salaire, le complément du dixième en juin : reste le maintien.
+      precMontant = maintien(endCtx, restantsPrec, dernierJour);
+    } else {
+      const indPrev = y - 1 >= cpPeriodStartYear(c.trackedFrom) ? indemnite(endCtx, y - 1, enfants) : null;
+      if (indPrev && indPrev.jours) {
+        let deja = 0;
+        for (const m of monthsBetween(`${y}-06`, monthOf(dernierJour))) deja += cpForMonth(endCtx, m, enfants).indemnite;
+        precMontant = Math.max(0, indPrev.montant - deja);
+      } else {
+        precMontant = maintien(endCtx, restantsPrec, dernierJour);
+      }
+    }
+  }
+  let cpIndemnite = curMontant + precMontant;
+  let cpExplication = `${joursCur} jour${joursCur > 1 ? 's' : ''} acquis depuis le 1er juin (${cpPeriod(y).from.slice(0, 4)})` +
+    (restantsPrec ? ` et ${restantsPrec} jour${restantsPrec > 1 ? 's' : ''} de la période précédente non pris` : '') +
+    ' : on retient le plus favorable entre le dixième et le maintien de salaire.';
+  // T-019 : jours acquis (année incomplète, SUS-11) ou jours pris (R-CP-09) à confirmer : aucun montant n'est donné.
+  let cpAConfirmer: string | undefined;
+  const indPrecAC = restantsPrec > 0 && finTerms.yearType !== 'complete' && y - 1 >= cpPeriodStartYear(c.trackedFrom)
+    ? indemnite(endCtx, y - 1, enfants).aConfirmer : undefined;
+  const motifsAC = [
+    acq.aConfirmer?.message ?? indCur.aConfirmer?.message,
+    cpt.aPrendreAConfirmer?.message ?? indPrecAC?.message,
+    ...cpt.decompteAConfirmer,
+  ].filter((x): x is string => !!x);
+  if (motifsAC.length) {
+    cpAConfirmer = [...new Set(motifsAC)].join(' ');
+    cpIndemnite = 0;
+    cpExplication = 'À confirmer : le nombre de jours de congés n’est pas tranché. L’app ne donne pas de montant.';
+  }
+  return { cpIndemnite, jours: joursCur + restantsPrec, cpExplication, cpAConfirmer };
+}
+
+/**
  * `notif` : date d'envoi de la lettre recommandée ou de remise en main propre contre décharge (date du décès pour
  * un décès). L'ancienneté s'apprécie à cette date.
  * `presentation` : date de première présentation de la lettre recommandée (avis de passage). Le préavis part de
@@ -123,13 +178,15 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   let preavisFin = notif;
   let preavisFinAConfirmer: string | undefined;
   let preavisLabel = 'Pas de préavis';
+  let demission312 = false;
   if (motif === 'inaptitude' || motif === 'inaptitude_pro') {
     preavisLabel = 'Pas de préavis en cas d’inaptitude : le contrat s’arrête à l’envoi de la lettre';
   } else if (motif === 'retrait' || motif === 'demission') {
     const p = preavisEmployeur(anc);
     preavisLabel = p.label;
     preavisFin = finPreavis(depart, p);
-    preavisFinAConfirmer = motif === 'demission' && anc >= 3 && anc < 12
+    demission312 = motif === 'demission' && anc >= 3 && anc < 12;
+    preavisFinAConfirmer = demission312
       ? `${MESSAGE_PREAVIS_DEMISSION_3_12} ${MESSAGE_PREAVIS_FIN}`
       : MESSAGE_PREAVIS_FIN;
   }
@@ -140,6 +197,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // du décès est payé avec le dernier salaire.
   let indemnitePreavis = 0;
   let indemnitePreavisExplication: string | undefined;
+  let indemnitePreavisAConfirmer: string | undefined;
   if (motif === 'deces') {
     const p = preavisEmployeur(anc);
     const debut = addDays(notif, 1);
@@ -147,7 +205,17 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     indemnitePreavis = indemniteCompensatricePreavis(c, debut, fin);
     preavisLabel = `${p.label} : pas de préavis à faire, les parents te versent une indemnité égale au préavis`;
     indemnitePreavisExplication = `Égale au salaire que tu aurais touché pendant ${p.jours ? `${p.jours} jours` : 'un mois'}, du ${shortDate(debut)} au ${shortDate(fin)}.`;
-    alertes.push(`Décès de l’enfant : l’indemnité égale au préavis est calculée du ${shortDate(debut)} au ${shortDate(fin)}. Aucun texte ne fixe le premier jour : fais-la vérifier.`);
+    // T-038 (R-1, relecture V4) : le premier jour n'est fixé par aucun texte. Seconde lecture : la période part du jour du
+    // décès. Si le montant change, il n'est ni donné ni compté.
+    const fin2 = finPreavis(notif, p);
+    const autre = indemniteCompensatricePreavis(c, notif, fin2);
+    if (autre !== indemnitePreavis) {
+      indemnitePreavisAConfirmer = `Indemnité égale au préavis à confirmer : aucun texte ne fixe son premier jour. Du ${shortDate(debut)} au ${shortDate(fin)} (lendemain du décès) : ${euros(indemnitePreavis)} ; du ${shortDate(notif)} au ${shortDate(fin2)} (jour du décès) : ${euros(autre)}. Elle n'est pas comptée dans le total. Vois-la avec les parents.`;
+      indemnitePreavis = 0;
+      indemnitePreavisExplication = 'À confirmer : le montant dépend du premier jour retenu.';
+    } else {
+      alertes.push(`Décès de l’enfant : l’indemnité égale au préavis est calculée du ${shortDate(debut)} au ${shortDate(fin)}. Aucun texte ne fixe le premier jour ; à partir du jour du décès, le montant serait le même.`);
+    }
   }
   const dernierJour = preavisFin;
   const endCtx: Ctx = { ...ctx, c: { ...c, end: dernierJour }, cache: new Map() };
@@ -233,8 +301,21 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // depuis l'embauche, le début du suivi ou le dernier passage d'une année à l'autre (C-001 : les autres avenants ne coupent pas).
   const finTerms = termsAt(c, dernierJour);
   const regStart = regulStart(c, addDays(dernierJour, 1));
-  const reg = regularisation(endCtx, regStart, dernierJour);
-  const regulMinutes = reg.minutes;
+  // T-038 : chaque date de fin possible (fin calculée ; fin un jour plus tard si la date est à confirmer, AC-2 ; fin au bout
+  // d'un mois pour la démission de 3 mois à 1 an, AC-1, CASF L423-26 contre CCN art. 120) donne sa régularisation et ses
+  // congés non pris. Un montant qui change d'une variante à l'autre, ou selon les jours « à confirmer » (B-1), n'est ni donné
+  // ni compté : il est « à confirmer » avec ses valeurs.
+  const variantes: { fin: ISODate; libelle: string }[] = [{ fin: dernierJour, libelle: `fin le ${shortDate(dernierJour)}` }];
+  if (preavisFinAConfirmer) variantes.push({ fin: addDays(dernierJour, 1), libelle: `fin le ${shortDate(addDays(dernierJour, 1))}` });
+  if (demission312) {
+    const finMois = finPreavis(depart, {});
+    variantes.push({ fin: finMois, libelle: `préavis d’un mois, fin le ${shortDate(finMois)}` });
+    variantes.push({ fin: addDays(finMois, 1), libelle: `préavis d’un mois, fin le ${shortDate(addDays(finMois, 1))}` });
+  }
+  const ctxFin = (fin: ISODate): Ctx => (fin === dernierJour ? endCtx : { ...ctx, c: { ...c, end: fin }, cache: new Map() });
+  const regPour = (fin: ISODate) => regularisationLectures(ctxFin(fin), regulStart(c, addDays(fin, 1)), fin);
+  const reg = regPour(dernierJour);
+  const regulMinutes = reg.dus.minutes;
   // C-002 : sans toutes les semaines sans accueil, les semaines non saisies compteraient comme accueillies.
   let manque = finTerms.yearType === 'incomplete' ? semainesSansAccueilManquantes(c, regStart, dernierJour) : 0;
   // Dernière année de contrat non terminée : aucune semaine sans accueil saisie alors qu'il en faut = blocage
@@ -250,14 +331,20 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   } else if (finTerms.yearType === 'incomplete') {
     alertes.push('Vérifie que toutes les semaines sans accueil de la dernière année sont saisies : une semaine non saisie compte comme accueillie dans la régularisation.');
   }
-  let regularisation_ = finTerms.yearType === 'incomplete' && manque === 0 ? reg.montant : 0;
+  let regularisation_ = finTerms.yearType === 'incomplete' && manque === 0 ? reg.dus.montant : 0;
   let regularisationAConfirmer: string | undefined;
-  if (preavisFinAConfirmer && finTerms.yearType === 'incomplete' && manque === 0) {
-    const autreFin = addDays(dernierJour, 1);
-    const autreCtx: Ctx = { ...ctx, c: { ...c, end: autreFin }, cache: new Map() };
-    const autre = regularisation(autreCtx, regulStart(c, addDays(autreFin, 1)), autreFin);
-    if (autre.montant !== reg.montant) {
-      regularisationAConfirmer = `Régularisation à confirmer : elle dépend de la date de fin du préavis, elle-même à confirmer. Fin le ${shortDate(dernierJour)} : ${euros(reg.montant)} ; fin le ${shortDate(autreFin)} : ${euros(autre.montant)}. Elle n'est pas comptée dans le total.`;
+  if (finTerms.yearType === 'incomplete' && manque === 0) {
+    const lectures = variantes.map((v) => ({ ...v, r: v.fin === dernierJour ? reg : regPour(v.fin) }));
+    const valeurs = new Set(lectures.flatMap((l) => [l.r.dus.montant, l.r.retenus.montant]));
+    if (valeurs.size > 1) {
+      const montant = (l: (typeof lectures)[number]) => (l.r.sure ? euros(l.r.dus.montant) : libelleRegulJoursAConfirmer(l.r.dus.montant, l.r.retenus.montant));
+      const causes = [
+        lectures.some((l) => l.r.dus.montant !== lectures[0].r.dus.montant || l.r.retenus.montant !== lectures[0].r.retenus.montant)
+          ? (demission312 ? 'de la durée du préavis et de sa date de fin, à confirmer' : 'de la date de fin du préavis, elle-même à confirmer') : '',
+        lectures.some((l) => !l.r.sure) ? 'de jours de salaire encore à confirmer (voir les mois concernés)' : '',
+      ].filter(Boolean).join(' et ');
+      const detail = new Set(lectures.map(montant)).size === 1 ? `${montant(lectures[0]).replace(/^./, (x) => x.toUpperCase())}.` : `${lectures.map((l) => `${l.libelle.replace(/^./, (x) => x.toUpperCase())} : ${montant(l)}`).join(' ; ')}.`;
+      regularisationAConfirmer = `Régularisation à confirmer : elle dépend ${causes}. ${detail} Elle n'est pas comptée dans le total.`;
       regularisation_ = 0;
     }
   }
@@ -266,50 +353,19 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   }
 
   // Congés non pris
-  const cpt = compteur(endCtx, dernierJour, enfants);
-  const y = cpPeriodStartYear(dernierJour);
-  const acq = acquisition(endCtx, y, enfants);
-  const restantsPrec = Math.max(0, cpt.reste);
-  let cpIndemnite = 0;
-  let cpExplication = '';
-  // Période en cours : dixième de la base à date, ou maintien, le plus favorable
-  const indCur = indemnite(endCtx, y, enfants);
-  const joursCur = acq.joursADate;
-  const curMontant = Math.max(Math.round(indCur.dixieme), maintien(endCtx, joursCur, dernierJour));
-  // Période précédente : jours restants, moins ce qui a déjà été versé.
-  let precMontant = 0;
-  if (restantsPrec > 0) {
-    if (finTerms.yearType === 'complete') {
-      // Les jours pris ont été payés dans le salaire, le complément du dixième en juin : reste le maintien.
-      precMontant = maintien(endCtx, restantsPrec, dernierJour);
-    } else {
-      const indPrev = y - 1 >= cpPeriodStartYear(c.trackedFrom) ? indemnite(endCtx, y - 1, enfants) : null;
-      if (indPrev && indPrev.jours) {
-        let deja = 0;
-        for (const m of monthsBetween(`${y}-06`, monthOf(dernierJour))) deja += cpForMonth(endCtx, m, enfants).indemnite;
-        precMontant = Math.max(0, indPrev.montant - deja);
-      } else {
-        precMontant = maintien(endCtx, restantsPrec, dernierJour);
-      }
+  const cpPour = (fin: ISODate) => congesNonPris(ctxFin(fin), c, fin, enfants);
+  const cp = cpPour(dernierJour);
+  let { cpIndemnite, cpExplication, cpAConfirmer } = cp;
+  const cpJoursRestants = cp.jours;
+  if (!cpAConfirmer && variantes.length > 1) {
+    // T-038 (AC-1, AC-2) : l'indemnité de congés non pris dépend aussi de la date de fin (acquisition, base du dixième).
+    const autres = variantes.map((v) => ({ ...v, x: v.fin === dernierJour ? cp : cpPour(v.fin) }));
+    if (autres.some((v) => v.x.cpAConfirmer || v.x.cpIndemnite !== cp.cpIndemnite)) {
+      cpAConfirmer = `Indemnité de congés non pris à confirmer : elle dépend ${demission312 ? 'de la durée du préavis et de sa date de fin' : 'de la date de fin du préavis'}, à confirmer. `
+        + `${autres.map((v) => `${v.libelle.replace(/^./, (x) => x.toUpperCase())} : ${v.x.cpAConfirmer ? 'nombre de jours à confirmer' : euros(v.x.cpIndemnite)}`).join(' ; ')}. Elle n'est pas comptée dans le total.`;
+      cpIndemnite = 0;
+      cpExplication = 'À confirmer : le montant dépend de la date de fin du contrat. L’app ne donne pas de montant.';
     }
-  }
-  cpIndemnite = curMontant + precMontant;
-  cpExplication = `${joursCur} jour${joursCur > 1 ? 's' : ''} acquis depuis le 1er juin (${cpPeriod(y).from.slice(0, 4)})` +
-    (restantsPrec ? ` et ${restantsPrec} jour${restantsPrec > 1 ? 's' : ''} de la période précédente non pris` : '') +
-    ' : on retient le plus favorable entre le dixième et le maintien de salaire.';
-  // T-019 : jours acquis (année incomplète, SUS-11) ou jours pris (R-CP-09) à confirmer : aucun montant n'est donné.
-  let cpAConfirmer: string | undefined;
-  const indPrecAC = restantsPrec > 0 && finTerms.yearType !== 'complete' && y - 1 >= cpPeriodStartYear(c.trackedFrom)
-    ? indemnite(endCtx, y - 1, enfants).aConfirmer : undefined;
-  const motifsAC = [
-    acq.aConfirmer?.message ?? indCur.aConfirmer?.message,
-    cpt.aPrendreAConfirmer?.message ?? indPrecAC?.message,
-    ...cpt.decompteAConfirmer,
-  ].filter((x): x is string => !!x);
-  if (motifsAC.length) {
-    cpAConfirmer = [...new Set(motifsAC)].join(' ');
-    cpIndemnite = 0;
-    cpExplication = 'À confirmer : le nombre de jours de congés n’est pas tranché. L’app ne donne pas de montant.';
   }
 
   // T-031 : un cas non géré pendant le contrat (Alsace-Moselle, horaires variables, accueil occasionnel, congé maternité,
@@ -324,7 +380,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   }
   return {
     ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, totalBrut,
-    indemnitePreavis, indemnitePreavisExplication,
-    regularisation: regularisation_, regulMinutes, cpJoursRestants: joursCur + restantsPrec, cpIndemnite, cpExplication, cpAConfirmer, regularisationAConfirmer, manquants, alertes,
+    indemnitePreavis, indemnitePreavisExplication, indemnitePreavisAConfirmer,
+    regularisation: regularisation_, regulMinutes, cpJoursRestants, cpIndemnite, cpExplication, cpAConfirmer, regularisationAConfirmer, manquants, alertes,
   };
 }

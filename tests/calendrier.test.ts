@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MESSAGE_ADAPTATION_A_CONFIRMER, calendrier, levierTarif, moisAdaptation, selonRevenus, tarifMaxSansDepassement, MOIS_CALENDRIER } from '../src/engine/calendrier';
+import { MESSAGE_ADAPTATION_2_A_CONFIRMER, MESSAGE_ADAPTATION_A_CONFIRMER, calendrier, levierTarif, moisAdaptation, selonRevenus, tarifMaxSansDepassement, MOIS_CALENDRIER } from '../src/engine/calendrier';
 import { planningRegulier, simuler, simulationParDefaut } from '../src/engine/simulation';
 
 const D = '2026-11-01';
@@ -52,11 +52,15 @@ describe('calendrier mois par mois (étape 4)', () => {
     const a = moisAdaptation(i, r, '2027-02', S);
     expect(a.heuresPrevues).toBe(160);
     expect(a.salaire).toBe(Math.round(S - (S * 120) / 160));
-    expect(a.heures).toBeCloseTo(a.salaire / r.tauxNet, 6);
-    expect(a.aConfirmer).toBeUndefined();
+    // T-038 (G-3) : heures à déclarer, deux règles sur la même page Urssaf (étape 2 : rémunération due ÷ taux horaire net ;
+    // étape 3 : heures effectuées, ici 40 h). Elles diffèrent : « à confirmer » avec les deux valeurs, le salaire reste calculé.
+    expect(a.heuresFaites).toBe(40);
+    const etape2 = (a.salaire / r.tauxNet).toFixed(2).replace('.', ',');
+    expect(a.aConfirmer).toContain(MESSAGE_ADAPTATION_A_CONFIRMER);
+    expect(a.aConfirmer).toContain(`taux horaire net (${etape2} h) ou les heures effectuées (40 h)`);
     const c = calendrier(i, D);
     expect(c.mois[0].evenements).toContain('adaptation');
-    expect(c.mois[0].aConfirmer).toBeUndefined();
+    expect(c.mois[0].aConfirmer).toBe(a.aConfirmer);
     expect(c.mois[0].verse).toBeLessThan(c.mois[1].verse);
     expect(c.mois[1].aConfirmer).toBeUndefined();
   });
@@ -110,5 +114,30 @@ describe('calendrier mois par mois (étape 4)', () => {
     expect(simuler({ ...base, tauxBrut: max }, D).cmg.partCotisations).toBe(1);
     expect(simuler({ ...base, tauxBrut: max + 1 }, D).cmg.partCotisations).toBeLessThan(1);
     expect(max).toBeGreaterThan(900);
+  });
+});
+
+// T-038 (G-2) : CCN art. 94, « Elle débute le premier jour de travail effectif, pour une durée maximale de 30 jours
+// calendaires » (Urssaf « Préparer le contrat », 12/03/2026, même phrase). Une adaptation commencée en cours de mois peut
+// finir le mois suivant : ce mois suit la même déduction (art. 108.1 al. 3 et 111). Mars 2027 : 23 jours du lundi au
+// vendredi, aucun férié, 8 h par jour = 184 h prévues ; 46 h faites → 138 h d'absence → un quart du salaire mensualisé.
+describe('T-038 G-2 : adaptation qui déborde sur le 2e mois', () => {
+  it('le 2e mois suit la même déduction (art. 108.1 et 111), avec ses propres heures', () => {
+    const i = { ...base, debut: '2027-02', adaptationHeures: 40, adaptationJours: 5, adaptationHeures2: 46, adaptationJours2: 6 };
+    const r = simuler(i, D);
+    const S = r.parEnfant.salaire;
+    const a2 = moisAdaptation({ ...i, adaptationHeures: 46 }, r, '2027-03', S, 2);
+    expect(a2.heuresPrevues).toBe(184);
+    expect(a2.salaire).toBe(Math.round(S - (S * 138) / 184));
+    const c = calendrier(i, D);
+    expect(c.mois[1].evenements).toContain('adaptation');
+    const sans = calendrier({ ...i, adaptationHeures2: 0, adaptationJours2: 0 }, D);
+    expect(c.mois[1].verse).toBeLessThan(sans.mois[1].verse);
+    expect(c.mois[2].evenements).not.toContain('adaptation');
+  });
+  it('2e mois avec un férié sur un jour d’accueil (mai 2027) : « à confirmer », avec le préfixe du 2e mois', () => {
+    const c = calendrier({ ...base, debut: '2027-04', adaptationHeures: 40, adaptationJours: 5, adaptationHeures2: 40, adaptationJours2: 5 }, D);
+    expect(c.mois[1].aConfirmer).toContain(MESSAGE_ADAPTATION_2_A_CONFIRMER);
+    expect(c.mois[1].aConfirmer).toContain('férié');
   });
 });

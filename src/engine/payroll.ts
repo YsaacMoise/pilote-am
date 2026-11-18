@@ -163,6 +163,10 @@ export interface DayInfo {
 export const messageSansSoldeEnfant = (d: ISODate): string =>
   `Absence du ${d.slice(8, 10)}/${d.slice(5, 7)} notée « sans solde » : elle est payée. La convention (article 105) ne permet de retenir une absence de l’enfant qu’en cas de maladie avec certificat. Pour ne plus payer ces jours, il faut un avenant signé qui change le planning.`;
 
+/** T-038 (G-1) : alerte d'un mois terminé dont des jours notés « sans solde » sont désormais payés (CCN art. 105). */
+export const messageMoisSansSoldeChange = (n: number): string =>
+  `Salaire de ce mois modifié par la mise à jour de l’app : ${dayCountLabel(n)} d’absence de l’enfant noté${n > 1 ? 's' : ''} « sans solde » ${n > 1 ? 'sont' : 'est'} maintenant payé${n > 1 ? 's' : ''}. Avant, l’app les retenait. La convention (article 105) ne permet de retenir une absence de l’enfant qu’en cas de maladie avec certificat. Si ce mois est déjà déclaré à Pajemploi avec la retenue, le salaire déclaré était trop bas : il faut une régularisation avec les parents.`;
+
 export function libelleSalaireAConfirmer(b: Pick<MonthBase, 'joursCpAConfirmer' | 'joursEvenementAConfirmer'> & Partial<Pick<MonthBase, 'joursMaladieAConfirmer'>>, et = 'et'): string {
   return joindre(naturesAConfirmer(b).map((n) => ({ evenement: 'd’événement familial', cp: 'de congés', maladie: 'd’enfant malade' })[n]), et);
 }
@@ -627,32 +631,49 @@ export function planningBrutMin(t: Contract, d: ISODate): number {
  * Régularisation (année incomplète, art. 109.2) : salaire des heures prévues réellement dues (hors absences retenues),
  * chacune au taux de son jour, moins le salaire de base versé par la mensualisation sur [from, to].
  * `cur` donne le salaire de base du mois en cours de calcul (évite la récursion).
+ * T-038 (B-1, relecture V4) : les jours « à confirmer » (événement familial, enfant malade selon l'art. 105, congés au-delà
+ * des droits) ne sont ni payés ni retenus dans leur mois ; leur salaire est montré à part. La régularisation ne doit pas
+ * le verser en silence. Deux lectures : `dus` (ces jours sont dus, donc payés dans leur mois : leur salaire compte dans
+ * les heures dues et dans ce qui est versé) ; `retenus` (ils ne sont pas dus : ni dans les heures dues ni dans ce qui est
+ * versé). Voir `regularisationLectures`.
  */
-export function regularisation(ctx: Ctx, from: ISODate, to: ISODate, cur?: { m: Month; payees: number }): { minutes: number; montant: number } {
+export function regularisation(ctx: Ctx, from: ISODate, to: ISODate, cur?: { m: Month; payees: number; aConfirmer?: number }, lecture: 'dus' | 'retenus' = 'dus'): { minutes: number; montant: number } {
   const c = ctx.c;
   if (to < from) return { minutes: 0, montant: 0 };
   let dues = 0, payees = 0;
   for (const d of eachDay(from, to)) {
     const di = dayInfo(ctx, d);
-    if (di.inDivisor && !di.deducted) dues += (di.plannedMin * termsAt(c, d).rateNet) / 60;
+    if (di.inDivisor && !di.deducted && !(lecture === 'retenus' && di.aConfirmer)) dues += (di.plannedMin * termsAt(c, d).rateNet) / 60;
   }
   for (const m of monthsBetween(monthOf(from), monthOf(to))) {
-    if (cur && m === cur.m) { payees += cur.payees; continue; }
+    if (cur && m === cur.m) { payees += cur.payees + (lecture === 'dus' ? cur.aConfirmer ?? 0 : 0); continue; }
     const b = monthBase(ctx, m);
     if (!b.active || b.fromHistory) continue;
+    const verse = b.base + (lecture === 'dus' ? b.evenementAConfirmer : 0);
     if (m === monthOf(from) && from > c.start && from.slice(8) !== '01') {
       // Mois entamé : seule la part postérieure au début de la période compte.
       let part = 0;
       for (const d of eachDay(from, lastDay(m))) if (inContract(c, d)) part += planningBrutMin(termsAt(c, d), d);
-      payees += (b.base * part) / (b.contractMin || 1);
+      payees += (verse * part) / (b.contractMin || 1);
     } else {
-      payees += b.base;
+      payees += verse;
     }
   }
   const montant = Math.max(0, Math.round(dues - payees));
   const taux = termsAt(c, to).rateNet;
   return { minutes: taux ? Math.round((montant * 60) / taux) : 0, montant };
 }
+
+/** T-038 (B-1) : les deux lectures de la régularisation ; `sure` faux si elles diffèrent (montant « à confirmer »). */
+export function regularisationLectures(ctx: Ctx, from: ISODate, to: ISODate, cur?: { m: Month; payees: number; aConfirmer?: number }): { dus: { minutes: number; montant: number }; retenus: { minutes: number; montant: number }; sure: boolean } {
+  const dus = regularisation(ctx, from, to, cur, 'dus');
+  const retenus = regularisation(ctx, from, to, cur, 'retenus');
+  return { dus, retenus, sure: dus.montant === retenus.montant };
+}
+
+/** T-038 (B-1) : phrase qui explique les deux lectures d'une régularisation qui dépend de jours « à confirmer » */
+export const libelleRegulJoursAConfirmer = (dus: number, retenus: number): string =>
+  `${euros(dus)} si les jours à confirmer sont dus (leur salaire, montré à part dans leur mois, reste alors à payer en plus), ${euros(retenus)} s’ils ne le sont pas`;
 
 /**
  * Régularisation versée le mois d'un avenant qui fait passer de l'année incomplète à l'année complète (fiche DDETS 31, 2021).
@@ -670,8 +691,21 @@ function applyAvenantRegul(ctx: Ctx, m: Month, r: MonthBase, firstPart?: MonthBa
       continue;
     }
     const start = regulStart(c, a.from);
-    const cur = a.from.slice(8) !== '01' && firstPart ? { m, payees: firstPart.base } : undefined;
-    const reg = regularisation(ctx, start, veille, cur);
+    // T-038 (M-5, relecture V4) : une absence non gérée (maternité, accident du travail…) n'a pas de branche dans computeDay :
+    // ses jours compteraient comme travaillés. Pas de régularisation, refus clair (même règle que les mois, T-031).
+    const ng = nonGeresPeriode(c, ctx.leaves, start, veille);
+    if (ng.length) {
+      r.alerts.push(`Régularisation à l’avenant du ${a.from.slice(8, 10)}/${a.from.slice(5, 7)} non calculée : un cas non géré par l’app touche la période depuis le ${start.split('-').reverse().join('/')}. ${ng.join(' ')} Calcule-la avec les parents.`);
+      continue;
+    }
+    const cur = a.from.slice(8) !== '01' && firstPart ? { m, payees: firstPart.base, aConfirmer: firstPart.evenementAConfirmer } : undefined;
+    const lect = regularisationLectures(ctx, start, veille, cur);
+    if (!lect.sure) {
+      // T-038 (B-1) : rien n'est versé ; les deux montants sont montrés.
+      r.alerts.push(`Régularisation à l’avenant du ${a.from.slice(8, 10)}/${a.from.slice(5, 7)} à confirmer, non comprise dans le total : elle dépend de jours encore à confirmer depuis le ${start.split('-').reverse().join('/')} (voir les mois concernés). ${libelleRegulJoursAConfirmer(lect.dus.montant, lect.retenus.montant).replace(/^./, (x) => x.toUpperCase())}.`);
+      continue;
+    }
+    const reg = lect.dus;
     if (reg.montant > 0) {
       r.regulAvenant = (r.regulAvenant ?? 0) + reg.montant;
       r.net += reg.montant;
@@ -764,7 +798,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   let cDays = 0, cMin = 0, dedDays = 0, dedMin = 0, actDays = 0, cpSansDroits = 0;
   let entretienNonVerifie = false;
   let entretienSousMin = 0, entretienMinVerse = 0;
-  let suspDays = 0, suspMin = 0, kmJours = 0;
+  let suspDays = 0, suspMin = 0, kmJours = 0, sansSoldePayes = 0;
   const suspRaisons: string[] = [];
   const forgotten: ISODate[] = [];
   for (const d of allDays) {
@@ -781,7 +815,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     // T-025 C-4 : un férié pendant un congé pour événement familial reste un férié chômé (art. 47) : payé, pas compté.
     if (di.inDivisor && !di.deducted && !di.aConfirmer && di.kind !== 'ferie' && !(di.kind === 'am' && di.ferie)) actDays++;
     if (di.cpSansDroits) cpSansDroits++;
-    if (di.sansSoldeEnfantPaye && di.plannedMin > 0) r.alerts.push(messageSansSoldeEnfant(d));
+    if (di.sansSoldeEnfantPaye && di.plannedMin > 0) { r.alerts.push(messageSansSoldeEnfant(d)); sansSoldePayes++; }
     if (di.departOublie) forgotten.push(d);
     if (di.ferieNonPaye) r.alerts.push(`Férié du ${d.slice(8, 10)}/${d.slice(5, 7)} non payé : tu étais absente le jour prévu juste avant ou juste après (article 47 de la convention).`);
     if (di.rec?.abs === 'malade_certif' && !di.deducted && di.plannedMin > 0) r.sickPaidNotice = true;
@@ -869,6 +903,12 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   if (r.kmAConfirmer) r.alerts.push(`${r.kmAConfirmer} km à confirmer, non comptés. Pour chaque jour, indique si une autre famille a aussi demandé le trajet. Si oui, indique aussi les enfants dans la voiture : l’indemnité est alors partagée entre eux (article 113 de la convention). Si non, elle est due en entier.`);
   // T-025 C-7 : mois terminé, peut-être déjà déclaré à Pajemploi avant la mise à jour qui a rendu ces montants « à confirmer ».
   if ((r.evenementAConfirmer || r.kmAConfirmer) && to < ctx.today && !r.alerts.includes(MESSAGE_MOIS_DEJA_DECLARE)) r.alerts.push(MESSAGE_MOIS_DEJA_DECLARE);
+  // T-038 (G-1, relecture V4 du diff m8) : mois terminé avec des jours notés « sans solde » avant la mise à jour T-035b. Il a
+  // pu être déclaré à Pajemploi avec la retenue ; son salaire affiché est maintenant plus haut. Le dire, et quoi faire.
+  if (sansSoldePayes && to < ctx.today) {
+    r.alerts.push(messageMoisSansSoldeChange(sansSoldePayes));
+    if (!r.alerts.includes(MESSAGE_MOIS_DEJA_DECLARE)) r.alerts.push(MESSAGE_MOIS_DEJA_DECLARE);
+  }
   if (kmJours && c.kmTaux > 0) for (const m of controleKm(ctx.c.kmCv, c.kmTaux, segFrom).messages) if (!r.alerts.includes(m)) r.alerts.push(m);
   // CCN art. 114.1 : « le montant journalier de cette indemnité ne peut pas être inférieur à 2,65 € » et le montant horaire
   // ne peut être « inférieur à 90 % du minimum garanti lorsque la durée de travail journalière est de 9 heures ».

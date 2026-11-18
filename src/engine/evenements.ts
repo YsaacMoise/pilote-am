@@ -65,6 +65,18 @@ export function dureeEvenement(nature: NatureEvenement, d: ISODate): number | un
   }
 }
 
+/**
+ * T-038 (AC-3, relecture V4) : texte de l'écran de saisie pour une nature d'événement commencé le `from`. Il suit
+ * `statutJourEvenement` : rien n'est annoncé comme payé quand le moteur met les jours « à confirmer » ou « non géré ».
+ */
+export function libelleDureeSaisie(nature: NatureEvenement, from: ISODate): string {
+  if (from < EVENEMENTS_GERES_DEPUIS) return 'Période non gérée (avant le 01/05/2024) : durée à vérifier avec les parents';
+  if (nature === 'deuil') return 'Non géré par l’app : indemnités de la Sécurité sociale, salaire maintenu en les déduisant ; à calculer avec les parents';
+  const n = dureeEvenement(nature, from);
+  if (n === undefined) return 'Non géré par l’app : durée à vérifier avec les parents';
+  return `${n} jour${n > 1 ? 's' : ''} ouvrable${n > 1 ? 's' : ''} payé${n > 1 ? 's' : ''}`;
+}
+
 /** Jour ouvrable : lundi → samedi, hors jours fériés (même règle que le décompte des congés payés, conges.ts) */
 const ouvrable = (d: ISODate) => weekday(d) <= 6 && !holidayName(d);
 const lundiSamedi = (d: ISODate) => weekday(d) <= 6;

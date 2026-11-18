@@ -29,7 +29,7 @@ export const BROUILLON_CONTRAT = 'pam-contrat-brouillon';
 // Valeurs admises dans un lien partagé (un lien modifié ne doit pas casser le calcul).
 const NOMBRES: Partial<Record<keyof SimInput, [number, number]>> = {
   semainesAbsence: [1, 30], majoration: [10, 100], tauxBrut: [0, 5000], entretien: [0, 5000], kmMois: [0, 5000], kmTaux: [0, 200], cv: [3, 8],
-  moisCongePrincipal: [6, 10], adaptationHeures: [0, 300], adaptationJours: [0, 31],
+  moisCongePrincipal: [6, 10], adaptationHeures: [0, 300], adaptationJours: [0, 31], adaptationHeures2: [0, 300], adaptationJours2: [0, 31],
 };
 const REPAS_CLES: Record<TypeRepas, string> = { petitDej: 'rpd', dejeuner: 'rdj', gouter: 'rgo', diner: 'rdi' };
 
@@ -86,6 +86,7 @@ function lienPartage(i: SimInput): string {
   q.set('debut', i.debut);
   if (i.yearType === 'incomplete') { q.set('cpMode', i.cpMode); q.set('moisCongePrincipal', String(i.moisCongePrincipal)); }
   if (i.adaptationHeures > 0) { q.set('adaptationHeures', String(i.adaptationHeures)); q.set('adaptationJours', String(i.adaptationJours)); }
+  if (i.adaptationHeures > 0 && (i.adaptationHeures2 ?? 0) > 0) { q.set('adaptationHeures2', String(i.adaptationHeures2)); q.set('adaptationJours2', String(i.adaptationJours2 ?? 0)); }
   return `${location.origin}${location.pathname}#/simulateur?${q.toString()}`;
 }
 
@@ -372,12 +373,23 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
               <input id="sim-debut" class="input num" type="month" value={i.debut} onInput={(e) => { const v = (e.target as HTMLInputElement).value; if (/^\d{4}-\d{2}$/.test(v)) set({ debut: v }); }} />
             </div>
             <Switch label="Adaptation le premier mois" hint="30 jours au plus. Le salaire du mois est réduit des heures non faites (convention collective, article 108.1)." checked={i.adaptationHeures > 0}
-              onChange={(on) => set(on ? { adaptationHeures: Math.round(r.heuresMoisMin / 60 / 3), adaptationJours: Math.max(1, Math.round(r.joursMois / 2)) } : { adaptationHeures: 0, adaptationJours: 0 })} />
+              onChange={(on) => set(on ? { adaptationHeures: Math.round(r.heuresMoisMin / 60 / 3), adaptationJours: Math.max(1, Math.round(r.joursMois / 2)) } : { adaptationHeures: 0, adaptationJours: 0, adaptationHeures2: 0, adaptationJours2: 0 })} />
             {i.adaptationHeures > 0 && (
-              <div class="grid2">
-                <NumberInput label="Heures faites ce mois-là" value={i.adaptationHeures} min={1} max={300} onChange={(v) => set({ adaptationHeures: v ?? 0 })} />
-                <NumberInput label="Jours d’accueil" value={i.adaptationJours} min={1} max={31} onChange={(v) => set({ adaptationJours: v ?? 0 })} />
-              </div>
+              <>
+                <div class="grid2">
+                  <NumberInput label="Heures faites ce mois-là" value={i.adaptationHeures} min={1} max={300} onChange={(v) => set({ adaptationHeures: v ?? 0 })} />
+                  <NumberInput label="Jours d’accueil" value={i.adaptationJours} min={1} max={31} onChange={(v) => set({ adaptationJours: v ?? 0 })} />
+                </div>
+                {/* T-038 (G-2) : CCN art. 94, 30 jours calendaires au plus depuis le premier jour d'accueil. */}
+                <Switch label="L’adaptation continue le mois suivant" hint="Elle dure 30 jours au plus à partir du premier jour d’accueil (convention collective, article 94). Si elle commence après le 1er, elle peut finir le mois suivant : ce mois-là est calculé de la même façon." checked={(i.adaptationHeures2 ?? 0) > 0}
+                  onChange={(on) => set(on ? { adaptationHeures2: Math.round(r.heuresMoisMin / 60 / 2), adaptationJours2: Math.max(1, Math.round(r.joursMois / 2)) } : { adaptationHeures2: 0, adaptationJours2: 0 })} />
+                {(i.adaptationHeures2 ?? 0) > 0 && (
+                  <div class="grid2">
+                    <NumberInput label="Heures faites le mois suivant" value={i.adaptationHeures2 ?? 0} min={1} max={300} onChange={(v) => set({ adaptationHeures2: v ?? 0 })} />
+                    <NumberInput label="Jours d’accueil le mois suivant" value={i.adaptationJours2 ?? 0} min={1} max={31} onChange={(v) => set({ adaptationJours2: v ?? 0 })} />
+                  </div>
+                )}
+              </>
             )}
             {i.yearType === 'incomplete' && (
               <>
