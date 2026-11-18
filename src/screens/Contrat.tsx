@@ -11,7 +11,10 @@ import { Icon } from '../ui/icons';
 import { BROUILLON_CONTRAT } from './Simulateur';
 import { PartageCard } from './PartageCard';
 import { de } from '../engine/texte';
-import { ALSACE_MOSELLE_NON_GEREE, PAJEMPLOI_PLUS_AIDE } from '../legal';
+import { PAJEMPLOI_PLUS_AIDE } from '../legal';
+import { nonGeresContrat } from '../engine/nonGeres';
+
+const ouiNon = (b: boolean | undefined): 'oui' | 'non' | undefined => (b === undefined ? undefined : b ? 'oui' : 'non');
 
 /** Contrat qui vient d'être créé : sa page s'ouvre sur la carte du lien parent */
 let montrerLienDe: string | undefined;
@@ -95,6 +98,9 @@ export function Contrat({ id }: { id?: string }) {
     // la régularisation n'est pas calculée tant qu'une année terminée en manque.
     if (c.end && c.end < c.start) errs.push('La date de fin est avant le début.');
     if (c.repasParents === undefined) errs.push('Indique qui fournit les repas de l’enfant.');
+    if (c.alsaceMoselle === undefined) errs.push('Indique où tu travailles (Alsace-Moselle ou non).');
+    if (c.planningVariable === undefined) errs.push('Indique si les horaires sont les mêmes chaque semaine.');
+    if (c.accueilOccasionnel === undefined) errs.push('Indique si l’accueil est régulier.');
     setErrors(errs);
     // C-101 : chaque enregistrement refusé est noté (relecture contradictoire : le deuxième refus passait inaperçu).
     if (errs.length) logErreur('contrat_incomplet');
@@ -164,7 +170,6 @@ export function Contrat({ id }: { id?: string }) {
           <fieldset>
             <legend>Le contrat</legend>
             <DateInput label="Date de début réelle" hint="Le premier jour d’accueil, même si c’était il y a longtemps" value={c.start} onChange={(v) => set({ start: v })} />
-            {isNew && <p class="hint">{ALSACE_MOSELLE_NON_GEREE}</p>}
             {!isNew && <DateInput label="Date de fin (si le contrat est terminé)" value={c.end ?? ''} onChange={(v) => set({ end: v || undefined })} />}
             <Seg label="Accueil sur l’année" value={c.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(c.weeks, 46) || 46 })}
               options={[{ v: 'complete', l: 'Toute l’année (52 sem.)' }, { v: 'incomplete', l: 'Année incomplète' }]} />
@@ -174,6 +179,14 @@ export function Contrat({ id }: { id?: string }) {
                 <WeeksOff c={c} onChange={(w) => set({ weeksOff: w })} />
               </>
             )}
+            {/* T-031 : cas que l'app ne gère pas. Une réponse est demandée : sans elle, l'app ne sait pas si ses montants valent. */}
+            <Choices label="Où travailles-tu ?" value={ouiNon(c.alsaceMoselle)} onChange={(v) => set({ alsaceMoselle: v === 'oui' })}
+              options={[{ v: 'non', l: 'Ailleurs en France' }, { v: 'oui', l: 'Bas-Rhin, Haut-Rhin ou Moselle', sub: 'Alsace-Moselle : non géré par l’app' }]} />
+            <Choices label="Les horaires sont-ils les mêmes chaque semaine ?" value={ouiNon(c.planningVariable === undefined ? undefined : !c.planningVariable)} onChange={(v) => set({ planningVariable: v === 'non' })}
+              options={[{ v: 'oui', l: 'Oui, la même semaine type', sub: 'Sans compter les semaines sans accueil' }, { v: 'non', l: 'Non, ils changent', sub: 'Semaines A et B, planning remis chaque mois : non géré par l’app' }]} />
+            <Choices label="L’accueil est-il régulier ?" value={ouiNon(c.accueilOccasionnel === undefined ? undefined : !c.accueilOccasionnel)} onChange={(v) => set({ accueilOccasionnel: v === 'non' })}
+              options={[{ v: 'oui', l: 'Oui, régulier' }, { v: 'non', l: 'Non, occasionnel', sub: 'Court et sans régularité (article 97.2 de la convention) : non géré par l’app' }]} />
+            {nonGeresContrat(c).map((t) => <Banner tone="warn">{t}</Banner>)}
           </fieldset>
         </section>
 
