@@ -397,7 +397,9 @@ describe('T-025 C-5 : le salaire d’événement à confirmer n’est retiré en
   // CCN 48.1.3.1.1 (lu le 18/11/2026) : « Ces congés n'entraînent pas de réduction de la rémunération. Ils sont assimilés
   // à du temps de travail effectif pour la détermination du droit à congés payés et au titre de l'ancienneté. »
   // Événement saisi sans nature (saisie d'avant T-023) : son salaire est « à confirmer » (T-023 (2)).
-  const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01' });
+  // T-030 : contrat au 1er juin 2025 (période de référence entière) ; une embauche au 1er septembre rend les jours acquis
+  // à confirmer (A-23 : 23 jours en mois, 25 en semaines), ce qui masquerait l'effet testé ici.
+  const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01' });
   const sansNature: AmLeave = { id: 'x', type: 'evenement', from: '2026-03-02', to: '2026-03-02' };
   const ctx = (leaves: AmLeave[], t = '2026-10-31') => makeCtx(c, [], leaves, t);
 
@@ -414,7 +416,7 @@ describe('T-025 C-5 : le salaire d’événement à confirmer n’est retiré en
   it('dixième des congés : si le salaire à confirmer change l’indemnité, elle est à confirmer avec les deux montants', () => {
     // Avenant au 01/05/2026 qui baisse le taux à 3 € net : le maintien de salaire (calculé au taux de juin) passe sous le
     // dixième, qui dépend alors du salaire à confirmer.
-    const c2 = contract({ start: '2025-09-01', trackedFrom: '2025-09-01', avenants: [{ id: 'a', from: '2026-05-01', changes: { rateNet: 300 } }] });
+    const c2 = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', avenants: [{ id: 'a', from: '2026-05-01', changes: { rateNet: 300 } }] });
     const sans = indemnite(makeCtx(c2, [], [], '2026-10-31'), 2025);
     expect(sans.methode).toBe('dixieme');
     expect(sans.aConfirmer).toBeUndefined();
@@ -424,8 +426,11 @@ describe('T-025 C-5 : le salaire d’événement à confirmer n’est retiré en
     expect(avec.aConfirmer?.montants.some((x) => x.montant > avec.montant)).toBe(true);
   });
   it('dixième des congés : si le maintien l’emporte dans les deux cas, rien n’est à confirmer', () => {
-    expect(indemnite(ctx([]), 2025).methode).toBe('maintien');
-    expect(indemnite(ctx([sansNature]), 2025).aConfirmer).toBeUndefined();
+    // T-030 : période entière (embauche au 1er juin) ; sans hausse, le dixième d'une année complète passe le maintien.
+    // Avenant au 01/05/2026 qui monte le taux à 6 € : le maintien (calculé au taux de juin) l'emporte.
+    const c3 = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', avenants: [{ id: 'b', from: '2026-05-01', changes: { rateNet: 600 } }] });
+    expect(indemnite(makeCtx(c3, [], [], '2026-10-31'), 2025).methode).toBe('maintien');
+    expect(indemnite(makeCtx(c3, [], [sansNature], '2026-10-31'), 2025).aConfirmer).toBeUndefined();
   });
   it('page des parents : le total du mois dit ce qui est sorti du total', () => {
     const snap = buildSnapshot({ ctx: makeCtx(c, [], [sansNature], '2026-04-10'), journal: [], amName: 'Ana', enfants: 0, now: 1 });

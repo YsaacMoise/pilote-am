@@ -1,7 +1,7 @@
 // Récapitulatif mensuel par enfant, dans l'ordre de la déclaration Pajemploi.
 import { lastDay, monthLabel, type Month } from './dates';
 import { cpForMonth } from './conges';
-import { monthBase, termsAt, type Ctx, type MonthBase } from './payroll';
+import { libelleSalaireAConfirmer, monthBase, termsAt, type Ctx, type MonthBase } from './payroll';
 import { netToBrut } from './rates';
 import { euros, hoursLabel } from './money';
 
@@ -59,7 +59,7 @@ export function declarationLines(ctx: Ctx, r: MonthResult): DeclLine[] {
       value: hoursLabel(r.majContratMin + r.majMin),
       hint: `Au-delà de 45 h dans la semaine, prévues au contrat ou en plus, +${termsAt(ctx.c, `${r.month}-01`).majoration}\u00a0%`,
     },
-    { label: 'Salaire net', value: `${euros(r.netTotal)}${r.cpAConfirmer ? ' + congés à confirmer' : ''}${r.evenementAConfirmer ? ` + ${euros(r.evenementAConfirmer)} d’événement familial à confirmer` : ''}` },
+    { label: 'Salaire net', value: `${euros(r.netTotal)}${r.cpAConfirmer ? ' + congés à confirmer' : ''}${r.evenementAConfirmer ? ` + ${euros(r.evenementAConfirmer)} ${libelleSalaireAConfirmer(r)} à confirmer` : ''}` },
     { label: 'Indemnités d’entretien', value: euros(r.entretien), hint: `${r.presenceDays} jour${r.presenceDays > 1 ? 's' : ''} d’accueil` },
     { label: 'Frais de repas', value: euros(r.repas) },
     { label: 'Frais kilométriques', value: r.kmAConfirmer ? `${euros(r.km)} + ${r.kmAConfirmer} km à confirmer` : euros(r.km) },
@@ -85,7 +85,7 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   if (r.cpIndemnite) out.push(`• Indemnité de congés payés : ${euros(r.cpIndemnite)}`);
   if (r.cpComplement) out.push(`• Complément de congés payés : ${euros(r.cpComplement)}`);
   if (r.cpAConfirmer) out.push('• Indemnité de congés payés : à confirmer ensemble');
-  if (r.evenementAConfirmer) out.push(`• Événement familial : ${euros(r.evenementAConfirmer)} à confirmer ensemble`);
+  if (r.evenementAConfirmer) out.push(`• Salaire ${libelleSalaireAConfirmer(r)} : ${euros(r.evenementAConfirmer)} à confirmer ensemble`);
   out.push('');
   if (r.kmAConfirmer) out.push(`• Frais kilométriques : ${r.kmAConfirmer} km à confirmer ensemble (familles qui ont demandé le trajet, enfants dans la voiture)`);
   const aConfirmer = partsAConfirmer(r);
@@ -98,6 +98,9 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
 }
 
 /** Parts du mois sorties du total parce qu'elles sont à confirmer (T-025 C-5 : à dire partout où le total s'affiche) */
-export function partsAConfirmer(r: Pick<MonthResult, 'cpAConfirmer' | 'evenementAConfirmer' | 'kmAConfirmer'>): string[] {
-  return [r.cpAConfirmer ? 'les congés payés' : '', r.evenementAConfirmer ? 'l’événement familial' : '', r.kmAConfirmer ? 'les kilomètres' : ''].filter(Boolean);
+export function partsAConfirmer(r: Pick<MonthResult, 'cpAConfirmer' | 'evenementAConfirmer' | 'kmAConfirmer'> & Partial<Pick<MonthResult, 'joursCpAConfirmer' | 'joursEvenementAConfirmer'>>): string[] {
+  // T-030 : un salaire à confirmer peut venir de congés pris peut-être au-delà des droits (année complète, A-23).
+  const salaire = !r.evenementAConfirmer ? '' : r.joursCpAConfirmer && !r.joursEvenementAConfirmer ? 'les congés pris au-delà des droits'
+    : r.joursCpAConfirmer ? 'l’événement familial ni les congés pris au-delà des droits' : 'l’événement familial';
+  return [r.cpAConfirmer ? 'les congés payés' : '', salaire, r.kmAConfirmer ? 'les kilomètres' : ''].filter(Boolean);
 }

@@ -360,6 +360,76 @@ function messageAcquisition(lectures: LectureCP[], raison?: string): string {
     + (raison ? ` L’app ne peut pas les calculer ici : ${raison}.` : '') + ` ${fin}`;
 }
 
+// ---------- Année complète : mois ou périodes de 4 semaines (A-23, T-030) ----------
+// CCN 48.1.1.2 : « 2,5 jours ouvrables de congés payés à l'issue de chaque mois de travail ou de chaque période
+// équivalente telle que définie par les dispositions légales et réglementaires de droit commun », calcul « pro rata
+// temporis, en cas d'embauche, de départ ou d'absence ». C. trav. L3141-4 : « les périodes équivalentes à quatre semaines
+// ou vingt-quatre jours de travail ». Aucun texte lu ne dit comment compter une période de 4 semaines commencée.
+// Les deux fiches officielles retiennent le plus favorable des modes, mais ne comptent pas les semaines de la même façon :
+// - DREETS Occitanie (S-DURAND, C-CPA-01 et C-CPA-03) : semaines comptées avec leurs fractions (« 39 semaines ÷ 4 = 9,75 ») ;
+// - DREETS Bourgogne-Franche-Comté (fiche 04-III, C-CPA-14 : « 41 semaines/4 = 10 périodes » ; C-CPA-16 ; fiche 11,
+//   C-FIN-09) : mois, ou périodes entières de 4 semaines.
+// L'app ne choisit pas : si les deux lectures diffèrent, le nombre est à confirmer.
+export const LECTURE_SEMAINES_52 = {
+  libelle: 'en comptant aussi les semaines commencées',
+  source: 'DREETS Occitanie, fiche « Accueil sur 52 semaines »',
+};
+export const LECTURE_MOIS_52 = {
+  libelle: 'en comptant les mois ou les périodes entières de 4 semaines',
+  source: 'DREETS Bourgogne-Franche-Comté, guide des assistantes maternelles',
+};
+
+function messageAcquisition52(lectures: LectureCP[]): string {
+  const [s, m] = lectures;
+  return `Tes jours de congés de cette période sont à confirmer. Les fiches officielles ne comptent pas de la même façon : ${s.jours} jours ${s.libelle} (${s.source}), ou ${m.jours} jours ${m.libelle} (${m.source}). `
+    + 'Aucun texte ne dit laquelle retenir. En attendant une réponse officielle, mets-toi d’accord par écrit avec les parents.';
+}
+
+/**
+ * Lectures de l'acquisition en année complète (A-23). Chaque lecture retient le plus favorable de deux modes :
+ * - mois : 2,5 jours par mois civil entier de travail, 2 par mois civil entier d'arrêt maladie (24 au plus, L3141-5-1).
+ *   Un mois commencé (embauche, fin, arrêt en cours de mois) n'a pas de règle écrite : borne basse (non compté, ou compté
+ *   en maladie s'il a de l'arrêt) et borne haute (compté en travail) ;
+ * - semaines : `brut` (semaines avec leurs fractions, calcul de base) pour la lecture Occitanie ; périodes entières de
+ *   4 semaines pour la lecture Bourgogne-Franche-Comté.
+ * `lectures` : bornes basses ; `controles` : bornes hautes. Rien à confirmer si tout donne le même nombre.
+ */
+function lecturesAnneeComplete(ctx: Ctx, a: ISODate, b: ISODate, upTo: ISODate, brut: number, brutAD: number,
+  enfants: number, moins21: boolean): { lectures: LectureCP[]; controles: number[] } {
+  const maladie = new Set<ISODate>();
+  for (const l of ctx.leaves) if (l.type === 'am_malade') for (const d of eachDay(l.from > a ? l.from : a, l.to < b ? l.to : b)) maladie.add(d);
+  let bas = 0, haut = 0, malBas = 0, malHaut = 0, basAD = 0, malAD = 0;
+  for (const m of monthsBetween(monthOf(a), monthOf(b))) {
+    const premier = `${m}-01`, dernier = lastOf(m);
+    const entier = a <= premier && b >= dernier;
+    const jours = eachDay(premier > a ? premier : a, dernier < b ? dernier : b);
+    const nMal = jours.filter((d) => maladie.has(d)).length;
+    const nTot = eachDay(premier, dernier).length;
+    if (entier && nMal === 0) { bas++; haut++; if (dernier <= upTo) basAD++; continue; }
+    if (entier && nMal === nTot) { malBas++; malHaut++; if (dernier <= upTo) malAD++; continue; }
+    if (nMal > 0) malBas++;
+    haut++;
+  }
+  const mois = (n: number, mal: number) => n * 2.5 + Math.min(CP_MALADIE_PLAFOND, mal * CP_MALADIE_PAR_4_SEMAINES);
+  const semaines = weeksIn(ctx, a, b);
+  const mal = Math.min(semaines, semainesMaladie(ctx, a, b));
+  const periodes = Math.floor((semaines - mal) / 4 + 1e-9) * 2.5 + Math.min(CP_MALADIE_PLAFOND, Math.floor(mal / 4 + 1e-9) * CP_MALADIE_PAR_4_SEMAINES);
+  const avecEnfants = (x: number) => { const n = round(x); return n + joursEnfants(n, enfants, moins21); };
+  const lect = (info: { libelle: string; source: string }, methode: LectureCP['methode'], x: number, xAD: number): LectureCP => {
+    const n = round(x);
+    const bonus = joursEnfants(n, enfants, moins21);
+    return { methode, ...info, jours: n + bonus, joursADate: round(Math.max(0, xAD)), enfantsBonus: bonus };
+  };
+  const moisAD = mois(basAD, malAD);
+  return {
+    lectures: [
+      lect(LECTURE_SEMAINES_52, 'semaines', Math.max(brut, mois(bas, malBas)), Math.max(brutAD, moisAD)),
+      lect(LECTURE_MOIS_52, 'mois', Math.max(periodes, mois(bas, malBas)), moisAD),
+    ],
+    controles: [avecEnfants(Math.max(brut, mois(haut, malHaut))), avecEnfants(Math.max(periodes, mois(haut, malHaut)))],
+  };
+}
+
 /** Acquisition pour la période de référence commençant le 1er juin `y` */
 export function acquisition(ctx: Ctx, y: number, enfantsAChargeSaisis = 0): Acquisition {
   return memo(ctx, `acq${y}|${enfantsAChargeSaisis}`, () => {
@@ -410,6 +480,20 @@ export function acquisition(ctx: Ctx, y: number, enfantsAChargeSaisis = 0): Acqu
           out.enfantsBonus = Math.max(...lectures.map((l) => l.enfantsBonus));
         }
       }
+    } else if (b >= a && !(y === trackedY && c.trackedFrom > a)) {
+      // Année complète (A-23, T-030) : mois ou périodes de 4 semaines, non tranché. Le suivi commencé en cours de période
+      // garde le solde saisi par l'AM (`cpEnCours`) : cette période n'est pas recomptée.
+      const { lectures, controles } = lecturesAnneeComplete(ctx, a, b, upTo, raw, rawADate, enfantsACharge, moins21);
+      const tous = [...lectures.map((l) => l.jours), ...controles];
+      if (tous.every((n) => n === tous[0])) {
+        out.jours = lectures[0].jours; out.enfantsBonus = lectures[0].enfantsBonus;
+      } else {
+        out.aConfirmer = { message: messageAcquisition52(lectures), lectures, controles };
+        // Borne interne seulement (jamais affichée ni payée) : la lecture la plus haute, pour ne pas retenir à tort.
+        out.jours = Math.max(...tous);
+        out.joursADate = Math.max(...lectures.map((l) => l.joursADate));
+        out.enfantsBonus = Math.max(...lectures.map((l) => l.enfantsBonus));
+      }
     }
     return out;
   });
@@ -458,6 +542,32 @@ export function cpExces(ctx: Ctx): Set<ISODate> {
   });
 }
 
+/**
+ * T-030 (A-23) : année complète, droits de la période précédente à confirmer. Les jours pris au-delà de la lecture la plus
+ * basse mais dans la plus haute ne sont ni payés ni retenus : ils sont à confirmer (au-delà de la plus haute, `cpExces`).
+ */
+export function cpExcesAConfirmer(ctx: Ctx): Set<ISODate> {
+  return memo(ctx, `cpxac|${ctx.enfants ?? 0}`, () => {
+    const out = new Set<ISODate>();
+    if (!ctx.leaves.some((l) => l.type === 'cp')) return out;
+    const years = new Set<number>();
+    for (const b of decomptesCP(ctx)) for (const d of b.jours) years.add(cpPeriodStartYear(d));
+    for (const y of years) {
+      if (y <= cpPeriodStartYear(ctx.c.trackedFrom)) continue;
+      const prec = acquisition(ctx, y - 1, ctx.enfants ?? 0);
+      if (!prec.aConfirmer || !prec.aConfirmer.lectures.length) continue;
+      const bas = Math.min(...prec.aConfirmer.lectures.map((l) => l.jours), ...(prec.aConfirmer.controles ?? []));
+      const haut = Math.max(0, Math.ceil(droitsAPrendre(ctx, y) - 1e-9));
+      const pris = cpPrisEntre(ctx, debutDecompte(ctx, y), cpPeriod(y).to);
+      pris.slice(bas, haut).forEach((d) => out.add(d));
+    }
+    return out;
+  });
+}
+
+export const MESSAGE_CP_AU_DELA_A_CONFIRMER =
+  'Congés pris peut-être au-delà de tes droits : selon la façon de compter tes jours acquis, ces jours sont payés ou pris sans solde. Ils ne sont ni payés ni retenus pour l’instant. Mets-toi d’accord par écrit avec les parents.';
+
 /** Début du décompte des congés pris pour la période `y` : le début du suivi si le suivi commence dans cette période */
 export function debutDecompte(ctx: Ctx, y: number): ISODate {
   const p = cpPeriod(y);
@@ -485,7 +595,7 @@ export function soldesDeDepart(c: Contract, trackedFrom: ISODate, prisDepuisJuin
   return {
     droitsAnDernier, cpRestants: Math.max(0, droitsAnDernier - Math.max(0, prisDepuisJuin)), cpEnCours, depuis: p.from,
     aConfirmer: incomplete || acqPrec?.aConfirmer
-      ? 'Année incomplète : l’app ne calcule pas tes jours de congés de départ, la méthode officielle n’est pas tranchée. Saisis-les toi-même, à partir de tes bulletins ou de l’accord avec les parents.'
+      ? `${incomplete ? 'Année incomplète : l’' : 'L’'}app ne calcule pas tes jours de congés de départ, la méthode officielle n’est pas tranchée. Saisis-les toi-même, à partir de tes bulletins ou de l’accord avec les parents.`
       : undefined,
   };
 }
@@ -530,12 +640,12 @@ export function compteur(ctx: Ctx, at: ISODate, enfantsACharge = 0): Compteur {
 }
 
 /** Base du dixième : salaires nets (hors frais) de la période, indemnités de congés versées incluses */
-export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; manquants: Month[]; aConfirmer: boolean; evenementAConfirmer: number } {
+export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; manquants: Month[]; aConfirmer: boolean; evenementAConfirmer: number; joursCpAConfirmer: number } {
   return memo(ctx, `b10${y}|${enfants}`, () => {
     const p = cpPeriod(y);
     let base = 0;
     let aConfirmer = false;
-    let evenementAConfirmer = 0;
+    let evenementAConfirmer = 0, joursCpAConfirmer = 0;
     const manquants: Month[] = [];
     for (const m of monthsBetween(monthOf(p.from), monthOf(p.to))) {
       const b = monthBase(ctx, m);
@@ -544,7 +654,9 @@ export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; m
       base += b.net;
       // T-025 C-5 : salaire d'événement familial à confirmer, hors de `b.net`. CCN 48.1.3.1.1 : ces congés « sont
       // assimilés à du temps de travail effectif pour la détermination du droit à congés payés ».
+      // T-030 : comprend aussi les congés pris peut-être au-delà des droits (année complète, A-23).
       evenementAConfirmer += b.evenementAConfirmer;
+      joursCpAConfirmer += b.joursCpAConfirmer;
       if (!b.fromHistory) {
         const cp = cpForMonth(ctx, m, enfants);
         base += cp.indemnite + cp.complement;
@@ -552,7 +664,7 @@ export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; m
         if (cp.aConfirmer) aConfirmer = true;
       }
     }
-    return { base, manquants, aConfirmer, evenementAConfirmer };
+    return { base, manquants, aConfirmer, evenementAConfirmer, joursCpAConfirmer };
   });
 }
 
@@ -588,7 +700,7 @@ export interface IndemniteCP {
 export function indemnite(ctx: Ctx, y: number, enfants = 0): IndemniteCP {
   return memo(ctx, `ind${y}|${enfants}`, () => {
     const acq = acquisition(ctx, y, enfants);
-    const { base, manquants, aConfirmer: baseAC, evenementAConfirmer: evAC } = baseDixieme(ctx, y, enfants);
+    const { base, manquants, aConfirmer: baseAC, evenementAConfirmer: evAC, joursCpAConfirmer: evCp } = baseDixieme(ctx, y, enfants);
     const dix = Math.round(base / 10);
     const at = `${y + 1}-06-01`;
     const mt = maintien(ctx, acq.jours, at);
@@ -613,7 +725,7 @@ export function indemnite(ctx: Ctx, y: number, enfants = 0): IndemniteCP {
     if (evAC > 0) {
       const avec = Math.max(Math.round((base + evAC) / 10), mt);
       if (avec !== out.montant) {
-        const msg = `L’indemnité de congés payés dépend d’un salaire d’événement familial encore à confirmer (${euros(evAC)}) : ${euros(avec)} s’il est payé, ${euros(out.montant)} sinon.`;
+        const msg = `L’indemnité de congés payés dépend d’un salaire ${evCp ? 'd’événement familial ou de congés pris au-delà des droits' : 'd’événement familial'} encore à confirmer (${euros(evAC)}) : ${euros(avec)} s’il est payé, ${euros(out.montant)} sinon.`;
         if (out.aConfirmer) {
           out.aConfirmer = { ...out.aConfirmer, message: `${out.aConfirmer.message} ${msg}`, baseSure: false };
         } else {

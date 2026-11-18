@@ -123,6 +123,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   let totalBrut = 0;
   let cpManquants = false;
   let evenementManquant = false;
+  let cpAuDelaManquant = false;
   const manquants: Month[] = [];
   for (const m of monthsBetween(monthOf(c.start), monthOf(dernierJour))) {
     const b = monthBase(endCtx, m);
@@ -134,6 +135,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     if (cp.aConfirmer) cpManquants = true;
     // T-025 C-5 : salaire d'un événement familial à confirmer, absent de ce total (CCN 48.1.3.1.1 : pas de réduction de la rémunération).
     if (b.evenementAConfirmer) evenementManquant = true;
+    if (b.joursCpAConfirmer) cpAuDelaManquant = true;
   }
   if (manquants.length) {
     alertes.push(`Historique incomplet : ${manquants.length} mois sans bulletin. Ajoute les bulletins manquants dans l’historique pour un calcul juste.`);
@@ -187,7 +189,8 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
 
   const ruptureAConfirmer = (cpManquants || evenementManquant) && indemniteRupture > 0;
   if (ruptureAConfirmer) {
-    const manque = [cpManquants ? 'les congés payés' : '', evenementManquant ? 'le salaire d’événement familial' : ''].filter(Boolean).join(' ni ');
+    const evenement = evenementManquant ? (cpAuDelaManquant ? 'le salaire d’événement familial ou de congés pris au-delà des droits' : 'le salaire d’événement familial') : '';
+    const manque = [cpManquants ? 'les congés payés' : '', evenement].filter(Boolean).join(' ni ');
     alertes.push(`Indemnité de rupture à confirmer : elle ne compte pas encore ${manque} à confirmer.`);
   }
 
