@@ -6,7 +6,7 @@ import {
 import { holidayName, isMayDay } from './holidays';
 import { entretienPlancher, MESSAGE_PERIODE_NON_GEREE, netToBrut } from './rates';
 import { statutJourEvenement } from './evenements';
-import { controleKm } from './km';
+import { controleKm, indemniteKmJour } from './km';
 import { euros } from './money';
 import { cpAConfirmerEntre, cpExces } from './conges';
 import type { AmAbs, AmLeave, Contract, DayRec, Plage, Planning } from './model';
@@ -702,10 +702,12 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
         r.ferieDays.push(d);
       }
     }
-    // CCN art. 113 : part de cet accueil = km × tarif ÷ enfants transportés. Sans ce nombre, rien n'est payé en silence.
+    // CCN art. 113 : partage au prorata des enfants transportés seulement si plusieurs employeurs demandent le trajet
+    // (T-025 C-2). Donnée manquante : km à confirmer, rien n'est payé en silence.
     if (di.rec?.km) {
       kmJours++;
-      if (di.rec.kmEnfants && di.rec.kmEnfants >= 1) r.km += Math.round((di.rec.km * c.kmTaux) / di.rec.kmEnfants);
+      const part = indemniteKmJour(di.rec.km, c.kmTaux, di.rec.kmPartage, di.rec.kmEnfants);
+      if (part !== undefined) r.km += part;
       else r.kmAConfirmer += di.rec.km;
     }
   }
@@ -753,7 +755,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     r.alerts.push(...suspRaisons);
     r.alerts.push(`Événement familial : ${dayCountLabel(suspDays)} ni payé${suspDays > 1 ? 's' : ''} ni retenu${suspDays > 1 ? 's' : ''}, ${euros(r.evenementAConfirmer)} de salaire à confirmer (non compris dans le total).`);
   }
-  if (r.kmAConfirmer) r.alerts.push(`${r.kmAConfirmer} km sans le nombre d’enfants dans la voiture : non comptés. Indique-le pour chaque jour ; l’indemnité est partagée entre les enfants transportés (article 113 de la convention).`);
+  if (r.kmAConfirmer) r.alerts.push(`${r.kmAConfirmer} km à confirmer, non comptés. Pour chaque jour, indique si une autre famille a aussi demandé le trajet. Si oui, indique aussi les enfants dans la voiture : l’indemnité est alors partagée entre eux (article 113 de la convention). Si non, elle est due en entier.`);
   if (kmJours && c.kmTaux > 0) for (const m of controleKm(ctx.c.kmCv, c.kmTaux, segFrom).messages) if (!r.alerts.includes(m)) r.alerts.push(m);
   if (entretienNonVerifie) r.alerts.push(`${MESSAGE_PERIODE_NON_GEREE} Indemnité d’entretien : l’app retient le montant du contrat, sans contrôle du minimum légal ; vérifie-le avec les parents.`);
   // R-CP-09 : un congé dont le décompte reste ambigu est signalé, pas tranché (T-019).

@@ -87,7 +87,7 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   if (r.cpAConfirmer) out.push('• Indemnité de congés payés : à confirmer ensemble');
   if (r.evenementAConfirmer) out.push(`• Événement familial : ${euros(r.evenementAConfirmer)} à confirmer ensemble`);
   out.push('');
-  if (r.kmAConfirmer) out.push(`• Frais kilométriques : ${r.kmAConfirmer} km à confirmer ensemble (nombre d’enfants dans la voiture)`);
+  if (r.kmAConfirmer) out.push(`• Frais kilométriques : ${r.kmAConfirmer} km à confirmer ensemble (familles qui ont demandé le trajet, enfants dans la voiture)`);
   const aConfirmer = [r.cpAConfirmer ? 'les congés payés' : '', r.evenementAConfirmer ? 'l’événement familial' : '', r.kmAConfirmer ? 'les kilomètres' : ''].filter(Boolean);
   out.push(`Total à me verser : ${euros(r.netTotal + r.entretien + r.repas + r.km)}${aConfirmer.length ? `, sans ${aConfirmer.join(' ni ')} à confirmer` : ''}`);
   out.push('');

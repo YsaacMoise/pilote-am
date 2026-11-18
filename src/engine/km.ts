@@ -115,3 +115,17 @@ export function controleKm(cv: number | undefined, tarif: number, d: ISODate): C
   if (conditionnel.length) return { niveau: 'a_verifier', messages: conditionnel };
   return { niveau: 'ok', messages: [] };
 }
+
+/**
+ * Indemnité kilométrique d'un jour pour cet accueil, en centimes (T-025 C-2, CCN art. 113 lu en entier le 18/11/2026).
+ * - Un seul particulier employeur demandeur : indemnité entière (al. 2, renvoi à l'art. 57), pas de partage.
+ * - Plusieurs employeurs demandeurs : km × tarif ÷ enfants présents dans le véhicule (al. 3), au moins 2 enfants.
+ * - Donnée manquante ou incohérente : `undefined`, les km restent « à confirmer », rien n'est payé en silence.
+ * Saisies d'avant T-025 (`partage` absent) : un seul enfant dans la voiture ne peut venir que d'une famille demandeuse
+ * (al. 2 : « afin de transporter l'enfant accueilli ») ; plus d'un enfant : à confirmer.
+ */
+export function indemniteKmJour(km: number, taux: number, partage: boolean | undefined, enfants: number | undefined): number | undefined {
+  if (partage === false) return Math.round(km * taux);
+  if (partage === true) return enfants !== undefined && enfants >= 2 ? Math.round((km * taux) / enfants) : undefined;
+  return enfants === 1 ? Math.round(km * taux) : undefined;
+}

@@ -55,7 +55,7 @@ export async function seedDemo() {
   rec(leo, y3, { abs: 'malade_certif' });
   rec(leo, y6, { abs: 'parents' });
   rec(malo, y2, { pres: [{ a: '08:30' }] }); // départ oublié
-  rec(ines, y1, { pres: [{ a: '07:30', d: '08:30' }, { a: '16:30', d: '19:00' }], km: 6, kmEnfants: 1 });
+  rec(ines, y1, { pres: [{ a: '07:30', d: '08:30' }, { a: '16:30', d: '19:00' }], km: 6, kmPartage: false });
   if (weekday(t) <= 5) rec(leo, t, { pres: [{ a: '07:58' }] });
 
   const leaves: AmLeave[] = [

@@ -222,8 +222,9 @@ describe('T-017 indemnité kilométrique (CCN art. 57 et 113)', () => {
 
   const c = contract({ kmTaux: 41 });
   const rec = (date: string, r: Partial<DayRec>): DayRec => ({ key: `c1|${date}`, cid: 'c1', date, ...r });
-  it('art. 113 : 12 km avec 3 enfants transportés → un tiers de 12 × 0,41 € pour cet accueil', () => {
-    const r = computeMonth(makeCtx({ ...c, kmCv: 5 }, [rec('2026-10-05', { km: 12, kmEnfants: 3 })], [], '2026-11-01'), '2026-10');
+  it('art. 113 : 12 km demandés par plusieurs familles, 3 enfants transportés → un tiers de 12 × 0,41 € pour cet accueil', () => {
+    // T-025 C-2 : `kmPartage: true` ajouté. Le prorata ne s'applique que « Lorsque plusieurs particuliers employeurs sont demandeurs ».
+    const r = computeMonth(makeCtx({ ...c, kmCv: 5 }, [rec('2026-10-05', { km: 12, kmPartage: true, kmEnfants: 3 })], [], '2026-11-01'), '2026-10');
     expect(r.km).toBe(164); // 4,92 € ÷ 3 = 1,64 €
     expect(r.kmAConfirmer).toBe(0);
   });
@@ -311,5 +312,39 @@ describe('T-025 C-4 : férié chômé pendant un congé pour événement familia
     expect(r.evenementAConfirmer).toBe(0);
     expect(r.net).toBe(sansAbsence.net);
     expect(r.joursActivite).toBe(sansAbsence.joursActivite);
+  });
+});
+
+describe('T-025 C-2 : partage des km seulement si plusieurs employeurs demandent le trajet (CCN art. 113)', () => {
+  // Art. 113, lu en entier le 18/11/2026 : al. 2 « Si le particulier employeur demande à l'assistant maternel […] d'utiliser
+  // son véhicule personnel afin de transporter l'enfant accueilli, une indemnité […] est alors versée […] conformément
+  // aux dispositions prévues à l'article 57 » ; al. 3 « Lorsque plusieurs particuliers employeurs sont demandeurs de
+  // déplacements, l'indemnité due par chacun d'entre eux est déterminée au prorata du nombre d'enfants transportés. »
+  const c = contract({ kmTaux: 41, kmCv: 5 });
+  const rec = (date: string, r: Partial<DayRec>): DayRec => ({ key: `c1|${date}`, cid: 'c1', date, ...r });
+  const mois = (r: Partial<DayRec>) => computeMonth(makeCtx(c, [rec('2026-10-05', { km: 12, ...r })], [], '2026-11-01'), '2026-10');
+
+  it('un seul employeur demandeur, l’enfant de l’AM aussi à bord : pas de division, 12 × 0,41 € = 4,92 €', () => {
+    const r = mois({ kmPartage: false });
+    expect(r.km).toBe(492);
+    expect(r.kmAConfirmer).toBe(0);
+  });
+  it('plusieurs employeurs demandeurs, 2 enfants transportés : moitié, 2,46 €', () => {
+    expect(mois({ kmPartage: true, kmEnfants: 2 }).km).toBe(246);
+  });
+  it('plusieurs employeurs demandeurs sans le nombre d’enfants (ou moins de 2) : à confirmer, rien payé', () => {
+    for (const r of [mois({ kmPartage: true }), mois({ kmPartage: true, kmEnfants: 1 })]) {
+      expect(r.km).toBe(0);
+      expect(r.kmAConfirmer).toBe(12);
+    }
+  });
+  it('saisie d’avant T-025 avec 2 enfants, sans dire qui a demandé le trajet : à confirmer, jamais divisé en silence', () => {
+    const r = mois({ kmEnfants: 2 });
+    expect(r.km).toBe(0);
+    expect(r.kmAConfirmer).toBe(12);
+    expect(r.alerts.join(' ')).toMatch(/une autre famille a aussi demandé le trajet/);
+  });
+  it('saisie d’avant T-025 avec 1 seul enfant : une seule famille demandeuse possible, indemnité entière', () => {
+    expect(mois({ kmEnfants: 1 }).km).toBe(492);
   });
 });

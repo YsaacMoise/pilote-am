@@ -121,8 +121,15 @@ export interface DayRec {
   repas?: number;
   km?: number;
   /**
-   * Enfants présents dans la voiture pour ces km, y compris ceux de l'AM si le trajet répond à leurs besoins
-   * (CCN art. 113 : indemnité « au prorata du nombre d'enfants transportés », T-017). Absent : km à confirmer, non payés.
+   * T-025 C-2. Vrai : ce trajet est demandé par plusieurs particuliers employeurs (CCN art. 113 : « Lorsque plusieurs
+   * particuliers employeurs sont demandeurs de déplacements, l'indemnité due par chacun d'entre eux est déterminée au
+   * prorata du nombre d'enfants transportés »). Faux : seule cette famille l'a demandé, l'indemnité est due en entier
+   * (art. 113 al. 2 et art. 57). Absent (saisies d'avant T-025) : voir `kmEnfants`.
+   */
+  kmPartage?: boolean;
+  /**
+   * Enfants présents dans la voiture pour ces km, y compris ceux de l'AM si le trajet répond à leurs besoins (CCN
+   * art. 113). Sert seulement au partage, quand plusieurs familles ont demandé le trajet.
    */
   kmEnfants?: number;
 }
