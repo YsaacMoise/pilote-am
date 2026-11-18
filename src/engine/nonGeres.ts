@@ -9,6 +9,9 @@ export const NON_GERE_PLANNING_VARIABLE =
   'Horaires qui changent d’une semaine à l’autre (semaines A et B, planning remis chaque mois) : non géré. L’app ne sait calculer qu’une semaine type qui se répète. Fais la paie sans l’app.';
 export const NON_GERE_OCCASIONNEL =
   'Accueil occasionnel : non géré. L’app ne calcule que l’accueil régulier, sur 52 semaines ou sur 46 semaines ou moins (article 97.1 de la convention). Fais la paie sans l’app.';
+/** A-01 : CCN art. 97.1 ne connaît que 52 semaines ou 46 semaines et moins ; question 2 posée à la DDETS le 18/11/2026 */
+export const NON_GERE_47_51 =
+  'Accueil de 47 à 51 semaines par an : non géré. La convention ne prévoit que 52 semaines, ou 46 semaines et moins (article 97.1). Ne choisis ni 46 semaines ni toute l’année à la place : la paie serait fausse. La question est posée à la DDETS. En attendant, fais la paie sans l’app.';
 export const CONTRAT_A_COMPLETER =
   'Contrat à compléter : ouvre le contrat et réponds aux questions sur l’Alsace-Moselle, les horaires et l’accueil occasionnel. Si l’un de ces cas te concerne, l’app ne le gère pas et ses montants sont faux.';
 
@@ -24,8 +27,11 @@ export function estAbsenceNonGeree(l: AmLeave): boolean {
 }
 
 /** Cas du contrat lui-même (tous ses mois) */
-export function nonGeresContrat(c: Pick<Contract, 'alsaceMoselle' | 'planningVariable' | 'accueilOccasionnel'>): string[] {
+export function nonGeresContrat(c: Pick<Contract, 'alsaceMoselle' | 'planningVariable' | 'accueilOccasionnel'> & Partial<Pick<Contract, 'yearType' | 'weeks' | 'avenants'>>): string[] {
   const out: string[] = [];
+  // A-01 : conditions de départ ou d'un avenant entre 47 et 51 semaines (saisies anciennes ou importées).
+  const conditions = [c, ...(c.avenants ?? []).map((a) => ({ ...c, ...a.changes }))];
+  if (conditions.some((t) => semaines4751(t.yearType, t.weeks))) out.push(NON_GERE_47_51);
   if (c.alsaceMoselle) out.push(NON_GERE_ALSACE);
   if (c.planningVariable) out.push(NON_GERE_PLANNING_VARIABLE);
   if (c.accueilOccasionnel) out.push(NON_GERE_OCCASIONNEL);
@@ -49,4 +55,9 @@ export function nonGeresPeriode(c: Contract, leaves: AmLeave[], from: ISODate, t
     if (!out.includes(m)) out.push(m);
   }
   return out;
+}
+
+/** A-01 : 47 à 51 semaines d'accueil par an (année incomplète au-delà de 46 semaines) */
+export function semaines4751(yearType: Contract['yearType'] | undefined, weeks: number | undefined): boolean {
+  return yearType === 'incomplete' && weeks !== undefined && weeks >= 47 && weeks <= 51;
 }

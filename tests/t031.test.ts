@@ -126,3 +126,18 @@ describe('T-031 : absences non gérées (congé maternité, paternité, de naiss
     expect(f.cpIndemnite).toBe(0);
   });
 });
+
+describe('A-01 : accueil de 47 à 51 semaines (CCN art. 97.1, question 2 posée à la DDETS le 18/11/2026)', () => {
+  it('48 semaines en année incomplète : mois refusé', () => {
+    const r = computeMonth(makeCtx(ok({ yearType: 'incomplete', weeks: 48 }), [], [], '2026-10-31'), '2026-03');
+    expect(r.nonGere.join(' ')).toMatch(/47 à 51 semaines par an : non géré/);
+  });
+  it('46 semaines : pas refusé à ce titre', () => {
+    const r = computeMonth(makeCtx(ok({ yearType: 'incomplete', weeks: 46 }), [], [], '2026-10-31'), '2026-03');
+    expect(r.nonGere.join(' ')).not.toMatch(/47 à 51/);
+  });
+  it('avenant à 50 semaines : refusé', () => {
+    const c = ok({ avenants: [{ id: 'a', from: '2026-06-01', changes: { yearType: 'incomplete', weeks: 50 } }] });
+    expect(computeMonth(makeCtx(c, [], [], '2026-10-31'), '2026-07').nonGere.join(' ')).toMatch(/47 à 51/);
+  });
+});

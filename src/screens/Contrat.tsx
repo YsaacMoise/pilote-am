@@ -12,7 +12,7 @@ import { BROUILLON_CONTRAT } from './Simulateur';
 import { PartageCard } from './PartageCard';
 import { de } from '../engine/texte';
 import { PAJEMPLOI_PLUS_AIDE } from '../legal';
-import { nonGeresContrat } from '../engine/nonGeres';
+import { NON_GERE_47_51, nonGeresContrat, semaines4751 } from '../engine/nonGeres';
 
 const ouiNon = (b: boolean | undefined): 'oui' | 'non' | undefined => (b === undefined ? undefined : b ? 'oui' : 'non');
 
@@ -92,7 +92,8 @@ export function Contrat({ id }: { id?: string }) {
     if (!c.start) errs.push('Indique la date de début du contrat.');
     if (wk <= 0) errs.push('Le planning est vide : ajoute au moins un jour d’accueil.');
     for (let d = 1; d <= 7; d++) for (const p of c.planning[d] ?? []) if (p.end <= p.start) errs.push(`${JOUR_NOMS[d - 1]} : l’heure de fin doit être après le début.`);
-    if (c.yearType === 'incomplete' && (c.weeks < 1 || c.weeks > 46)) errs.push('En année incomplète, le nombre de semaines va de 1 à 46.');
+    if (semaines4751(c.yearType, c.weeks)) errs.push(NON_GERE_47_51);
+    else if (c.yearType === 'incomplete' && (c.weeks < 1 || c.weeks > 46)) errs.push('En année incomplète, le nombre de semaines va de 1 à 46.');
     // Audit C-002 : les semaines sans accueil manquantes sont signalées dans le formulaire (bandeau) sans bloquer,
     // car elles peuvent être communiquées plus tard, par écrit, deux mois à l'avance (art. 98.1.2) ;
     // la régularisation n'est pas calculée tant qu'une année terminée en manque.
@@ -175,7 +176,8 @@ export function Contrat({ id }: { id?: string }) {
               options={[{ v: 'complete', l: 'Toute l’année (52 sem.)' }, { v: 'incomplete', l: 'Année incomplète' }]} />
             {c.yearType === 'incomplete' && (
               <>
-                <NumberInput label="Semaines d’accueil par an" hint="46 au plus, sans compter tes congés payés" value={c.weeks} min={1} max={46} onChange={(v) => set({ weeks: v ?? 46 })} />
+                <NumberInput label="Semaines d’accueil par an" hint="46 au plus, sans compter tes congés payés" value={c.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />
+                {semaines4751(c.yearType, c.weeks) && <Banner tone="warn">{NON_GERE_47_51}</Banner>}
                 <WeeksOff c={c} onChange={(w) => set({ weeksOff: w })} />
               </>
             )}

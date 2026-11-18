@@ -1,4 +1,5 @@
 // Avenant : nouvelles conditions du contrat à partir du 1er d'un mois.
+import { NON_GERE_47_51, semaines4751 } from '../engine/nonGeres';
 import { useState } from 'preact/hooks';
 import { logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
 import { addMonths, firstDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
@@ -50,7 +51,8 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
     if (!summary.length) errs.push('Rien n’a changé par rapport au contrat en vigueur ce mois-là.');
     if (!date) errs.push('Indique la date de début de l’avenant.');
     if (date <= c!.start) errs.push('L’avenant doit commencer après le début du contrat.');
-    if (t!.yearType === 'incomplete' && (t!.weeks < 1 || t!.weeks > 46)) errs.push('En année incomplète, le nombre de semaines va de 1 à 46.');
+    if (semaines4751(t!.yearType, t!.weeks)) errs.push(NON_GERE_47_51);
+    else if (t!.yearType === 'incomplete' && (t!.weeks < 1 || t!.weeks > 46)) errs.push('En année incomplète, le nombre de semaines va de 1 à 46.');
     if (others.some((a) => a.from === date)) errs.push('Un autre avenant commence déjà ce jour-là : modifie-le plutôt.');
     if (wk <= 0) errs.push('Le planning est vide.');
     for (let d = 1; d <= 7; d++) for (const p of t!.planning[d] ?? []) if (p.end <= p.start) errs.push('Une heure de fin est avant le début.');
@@ -118,7 +120,8 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
             <legend>Le planning</legend>
             <Seg label="Accueil sur l’année" value={t.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(t.weeks, 46) || 46 })}
               options={[{ v: 'complete', l: 'Toute l’année (52 sem.)' }, { v: 'incomplete', l: 'Année incomplète' }]} />
-            {t.yearType === 'incomplete' && <NumberInput label="Semaines d’accueil par an" hint="46 au plus" value={t.weeks} min={1} max={46} onChange={(v) => set({ weeks: v ?? 46 })} />}
+            {t.yearType === 'incomplete' && <NumberInput label="Semaines d’accueil par an" hint="46 au plus" value={t.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />}
+            {semaines4751(t.yearType, t.weeks) && <Banner tone="warn">{NON_GERE_47_51}</Banner>}
             {before.yearType === 'incomplete' && t.yearType === 'complete' && <p class="hint">Le contrat passe de l’année incomplète à l’année complète : l’app calcule une régularisation à la date de l’avenant (heures accueillies et pas encore payées), versée avec le salaire de ce mois.</p>}
             {before.yearType === 'incomplete' && t.yearType === 'incomplete' && <p class="hint">Année incomplète : la régularisation se fait en fin de contrat, pas à l’avenant.</p>}
             {[1, 2, 3, 4, 5, 6, 7].map((d) => <PlanDay d={d} plages={t.planning[d] ?? []} onChange={(p) => set({ planning: { ...t.planning, [d]: p } as Planning })} />)}
