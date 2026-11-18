@@ -5,6 +5,8 @@ import {
 } from './dates';
 import { holidayName, isMayDay } from './holidays';
 import { entretienPlancher, MESSAGE_PERIODE_NON_GEREE, netToBrut } from './rates';
+import { statutJourEvenement } from './evenements';
+import { euros } from './money';
 import { cpAConfirmerEntre, cpExces } from './conges';
 import type { AmAbs, AmLeave, Contract, DayRec, Plage, Planning } from './model';
 
@@ -92,7 +94,11 @@ export function inContract(c: Contract, d: ISODate): boolean {
 }
 
 export function amLeaveOn(leaves: AmLeave[], d: ISODate): AmAbs | undefined {
-  for (const l of leaves) if (d >= l.from && d <= l.to) return l.type;
+  return amLeaveAt(leaves, d)?.type;
+}
+
+export function amLeaveAt(leaves: AmLeave[], d: ISODate): AmLeave | undefined {
+  for (const l of leaves) if (d >= l.from && d <= l.to) return l;
   return undefined;
 }
 
@@ -137,6 +143,11 @@ export interface DayInfo {
   ferieNonPaye?: boolean;
   /** Jour de congé payé pris au-delà des droits acquis : retenu comme congé sans solde (C-004) */
   cpSansDroits?: boolean;
+  /**
+   * Jour d'événement familial à confirmer (T-023, R-ABS-06) : ni payé ni retenu. Son montant est sorti du salaire du
+   * mois et affiché « à confirmer » ; la raison dit quoi renseigner.
+   */
+  aConfirmer?: string;
 }
 
 export function dayInfo(ctx: Ctx, d: ISODate): DayInfo {
@@ -172,6 +183,8 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
         info.inDivisor = true;
       } else if (amLeave === 'evenement') {
         info.inDivisor = true;
+        const st = statutJourEvenement(amLeaveAt(ctx.leaves, d)!, d);
+        if (!st.paye) info.aConfirmer = st.raison;
       }
     }
     return info;
@@ -402,6 +415,11 @@ export interface MonthBase {
   entretien: number;
   repas: number;
   km: number;
+  /**
+   * Salaire net des jours d'événement familial à confirmer (T-023) : sorti de `net` et de `base`, affiché à part.
+   * Les heures et jours déclarés sont calculés sans ces jours. Les raisons sont dans `alerts`.
+   */
+  evenementAConfirmer: number;
   /** Salaire net hors congés payés */
   net: number;
   /** Régularisation versée avec un avenant (année incomplète qui se termine) */
@@ -425,7 +443,7 @@ function emptyBase(m: Month): MonthBase {
     month: m, active: false, fromHistory: false, missing: false, salaireMens: 0, mensuelMin: 0, divisorDays: 0,
     divisorMin: 0, contractDays: 0, contractMin: 0, deductedDays: 0, deductedMin: 0, paidFraction: 0, base: 0,
     retenue: 0, heuresNormales: 0, joursActivite: 0, complMin: 0, majMin: 0, majContratMin: 0, complAmount: 0, majAmount: 0,
-    ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, net: 0,
+    ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, evenementAConfirmer: 0, net: 0,
     alerts: [], forgotten: [], sickPaidNotice: false,
   };
 }
@@ -572,7 +590,7 @@ function hoursMin(min: number): string {
 }
 
 const SUM_KEYS = ['base', 'retenue', 'majContratMin', 'joursActivite', 'complMin', 'majMin', 'complAmount', 'majAmount', 'ferieAmount',
-  'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
+  'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'evenementAConfirmer', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
 
 function mergeParts(m: Month, parts: MonthBase[], cuts: ISODate[]): MonthBase {
   const r = emptyBase(m);
@@ -645,14 +663,20 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
 
   let cDays = 0, cMin = 0, dedDays = 0, dedMin = 0, actDays = 0, cpSansDroits = 0;
   let entretienNonVerifie = false;
+  let suspDays = 0, suspMin = 0;
+  const suspRaisons: string[] = [];
   const forgotten: ISODate[] = [];
   for (const d of allDays) {
     if (!inSeg(d)) continue;
     const di = dayInfo(ctx, d);
     if (di.inDivisor) { cDays++; cMin += di.plannedMin; }
     if (di.deducted) { dedDays++; dedMin += di.plannedMin; }
-    // Jours d'activité (Pajemploi) : jours prévus et payés, sans les fériés chômés.
-    if (di.inDivisor && !di.deducted && di.kind !== 'ferie') actDays++;
+    if (di.aConfirmer && di.plannedMin > 0) {
+      suspDays++; suspMin += di.plannedMin;
+      if (!suspRaisons.includes(di.aConfirmer)) suspRaisons.push(di.aConfirmer);
+    }
+    // Jours d'activité (Pajemploi) : jours prévus et payés, sans les fériés chômés ni les jours à confirmer.
+    if (di.inDivisor && !di.deducted && !di.aConfirmer && di.kind !== 'ferie') actDays++;
     if (di.cpSansDroits) cpSansDroits++;
     if (di.departOublie) forgotten.push(d);
     if (di.ferieNonPaye) r.alerts.push(`Férié du ${d.slice(8, 10)}/${d.slice(5, 7)} non payé : tu étais absente le jour prévu juste avant ou juste après (article 47 de la convention).`);
@@ -684,18 +708,24 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   r.forgotten = forgotten;
 
   // Méthode des heures (année complète) ou des jours (année incomplète) — art. 111.
-  let fraction: number;
-  if (complete) fraction = fullMin > 0 ? (segMin - dedMin) / fullMin : startsOrEndsInMonth ? 0 : 1;
-  else fraction = fullDays > 0 ? (segDays - dedDays) / fullDays : startsOrEndsInMonth ? 0 : 1;
-  fraction = Math.max(0, Math.min(1, fraction));
+  const fractionHors = (days: number, min: number): number => {
+    const f = complete ? (fullMin > 0 ? (segMin - min) / fullMin : startsOrEndsInMonth ? 0 : 1)
+      : (fullDays > 0 ? (segDays - days) / fullDays : startsOrEndsInMonth ? 0 : 1);
+    return Math.max(0, Math.min(1, f));
+  };
+  let fractionPayee = fractionHors(dedDays, dedMin);
   // Mois complet sans absence retenue : salaire mensualisé intégral.
-  if (!startsOrEndsInMonth && dedDays === 0) fraction = 1;
+  if (!startsOrEndsInMonth && dedDays === 0) fractionPayee = 1;
+  // T-023 : les jours d'événement à confirmer sont sortis du salaire (ni payés ni retenus) et chiffrés à part.
+  const fraction = suspDays ? fractionHors(dedDays + suspDays, dedMin + suspMin) : fractionPayee;
+  const basePayee = Math.round(smens * fractionPayee);
   r.paidFraction = fraction;
   r.base = Math.round(smens * fraction);
+  r.evenementAConfirmer = basePayee - r.base;
   const prorataOnly = startsOrEndsInMonth
     ? Math.round(smens * Math.min(1, complete ? (fullMin ? segMin / fullMin : 0) : fullDays ? segDays / fullDays : 0))
     : smens;
-  r.retenue = Math.max(0, prorataOnly - r.base);
+  r.retenue = Math.max(0, prorataOnly - basePayee);
 
   // Pajemploi : les heures du contrat au-delà de 45 h/semaine vont en « heures majorées », pas en heures normales.
   const majContrat = mensuelMajoreesMinutes(c);
@@ -708,8 +738,12 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   // la somme est arrondie dans mergeParts.
   const entreeSortie = c.start > from || (!!c.end && c.end < to);
   if (entreeSortie) r.joursActivite = actDays + r.extraDays;
-  else if (startsOrEndsInMonth) r.joursActivite = Math.max(0, (joursMensualises(c) * (fullDays ? segDays / fullDays : 0)) - dedDays) + r.extraDays;
-  else r.joursActivite = Math.max(0, joursMensualises(c) - dedDays) + r.extraDays;
+  else if (startsOrEndsInMonth) r.joursActivite = Math.max(0, (joursMensualises(c) * (fullDays ? segDays / fullDays : 0)) - dedDays - suspDays) + r.extraDays;
+  else r.joursActivite = Math.max(0, joursMensualises(c) - dedDays - suspDays) + r.extraDays;
+  if (suspRaisons.length) {
+    r.alerts.push(...suspRaisons);
+    r.alerts.push(`Événement familial : ${dayCountLabel(suspDays)} ni payé${suspDays > 1 ? 's' : ''} ni retenu${suspDays > 1 ? 's' : ''}, ${euros(r.evenementAConfirmer)} de salaire à confirmer (non compris dans le total).`);
+  }
   if (entretienNonVerifie) r.alerts.push(`${MESSAGE_PERIODE_NON_GEREE} Indemnité d’entretien : l’app retient le montant du contrat, sans contrôle du minimum légal ; vérifie-le avec les parents.`);
   // R-CP-09 : un congé dont le décompte reste ambigu est signalé, pas tranché (T-019).
   for (const a of cpAConfirmerEntre(ctx, segFrom, segTo)) if (!r.alerts.includes(a)) r.alerts.push(a);

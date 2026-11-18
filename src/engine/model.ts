@@ -117,11 +117,17 @@ export interface DayRec {
   km?: number;
 }
 
+/** Nature d'un événement familial (CCN art. 48.1.3.1.1 et 48.1.3.1.2 ; C. trav. L3142-4) : la durée payée en dépend (T-023) */
+export type NatureEvenement = 'mariage' | 'mariage_enfant' | 'naissance' | 'deces_enfant' | 'deces_enfant_14' | 'deces_proche'
+  | 'handicap_enfant' | 'deces_descendant' | 'deces_ascendant' | 'deuil';
+
 export interface AmLeave {
   id: string;
   type: AmAbs;
   from: ISODate;
   to: ISODate;
+  /** Événement familial seulement. Absente (saisies d'avant T-023) : jours « à confirmer », ni payés ni retenus. */
+  nature?: NatureEvenement;
 }
 
 export interface Settings {

@@ -2,9 +2,10 @@
 // Chaque attendu vient d'un texte relu à la source le 18/11/2026 (cité dans chaque test) ou d'un cas officiel
 // de tests/cas-officiels-v0.md. Aucun attendu n'est tiré du code.
 import { describe, expect, it } from 'vitest';
-import type { Bulletin, Contract, Planning } from '../src/engine/model';
+import type { AmLeave, Bulletin, Contract, NatureEvenement, Planning } from '../src/engine/model';
 import { makeCtx } from '../src/engine/payroll';
-import { computeMonth } from '../src/engine/month';
+import { computeMonth, declarationLines, declarationText } from '../src/engine/month';
+import { dureeEvenement } from '../src/engine/evenements';
 import { controle } from '../src/engine/controle';
 import { fiscalYear } from '../src/engine/fiscal';
 import { entretienPlancher, PREMIERE_DATE_GEREE, ratesAt } from '../src/engine/rates';
@@ -94,5 +95,82 @@ describe('T-023 (3) barèmes datés avant le 01/04/2025 (BAREME-ABSENT)', () => 
     const f = fiscalYear(makeCtx(c, [], [], '2021-12-31'), 2021);
     expect(f.abattementBrut).toBe(0);
     expect(f.nonGere).toMatch(/Période non gérée/);
+  });
+});
+
+describe('T-023 (2) événements familiaux, R-ABS-06', () => {
+  // Contrat du lundi au vendredi, 8 h par jour, année complète. Octobre 2026 : aucun jour férié.
+  const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01' });
+  const ev = (from: string, to: string, nature?: NatureEvenement): AmLeave => ({ id: 'e', type: 'evenement', from, to, ...(nature ? { nature } : {}) });
+  const mois = (leaves: AmLeave[], m = '2026-10') => computeMonth(makeCtx(c, [], leaves, '2026-12-31'), m);
+  const sansAbsence = mois([]);
+
+  it('durées : la plus favorable entre CCN 48.1.3.1.1 (avenant n° 4) et C. trav. L3142-4 (version du 14/06/2026)', () => {
+    expect(dureeEvenement('mariage', '2026-10-05')).toBe(4); // « 4 jours ouvrables pour son mariage ou [...] PACS » ; L3142-4 1° : quatre
+    expect(dureeEvenement('mariage_enfant', '2026-10-05')).toBe(1); // CCN : 1 ; L3142-4 2° : un
+    expect(dureeEvenement('naissance', '2026-10-05')).toBe(3); // CCN : 3 ; L3142-4 3° et 3° bis : trois
+    expect(dureeEvenement('deces_enfant', '2026-10-05')).toBe(12); // CCN et L3142-4 4° : douze
+    expect(dureeEvenement('deces_enfant_14', '2026-10-05')).toBe(14); // CCN et L3142-4 4° : quatorze
+    expect(dureeEvenement('deces_proche', '2026-10-05')).toBe(3); // CCN et L3142-4 5° : trois
+    expect(dureeEvenement('deces_descendant', '2026-10-05')).toBe(1); // CCN seule : 1
+    expect(dureeEvenement('deces_ascendant', '2026-10-05')).toBe(1); // CCN seule : 1
+    // Annonce d'un handicap : CCN 5 ; L3142-4 6° « Cinq jours » jusqu'au 13/06/2026, « Dix jours » depuis le 14/06/2026
+    expect(dureeEvenement('handicap_enfant', '2026-06-13')).toBe(5);
+    expect(dureeEvenement('handicap_enfant', '2026-06-14')).toBe(10);
+    // Art. 48.1.3.1.2 et 48.1.3.1.3 : congé de deuil indemnisé par la sécurité sociale, maintien sous déduction des IJ : non géré
+    expect(dureeEvenement('deuil', '2026-10-05')).toBeUndefined();
+  });
+
+  it('mariage dans la durée (4 jours ouvrables du lundi au jeudi) : payé, « pas de réduction de la rémunération »', () => {
+    const r = mois([ev('2026-10-05', '2026-10-08', 'mariage')]);
+    expect(r.evenementAConfirmer).toBe(0);
+    expect(r.retenue).toBe(0);
+    expect(r.net).toBe(sansAbsence.net);
+  });
+
+  it('mariage saisi sur 5 jours ouvrables : le 5e n’est ni payé ni retenu, il est à confirmer', () => {
+    const r = mois([ev('2026-10-05', '2026-10-09', 'mariage')]);
+    expect(r.evenementAConfirmer).toBeGreaterThan(0);
+    expect(r.retenue).toBe(0);
+    expect(r.net + r.evenementAConfirmer).toBe(sansAbsence.net);
+    expect(r.joursActivite).toBe(sansAbsence.joursActivite - 1);
+    expect(r.alerts.join(' ')).toMatch(/4 jours ouvrables au plus/);
+    expect(declarationLines(makeCtx(c, [], [ev('2026-10-05', '2026-10-09', 'mariage')], '2026-12-31'), r).find((l) => l.label === 'Salaire net')!.value).toMatch(/événement familial à confirmer/);
+  });
+
+  it('jour de plus de 600 km saisi en congé sans solde : retenu (« 1 jour ouvrable supplémentaire, non rémunéré »)', () => {
+    const r = mois([ev('2026-10-05', '2026-10-08', 'mariage'), { id: 's', type: 'sans_solde', from: '2026-10-09', to: '2026-10-09' }]);
+    expect(r.evenementAConfirmer).toBe(0);
+    expect(r.retenue).toBeGreaterThan(0);
+  });
+
+  it('événement déjà saisi sans nature : à confirmer, ni payé ni retenu en silence', () => {
+    const leaves = [ev('2026-10-05', '2026-10-05')];
+    const r = mois(leaves);
+    expect(r.evenementAConfirmer).toBeGreaterThan(0);
+    expect(r.retenue).toBe(0);
+    expect(r.alerts.join(' ')).toMatch(/nature de l’événement n’est pas renseignée/);
+    expect(declarationText(makeCtx(c, [], leaves, '2026-12-31'), r, 'Ana')).toMatch(/sans l’événement familial à confirmer/);
+  });
+
+  it('annonce d’un handicap le 02/03/2026 : 5 jours (avant la loi du 12 juin 2026) ; le 15/06/2026 : 10 jours', () => {
+    // Du lundi 02/03 au jeudi 12/03 : 10 jours ouvrables (le samedi 07/03 compte). Au-delà de 5 : 4 jours prévus à confirmer.
+    const mars = mois([ev('2026-03-02', '2026-03-12', 'handicap_enfant')], '2026-03');
+    expect(mars.evenementAConfirmer).toBeGreaterThan(0);
+    expect(mars.joursActivite).toBe(mois([], '2026-03').joursActivite - 4);
+    // Du lundi 15/06 au jeudi 25/06 : 10 jours ouvrables, tous dans la durée.
+    expect(mois([ev('2026-06-15', '2026-06-25', 'handicap_enfant')], '2026-06').evenementAConfirmer).toBe(0);
+  });
+
+  it('congé de deuil : art. 48.1.3.1.3 non géré, à confirmer', () => {
+    const r = mois([ev('2026-10-05', '2026-10-06', 'deuil')]);
+    expect(r.evenementAConfirmer).toBeGreaterThan(0);
+    expect(r.alerts.join(' ')).toMatch(/48\.1\.3\.1\.3/);
+  });
+
+  it('avant le 01/05/2024 : version de 48.1.3.1.1 non tranchée (avenant n° 4), à confirmer', () => {
+    const r = computeMonth(makeCtx(contract({ start: '2023-09-04', trackedFrom: '2023-09-04' }), [], [ev('2024-03-04', '2024-03-04', 'naissance')], '2024-12-31'), '2024-03');
+    expect(r.evenementAConfirmer).toBeGreaterThan(0);
+    expect(r.alerts.join(' ')).toMatch(/période non gérée/);
   });
 });

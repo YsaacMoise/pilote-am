@@ -3,7 +3,8 @@ import { useState } from 'preact/hooks';
 import { activeContracts, ctxFor, logUsage, putLeave, saveSettings, state, toast, uid, updateDay, useStore } from '../store';
 import { addDays, dayLabel, minutes, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NOMS, daysBetween } from '../engine/dates';
 import { dayInfo, type DayInfo } from '../engine/payroll';
-import { AM_ABS_LABEL, CHILD_ABS_LABEL, type AmAbs, type ChildAbs, type Contract, type DayRec, type Presence } from '../engine/model';
+import { AM_ABS_LABEL, CHILD_ABS_LABEL, type AmAbs, type ChildAbs, type Contract, type DayRec, type NatureEvenement, type Presence } from '../engine/model';
+import { dureeEvenement, NATURE_EVENEMENT_LABEL } from '../engine/evenements';
 import { hoursLabel } from '../engine/money';
 import { Banner, CHILD_COLORS, Choices, DateInput, Gommette, Sheet, Stepper, Switch, Topbar, useErreurAffichee } from '../ui/kit';
 import { evAnnulation, evCorrection, heureCorrigee } from '../usage-events';
@@ -343,12 +344,13 @@ const AM_OPTIONS: { v: AmAbs; l: string; sub: string }[] = [
   { v: 'cp', l: AM_ABS_LABEL.cp, sub: 'Décomptés de ton compteur de congés' },
   { v: 'am_malade', l: AM_ABS_LABEL.am_malade, sub: 'Non payé par les parents (indemnités de la Sécurité sociale)' },
   { v: 'am_enfant_malade', l: AM_ABS_LABEL.am_enfant_malade, sub: 'Non payé (3 jours par an, 5 dans certains cas)' },
-  { v: 'evenement', l: AM_ABS_LABEL.evenement, sub: 'Mariage, naissance, décès… : payé sur justificatif' },
+  { v: 'evenement', l: AM_ABS_LABEL.evenement, sub: 'Mariage, naissance, décès… : payé sur justificatif, selon la durée prévue' },
   { v: 'sans_solde', l: AM_ABS_LABEL.sans_solde, sub: 'Non payé, avec l’accord des parents' },
 ];
 
 export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () => void }) {
   const [type, setType] = useState<AmAbs>('cp');
+  const [nature, setNature] = useState<NatureEvenement | undefined>(undefined);
   const [from, setFrom] = useState(start);
   const [to, setTo] = useState(start);
   const err = to < from ? 'La date de fin doit être après le début.' : '';
@@ -357,6 +359,14 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
     <Sheet title="Je serai absente" onClose={onClose}>
       <p class="muted">Pour tous les enfants. Les parents ne te paient pas les jours non payés : l’app fait la retenue toute seule.</p>
       <Choices label="Raison" value={type} options={AM_OPTIONS} onChange={setType} />
+      {type === 'evenement' && (
+        <Choices label="Quel événement ?" value={nature} onChange={setNature}
+          options={(Object.keys(NATURE_EVENEMENT_LABEL) as NatureEvenement[]).map((v) => {
+            const n = dureeEvenement(v, from);
+            return { v, l: NATURE_EVENEMENT_LABEL[v], sub: n === undefined ? 'Indemnisé par la Sécurité sociale : à calculer avec les parents' : `${n} jour${n > 1 ? 's' : ''} ouvrable${n > 1 ? 's' : ''} payé${n > 1 ? 's' : ''}` };
+          })} />
+      )}
+      {type === 'evenement' && <p class="hint">Déplacement de plus de 600 km aller-retour : le jour en plus est non rémunéré, saisis-le en congé sans solde.</p>}
       <p class="hint">{ABSENCES_NON_GEREES}</p>
       <div class="grid2">
         <DateInput label="Du" value={from} onChange={(v) => { setFrom(v); if (to < v) setTo(v); }} />
@@ -366,9 +376,9 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
       {err && <p class="err" role="alert">{err}</p>}
       <button
         class="btn btn-primary btn-block btn-lg"
-        disabled={!!err || !from || !to}
+        disabled={!!err || !from || !to || (type === 'evenement' && !nature)}
         onClick={async () => {
-          const undo = await putLeave({ id: uid(), type, from, to });
+          const undo = await putLeave(type === 'evenement' ? { id: uid(), type, from, to, nature } : { id: uid(), type, from, to });
           logUsage('absence_am', 'aujourdhui');
           onClose();
           toast(`${AM_ABS_LABEL[type]} enregistré${type === 'cp' ? 's' : ''}`, undo);

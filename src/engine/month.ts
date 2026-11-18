@@ -59,7 +59,7 @@ export function declarationLines(ctx: Ctx, r: MonthResult): DeclLine[] {
       value: hoursLabel(r.majContratMin + r.majMin),
       hint: `Au-delà de 45 h dans la semaine, prévues au contrat ou en plus, +${termsAt(ctx.c, `${r.month}-01`).majoration}\u00a0%`,
     },
-    { label: 'Salaire net', value: r.cpAConfirmer ? `${euros(r.netTotal)} + congés à confirmer` : euros(r.netTotal) },
+    { label: 'Salaire net', value: `${euros(r.netTotal)}${r.cpAConfirmer ? ' + congés à confirmer' : ''}${r.evenementAConfirmer ? ` + ${euros(r.evenementAConfirmer)} d’événement familial à confirmer` : ''}` },
     { label: 'Indemnités d’entretien', value: euros(r.entretien), hint: `${r.presenceDays} jour${r.presenceDays > 1 ? 's' : ''} d’accueil` },
     { label: 'Frais de repas', value: euros(r.repas) },
     { label: 'Frais kilométriques', value: euros(r.km) },
@@ -85,8 +85,10 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   if (r.cpIndemnite) out.push(`• Indemnité de congés payés : ${euros(r.cpIndemnite)}`);
   if (r.cpComplement) out.push(`• Complément de congés payés : ${euros(r.cpComplement)}`);
   if (r.cpAConfirmer) out.push('• Indemnité de congés payés : à confirmer ensemble');
+  if (r.evenementAConfirmer) out.push(`• Événement familial : ${euros(r.evenementAConfirmer)} à confirmer ensemble`);
   out.push('');
-  out.push(`Total à me verser : ${euros(r.netTotal + r.entretien + r.repas + r.km)}${r.cpAConfirmer ? ', sans les congés payés à confirmer' : ''}`);
+  const aConfirmer = [r.cpAConfirmer ? 'les congés payés' : '', r.evenementAConfirmer ? 'l’événement familial' : ''].filter(Boolean);
+  out.push(`Total à me verser : ${euros(r.netTotal + r.entretien + r.repas + r.km)}${aConfirmer.length ? `, sans ${aConfirmer.join(' ni ')} à confirmer` : ''}`);
   out.push('');
   out.push('Calcul fait avec l’application Arvela, outil d’aide indépendant de l’Urssaf : la déclaration Pajemploi fait foi.');
   out.push('');

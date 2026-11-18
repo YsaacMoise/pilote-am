@@ -60,7 +60,7 @@ export async function seedDemo() {
 
   const leaves: AmLeave[] = [
     { id: 'demo-cp1', type: 'cp', from: addDays(firstDay(addMonths(cur, -2)), 9), to: addDays(firstDay(addMonths(cur, -2)), 14) },
-    { id: 'demo-ev', type: 'evenement', from: addDays(t, 16), to: addDays(t, 16) },
+    { id: 'demo-ev', type: 'evenement', from: addDays(t, 16), to: addDays(t, 16), nature: 'mariage_enfant' },
   ];
   const journal: Journal[] = weekday(t) <= 5 ? [
     { id: 'demo-j1', cid: leo.id, date: t, time: '09:30', kind: 'humeur', detail: 'De bonne humeur' },
