@@ -128,6 +128,32 @@ describe('T-023 (2) événements familiaux, R-ABS-06', () => {
     expect(dureeEvenement('deuil', '2026-10-05')).toBeUndefined();
   });
 
+  it('T-033 : durées avant le 21/07/2023 (L3142-4 version du 19/12/2021 et CCN 48.1.3.1.1 version remplacée)', () => {
+    // L3142-4 4° « Cinq jours pour le décès d'un enfant » ; CCN remplacée « 5 jours ouvrables pour le décès d'un enfant »
+    expect(dureeEvenement('deces_enfant', '2022-06-01')).toBe(5);
+    expect(dureeEvenement('deces_enfant', '2023-07-20')).toBe(5);
+    expect(dureeEvenement('deces_enfant', '2023-07-21')).toBe(12); // loi n° 2023-622 : « Douze jours »
+    // « sept jours ouvrés » (loi) contre « 9 jours ouvrables » (CCN) : comparaison d'unités non écrite → non géré
+    expect(dureeEvenement('deces_enfant_14', '2023-07-20')).toBeUndefined();
+    expect(dureeEvenement('deces_enfant_14', '2023-07-21')).toBe(14);
+    // L3142-4 6° « Deux jours » ; CCN remplacée « 2 jours ouvrables pour l'annonce de la survenue d'un handicap »
+    expect(dureeEvenement('handicap_enfant', '2022-06-01')).toBe(2);
+    expect(dureeEvenement('handicap_enfant', '2023-07-21')).toBe(5);
+    // Sans changement dans les deux versions : 4, 1, 3, 3, 1, 1
+    expect(dureeEvenement('mariage', '2022-06-01')).toBe(4);
+    expect(dureeEvenement('deces_proche', '2022-06-01')).toBe(3);
+    expect(dureeEvenement('deces_ascendant', '2022-06-01')).toBe(1);
+    // Avant la CCN IDCC 3239 (01/01/2022) : aucun texte lu
+    expect(dureeEvenement('mariage', '2021-12-31')).toBeUndefined();
+  });
+
+  it('T-033 : la paie d’un événement avant le 01/05/2024 reste « à confirmer »', () => {
+    const c22 = contract({ start: '2022-01-03', trackedFrom: '2022-01-03' });
+    const r = computeMonth(makeCtx(c22, [], [ev('2022-06-07', '2022-06-08', 'deces_enfant')], '2022-12-31'), '2022-06');
+    expect(r.nonGere).toEqual([]);
+    expect(r.evenementAConfirmer).toBeGreaterThan(0);
+  });
+
   it('mariage dans la durée (4 jours ouvrables du lundi au jeudi) : payé, « pas de réduction de la rémunération »', () => {
     const r = mois([ev('2026-10-05', '2026-10-08', 'mariage')]);
     expect(r.evenementAConfirmer).toBe(0);

@@ -30,18 +30,35 @@ export const EVENEMENTS_GERES_DEPUIS: ISODate = '2024-05-01';
 /** Dernier jour avant la nouvelle rédaction de L3142-4, 6° (loi n° 2026-492 du 12 juin 2026, art. 6) */
 const L3142_4_AVANT_2026 = '2026-06-13';
 
+/**
+ * T-033 : L3142-4 version « EN VIGUEUR DU 19 DÉC. 2021 AU 21 JUIL. 2023 » (loi n° 2021-1678), relue le 18/11/2026 :
+ * 4° « Cinq jours pour le décès d'un enfant ou sept jours ouvrés lorsque l'enfant est âgé de moins de vingt-cinq ans
+ * [...] » ; 6° « Deux jours pour l'annonce [...] ». CCN 48.1.3.1.1, version remplacée : « 5 jours ouvrables pour le
+ * décès d'un enfant. La durée du congé est portée à 9 jours ouvrables » ; « 2 jours ouvrables pour l'annonce de la
+ * survenue d'un handicap chez un enfant ». La version suivante de L3142-4 (loi n° 2023-622 : 12, 14 et 5 jours) vaut à
+ * partir du 21/07/2023 ; elle égale ou dépasse les deux versions de la CCN, quelle que soit la date de bascule de la CCN.
+ */
+const L3142_4_DEPUIS_2023: ISODate = '2023-07-21';
+/** Premier jour de la CCN IDCC 3239 lue (étendue par arrêté du 6 octobre 2021, appliquée au 01/01/2022) ; avant : non lu */
+const CCN_3239_DEPUIS: ISODate = '2022-01-01';
+
 /** Durée en jours ouvrables à la date `d` : max(CCN 48.1.3.1.1, C. trav. L3142-4). `undefined` : non géré. */
 export function dureeEvenement(nature: NatureEvenement, d: ISODate): number | undefined {
+  if (d < CCN_3239_DEPUIS) return undefined; // textes applicables avant 2022 non lus
+  const avant2023 = d < L3142_4_DEPUIS_2023;
   switch (nature) {
-    case 'mariage': return 4; // CCN 4 ; L3142-4, 1° : 4
+    case 'mariage': return 4; // CCN 4 ; L3142-4, 1° : 4 (toutes versions)
     case 'mariage_enfant': return 1; // CCN 1 (mariage ou PACS) ; L3142-4, 2° : 1 (mariage)
     case 'naissance': return 3; // CCN 3 ; L3142-4, 3° et 3° bis : 3
-    case 'deces_enfant': return 12; // CCN 12 ; L3142-4, 4° : 12
-    case 'deces_enfant_14': return 14; // CCN 14 ; L3142-4, 4° : 14
-    case 'deces_proche': return 3; // CCN 3 ; L3142-4, 5° : 3
-    case 'handicap_enfant': return d <= L3142_4_AVANT_2026 ? 5 : 10; // CCN 5 ; L3142-4, 6° : 5 puis 10 dès le 14/06/2026
-    case 'deces_descendant': return 1; // CCN 1 ; rien dans L3142-4
-    case 'deces_ascendant': return 1; // CCN 1 ; rien dans L3142-4
+    case 'deces_enfant': return avant2023 ? 5 : 12; // CCN remplacée 5, L3142-4 (2021) 5 ; puis L3142-4 (2023) 12
+    // Avant le 21/07/2023 : CCN remplacée 9 jours ouvrables, loi « sept jours ouvrés ». Aucun texte ne dit comment
+    // comparer des jours ouvrés et des jours ouvrables : non géré (même refus que B, EVT-OUVRES-2021).
+    case 'deces_enfant_14': return avant2023 ? undefined : 14; // CCN et L3142-4, 4° : 14
+    case 'deces_proche': return 3; // CCN et L3142-4, 5° : 3 (toutes versions)
+    // CCN remplacée 2 (handicap seul) ; L3142-4 (2021) 2 (handicap, pathologie chronique, cancer) ; puis 5 ; puis 10
+    case 'handicap_enfant': return avant2023 ? 2 : d <= L3142_4_AVANT_2026 ? 5 : 10;
+    case 'deces_descendant': return 1; // CCN 1 (deux versions) ; rien dans L3142-4
+    case 'deces_ascendant': return 1; // CCN 1 (deux versions) ; rien dans L3142-4
     // Art. 48.1.3.1.2 : 8 jours ouvrables, indemnisés par la sécurité sociale (C. trav. L3142-2 renvoie à CSS L331-9).
     // Art. 48.1.3.1.3 (maintien sous déduction des indemnités journalières) : non géré par l'app.
     case 'deuil': return undefined;
