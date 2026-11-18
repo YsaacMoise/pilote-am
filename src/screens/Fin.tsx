@@ -78,6 +78,7 @@ export function Fin({ id }: { id?: string }) {
         {f.cpAConfirmer && <Banner tone="warn">{f.cpAConfirmer}</Banner>}
         {f.regularisationAConfirmer && <Banner tone="warn">{f.regularisationAConfirmer}</Banner>}
         {f.indemnitePreavisAConfirmer && <Banner tone="warn">{f.indemnitePreavisAConfirmer}</Banner>}
+        {f.ruptureVariantes && <Banner tone="warn">{f.ruptureVariantes}</Banner>}
         <section class="card stack" aria-labelledby="fin-res" aria-live="polite">
           <h2 id="fin-res">Ce qui t’est dû</h2>
           <dl class="kv">

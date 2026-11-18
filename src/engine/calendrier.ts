@@ -2,6 +2,7 @@
 // Règles et sources : docs/simulateur-regles.md (étape 4). Montants en centimes, aux barèmes en vigueur le jour de la simulation.
 import { addDays, weekday, type ISODate } from './dates';
 import { holidaysOf } from './holidays';
+import { euros } from './money';
 import {
   CREDIT_FORFAIT_ENTRETIEN_JOUR, CREDIT_PLAFOND_DEPENSES, CREDIT_TAUX, ageMois, cmgParams, cotisationsDuMois, derniereAnneeCredit, simuler,
   type SimInput, type SimResult,
@@ -25,6 +26,8 @@ export interface MoisCalendrier {
   reste: number;
   /** Crédit d'impôt reçu ce mois (solde de l'été ou avance de janvier ; négatif = trop-perçu à rembourser) */
   credit: number;
+  /** T-038 suite 2 : crédit d'impôt calculé avec un mois « à confirmer » : à part, ni dans `credit` ni dans `net` */
+  creditAConfirmer?: number;
   /** Coût réel du mois : reste − crédit reçu */
   net: number;
   evenements: Evenement[];
@@ -36,8 +39,14 @@ export interface Calendrier {
   mois: MoisCalendrier[];
   /** Crédit d'impôt calculé par année de dépenses */
   creditParAnnee: Record<number, number>;
-  /** Total payé sur la période affichée, après aides et crédit reçus */
+  /** Total payé sur la période affichée, après aides et crédit reçus : somme des mois sûrs (T-038 suite, G-4 : les mois « à confirmer » n'y sont pas) */
   total: number;
+  /** Somme des mois « à confirmer », donnée à part */
+  totalAConfirmer: number;
+  moisAConfirmer: string[];
+  /** T-038 suite 2 : crédit d'impôt à confirmer (calculé avec un mois à confirmer), à part du total, et ses mois de versement */
+  creditAConfirmer: number;
+  moisCreditAConfirmer: string[];
 }
 
 /** Durée du calendrier affiché : 24 mois, pour voir le premier crédit d'impôt et la première avance de janvier. */
@@ -135,7 +144,7 @@ export function calendrier(i: SimInput, d: ISODate, r: SimResult = simuler(i, d)
   const n = r.nbEnfants;
   const out: MoisCalendrier[] = [];
   const creditParAnnee: Record<number, number> = {};
-  if (!n || r.minutesSemaine <= 0) return { mois: out, creditParAnnee, total: 0 };
+  if (!n || r.minutesSemaine <= 0) return { mois: out, creditParAnnee, total: 0, totalAConfirmer: 0, moisAConfirmer: [], creditAConfirmer: 0, moisCreditAConfirmer: [] };
 
   const debut = /^\d{4}-\d{2}$/.test(i.debut) ? i.debut : d.slice(0, 7);
   const params = cmgParams(d);
@@ -225,21 +234,42 @@ export function calendrier(i: SimInput, d: ISODate, r: SimResult = simuler(i, d)
   }
   // Versements : crédit de l'année Y l'été Y+1 (juillet), moins l'avance de janvier Y+1 = 60 % du crédit de Y−1.
   const premiere = annees[0];
-  const ajoute = (m: string, montant: number, ev: Evenement) => {
+  // T-038 suite 2 (décision du DG) : le crédit d'une année qui contient un mois « à confirmer » est lui aussi à confirmer.
+  // Un versement qui en dépend (solde de l'été, ou avance de janvier calculée sur elle) est mis à part avec la raison.
+  const lignesAdaptation = new Set(lignes.filter((l) => l.aConfirmer).map((l) => l.mois));
+  const anneesAConfirmer = new Set(lignes.filter((l) => l.aConfirmer).map((l) => Number(l.mois.slice(0, 4))));
+  const ajoute = (m: string, montant: number, ev: Evenement, depuis: number[]) => {
     const l = lignes.find((x) => x.mois === m);
     if (!l || !montant) return;
-    l.credit += montant;
+    const douteuses = depuis.filter((y) => anneesAConfirmer.has(y));
+    if (douteuses.length) {
+      l.creditAConfirmer = (l.creditAConfirmer ?? 0) + montant;
+      const raison = `Crédit d’impôt à confirmer : il compte les dépenses de ${douteuses.join(' et ')}, dont un mois à confirmer. ${euros(Math.abs(montant))} ${montant < 0 ? 'à rembourser' : 'reçus'}, non compris dans le total.`;
+      l.aConfirmer = l.aConfirmer ? `${l.aConfirmer} ${raison}` : raison;
+    } else {
+      l.credit += montant;
+    }
     l.evenements.push(ev);
   };
   for (const y of annees) {
     const avance = y > premiere ? Math.round((creditParAnnee[y - 1] ?? 0) * 0.6) : 0;
-    ajoute(`${y + 1}-01`, avance, 'avance');
+    ajoute(`${y + 1}-01`, avance, 'avance', [y - 1]);
     const solde = (creditParAnnee[y] ?? 0) - avance;
-    ajoute(`${y + 1}-07`, solde, solde < 0 ? 'regularisation' : 'credit');
+    ajoute(`${y + 1}-07`, solde, solde < 0 ? 'regularisation' : 'credit', avance ? [y, y - 1] : [y]);
   }
 
   const mois = lignes.filter((l) => l.mois <= fin).map(({ depenses: _, ...l }) => ({ ...l, net: l.reste - l.credit }));
-  return { mois, creditParAnnee, total: mois.reduce((t, l) => t + l.net, 0) };
+  // T-038 suite (G-4) : un mois « à confirmer » n'entre pas en silence dans le total : son montant est donné à part.
+  // Un mois dont seul le crédit est à confirmer garde son coût sûr dans le total ; le crédit à confirmer est donné à part.
+  const coutAConfirmer = (l: MoisCalendrier) => lignesAdaptation.has(l.mois);
+  const sur = mois.filter((l) => !coutAConfirmer(l));
+  const aConf = mois.filter(coutAConfirmer);
+  const avecCredit = mois.filter((l) => l.creditAConfirmer !== undefined);
+  return {
+    mois, creditParAnnee, total: sur.reduce((t, l) => t + l.net, 0),
+    totalAConfirmer: aConf.reduce((t, l) => t + l.net, 0), moisAConfirmer: aConf.map((l) => l.mois),
+    creditAConfirmer: avecCredit.reduce((t, l) => t + (l.creditAConfirmer ?? 0), 0), moisCreditAConfirmer: avecCredit.map((l) => l.mois),
+  };
 }
 
 /** Reste à payer et coût réel selon le revenu fiscal de la famille (pour le lien envoyé avant de connaître ses revenus). */

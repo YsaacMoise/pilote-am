@@ -419,9 +419,10 @@ export function contractYearIndex(c: Contract, d: ISODate): number {
  * Art. 96-4 : sont majorées les « heures de travail effectuées au-delà de 45 heures de travail par semaine ».
  * Art. 99 : le travail commence et finit aux heures prévues, même si l'enfant arrive plus tard ou part plus tôt.
  * Comptent donc : les jours d'accueil (heures prévues entières), les absences de l'enfant payées (l'AM reste
- * à disposition : absence voulue par les parents, maladie sans certificat, maladie avec certificat au-delà
- * des limites de l'art. 105), et les congés payés de l'AM (Cass. soc. 10 sept. 2025, n° 23-14.455).
- * Ne comptent pas : les jours retenus sur le salaire (maladie avec certificat retenue, absence sans solde,
+ * à disposition : absence voulue par les parents, absence notée « sans solde » avant T-035b et désormais payée,
+ * maladie sans certificat, maladie avec certificat au-delà des limites de l'art. 105), et les congés payés de l'AM
+ * (Cass. soc. 10 sept. 2025, n° 23-14.455).
+ * Ne comptent pas : les jours retenus sur le salaire (maladie avec certificat retenue, congé sans solde de l'AM,
  * congés pris sans droits), les absences de l'AM autres que les congés payés (dont l'événement familial),
  * et les jours fériés chômés (art. 47 ; Cass. soc. 1er déc. 2004 et 4 avr. 2012).
  */

@@ -98,6 +98,12 @@ export interface Contract {
    * L'AM travaille dans le Bas-Rhin, le Haut-Rhin ou la Moselle.
    */
   alsaceMoselle?: boolean;
+  /**
+   * T-038 suite 2 (décision du DG) : l'AM travaille à Mayotte. Vrai : contrat non géré (SMIC, minimum et cotisations propres
+   * à Mayotte ; Urssaf « Rémunérer un salarié à domicile ou un assistant maternel » : minimum net de 3,70 € au 01/06/2026
+   * à Mayotte contre 3,28 € en métropole et Drom). Absent : « Ailleurs en France (hors Mayotte) » ou Alsace-Moselle.
+   */
+  mayotte?: boolean;
   /** Horaires qui changent d'une semaine à l'autre (semaines A et B, planning remis par écrit, CCN art. 98.1.2) */
   planningVariable?: boolean;
   /** Accueil occasionnel : « de courte durée et n'a pas de caractère régulier » (CCN art. 97.2) */

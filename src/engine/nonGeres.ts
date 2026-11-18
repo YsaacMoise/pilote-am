@@ -5,6 +5,10 @@ import { AM_ABS_LABEL, AM_ABS_NON_GEREES, type AmAbsNonGeree, type AmLeave, type
 
 export const NON_GERE_ALSACE =
   'Alsace-Moselle (Bas-Rhin, Haut-Rhin, Moselle) : non géré. La paie y suit des règles locales que l’app ne calcule pas. Fais la paie sans l’app.';
+/** T-038 suite 2 : Urssaf, « Rémunérer un salarié à domicile ou un assistant maternel » (mise à jour du 01/06/2026), tableau
+ * « Au 1er juin 2026 », Mayotte : « Salaire horaire net 3,70 € » (métropole et Drom : 3,28 €) ; majoration de 4 % « Non concerné ». */
+export const NON_GERE_MAYOTTE =
+  'Mayotte : non géré. Le SMIC, le salaire minimum et les cotisations y sont différents, l’app ne les a pas. Fais la paie sans l’app.';
 export const NON_GERE_PLANNING_VARIABLE =
   'Horaires qui changent d’une semaine à l’autre (semaines A et B, planning remis chaque mois) : non géré. L’app ne sait calculer qu’une semaine type qui se répète. Fais la paie sans l’app.';
 export const NON_GERE_OCCASIONNEL =
@@ -31,12 +35,13 @@ export function estAbsenceNonGeree(l: AmLeave): boolean {
 }
 
 /** Cas du contrat lui-même (tous ses mois) */
-export function nonGeresContrat(c: Pick<Contract, 'alsaceMoselle' | 'planningVariable' | 'accueilOccasionnel' | 'cdd'> & Partial<Pick<Contract, 'yearType' | 'weeks' | 'avenants'>>): string[] {
+export function nonGeresContrat(c: Pick<Contract, 'alsaceMoselle' | 'planningVariable' | 'accueilOccasionnel' | 'cdd'> & Partial<Pick<Contract, 'yearType' | 'weeks' | 'avenants' | 'mayotte'>>): string[] {
   const out: string[] = [];
   // A-01 : conditions de départ ou d'un avenant entre 47 et 51 semaines (saisies anciennes ou importées).
   const conditions = [c, ...(c.avenants ?? []).map((a) => ({ ...c, ...a.changes }))];
   if (conditions.some((t) => semaines4751(t.yearType, t.weeks))) out.push(NON_GERE_47_51);
   if (c.alsaceMoselle) out.push(NON_GERE_ALSACE);
+  if (c.mayotte) out.push(NON_GERE_MAYOTTE);
   if (c.planningVariable) out.push(NON_GERE_PLANNING_VARIABLE);
   if (c.accueilOccasionnel) out.push(NON_GERE_OCCASIONNEL);
   if (c.cdd) out.push(NON_GERE_CDD);

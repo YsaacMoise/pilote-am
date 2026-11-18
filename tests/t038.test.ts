@@ -11,6 +11,7 @@ import { finDeContrat } from '../src/engine/fin';
 import { euros } from '../src/engine/money';
 import { ratesAt } from '../src/engine/rates';
 import { RULES } from '../src/screens/Regles';
+import { NON_GERE_MAYOTTE, nonGeresContrat } from '../src/engine/nonGeres';
 import { acquisition } from '../src/engine/conges';
 import { libelleDureeSaisie, statutJourEvenement } from '../src/engine/evenements';
 
@@ -220,5 +221,42 @@ describe('T-038 G-1 : mois terminé avec un jour noté « sans solde » (retenu 
   it('mois en cours (pas encore déclarable) : pas d’alerte de régularisation', () => {
     const b = monthBase(makeCtx(c, rec, [], '2026-10-20'), '2026-10');
     expect(b.alerts).not.toContain(messageMoisSansSoldeChange(1));
+  });
+});
+
+describe('T-038 suite, point 1 : indemnité de rupture d’un retrait quand la fin du préavis bouge d’un jour', () => {
+  // Début le 03/06/2024 (début de période de référence) : les congés de la période sont sûrs, l'assiette est complète.
+  const c = complete({ start: '2024-06-03', trackedFrom: '2024-06-03' });
+  it('fin le jeudi 12/11/2026 ou le vendredi 13/11/2026 : deux montants, « à confirmer », non comptée', () => {
+    const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-13', 'retrait');
+    const lendemain = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-13', 'retrait', 0, '2026-10-14');
+    expect(f.dernierJour).toBe('2026-11-12');
+    expect(lendemain.dernierJour).toBe('2026-11-13');
+    expect(f.ruptureAConfirmer).toBe(true);
+    expect(f.ruptureVariantes).toContain(`Fin le 12/11/2026 : ${euros(f.indemniteRupture)}`);
+    expect(f.ruptureVariantes).toContain(`Fin le 13/11/2026 : ${euros(lendemain.indemniteRupture)}`);
+    expect(lendemain.indemniteRupture).not.toBe(f.indemniteRupture);
+  });
+  it('fin le vendredi 13/11/2026 : le samedi n’est pas un jour d’accueil, même montant, comptée', () => {
+    const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-14', 'retrait');
+    expect(f.ruptureVariantes).toBeUndefined();
+    expect(f.ruptureAConfirmer).toBeFalsy();
+    expect(f.indemniteRupture).toBeGreaterThan(0);
+  });
+});
+
+describe('T-038 suite 2 : Mayotte, contrat non géré (décision du DG)', () => {
+  // Urssaf « Rémunérer un salarié à domicile ou un assistant maternel » (01/06/2026) : minimum net 3,70 € à Mayotte, 3,28 €
+  // en métropole et Drom ; l'app n'a que les valeurs de métropole.
+  it('réponse « Mayotte » : le mois et la fin de contrat sont refusés, avec le message', () => {
+    const c = complete({ start: '2026-01-05', trackedFrom: '2026-01-05', mayotte: true });
+    expect(nonGeresContrat(c)).toContain(NON_GERE_MAYOTTE);
+    expect(monthBase(makeCtx(c, [], [], '2026-11-18'), '2026-10').nonGere).toContain(NON_GERE_MAYOTTE);
+    expect(finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-13', 'retrait').nonGere).toContain(NON_GERE_MAYOTTE);
+  });
+  it('réponses déjà données (« Ailleurs en France », sans le champ mayotte) : rien ne change', () => {
+    const c = complete({ start: '2026-01-05', trackedFrom: '2026-01-05' });
+    expect(nonGeresContrat(c)).toEqual([]);
+    expect(monthBase(makeCtx(c, [], [], '2026-11-18'), '2026-10').nonGere).toEqual([]);
   });
 });
