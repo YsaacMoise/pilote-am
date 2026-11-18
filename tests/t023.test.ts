@@ -432,3 +432,15 @@ describe('T-025 C-5 : le salaire d’événement à confirmer n’est retiré en
     expect(snap.mois.find((x) => x.month === '2026-03')?.aConfirmer).toEqual(['l’événement familial']);
   });
 });
+
+describe('T-025 C-6 : valeur du repas fourni (avantage en nature) seulement si lue à une source admise', () => {
+  // urssaf.fr, page « Avantages en nature » lue le 18/11/2026 : « Montant de l'avantage en 2026 : 1 repas 5,50 € ».
+  // Aucune valeur 2025 sur une source admise : non comptée, et dit à l'AM.
+  it('2026 : 5,50 € ; 2025 : valeur absente, repas non comptés et signalés', () => {
+    expect(ratesAt('2026-03-01')!.repasAvantage).toBe(550);
+    expect(ratesAt('2025-06-01')!.repasAvantage).toBeUndefined();
+    const c = contract({ start: '2025-01-06', trackedFrom: '2025-01-06', repasParents: true });
+    const f = fiscalYear(makeCtx(c, [], [], '2025-12-31'), 2025);
+    expect(f.nonGere).toMatch(/valeur officielle du repas pour cette année n’est pas dans l’app/);
+  });
+});

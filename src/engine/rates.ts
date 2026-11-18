@@ -21,7 +21,9 @@ export interface Rates {
   netSurBrut: number;
   /**
    * Valeur d'un repas fourni par les parents, avantage en nature imposable (barème Urssaf). Absente quand la valeur
-   * de l'année n'a pas été lue à la source (avant 2025) : le compteur fiscal le signale.
+   * de l'année n'a pas été lue à la source : le compteur fiscal le signale. T-025 C-6 : 5,50 € en 2026 lu sur urssaf.fr
+   * (« Montant de l'avantage en 2026 : 1 repas 5,50 € ») ; la valeur 2025 (5,45 €) n'a été trouvée sur aucune source
+   * admise le 18/11/2026 : retirée, 2025 et avant sont traités comme absents.
    */
   repasAvantage?: number;
   source: string;
@@ -65,11 +67,11 @@ export const RATES: Rates[] = [
   { from: '2024-11-01', smic: 1188, mg: 422, minConvBrut: 350, entretienPlancherJour: ENTRETIEN, netSurBrut: NET_BRUT,
     source: 'Décret n° 2024-951 du 23/10/2024 (SMIC 11,88 €, MG 4,22 €)' },
   {
-    from: '2025-01-01', smic: 1188, mg: 422, minConvBrut: 350, entretienPlancherJour: ENTRETIEN, netSurBrut: NET_BRUT, repasAvantage: 545,
+    from: '2025-01-01', smic: 1188, mg: 422, minConvBrut: 350, entretienPlancherJour: ENTRETIEN, netSurBrut: NET_BRUT,
     source: 'SMIC 11,88 € et MG 4,22 € (décret du 23/10/2024) ; minimum conventionnel 3,50 € brut (avenant n° 8, jusqu’au 31/03/2025)',
   },
   {
-    from: '2025-04-01', smic: 1188, mg: 422, minConvBrut: 364, minConvNet: 284, entretienPlancherJour: ENTRETIEN, netSurBrut: NET_BRUT, repasAvantage: 545,
+    from: '2025-04-01', smic: 1188, mg: 422, minConvBrut: 364, minConvNet: 284, entretienPlancherJour: ENTRETIEN, netSurBrut: NET_BRUT,
     source: 'Avenant n° 9 du 25/11/2024 à l’annexe 5 (3,64 € brut), arrêté d’extension publié au JORF du 18/03/2025',
   },
   {
