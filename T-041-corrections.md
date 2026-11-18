@@ -131,3 +131,72 @@ Commit 05e8d28.
 - npm test : 486 tests réussis (22 fichiers). tsc : aucune erreur. npm run build : construit.
 - Comparateur (copie /home/claude/m10-comp, A = m10 au commit 05e8d28) : 5 884 sorties, F1 4 071, F2 48, F3 850, F4 24, N 891 ; cas officiels F1 35, F2 0, F3 32, F4 16, N 22, ERREUR 0. Identique à la base de départ. Les situations du comparateur ne contiennent pas d'absence d'enfant malade autour d'un férié ou d'un planning irrégulier.
 - URL de la suite : la page Urssaf ci-dessus. L'art. 105 avait déjà été lu en entier (§ 1).
+
+## 7. Suite 2 (direction, 18/11/2026) : ambiguïtés (a), (b), (c) de l'art. 105, puis T-044 (entretien)
+
+### 7.1 Art. 105, ambiguïtés (a), (b), (c) — commit 89677c2
+
+Texte relu (art. 105, déjà lu en entier, § 1). Il ne tranche aucun des trois cas :
+- (a) Une absence à cheval sur la date anniversaire. Le texte dit « Ces limites sont appréciées par période de 12 mois glissants à compter de la date d'effet de l'embauche ou de sa date anniversaire ». Il ne dit pas dans quelle période compter une absence qui touche les deux.
+- (b) Une absence de 14 jours calendaires ou plus qui ne compte que 5 jours d'accueil ou moins (accueil 1 ou 2 jours par semaine). Le texte définit l'absence courte par « 5 jours d'absence » et l'absence longue par « 14 jours calendaires consécutifs ». Il ne dit pas laquelle s'applique quand les deux conviennent. Le guide DREETS Bourgogne-Franche-Comté (fiche 03, IV, source secondaire) parle de « deux types d'absence différentes : courtes ou d'une durée minimale de 14 jours consécutifs », mais « sous réserve de l'appréciation souveraine des tribunaux ». Il ne tranche donc pas.
+- (c) Les jours déjà retenus avant le suivi par l'app (`maladieDeduits`). Le solde ne dit pas s'ils venaient d'absences courtes ou d'une absence longue.
+
+Correction. Trois nouvelles lectures sont ajoutées aux combinaisons de `sickLectures` (payroll.ts) :
+- `couper` : l'absence est coupée à la date anniversaire ;
+- `longue14` : l'absence de 14 jours calendaires ou plus est l'absence longue, même avec 5 jours d'accueil ou moins ;
+- `soldeLong` : le solde vient d'une absence longue.
+
+Un jour qui change selon la lecture passe « à confirmer ». Le message nomme le point non tranché, et le mois chiffre le salaire de ces jours, hors du total. Aucune saisie n'est ajoutée.
+
+Défaut corrigé au passage. Avec plus de 5 jours déjà retenus, l'app gardait l'absence longue disponible. Or plus de 5 jours retenus impliquent déjà une absence longue. La lecture « courtes » met donc `longUsed` à vrai au-delà de 5 jours.
+
+Tests écrits avant la correction (tests/t041.test.ts, bloc « suite 2 »). Les trois échouaient avec le payroll.ts d'avant, vérifié en remettant l'ancien fichier, puis réussissent :
+- (a) contrat du 11/03/2025 ; 5 jours retenus en février 2026 ; absence du 9 au 13 mars 2026. Les 11, 12 et 13 mars sont « à confirmer », car ils sont payés ou retenus selon la période retenue. Message : « date anniversaire du contrat (11/03) ».
+- (b) accueil le lundi seulement ; 4 lundis isolés, puis les 2, 9 et 16 mars. Le 9 mars est « à confirmer ».
+- (c) 6 jours déjà retenus avant l'app ; absence de 3 jours. Les 3 jours sont « à confirmer ». Le test d'origine (4 jours déjà retenus, 1 jour retenu sur 2) reste vrai.
+
+Comparateur après ce commit : identique à la base (F1 4 071, F2 48, F3 850, F4 24, N 891 ; cas officiels 35, 0, 32, 16, 22).
+
+### 7.2 T-044, indemnité d'entretien — commit 7cf046d
+
+Sources lues en entier le 18/11/2026, dans le navigateur intégré :
+- CCN IDCC 3239, socle AM, art. 114 (114.1 et 114.2 en vigueur, plus l'ancienne 114.2), « EN VIGUEUR ÉTENDU ». https://www.legifrance.gouv.fr/conv_coll/id/KALISCTA000043941701?idConteneur=KALICONT000044594539
+  - 114.1 : « Elle est versée en cas de travail effectif, par heure de travail. »
+  - 114.1 : « Le montant horaire de cette indemnité est prévu dans le contrat de travail. Il varie en fonction de la durée de travail effectif, sans pouvoir être inférieur à 90 % du minimum garanti lorsque la durée de travail journalière est de 9 heures. »
+  - 114.1 : « Quel que soit le nombre d'heures de travail effectif par jour de travail, le montant journalier de cette indemnité ne peut pas être inférieur à 2,65 €. »
+  - 114.2 porte sur l'indemnité de repas et ne touche pas l'entretien.
+- Même page, art. 99 « Décompte du temps de travail », lu en entier. Le travail débute à l'heure prévue, ou à l'arrivée de l'enfant « si celle-ci est antérieure ». Il prend fin à l'heure prévue, ou au départ de l'enfant « si celle-ci est postérieure ».
+- Renvoi de 114.1 aux « dispositions légales et réglementaires de droit commun ». CASF D423-6 et D423-7 sont lus en entier, « EN VIGUEUR DEPUIS LE 01 MAI 2008 ». D423-7 : « au moins 85 % du minimum garanti [...] par enfant et pour une journée de neuf heures. Ce montant est calculé en fonction de la durée effective d'accueil quotidien. » https://www.legifrance.gouv.fr/codes/section_lc/LEGITEXT000006074069/LEGISCTA000018256011/
+- Urssaf, « Rémunérer un salarié à domicile ou un assistant maternel », mise à jour du 01/06/2026, section entretien. Elle donne « Montant journalier par enfant pour 9 heures de garde* » : 3,83 € du 1er janvier au 31 mai 2026, 3,92 € au 1er juin 2026. Renvoi : « Ce montant est proratisable en fonction du nombre d'heures d'accueil par jour. Il ne peut être inférieur à 2,65 €. » Et : « Elle n'est pas versée en cas d'absence de l'enfant. » https://www.urssaf.fr/accueil/particulier/particulier-employeur/embaucher-un-salarie/remunerer-salarie-domicile.html
+- service-public.fr F12812, « Vérifié le 17 juin 2026 » : « au moins égale à 3,92 € par enfant et pour une journée de 9 heures. Son montant varie en fonction de la durée d'accueil. Mais il ne peut pas être inférieur à 2,65 €. » https://www.service-public.gouv.fr/particuliers/vosdroits/F12812
+
+Réponses établies :
+1. Le contrat fixe un montant horaire. C'est la lettre de 114.1 (« Le montant horaire de cette indemnité est prévu dans le contrat »). Les tableaux Urssaf et la fiche service-public donnent des montants « pour 9 heures » : ce sont des minimums de référence, pas une règle de tarif par jour. Aucun texte n'interdit d'écrire en plus un équivalent journalier. Mais aucun ne dit ce que vaut un montant par jour écrit seul quand la journée change de durée.
+2. Un jour plus long ou plus court : l'employeur doit le montant horaire du contrat × la durée de travail du jour (114.1 « par heure de travail », « varie en fonction de la durée de travail effectif »), et au moins le minimum du jour. Ce minimum vaut 90 % du MG pour 9 h, proratisé (Urssaf), sans descendre sous 2,65 €. La durée de travail se compte selon l'art. 99 : un enfant qui part plus tôt ne raccourcit pas la journée, et un enfant qui reste plus tard l'allonge.
+
+Corrections :
+- Saisie « par heure » ou « par jour » au contrat et à l'avenant. Le nouveau composant src/screens/EntretienSaisie.tsx propose « par heure » par défaut, ce que le texte prévoit. Le nouveau champ `entretienHeure` (model.ts, conditions d'avenant) donne pour chaque jour : tarif × durée de travail, avec au moins le minimum.
+- Durée de travail selon l'art. 99 : heures prévues plus présence hors des plages prévues ; hors planning, la présence. Elle sert aussi au minimum. Avant, l'app prenait la présence seule. Un enfant parti à midi faisait donc tomber le minimum à 2,65 € au lieu de 8 × 0,435 = 3,48 €.
+- Tarif « par jour », c'est-à-dire tous les contrats existants. Le texte ne dit pas si ce tarif vaut pour la journée, quelle que soit sa durée (lecture 1), ou pour les heures prévues ce jour-là (lecture 2). Quand la durée de travail diffère du planning et que les deux lectures diffèrent, l'app verse le plus bas des deux, et au moins le minimum. L'écart est « à confirmer », hors du total. Il apparaît dans le détail du mois, le texte aux parents, la liste « sans ... à confirmer » et l'alerte du mois. Pour un jour hors planning, aucune durée de référence n'existe : seul le minimum est versé, le reste du tarif du jour est « à confirmer ».
+- Contrôle du bulletin : un montant déclaré entre les deux lectures n'est plus signalé comme « différent ».
+- Arrondi : les montants du jour sont sommés sans arrondi, puis le mois est arrondi une fois. Aucun texte ne fixe l'arrondi. L'écart avec un arrondi par jour est de quelques centimes (2 centimes sur l'exemple G-C52). Ce point n'est pas tranché ; il rejoint A-36.
+
+Exemple du constat (situation G-C52-H32-T420-S10, septembre 2026, 4,00 € par jour pour 8 h, soit 0,50 € de l'heure) :
+- Avec un contrat « par heure » à 0,50 €, l'app donne 72,50 €. C'est la lecture horaire du constat (test).
+- Avec un contrat « par jour » à 4,00 € (le cas du comparateur), l'app verse 69,31 €, soit la lecture 1 et le minimum les jours longs. L'écart avec la lecture 2 est « à confirmer ». Pour le seul 7 septembre (10 h) : 4,35 € versés, 0,65 € à confirmer (test).
+
+Tests écrits avant la correction (tests/t044.test.ts). Les quatre premiers échouaient (6307 au lieu de 7250 ; pas de part à confirmer ; 5833 au lieu de 5916). Ils passent après, avec un cinquième test sur le contrôle du bulletin.
+
+A-35 et A-36 ne sont pas modifiés (moteur B, autre agent) :
+- A-35 (formule pour une journée autre que 9 h) est concerné indirectement. La formule de minimum de A est inchangée (MG ÷ 10 par heure, au moins 2,65 €). Seule la durée à laquelle elle s'applique change (art. 99).
+- A-36 (arrondi de 0,90 × MG) n'est pas modifié. L'arrondi au mois décrit ci-dessus relève de la même famille de question.
+
+fin.ts n'est pas modifié (branche m11 de M11).
+
+Comparateur après le commit 7cf046d : identique à la base (F1 4 071, F2 48, F3 850, F4 24, N 891 ; cas officiels 35, 0, 32, 16, 22). La raison : l'adaptateur du comparateur ne transmet que `entretien_jour` à A. Pour les jours plus longs, la part versée par A reste la lecture 1. Les 31 F2 « entrée de l'entretien » relevés par C4 subsistent donc côté comparateur. Si l'adaptateur transmettait `entretien_horaire` en `entretienHeure`, A donnerait la lecture horaire (72,50 € sur G-C52). C'est le domaine de C4, je n'y ai pas touché.
+
+### 7.3 Contrôles
+
+- npm test : 494 tests réussis, 23 fichiers. tsc : aucune erreur. npm run build : construit.
+- Rendu des écrans (saisie par heure ou par jour) : non vu dans un navigateur. Le typage et la construction passent.
+- URL consultées pour la suite 2 : les quatre du § 7.2, en plus de l'art. 105 (§ 1).
