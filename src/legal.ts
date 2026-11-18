@@ -26,9 +26,10 @@ export const PAJEMPLOI_PLUS_RAPPEL =
 
 /** Cas que le moteur de paie ne calcule pas : à dire plutôt qu'à calculer faux (README, « Interprétations de paie ») */
 export const ABSENCES_NON_GEREES =
-  'Congé maternité, congé paternité ou de naissance, accident du travail : l’app ne les calcule pas encore. Ne les note pas comme « Je suis malade » : les congés et le salaire seraient faux. Fais ces mois-là sans l’app.';
-export const ALSACE_MOSELLE_NON_GEREE =
-  'Bas-Rhin, Haut-Rhin, Moselle : la paie d’Alsace-Moselle (jours fériés et cotisations propres) n’est pas encore gérée. Les montants de l’app seraient faux.';
+  'Congé maternité, paternité, de naissance, accident du travail : choisis-les dans la liste, pas « Je suis malade ». L’app ne les calcule pas : elle bloque les mois concernés pour éviter un montant faux.';
+/** T-031 : affiché quand une absence non gérée est choisie */
+export const ABSENCE_NON_GEREE_CHOISIE =
+  'Non géré : l’app ne calculera pas les mois de cette absence, ni les congés et la fin de contrat qui en dépendent. Fais-les avec les parents, sans l’app.';
 
 export const AVERTISSEMENT_CALCUL =
   'Arvela est un outil d’aide au calcul, indépendant de l’Urssaf et de Pajemploi. Vérifie les montants avant de les déclarer : la déclaration Pajemploi et le bulletin de salaire font foi.';
