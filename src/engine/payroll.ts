@@ -163,6 +163,10 @@ export interface DayInfo {
 export const messageSansSoldeEnfant = (d: ISODate): string =>
   `Absence du ${d.slice(8, 10)}/${d.slice(5, 7)} notée « sans solde » : elle est payée. La convention (article 105) ne permet de retenir une absence de l’enfant qu’en cas de maladie avec certificat. Pour ne plus payer ces jours, il faut un avenant signé qui change le planning.`;
 
+/** T-038 (G-1) : alerte d'un mois terminé dont des jours notés « sans solde » sont désormais payés (CCN art. 105). */
+export const messageMoisSansSoldeChange = (n: number): string =>
+  `Salaire de ce mois modifié par la mise à jour de l’app : ${dayCountLabel(n)} d’absence de l’enfant noté${n > 1 ? 's' : ''} « sans solde » ${n > 1 ? 'sont' : 'est'} maintenant payé${n > 1 ? 's' : ''}. Avant, l’app les retenait. La convention (article 105) ne permet de retenir une absence de l’enfant qu’en cas de maladie avec certificat. Si ce mois est déjà déclaré à Pajemploi avec la retenue, le salaire déclaré était trop bas : il faut une régularisation avec les parents.`;
+
 export function libelleSalaireAConfirmer(b: Pick<MonthBase, 'joursCpAConfirmer' | 'joursEvenementAConfirmer'> & Partial<Pick<MonthBase, 'joursMaladieAConfirmer'>>, et = 'et'): string {
   return joindre(naturesAConfirmer(b).map((n) => ({ evenement: 'd’événement familial', cp: 'de congés', maladie: 'd’enfant malade' })[n]), et);
 }
@@ -794,7 +798,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   let cDays = 0, cMin = 0, dedDays = 0, dedMin = 0, actDays = 0, cpSansDroits = 0;
   let entretienNonVerifie = false;
   let entretienSousMin = 0, entretienMinVerse = 0;
-  let suspDays = 0, suspMin = 0, kmJours = 0;
+  let suspDays = 0, suspMin = 0, kmJours = 0, sansSoldePayes = 0;
   const suspRaisons: string[] = [];
   const forgotten: ISODate[] = [];
   for (const d of allDays) {
@@ -811,7 +815,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     // T-025 C-4 : un férié pendant un congé pour événement familial reste un férié chômé (art. 47) : payé, pas compté.
     if (di.inDivisor && !di.deducted && !di.aConfirmer && di.kind !== 'ferie' && !(di.kind === 'am' && di.ferie)) actDays++;
     if (di.cpSansDroits) cpSansDroits++;
-    if (di.sansSoldeEnfantPaye && di.plannedMin > 0) r.alerts.push(messageSansSoldeEnfant(d));
+    if (di.sansSoldeEnfantPaye && di.plannedMin > 0) { r.alerts.push(messageSansSoldeEnfant(d)); sansSoldePayes++; }
     if (di.departOublie) forgotten.push(d);
     if (di.ferieNonPaye) r.alerts.push(`Férié du ${d.slice(8, 10)}/${d.slice(5, 7)} non payé : tu étais absente le jour prévu juste avant ou juste après (article 47 de la convention).`);
     if (di.rec?.abs === 'malade_certif' && !di.deducted && di.plannedMin > 0) r.sickPaidNotice = true;
@@ -899,6 +903,12 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   if (r.kmAConfirmer) r.alerts.push(`${r.kmAConfirmer} km à confirmer, non comptés. Pour chaque jour, indique si une autre famille a aussi demandé le trajet. Si oui, indique aussi les enfants dans la voiture : l’indemnité est alors partagée entre eux (article 113 de la convention). Si non, elle est due en entier.`);
   // T-025 C-7 : mois terminé, peut-être déjà déclaré à Pajemploi avant la mise à jour qui a rendu ces montants « à confirmer ».
   if ((r.evenementAConfirmer || r.kmAConfirmer) && to < ctx.today && !r.alerts.includes(MESSAGE_MOIS_DEJA_DECLARE)) r.alerts.push(MESSAGE_MOIS_DEJA_DECLARE);
+  // T-038 (G-1, relecture V4 du diff m8) : mois terminé avec des jours notés « sans solde » avant la mise à jour T-035b. Il a
+  // pu être déclaré à Pajemploi avec la retenue ; son salaire affiché est maintenant plus haut. Le dire, et quoi faire.
+  if (sansSoldePayes && to < ctx.today) {
+    r.alerts.push(messageMoisSansSoldeChange(sansSoldePayes));
+    if (!r.alerts.includes(MESSAGE_MOIS_DEJA_DECLARE)) r.alerts.push(MESSAGE_MOIS_DEJA_DECLARE);
+  }
   if (kmJours && c.kmTaux > 0) for (const m of controleKm(ctx.c.kmCv, c.kmTaux, segFrom).messages) if (!r.alerts.includes(m)) r.alerts.push(m);
   // CCN art. 114.1 : « le montant journalier de cette indemnité ne peut pas être inférieur à 2,65 € » et le montant horaire
   // ne peut être « inférieur à 90 % du minimum garanti lorsque la durée de travail journalière est de 9 heures ».

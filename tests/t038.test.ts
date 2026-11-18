@@ -6,7 +6,7 @@
 // - Art. 111 (déduction d'absence en jours, année incomplète) : 600 € × 2 jours ÷ 22 jours prévus en mars 2026 = 54,55 €.
 import { describe, expect, it } from 'vitest';
 import type { AmLeave, Contract, Planning } from '../src/engine/model';
-import { makeCtx, monthBase, salaireMensualise } from '../src/engine/payroll';
+import { makeCtx, MESSAGE_MOIS_DEJA_DECLARE, messageMoisSansSoldeChange, monthBase, salaireMensualise } from '../src/engine/payroll';
 import { finDeContrat } from '../src/engine/fin';
 import { euros } from '../src/engine/money';
 import { ratesAt } from '../src/engine/rates';
@@ -204,5 +204,21 @@ describe('T-038 M-3 : écran Règles complété', () => {
   it('impôts : SMIC en vigueur le jour de la garde, comme fiscal.ts (BOI-RSA-CHAMP-10-20-10 § 490)', () => {
     expect(regle('Impôts').choix).toMatch(/SMIC horaire en vigueur le jour de la garde/);
     expect(regle('Impôts').choix).not.toMatch(/1er janvier/);
+  });
+});
+
+describe('T-038 G-1 : mois terminé avec un jour noté « sans solde » (retenu avant T-035b), alerte de régularisation', () => {
+  const rec = [{ key: 'c1|2026-10-14', cid: 'c1', date: '2026-10-14', abs: 'sans_solde_enfant' as const }];
+  const c = complete({ start: '2026-01-05', trackedFrom: '2026-01-05' });
+  it('octobre 2026 terminé : le salaire est plein (art. 105) et l’alerte dit quoi faire si le mois est déjà déclaré', () => {
+    const b = monthBase(makeCtx(c, rec, [], '2026-11-15'), '2026-10');
+    expect(b.base).toBe(salaireMensualise(c));
+    expect(b.alerts).toContain(messageMoisSansSoldeChange(1));
+    expect(b.alerts).toContain(MESSAGE_MOIS_DEJA_DECLARE);
+    expect(messageMoisSansSoldeChange(1)).toMatch(/1 jour d’absence de l’enfant noté « sans solde » est maintenant payé.*article 105.*régularisation avec les parents/);
+  });
+  it('mois en cours (pas encore déclarable) : pas d’alerte de régularisation', () => {
+    const b = monthBase(makeCtx(c, rec, [], '2026-10-20'), '2026-10');
+    expect(b.alerts).not.toContain(messageMoisSansSoldeChange(1));
   });
 });
