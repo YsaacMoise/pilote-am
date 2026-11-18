@@ -286,3 +286,30 @@ describe('T-025 C-1 : durée d’un événement familial comptée par événemen
     expect(r.evenementAConfirmer).toBe(0);
   });
 });
+
+describe('T-025 C-4 : férié chômé pendant un congé pour événement familial', () => {
+  // CCN 48.1.3.1.1 : « 4 jours ouvrables pour son mariage » ; le texte ne dit pas si un férié compte dans ces jours.
+  // CCN 47.2 : le férié chômé d'un jour habituellement travaillé ouvre droit au maintien de la rémunération, « sauf
+  // autorisation d'absence préalablement accordée » (l'événement familial en est une). Lu le 18/11/2026.
+  // Novembre 2026 : mercredi 11/11 férié.
+  const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01' });
+  const ev = (from: string, to: string): AmLeave => ({ id: 'm', type: 'evenement', from, to, nature: 'mariage' });
+  const mois = (leaves: AmLeave[]) => computeMonth(makeCtx(c, [], leaves, '2026-12-31'), '2026-11');
+  const sansAbsence = mois([]);
+
+  it('mariage du lundi 09/11 au vendredi 13/11 : le 11/11 est payé (dû dans les deux lectures), le 13/11 est à confirmer', () => {
+    const r = mois([ev('2026-11-09', '2026-11-13')]);
+    expect(r.retenue).toBe(0);
+    // Un seul jour à confirmer (le 13/11) : le salaire de ce jour sort du total, rien d'autre.
+    expect(r.joursActivite).toBe(sansAbsence.joursActivite - 1);
+    expect(r.net + r.evenementAConfirmer).toBe(sansAbsence.net);
+    expect(r.alerts.join(' ')).toMatch(/un jour férié tombe pendant le congé/);
+  });
+
+  it('mariage du lundi 09/11 au jeudi 12/11 : 4 jours ouvrables même en comptant le férié → tout payé', () => {
+    const r = mois([ev('2026-11-09', '2026-11-12')]);
+    expect(r.evenementAConfirmer).toBe(0);
+    expect(r.net).toBe(sansAbsence.net);
+    expect(r.joursActivite).toBe(sansAbsence.joursActivite);
+  });
+});

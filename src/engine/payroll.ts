@@ -679,7 +679,8 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
       if (!suspRaisons.includes(di.aConfirmer)) suspRaisons.push(di.aConfirmer);
     }
     // Jours d'activité (Pajemploi) : jours prévus et payés, sans les fériés chômés ni les jours à confirmer.
-    if (di.inDivisor && !di.deducted && !di.aConfirmer && di.kind !== 'ferie') actDays++;
+    // T-025 C-4 : un férié pendant un congé pour événement familial reste un férié chômé (art. 47) : payé, pas compté.
+    if (di.inDivisor && !di.deducted && !di.aConfirmer && di.kind !== 'ferie' && !(di.kind === 'am' && di.ferie)) actDays++;
     if (di.cpSansDroits) cpSansDroits++;
     if (di.departOublie) forgotten.push(d);
     if (di.ferieNonPaye) r.alerts.push(`Férié du ${d.slice(8, 10)}/${d.slice(5, 7)} non payé : tu étais absente le jour prévu juste avant ou juste après (article 47 de la convention).`);

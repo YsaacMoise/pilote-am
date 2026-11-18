@@ -50,6 +50,7 @@ export function dureeEvenement(nature: NatureEvenement, d: ISODate): number | un
 
 /** Jour ouvrable : lundi → samedi, hors jours fériés (même règle que le décompte des congés payés, conges.ts) */
 const ouvrable = (d: ISODate) => weekday(d) <= 6 && !holidayName(d);
+const lundiSamedi = (d: ISODate) => weekday(d) <= 6;
 
 /**
  * T-025 C-1 : la durée se compte par événement, pas par absence saisie (CCN 48.1.3.1.1 : « 4 jours ouvrables pour son
@@ -114,10 +115,23 @@ export function statutJourEvenement(l: AmLeave, d: ISODate, leaves: AmLeave[] = 
   if (duree === undefined) {
     return { paye: false, raison: `${qui} : congé de deuil non géré par l’app. La sécurité sociale verse des indemnités journalières ; l’employeur maintient le salaire en les déduisant (article 48.1.3.1.3). Calcule-le avec les parents.` };
   }
-  const n = joursCouverts(chaine, d).filter(ouvrable).length;
-  if (ouvrable(d) && n <= duree) return { paye: true };
-  if (!ouvrable(d) && n < duree) {
-    return { paye: false, raison: `${qui} : un jour prévu au planning tombe un dimanche ou un férié pendant le congé ; l’app ne sait pas s’il est couvert. Vérifie-le avec les parents.` };
+  // T-025 C-4 : le texte ne dit pas si un férié tombant du lundi au samedi compte dans les jours ouvrables du congé.
+  // Lecture 1 (férié compté) : `nAvec` ; lecture 2 (férié non compté, payé comme férié chômé : art. 47.2 « sauf
+  // autorisation d'absence préalablement accordée », 47.1 pour le 1er Mai) : `nSans`. Un jour est payé s'il l'est dans
+  // les deux lectures (nAvec ≤ durée). Le férié pendant le congé est dû dans les deux. Le jour couvert dans la seule
+  // lecture 2 est « à confirmer ».
+  const couverts = joursCouverts(chaine, d);
+  const nAvec = couverts.filter(lundiSamedi).length;
+  const nSans = couverts.filter(ouvrable).length;
+  if (lundiSamedi(d) && nAvec <= duree) return { paye: true };
+  if (lundiSamedi(d) && nSans <= duree && (ouvrable(d) || nSans < duree)) {
+    return {
+      paye: false,
+      raison: `${qui} : un jour férié tombe pendant le congé. Le texte ne dit pas s’il compte dans les ${dureeLabel(duree)}. S’il compte, ce jour dépasse la durée ; sinon, il est dû. Vérifie avec les parents.`,
+    };
+  }
+  if (!lundiSamedi(d) && nSans < duree) {
+    return { paye: false, raison: `${qui} : un jour prévu au planning tombe un dimanche pendant le congé ; l’app ne sait pas s’il est couvert. Vérifie-le avec les parents.` };
   }
   const autres = chaine.slice(0, -1);
   if (autres.length) {
