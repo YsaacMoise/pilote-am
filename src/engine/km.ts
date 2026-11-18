@@ -10,13 +10,20 @@ const TRANCHES_ADMIN = ['jusqu’à 2 000 km', 'de 2 001 à 10 000 km', 'après 
 /**
  * Barème de l'administration (arrêté du 3 juillet 2006, art. 1er, a), métropole et DOM, « les kilomètres étant décomptés
  * du 1er janvier au 31 décembre de chaque année ». Lignes : 5 CV et moins ; 6 et 7 CV ; 8 CV et plus.
+ * T-033 (relu sur Légifrance le 18/11/2026) : l'art. 1er (« EN VIGUEUR DEPUIS LE 01 JANV. 2022 », arrêté du 14 mars 2022)
+ * n'a pas de date de fin ; l'arrêté du 29 mai 2026 n'y déroge que « Pour les déplacements effectués entre le 1er juin
+ * 2026 et le 31 décembre 2026 ». Après le 31/12/2026, le barème de base s'applique tant qu'un nouvel arrêté ne le
+ * remplace pas (avertissement `SUIVI_ARRETES`). Ordre : la dérogation d'abord, `find` prend la première qui couvre la date.
  */
 const ADMIN: { from: ISODate; to: ISODate; taux: number[][]; source: string }[] = [
-  { from: '2022-01-01', to: '2026-05-31', taux: [[320, 400, 230], [410, 510, 300], [450, 550, 320]],
-    source: 'arrêté du 14 mars 2022 (en vigueur le 1er janvier 2022)' },
   { from: '2026-06-01', to: '2026-12-31', taux: [[330, 410, 240], [420, 530, 310], [460, 570, 330]],
     source: 'arrêté du 29 mai 2026 (déplacements du 1er juin au 31 décembre 2026)' },
+  { from: '2022-01-01', to: '9999-12-31', taux: [[320, 400, 230], [410, 510, 300], [450, 550, 320]],
+    source: 'arrêté du 3 juillet 2006 modifié par l’arrêté du 14 mars 2022 (en vigueur le 1er janvier 2022)' },
 ];
+/** Dernier jour couvert par un barème dont la fin est connue ; au-delà, barèmes en vigueur sans date de fin */
+const BAREMES_CONNUS_AU: ISODate = '2026-12-31';
+export const SUIVI_ARRETES = 'Indemnité kilométrique : l’app applique les barèmes en vigueur, sans date de fin (barème de l’administration de l’arrêté du 3 juillet 2006, barème fiscal de l’article 6 B de l’annexe IV du code général des impôts). Un nouvel arrêté peut les changer pour cette date : vérifie qu’aucun n’a été publié.';
 
 /**
  * Barème fiscal (CGI, annexe IV, art. 6 B, I, tableau « automobiles », version du 08/04/2023 écrite par l'arrêté du
@@ -31,7 +38,8 @@ const FISCAL: Record<number, { t1: number; t2: number; fixe: number; t3: number 
   7: { t1: 697, t2: 394, fixe: 1515, t3: 470 },
 };
 const FISCAL_DU: ISODate = '2022-01-01';
-const FISCAL_AU: ISODate = '2026-12-31';
+/** T-033 : art. 6 B « EN VIGUEUR DEPUIS LE 08 AVR. 2023 », sans date de fin (relu sur Légifrance le 18/11/2026) */
+const FISCAL_AU: ISODate = '9999-12-31';
 /** CGI, annexe IV, art. 6 B, II : « Pour les véhicules électriques, le montant [...] est majoré de 20 % » */
 const MAJORATION_ELECTRIQUE = 1.2;
 
@@ -52,7 +60,7 @@ function fiscalTotal(cv: number, km: number): number {
 
 /**
  * Fourchette du tarif par km pour un kilométrage annuel donné (simulateur d'avant contrat, qui suppose que le cumul est
- * celui de ce seul accueil). `null` : barème non connu à cette date, à vérifier.
+ * celui de ce seul accueil). `null` : barème non connu à cette date (avant 2022), à vérifier.
  */
 export function bornesKm(cv: number, kmAn: number, d: ISODate): { min: number | null; max: number | null } {
   const a = baremeAdministration(d);
@@ -111,9 +119,10 @@ export function controleKm(cv: number | undefined, tarif: number, d: ISODate): C
       }
     }
   }
-  if (certain.length) return { niveau: 'alerte', messages: [...certain, ...conditionnel] };
-  if (conditionnel.length) return { niveau: 'a_verifier', messages: conditionnel };
-  return { niveau: 'ok', messages: [] };
+  const suivi = d > BAREMES_CONNUS_AU ? [SUIVI_ARRETES] : [];
+  if (certain.length) return { niveau: 'alerte', messages: [...certain, ...conditionnel, ...suivi] };
+  if (conditionnel.length) return { niveau: 'a_verifier', messages: [...conditionnel, ...suivi] };
+  return { niveau: 'ok', messages: suivi };
 }
 
 /**

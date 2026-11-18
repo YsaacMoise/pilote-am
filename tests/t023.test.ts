@@ -6,7 +6,7 @@ import type { AmLeave, Bulletin, Contract, NatureEvenement, Planning } from '../
 import { makeCtx } from '../src/engine/payroll';
 import { computeMonth, declarationLines, declarationText } from '../src/engine/month';
 import { dureeEvenement } from '../src/engine/evenements';
-import { controleKm } from '../src/engine/km';
+import { controleKm, SUIVI_ARRETES } from '../src/engine/km';
 import type { DayRec } from '../src/engine/model';
 import { controle } from '../src/engine/controle';
 import { fiscalYear } from '../src/engine/fiscal';
@@ -219,10 +219,16 @@ describe('T-017 indemnité kilométrique (CCN art. 57 et 113)', () => {
     expect(k.niveau).toBe('a_verifier');
     expect(k.messages.join(' ')).toMatch(/9.756 km/);
   });
-  it('après le 31/12/2026 : barèmes à vérifier, aucune valeur supposée', () => {
+  it('T-033 : après le 31/12/2026, barème de base de l’arrêté du 3 juillet 2006 (sans date de fin) et avertissement de suivi', () => {
+    // 5 CV, 0,41 € : au moins 0,40 € (plus haut taux du barème de base, de 2 001 à 10 000 km) ; au plus le coût moyen
+    // fiscal le plus bas, (20 000 × 0,357 + 1 395) ÷ 20 000 = 0,42675 € : conforme pour toute distance.
     const k = controleKm(5, 41, '2027-02-01');
-    expect(k.niveau).toBe('a_verifier');
-    expect(k.messages.join(' ')).toMatch(/barème de l’administration à vérifier/);
+    expect(k.niveau).toBe('ok');
+    expect(k.messages).toEqual([SUIVI_ARRETES]);
+    expect(controleKm(5, 22, '2027-02-01').niveau).toBe('alerte'); // 0,22 € < 0,23 €, sous toutes les tranches
+    // L'arrêté du 29 mai 2026 ne vaut que jusqu'au 31/12/2026 : 0,40 € en 5 CV est sous 0,41 € en décembre 2026
+    expect(controleKm(5, 40, '2026-12-31').niveau).toBe('a_verifier');
+    expect(controleKm(5, 40, '2027-01-01').niveau).toBe('ok');
   });
 
   const c = contract({ kmTaux: 41 });

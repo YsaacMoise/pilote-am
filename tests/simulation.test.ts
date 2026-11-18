@@ -172,8 +172,11 @@ describe('accueil jour par jour (étape 2)', () => {
     // 8 CV et plus, après 10 000 km : 0,32 ; fiscal 7 CV et plus de 5 001 à 20 000 km : (d × 0,394) + 1 515 € → 0,52025 € par km à 12 000 km
     expect(bornesKm(9, 12000, '2026-03-10')).toEqual({ min: 320, max: 520 });
     expect(bornesKm(3, 1000, '2026-03-10')).toEqual({ min: 320, max: 529 });
-    // Au-delà du 31/12/2026 : aucun barème supposé
-    expect(bornesKm(3, 1000, '2027-01-10')).toEqual({ min: null, max: null });
+    // T-033 : au-delà du 31/12/2026, barèmes en vigueur sans date de fin (arrêté du 3 juillet 2006, art. 1er : 5 CV et
+    // moins jusqu'à 2 000 km 0,32 € ; CGI ann. IV art. 6 B : 3 CV et moins jusqu'à 5 000 km d × 0,529)
+    expect(bornesKm(3, 1000, '2027-01-10')).toEqual({ min: 320, max: 529 });
+    // Avant le 01/01/2022 : aucun barème lu
+    expect(bornesKm(3, 1000, '2021-12-10')).toEqual({ min: null, max: null });
   });
 
   it('lien partagé : le planning s’écrit et se relit', () => {
