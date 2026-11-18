@@ -139,3 +139,19 @@ describe('T-030 A-26 : formule du maintien en année incomplète', () => {
     expect(ind.aConfirmer?.message).toMatch(/1\/26/);
   });
 });
+
+import { compteur } from '../src/engine/conges';
+describe('T-030 CPA-17 : jours de fractionnement non calculés, signalés', () => {
+  // CCN 48.1.1.4 : « 2 jours ouvrables (…) si le nombre total de jours ouvrables de congés pris en dehors de la période
+  // (…) du 1er mai au 31 octobre est de 6 jours ouvrables et plus ; 1 jour ouvrable, si (…) 3, 4 ou 5 jours ». L'app ne
+  // calcule pas ces jours (part du congé principal, renonciation écrite) : elle le dit.
+  const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', balances: { cpRestants: 30, cpEnCours: 0, maladieDeduits: 0 } });
+  it('6 jours pris en février : message « fractionnement » affiché', () => {
+    const ctx = makeCtx(c, [], [{ id: 'f', type: 'cp', from: '2026-02-16', to: '2026-02-21' }], '2026-03-31');
+    expect(compteur(ctx, '2026-03-01').fractionnementNonGere).toMatch(/fractionnement/);
+  });
+  it('congés pris en août seulement : pas de message', () => {
+    const ctx = makeCtx(c, [], [{ id: 'e', type: 'cp', from: '2025-08-04', to: '2025-08-09' }], '2025-09-30');
+    expect(compteur(ctx, '2025-09-01').fractionnementNonGere).toBeUndefined();
+  });
+});

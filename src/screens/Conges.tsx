@@ -38,6 +38,7 @@ export function Conges() {
                 ? <p>En cours d’acquisition : <b>à confirmer</b>.</p>
                 : <p>En cours d’acquisition : <b>{k.enCours.joursADate} jours</b> à ce jour, <b>{k.enCours.jours}</b> au 31 mai{k.enCours.enfantsBonus ? ` (dont ${k.enCours.enfantsBonus} pour tes propres enfants à charge)` : ''}.</p>}
               {[...new Set([k.enCours.aConfirmer?.message, k.aPrendreAConfirmer?.message, ...k.decompteAConfirmer].filter(Boolean))].map((m) => <Banner tone="warn">{m}</Banner>)}
+              {k.fractionnementNonGere && <Banner tone="warn">{k.fractionnementNonGere}</Banner>}
               {k.depassement && <Banner tone="warn">Tu as pris plus de jours que tes droits : les jours en trop sont normalement sans solde.</Banner>}
               <details class="more" style={{ boxShadow: 'none', border: '1px solid var(--line)' }}>
                 <summary>Indemnité estimée pour cette période</summary>

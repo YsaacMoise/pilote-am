@@ -613,7 +613,12 @@ export interface Compteur {
   reste: number;
   /** Prise au-delà des droits (seulement quand rien n'est à confirmer) */
   depassement: boolean;
+  /** T-030 (C-CPA-17) : congés pris entre le 1er novembre et le 30 avril, jours de fractionnement non calculés par l'app */
+  fractionnementNonGere?: string;
 }
+
+export const MESSAGE_FRACTIONNEMENT_NON_GERE =
+  'Tu as pris des congés entre le 1er novembre et le 30 avril. Ils peuvent te donner 1 ou 2 jours de congés en plus (fractionnement, article 48.1.1.4 de la convention), sauf si tu y as renoncé par écrit. L’app ne calcule pas ces jours : vois-les avec les parents.';
 
 export function compteur(ctx: Ctx, at: ISODate, enfantsACharge = 0): Compteur {
   const { c } = ctx;
@@ -633,9 +638,13 @@ export function compteur(ctx: Ctx, at: ISODate, enfantsACharge = 0): Compteur {
   const pris = cpPrisEntre(ctx, debutDecompte(ctx, y), fin).length;
   const decompteAConfirmer = cpAConfirmerEntre(ctx, debutDecompte(ctx, y), fin);
   const reste = aPrendre - pris;
+  // CCN 48.1.1.4 : jours de fractionnement si 3 jours ou plus du congé principal sont pris hors du 1er mai - 31 octobre.
+  // L'app ne sait pas quels jours relèvent du congé principal (hors 5e semaine) ni s'il y a eu renonciation : non géré.
+  const horsPeriode = cpPrisEntre(ctx, debutDecompte(ctx, y), fin).filter((d) => { const mo = Number(d.slice(5, 7)); return mo >= 11 || mo <= 4; });
   return {
     enCours, aPrendre, aPrendreAConfirmer, pris, decompteAConfirmer, reste,
     depassement: reste < 0 && !aPrendreAConfirmer && !decompteAConfirmer.length,
+    ...(horsPeriode.length >= 3 ? { fractionnementNonGere: MESSAGE_FRACTIONNEMENT_NON_GERE } : {}),
   };
 }
 
