@@ -256,6 +256,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             {i.yearType === 'incomplete' && (
               <Stepper label="Semaines sans accueil, en plus des 5 semaines de congés" value={Math.max(1, i.semainesAbsence)} min={1} max={30} onChange={(v) => set({ semainesAbsence: v })} />
             )}
+            <p class="hint">Horaires qui changent d’une semaine à l’autre (semaines A et B) ou accueil occasionnel : non géré, cette simulation ne s’applique pas.</p>
             <p class="hint">{i.yearType === 'complete' ? '52 semaines payées par an, dont 5 de congés de l’assistante maternelle' : `${r.semaines} semaines d’accueil par an, plus les congés payés`}, soit {hoursLabel(r.heuresMoisMin)} payées par mois.</p>
           </fieldset>
         </section>
@@ -265,7 +266,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             <legend>Le tarif</legend>
             <EuroInput label="Salaire horaire brut" hint={`Soit ${euros(r.tauxNet)} net. Minimum : ${euros(r.minimumBrut)} brut (${euros(MINIMUM_AM_AP)} avec le titre AM-AP).`} cents={i.tauxBrut} onChange={(v) => set({ tauxBrut: v ?? 0 })} />
             {r.sousMinimum && <Banner tone="warn">Ce taux est sous le minimum de la convention collective : {euros(r.minimumBrut)} brut de l’heure depuis le 1er juin 2026.</Banner>}
-            <Switch label="L’assistante maternelle travaille en Alsace-Moselle" hint="Bas-Rhin, Haut-Rhin ou Moselle : cotisations plus élevées, donc un net plus bas pour le même brut." checked={i.alsaceMoselle} onChange={(v) => set({ alsaceMoselle: v })} />
+            <Switch label="L’assistante maternelle travaille en Alsace-Moselle" hint="Bas-Rhin, Haut-Rhin ou Moselle : non géré par l’app, aucun résultat n’est donné." checked={i.alsaceMoselle} onChange={(v) => set({ alsaceMoselle: v })} />
             <Seg label="Indemnité d’entretien prévue" value={i.entretienMode} options={[{ v: 'jour', l: 'Par jour' }, { v: 'heure', l: 'Par heure' }]} onChange={(v) => set({ entretienMode: v, entretien: 0 })} />
             <EuroInput label={i.entretienMode === 'jour' ? 'Montant par jour d’accueil' : 'Montant par heure d’accueil'} allowEmpty cents={i.entretien || undefined} onChange={(v) => set({ entretien: v ?? 0 })}
               hint={`Minimum légal chaque jour : 0,435 € par heure d’accueil, jamais moins de 2,65 €.${joursAuMinimum.length ? ` Il s’applique le ${listeJours(joursAuMinimum)}.` : ''}`} />
@@ -397,6 +398,14 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
 
         </div>
         <div class="sim-result">
+        {/* T-031 : Alsace-Moselle non géré (charte, verrou 6) : aucun résultat chiffré. */}
+        {i.alsaceMoselle ? (
+          <section class="card stack" aria-labelledby="sim-ng" aria-live="polite">
+            <h2 id="sim-ng">Alsace-Moselle : non géré</h2>
+            <p>La paie y suit des règles locales que l’app ne calcule pas encore. Cette simulation ne donnerait pas des montants sûrs.</p>
+            <p class="hint">Décochez « Alsace-Moselle » pour une assistante maternelle qui travaille ailleurs en France.</p>
+          </section>
+        ) : <>
         {/* Rappel du résultat collé en bas de l'écran pendant la saisie ; il s'efface quand le résultat complet est visible. */}
         <button type="button" class={`sim-sticky ${resultVisible ? 'is-hidden' : ''} ${connecte ? 'with-tabbar' : ''}`} aria-hidden={resultVisible} tabIndex={resultVisible ? -1 : 0}
           onClick={() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
@@ -508,6 +517,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             <p class="hint">Crédit d’impôt : 50 % du salaire net de l’année, plus 2,65 € par jour d’accueil et les cotisations restées à la charge de la famille, moins l’aide de la CAF, dans la limite de 1 750 € par enfant. Règles en vigueur au 1er novembre 2026. Le montant exact de l’aide est calculé chaque mois par la CAF à partir de la déclaration Pajemploi.</p>
           </div>
         </details>
+        </>}
         </div>
       </main>
     </>
