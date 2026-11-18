@@ -1,22 +1,25 @@
 import { termsAt } from '../engine/payroll';
 import { useState } from 'preact/hooks';
-import { ctxFor, useStore } from '../store';
+import { ctxFor, putContract, toast, useStore } from '../store';
 import { shortDate, today } from '../engine/dates';
 import { finDeContrat, MOTIF_LABEL, type DemandeurInexecution, type Motif } from '../engine/fin';
+import type { Rupture } from '../engine/model';
 import { euros, hoursLabel } from '../engine/money';
 import { Banner, Choices, DateInput, Gommette, Topbar } from '../ui/kit';
 
 export function Fin({ id }: { id?: string }) {
   const s = useStore();
   const [cid, setCid] = useState(id ?? s.contracts[0]?.id);
-  const [notif, setNotif] = useState(today());
-  const [motif, setMotif] = useState<Motif>('retrait');
+  // T-045b : les réponses enregistrées avec le contrat sont reprises à l'ouverture de l'écran.
+  const r0 = s.contracts.find((x) => x.id === (id ?? s.contracts[0]?.id))?.rupture;
+  const [notif, setNotif] = useState(r0?.notif ?? today());
+  const [motif, setMotif] = useState<Motif>(r0?.motif ?? 'retrait');
   const [remise, setRemise] = useState<'recommande' | 'main_propre'>('recommande');
   // Première présentation : suit la date d'envoi tant qu'elle n'est pas saisie (relecture contradictoire, point 1).
-  const [presentation, setPresentation] = useState<string | null>(null);
+  const [presentation, setPresentation] = useState<string | null>(r0?.presentation ?? null);
   // T-045 : préavis fait en entier ou non (CCN art. 64 et 64.2) et dernier jour travaillé.
-  const [preavisFait, setPreavisFait] = useState<'oui' | DemandeurInexecution>('oui');
-  const [dernierTravaille, setDernierTravaille] = useState<string | null>(null);
+  const [preavisFait, setPreavisFait] = useState<'oui' | DemandeurInexecution>(r0 && r0.preavis !== 'execute' ? r0.preavis : 'oui');
+  const [dernierTravaille, setDernierTravaille] = useState<string | null>(r0?.dernierJourTravaille ?? null);
   const changeEnvoi = (v: string) => { setNotif(v); if (presentation && presentation < v) setPresentation(null); };
   const c = s.contracts.find((x) => x.id === cid);
   if (!c) return <><Topbar title="Fin de contrat" back="#/plus" screen="fin" /><main><div class="card empty"><p>Aucun contrat.</p></div></main></>;
@@ -29,7 +32,18 @@ export function Fin({ id }: { id?: string }) {
   const presVue = presentation && presentation > envoi ? presentation : envoi;
   const pres = avecPreavis && remise === 'recommande' ? presVue : envoi;
   const inexecution = avecPreavis && preavisFait !== 'oui' ? { demandeur: preavisFait, dernierJourTravaille: dernierTravaille ?? envoi } : undefined;
-  const f = finDeContrat(ctxFor(c), envoi, motif, s.settings.enfantsACharge, pres, inexecution);
+  // T-045b : la simulation ne tient pas compte de la date de fin déjà enregistrée ; un écart est signalé et l'enregistrement
+  // la remplace. Le calcul des mois, lui, refuse toute date de fin qui ne concorde pas avec le préavis (controleFinContrat).
+  const f = finDeContrat(ctxFor({ ...c, end: undefined }), envoi, motif, s.settings.enfantsACharge, pres, inexecution);
+  const rupture: Rupture = {
+    motif, notif: envoi, ...(pres !== envoi ? { presentation: pres } : {}),
+    preavis: inexecution ? inexecution.demandeur : 'execute', ...(inexecution ? { dernierJourTravaille: inexecution.dernierJourTravaille } : {}),
+  };
+  const enregistre = c.end === f.dernierJour && JSON.stringify(c.rupture) === JSON.stringify(rupture);
+  const enregistrer = async () => {
+    const prev = await putContract({ ...c, end: f.dernierJour, rupture });
+    toast(`Fin de contrat enregistrée : dernier jour le ${shortDate(f.dernierJour)}`, prev ? async () => { await putContract(prev); } : undefined);
+  };
   const total = (f.ruptureAConfirmer ? 0 : f.indemniteRupture) + f.regularisation + f.cpIndemnite + f.indemnitePreavis;
   const aConfirmer = !!f.cpAConfirmer || !!f.ruptureAConfirmer || !!f.regularisationAConfirmer || !!f.indemnitePreavisAConfirmer;
   return (
@@ -109,6 +123,12 @@ export function Fin({ id }: { id?: string }) {
           <p class="hint">L’indemnité de rupture est calculée sur {euros(f.totalBrut)} de salaires bruts (estimés à partir du net quand le brut est inconnu). Elle n’est pas soumise aux cotisations.</p>
         </section>
         </>}
+        <section class="card stack" aria-labelledby="fin-save">
+          <h2 id="fin-save">Enregistrer cette fin de contrat</h2>
+          {c.end && !enregistre && <Banner tone="warn">La date de fin enregistrée ({shortDate(c.end)}) ou les réponses enregistrées ne correspondent pas à ce calcul. Tant qu’elles ne concordent pas avec le préavis, l’app ne calcule pas les derniers mois.</Banner>}
+          <p class="hint">Enregistre la date de fin ({shortDate(f.dernierJour)}) et tes réponses sur la lettre et le préavis : le calcul de chaque mois s’en sert. Sans elles, l’app ne calcule pas les derniers mois du contrat.</p>
+          {enregistre ? <p>Enregistrée.</p> : <button class="btn btn-primary btn-block" onClick={enregistrer}>Enregistrer la fin du contrat</button>}
+        </section>
       </main>
     </>
   );

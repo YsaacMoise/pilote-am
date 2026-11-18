@@ -172,7 +172,7 @@ export function Contrat({ id }: { id?: string }) {
           <fieldset>
             <legend>Le contrat</legend>
             <DateInput label="Date de début réelle" hint="Le premier jour d’accueil, même si c’était il y a longtemps" value={c.start} onChange={(v) => set({ start: v })} />
-            {!isNew && <DateInput label="Date de fin (si le contrat est terminé)" value={c.end ?? ''} onChange={(v) => set({ end: v || undefined })} />}
+            {!isNew && <DateInput label="Date de fin (si le contrat est terminé)" hint="Mieux : passe par l’écran Fin de contrat, qui enregistre aussi la lettre et le préavis. Sans eux, les derniers mois ne sont pas calculés." value={c.end ?? ''} onChange={(v) => set({ end: v || undefined })} />}
             <Seg label="Accueil sur l’année" value={c.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(c.weeks, 46) || 46 })}
               options={[{ v: 'complete', l: 'Toute l’année (52 sem.)' }, { v: 'incomplete', l: 'Année incomplète' }]} />
             {c.yearType === 'incomplete' && (
