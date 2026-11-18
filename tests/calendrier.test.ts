@@ -52,11 +52,15 @@ describe('calendrier mois par mois (étape 4)', () => {
     const a = moisAdaptation(i, r, '2027-02', S);
     expect(a.heuresPrevues).toBe(160);
     expect(a.salaire).toBe(Math.round(S - (S * 120) / 160));
-    expect(a.heures).toBeCloseTo(a.salaire / r.tauxNet, 6);
-    expect(a.aConfirmer).toBeUndefined();
+    // T-038 (G-3) : heures à déclarer, deux règles sur la même page Urssaf (étape 2 : rémunération due ÷ taux horaire net ;
+    // étape 3 : heures effectuées, ici 40 h). Elles diffèrent : « à confirmer » avec les deux valeurs, le salaire reste calculé.
+    expect(a.heuresFaites).toBe(40);
+    const etape2 = (a.salaire / r.tauxNet).toFixed(2).replace('.', ',');
+    expect(a.aConfirmer).toContain(MESSAGE_ADAPTATION_A_CONFIRMER);
+    expect(a.aConfirmer).toContain(`taux horaire net (${etape2} h) ou les heures effectuées (40 h)`);
     const c = calendrier(i, D);
     expect(c.mois[0].evenements).toContain('adaptation');
-    expect(c.mois[0].aConfirmer).toBeUndefined();
+    expect(c.mois[0].aConfirmer).toBe(a.aConfirmer);
     expect(c.mois[0].verse).toBeLessThan(c.mois[1].verse);
     expect(c.mois[1].aConfirmer).toBeUndefined();
   });

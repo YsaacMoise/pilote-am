@@ -64,6 +64,7 @@ function feriesDuMois(m: string, alsaceMoselle: boolean): ISODate[] {
 export const MESSAGE_ADAPTATION_A_CONFIRMER = 'Premier mois (adaptation) à confirmer.';
 /** T-038 (G-2) : CCN art. 94, adaptation de 30 jours calendaires au plus depuis le premier jour de travail effectif : elle peut finir le mois suivant. */
 export const MESSAGE_ADAPTATION_2_A_CONFIRMER = 'Deuxième mois (fin de l’adaptation) à confirmer.';
+const heuresLabel = (h: number) => `${h.toFixed(2).replace('.', ',').replace(/,00$/, '')} h`;
 
 /**
  * Mois d'adaptation (T-035b). CCN IDCC 3239, socle AM, art. 108.1 al. 3 : « Pendant la période d'adaptation, le particulier
@@ -95,6 +96,13 @@ export function moisAdaptation(i: SimInput, r: SimResult, m: string, salaireMens
   const heures = r.tauxNet > 0 ? salaire / r.tauxNet : 0;
   const heuresFaites = faitesMin / 60;
   const raisons: string[] = [];
+  // T-038 (G-3) : la page Urssaf « Préparer le contrat » (12/03/2026) donne deux règles pour les heures à déclarer :
+  // étape 2, « Rémunération due (résultat de votre calcul) ÷ taux horaire net défini au contrat de travail » ; étape 3,
+  // « indiquez le nombre d'heures effectuées par votre salarié ». L'app ne choisit pas. Le salaire n'en dépend pas ; le
+  // plafond horaire de l'aide de la CAF du mois, si.
+  if (Math.abs(heures - heuresFaites) >= 0.005) {
+    raisons.push(`Heures à déclarer : la page Urssaf « Préparer le contrat » donne deux règles, la rémunération due divisée par le taux horaire net (${heuresLabel(heures)}) ou les heures effectuées (${heuresLabel(heuresFaites)}). Le salaire du mois n’en dépend pas, l’aide de la CAF peut en dépendre. L’app calcule avec la première.`);
+  }
   if (i.yearType === 'incomplete') {
     raisons.push('Contrat sur 46 semaines ou moins : la convention (articles 108.1 et 111) retient les jours non travaillés, Urssaf les heures. L’app retient les heures et suppose l’enfant accueilli toutes les semaines du mois.');
   }
