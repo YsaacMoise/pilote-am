@@ -62,6 +62,8 @@ function feriesDuMois(m: string, alsaceMoselle: boolean): ISODate[] {
 }
 
 export const MESSAGE_ADAPTATION_A_CONFIRMER = 'Premier mois (adaptation) à confirmer.';
+/** T-038 (G-2) : CCN art. 94, adaptation de 30 jours calendaires au plus depuis le premier jour de travail effectif : elle peut finir le mois suivant. */
+export const MESSAGE_ADAPTATION_2_A_CONFIRMER = 'Deuxième mois (fin de l’adaptation) à confirmer.';
 
 /**
  * Mois d'adaptation (T-035b). CCN IDCC 3239, socle AM, art. 108.1 al. 3 : « Pendant la période d'adaptation, le particulier
@@ -74,7 +76,7 @@ export const MESSAGE_ADAPTATION_A_CONFIRMER = 'Premier mois (adaptation) à conf
  * Tranché seulement en année complète (52 semaines), sans jour férié sur un jour d'accueil du mois, sans heures au-delà
  * du planning ni heures majorées. Sinon le montant est calculé par la même formule mais marqué « à confirmer ».
  */
-export function moisAdaptation(i: SimInput, r: SimResult, m: string, salaireMensualise: number): { salaire: number; heures: number; heuresPrevues: number; aConfirmer?: string } {
+export function moisAdaptation(i: SimInput, r: SimResult, m: string, salaireMensualise: number, rang: 1 | 2 = 1): { salaire: number; heures: number; heuresFaites: number; heuresPrevues: number; aConfirmer?: string } {
   const [y, mo] = m.split('-').map(Number);
   const nbJours = new Date(Date.UTC(y, mo, 0)).getUTCDate();
   const minutesJour = new Map(r.parJour.map((p) => [p.jour, p.minutes]));
@@ -91,6 +93,7 @@ export function moisAdaptation(i: SimInput, r: SimResult, m: string, salaireMens
   const nonFaitesMin = Math.max(0, prevuesMin - faitesMin);
   const salaire = prevuesMin > 0 ? Math.round(salaireMensualise - (salaireMensualise * nonFaitesMin) / prevuesMin) : 0;
   const heures = r.tauxNet > 0 ? salaire / r.tauxNet : 0;
+  const heuresFaites = faitesMin / 60;
   const raisons: string[] = [];
   if (i.yearType === 'incomplete') {
     raisons.push('Contrat sur 46 semaines ou moins : la convention (articles 108.1 et 111) retient les jours non travaillés, Urssaf les heures. L’app retient les heures et suppose l’enfant accueilli toutes les semaines du mois.');
@@ -102,9 +105,10 @@ export function moisAdaptation(i: SimInput, r: SimResult, m: string, salaireMens
     raisons.push(`Les heures saisies dépassent les ${Math.round(prevuesMin / 60)} heures prévues ce mois-là : les heures en plus ne sont pas comptées.`);
   }
   if (r.heuresMajMoisMin > 0) {
-    raisons.push('Le contrat dépasse 45 heures par semaine : les heures majorées du premier mois ne sont pas calculées.');
+    raisons.push('Le contrat dépasse 45 heures par semaine : les heures majorées de ce mois ne sont pas calculées.');
   }
-  return { salaire, heures, heuresPrevues: prevuesMin / 60, aConfirmer: raisons.length ? `${MESSAGE_ADAPTATION_A_CONFIRMER} ${raisons.join(' ')}` : undefined };
+  const prefixe = rang === 1 ? MESSAGE_ADAPTATION_A_CONFIRMER : MESSAGE_ADAPTATION_2_A_CONFIRMER;
+  return { salaire, heures, heuresFaites, heuresPrevues: prevuesMin / 60, aConfirmer: raisons.length ? `${prefixe} ${raisons.join(' ')}` : undefined };
 }
 
 /**
@@ -149,9 +153,15 @@ export function calendrier(i: SimInput, d: ISODate, r: SimResult = simuler(i, d)
 
   for (let m = debut; m <= finCalcul; m = moisSuivant(m)) {
     const mo = Number(m.slice(5, 7));
-    const adaptation = m === debut && i.adaptationHeures > 0;
-    const adapt = adaptation ? moisAdaptation(i, r, m, salaire1) : undefined;
-    const ratioJours = adaptation ? Math.min(1, (i.adaptationJours || 0) / Math.max(1, r.joursMois)) : 1;
+    // T-038 (G-2) : l'adaptation dure 30 jours calendaires au plus depuis le premier jour de travail effectif (CCN art. 94 ;
+    // Urssaf « Préparer le contrat ») ; si elle déborde sur le mois suivant, ce mois suit la même règle (déduction des heures
+    // non faites, art. 108.1 al. 3 et 111, ou « à confirmer »), avec ses propres heures.
+    const deuxieme = m === moisSuivant(debut) && i.adaptationHeures > 0 && (i.adaptationHeures2 ?? 0) > 0;
+    const adaptation = (m === debut && i.adaptationHeures > 0) || deuxieme;
+    const adapt = !adaptation ? undefined
+      : deuxieme ? moisAdaptation({ ...i, adaptationHeures: i.adaptationHeures2 ?? 0 }, r, m, salaire1, 2) : moisAdaptation(i, r, m, salaire1);
+    const joursAdapt = deuxieme ? i.adaptationJours2 ?? 0 : i.adaptationJours;
+    const ratioJours = adaptation ? Math.min(1, (joursAdapt || 0) / Math.max(1, r.joursMois)) : 1;
     const salaire = adapt ? adapt.salaire : salaire1;
     const reduc = adaptation ? 0 : reduc1;
     const entretien = Math.round(entretien1 * ratioJours);

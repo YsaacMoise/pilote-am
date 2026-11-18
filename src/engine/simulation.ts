@@ -332,6 +332,9 @@ export interface SimInput {
   /** Premier mois : adaptation payée aux heures réelles (0 = pas d'adaptation), et jours d'accueil de ce mois */
   adaptationHeures: number;
   adaptationJours: number;
+  /** T-038 (G-2) : adaptation qui continue le mois suivant (CCN art. 94 : 30 jours calendaires au plus) ; 0 ou absent = non */
+  adaptationHeures2?: number;
+  adaptationJours2?: number;
 }
 
 export interface EnfantResult {
@@ -636,6 +639,6 @@ export function simulationParDefaut(d: ISODate): SimInput {
     foyer: 'couple', statutVous: 'travail', statutConjoint: 'travail', residenceAlternee: false,
     enfants: [naissanceIlYA(d, 18)], enfantsACharge: 1, enfantsAeeh: 0,
     revenusAn: 42000, situationRevenus: 'aucune', revenusConcernes: 0, autresAides: 0,
-    debut: naissanceIlYA(d, -1), cpMode: 'juin', moisCongePrincipal: 8, adaptationHeures: 0, adaptationJours: 0,
+    debut: naissanceIlYA(d, -1), cpMode: 'juin', moisCongePrincipal: 8, adaptationHeures: 0, adaptationJours: 0, adaptationHeures2: 0, adaptationJours2: 0,
   };
 }
