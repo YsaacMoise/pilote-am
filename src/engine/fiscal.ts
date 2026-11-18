@@ -66,7 +66,7 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
     // T-025 C-5 : un salaire d'événement familial à confirmer n'est pas dans ce net : le dire, ne pas le compter en silence.
     // T-028 : des congés payés à confirmer ne sont pas dans ce net (comme l'événement familial) : le dire.
     if (r.cpAConfirmer) nonGere.add(`Congés payés à confirmer en ${monthLabel(m)} : ils ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
-    if (r.evenementAConfirmer) nonGere.add(`Événement familial à confirmer : ${euros(r.evenementAConfirmer)} de salaire en ${monthLabel(m)} ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
+    if (r.evenementAConfirmer) nonGere.add(`${r.joursCpAConfirmer ? (r.joursEvenementAConfirmer ? 'Événement familial et congés' : 'Congés au-delà des droits') : 'Événement familial'} à confirmer : ${euros(r.evenementAConfirmer)} de salaire en ${monthLabel(m)} ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
     er += r.entretien + r.repas;
     if (r.fromHistory) {
       // Sans détail des jours : jours d'activité du bulletin, journées supposées de 8 h ou plus.

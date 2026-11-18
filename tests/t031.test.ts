@@ -37,7 +37,7 @@ describe('T-028 : congés payés à confirmer dans le compteur fiscal', () => {
     expect(f.nonGere).toMatch(/Congés payés à confirmer en juin 2022 : ils ne sont pas comptés/);
   });
   it('sans congés à confirmer, rien n’est signalé', () => {
-    const f = fiscalYear(makeCtx(contract({ alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false }), [], [], '2026-10-31'), 2026);
+    const f = fiscalYear(makeCtx(contract({ start: '2025-06-01', trackedFrom: '2025-06-01', alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false }), [], [], '2026-10-31'), 2026);
     expect(f.nonGere ?? '').not.toMatch(/Congés payés à confirmer/);
   });
 });

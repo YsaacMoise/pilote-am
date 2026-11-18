@@ -708,10 +708,17 @@ describe('corrections après audit indépendant (31 octobre 2026)', () => {
     // 7 jours ouvrables posés (lundi 6 → lundi 13 juillet, le 14 juillet étant férié).
     const c = contract({ start: '2026-04-27', trackedFrom: '2026-04-27' });
     const leaves: AmLeave[] = [{ id: 'cp', type: 'cp', from: '2026-07-06', to: '2026-07-13' }];
-    // Sans enfant : vendredi 10, samedi 11 et lundi 13 au-delà des droits → 2 jours prévus retenus
-    expect(monthBase(makeCtx(c, [], leaves, '2026-08-15', 0), '2026-07').deductedDays).toBe(2);
-    // Avec 1 enfant : seul le lundi 13 dépasse
-    expect(monthBase(makeCtx(c, [], leaves, '2026-08-15', 1), '2026-07').deductedDays).toBe(1);
+    // T-030 (A-23) : droits à confirmer. Lectures : 4 jours (5 semaines), 3 (mai seul, avril commencé non compté ;
+    // ou 1 période entière de 4 semaines), 5 (avril commencé compté). Avec 1 enfant : 6, 5, 7.
+    // Sans enfant : jours 1 à 3 payés, 4 et 5 (jeudi 9, vendredi 10) à confirmer, samedi 11 et lundi 13 au-delà de
+    // toute lecture → seul le lundi 13 (jour prévu) est retenu.
+    const sans = monthBase(makeCtx(c, [], leaves, '2026-08-15', 0), '2026-07');
+    expect(sans.deductedDays).toBe(1);
+    expect(sans.joursCpAConfirmer).toBe(2);
+    // Avec 1 enfant : rien n'est retenu ; samedi 11 et lundi 13 sont à confirmer (seul le lundi est un jour prévu)
+    const avec = monthBase(makeCtx(c, [], leaves, '2026-08-15', 1), '2026-07');
+    expect(avec.deductedDays).toBe(0);
+    expect(avec.joursCpAConfirmer).toBe(1);
   });
   it('C-006 : retenue d’un jour en novembre 2026 : le 11 novembre compte dans le diviseur (189 h et non 180 h)', () => {
     // Jeudi 19 novembre (pas le 12 : une absence au lendemain du 11 rendrait le férié non payé, article 47)

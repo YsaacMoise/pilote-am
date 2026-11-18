@@ -8,7 +8,7 @@ import { entretienPlancher, MESSAGE_PERIODE_NON_GEREE, netToBrut } from './rates
 import { statutJourEvenement } from './evenements';
 import { controleKm, indemniteKmJour } from './km';
 import { euros } from './money';
-import { cpAConfirmerEntre, cpExces } from './conges';
+import { cpAConfirmerEntre, cpExces, cpExcesAConfirmer, MESSAGE_CP_AU_DELA_A_CONFIRMER } from './conges';
 import { nonGeresPeriode } from './nonGeres';
 import type { AmAbs, AmLeave, Contract, DayRec, Plage, Planning } from './model';
 
@@ -145,11 +145,19 @@ export interface DayInfo {
   ferieNonPaye?: boolean;
   /** Jour de congé payé pris au-delà des droits acquis : retenu comme congé sans solde (C-004) */
   cpSansDroits?: boolean;
+  /** Jour de congé payé peut-être au-delà des droits, selon la lecture de l'acquisition (T-030, A-23) : à confirmer */
+  cpAConfirmer?: boolean;
   /**
    * Jour d'événement familial à confirmer (T-023, R-ABS-06) : ni payé ni retenu. Son montant est sorti du salaire du
    * mois et affiché « à confirmer » ; la raison dit quoi renseigner.
    */
   aConfirmer?: string;
+}
+
+/** T-030 : nature du salaire mis « à confirmer » dans le mois (événement familial, congés au-delà des droits, ou les deux) */
+export function libelleSalaireAConfirmer(b: Pick<MonthBase, 'joursCpAConfirmer' | 'joursEvenementAConfirmer'>): string {
+  if (b.joursCpAConfirmer && b.joursEvenementAConfirmer) return 'd’événement familial et de congés';
+  return b.joursCpAConfirmer ? 'de congés' : 'd’événement familial';
 }
 
 export function dayInfo(ctx: Ctx, d: ISODate): DayInfo {
@@ -180,6 +188,11 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
         info.deducted = true;
         info.inDivisor = true;
         info.cpSansDroits = true;
+      } else if (amLeave === 'cp' && termsAt(c, d).yearType === 'complete' && cpExcesAConfirmer(ctx).has(d)) {
+        // T-030 (A-23) : droits à confirmer, ce jour est payé dans une lecture et sans solde dans l'autre.
+        info.inDivisor = true;
+        info.aConfirmer = MESSAGE_CP_AU_DELA_A_CONFIRMER;
+        info.cpAConfirmer = true;
       } else if (amLeave === 'am_malade' || amLeave === 'am_enfant_malade' || amLeave === 'sans_solde') {
         info.deducted = true;
         info.inDivisor = true;
@@ -422,6 +435,10 @@ export interface MonthBase {
    * Les heures et jours déclarés sont calculés sans ces jours. Les raisons sont dans `alerts`.
    */
   evenementAConfirmer: number;
+  /** Jours compris dans `evenementAConfirmer` qui sont des congés pris peut-être au-delà des droits (T-030) */
+  joursCpAConfirmer: number;
+  /** Jours compris dans `evenementAConfirmer` qui sont des jours d'événement familial */
+  joursEvenementAConfirmer: number;
   /** Kilomètres saisis sans le nombre d'enfants transportés (CCN art. 113) : non payés, à confirmer (T-017) */
   kmAConfirmer: number;
   /** Salaire net hors congés payés */
@@ -457,7 +474,7 @@ function emptyBase(m: Month): MonthBase {
     month: m, active: false, fromHistory: false, missing: false, salaireMens: 0, mensuelMin: 0, divisorDays: 0,
     divisorMin: 0, contractDays: 0, contractMin: 0, deductedDays: 0, deductedMin: 0, paidFraction: 0, base: 0,
     retenue: 0, heuresNormales: 0, joursActivite: 0, complMin: 0, majMin: 0, majContratMin: 0, complAmount: 0, majAmount: 0,
-    ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, evenementAConfirmer: 0, kmAConfirmer: 0, net: 0,
+    ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, evenementAConfirmer: 0, joursCpAConfirmer: 0, joursEvenementAConfirmer: 0, kmAConfirmer: 0, net: 0,
     alerts: [], forgotten: [], sickPaidNotice: false, nonGere: [],
   };
 }
@@ -604,7 +621,7 @@ function hoursMin(min: number): string {
 }
 
 const SUM_KEYS = ['base', 'retenue', 'majContratMin', 'joursActivite', 'complMin', 'majMin', 'complAmount', 'majAmount', 'ferieAmount',
-  'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'evenementAConfirmer', 'kmAConfirmer', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
+  'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'evenementAConfirmer', 'joursCpAConfirmer', 'joursEvenementAConfirmer', 'kmAConfirmer', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
 
 function mergeParts(m: Month, parts: MonthBase[], cuts: ISODate[]): MonthBase {
   const r = emptyBase(m);
@@ -691,6 +708,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     if (di.deducted) { dedDays++; dedMin += di.plannedMin; }
     if (di.aConfirmer && di.plannedMin > 0) {
       suspDays++; suspMin += di.plannedMin;
+      if (di.cpAConfirmer) r.joursCpAConfirmer++; else r.joursEvenementAConfirmer++;
       if (!suspRaisons.includes(di.aConfirmer)) suspRaisons.push(di.aConfirmer);
     }
     // Jours d'activité (Pajemploi) : jours prévus et payés, sans les fériés chômés ni les jours à confirmer.
@@ -768,7 +786,8 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   else r.joursActivite = Math.max(0, joursMensualises(c) - dedDays - suspDays) + r.extraDays;
   if (suspRaisons.length) {
     r.alerts.push(...suspRaisons);
-    r.alerts.push(`Événement familial : ${dayCountLabel(suspDays)} ni payé${suspDays > 1 ? 's' : ''} ni retenu${suspDays > 1 ? 's' : ''}, ${euros(r.evenementAConfirmer)} de salaire à confirmer (non compris dans le total).`);
+    const objet = r.joursCpAConfirmer ? (r.joursEvenementAConfirmer ? 'Événement familial et congés' : 'Congés') : 'Événement familial';
+    r.alerts.push(`${objet} : ${dayCountLabel(suspDays)} ni payé${suspDays > 1 ? 's' : ''} ni retenu${suspDays > 1 ? 's' : ''}, ${euros(r.evenementAConfirmer)} de salaire à confirmer (non compris dans le total).`);
   }
   if (r.kmAConfirmer) r.alerts.push(`${r.kmAConfirmer} km à confirmer, non comptés. Pour chaque jour, indique si une autre famille a aussi demandé le trajet. Si oui, indique aussi les enfants dans la voiture : l’indemnité est alors partagée entre eux (article 113 de la convention). Si non, elle est due en entier.`);
   // T-025 C-7 : mois terminé, peut-être déjà déclaré à Pajemploi avant la mise à jour qui a rendu ces montants « à confirmer ».

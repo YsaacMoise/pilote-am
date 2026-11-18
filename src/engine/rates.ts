@@ -71,12 +71,12 @@ export const RATES: Rates[] = [
     source: 'SMIC 11,88 € et MG 4,22 € (décret du 23/10/2024) ; minimum conventionnel 3,50 € brut (avenant n° 8, jusqu’au 31/03/2025)',
   },
   {
-    from: '2025-04-01', smic: 1188, mg: 422, minConvBrut: 364, minConvNet: 284, entretienPlancherJour: ENTRETIEN, netSurBrut: NET_BRUT,
-    source: 'Avenant n° 9 du 25/11/2024 à l’annexe 5 (3,64 € brut), arrêté d’extension publié au JORF du 18/03/2025',
+    from: '2025-04-01', smic: 1188, mg: 422, minConvBrut: 364, minConvNet: 286, entretienPlancherJour: ENTRETIEN, netSurBrut: NET_BRUT,
+    source: 'Avenant n° 9 du 25/11/2024 à l’annexe 5 (3,64 € brut), arrêté d’extension publié au JORF du 18/03/2025 ; net 2,86 € (Urssaf, « Rémunérer un salarié à domicile ou un assistant maternel », historique « Du 1er avril 2025 au 31 décembre 2025 », lu le 18/11/2026, T-030)',
   },
   {
-    from: '2026-01-01', smic: 1202, mg: 425, minConvBrut: 364, minConvNet: 284, entretienPlancherJour: ENTRETIEN, netSurBrut: NET_BRUT, repasAvantage: 550,
-    source: 'SMIC 12,02 € et MG 4,25 € au 1er janvier 2026',
+    from: '2026-01-01', smic: 1202, mg: 425, minConvBrut: 364, minConvNet: 286, entretienPlancherJour: ENTRETIEN, netSurBrut: NET_BRUT, repasAvantage: 550,
+    source: 'SMIC 12,02 € et MG 4,25 € au 1er janvier 2026 ; minimum AM 3,64 € brut / 2,86 € net (Urssaf, « Rémunérer un salarié à domicile ou un assistant maternel », tableau « Du 1er janvier 2026 au 31 mai 2026 », lu le 18/11/2026, T-030 ; C-NET-02)',
   },
   {
     from: '2026-06-01', smic: 1231, mg: 435, minConvBrut: 420, minConvNet: 328, entretienPlancherJour: ENTRETIEN, netSurBrut: NET_BRUT, repasAvantage: 550,
