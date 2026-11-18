@@ -622,6 +622,10 @@ function mergeParts(m: Month, parts: MonthBase[], cuts: ISODate[]): MonthBase {
   return r;
 }
 
+/** T-025 C-7 : phrase ajoutée aux mois terminés qui ont des montants à confirmer */
+export const MESSAGE_MOIS_DEJA_DECLARE =
+  'Si ce mois est déjà déclaré à Pajemploi, ne change rien seule. Vois d’abord avec les parents ce qui est dû. Si le montant change, voyez ensemble comment corriger la déclaration.';
+
 function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): MonthBase {
   // Conditions en vigueur au début de la période.
   const c = termsAt(ctx.c, segFrom);
@@ -756,6 +760,8 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     r.alerts.push(`Événement familial : ${dayCountLabel(suspDays)} ni payé${suspDays > 1 ? 's' : ''} ni retenu${suspDays > 1 ? 's' : ''}, ${euros(r.evenementAConfirmer)} de salaire à confirmer (non compris dans le total).`);
   }
   if (r.kmAConfirmer) r.alerts.push(`${r.kmAConfirmer} km à confirmer, non comptés. Pour chaque jour, indique si une autre famille a aussi demandé le trajet. Si oui, indique aussi les enfants dans la voiture : l’indemnité est alors partagée entre eux (article 113 de la convention). Si non, elle est due en entier.`);
+  // T-025 C-7 : mois terminé, peut-être déjà déclaré à Pajemploi avant la mise à jour qui a rendu ces montants « à confirmer ».
+  if ((r.evenementAConfirmer || r.kmAConfirmer) && to < ctx.today && !r.alerts.includes(MESSAGE_MOIS_DEJA_DECLARE)) r.alerts.push(MESSAGE_MOIS_DEJA_DECLARE);
   if (kmJours && c.kmTaux > 0) for (const m of controleKm(ctx.c.kmCv, c.kmTaux, segFrom).messages) if (!r.alerts.includes(m)) r.alerts.push(m);
   if (entretienNonVerifie) r.alerts.push(`${MESSAGE_PERIODE_NON_GEREE} Indemnité d’entretien : l’app retient le montant du contrat, sans contrôle du minimum légal ; vérifie-le avec les parents.`);
   // R-CP-09 : un congé dont le décompte reste ambigu est signalé, pas tranché (T-019).

@@ -444,3 +444,16 @@ describe('T-025 C-6 : valeur du repas fourni (avantage en nature) seulement si l
     expect(f.nonGere).toMatch(/valeur officielle du repas pour cette année n’est pas dans l’app/);
   });
 });
+
+describe('T-025 C-7 : mois terminé avec des montants à confirmer (anciennes saisies)', () => {
+  // Pas de texte : consigne de l'app (constat C-7 de la relecture T-025). Vérifie seulement que la phrase apparaît
+  // sur un mois terminé et pas sur le mois en cours.
+  const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01', kmTaux: 41, kmCv: 5 });
+  const sansNature: AmLeave = { id: 'x', type: 'evenement', from: '2026-10-05', to: '2026-10-05' };
+  it('mois terminé : la phrase « déjà déclaré à Pajemploi » est ajoutée ; mois en cours : non', () => {
+    expect(computeMonth(makeCtx(c, [], [sansNature], '2026-11-15'), '2026-10').alerts.join(' ')).toMatch(/déjà déclaré à Pajemploi/);
+    expect(computeMonth(makeCtx(c, [], [sansNature], '2026-10-20'), '2026-10').alerts.join(' ')).not.toMatch(/déjà déclaré à Pajemploi/);
+    const km: DayRec = { key: 'c1|2026-10-05', cid: 'c1', date: '2026-10-05', km: 10 };
+    expect(computeMonth(makeCtx(c, [km], [], '2026-11-15'), '2026-10').alerts.join(' ')).toMatch(/déjà déclaré à Pajemploi/);
+  });
+});
