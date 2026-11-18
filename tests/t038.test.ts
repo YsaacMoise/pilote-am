@@ -10,6 +10,7 @@ import { makeCtx, monthBase, salaireMensualise } from '../src/engine/payroll';
 import { finDeContrat } from '../src/engine/fin';
 import { euros } from '../src/engine/money';
 import { acquisition } from '../src/engine/conges';
+import { libelleDureeSaisie, statutJourEvenement } from '../src/engine/evenements';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
   const p: Planning = {};
@@ -156,5 +157,26 @@ describe('T-038 point 10 (G-6) : un jour de l’enfant noté « sans solde » ne
     const parents = acquisition(makeCtx(contract(), rec('parents'), [], '2026-11-18'), 2025);
     expect(ss).toEqual(parents);
     expect(ss.aConfirmer?.message ?? '').not.toContain('une absence (maladie, congé sans solde…) change le calcul');
+  });
+});
+
+describe('T-038 AC-3 : écran de saisie d’un événement familial, le texte suit le moteur', () => {
+  const statut = (nature: Parameters<typeof libelleDureeSaisie>[0], from: string) =>
+    statutJourEvenement({ id: 'e', type: 'evenement', from, to: from, nature }, from);
+  it('décès d’un enfant en 2022 : le moteur met « à confirmer », l’écran n’annonce plus « 5 jours ouvrables payés »', () => {
+    expect(statut('deces_enfant', '2022-06-01').paye).toBe(false);
+    expect(libelleDureeSaisie('deces_enfant', '2022-06-01')).toBe('Période non gérée (avant le 01/05/2024) : durée à vérifier avec les parents');
+  });
+  it('décès d’un enfant de moins de 25 ans en 2023 (jours ouvrés contre ouvrables) : plus de « Indemnisé par la Sécurité sociale »', () => {
+    expect(libelleDureeSaisie('deces_enfant_14', '2023-03-01')).not.toMatch(/Sécurité sociale/);
+    expect(libelleDureeSaisie('deces_enfant_14', '2023-03-01')).toMatch(/^Période non gérée/);
+  });
+  it('mariage en 2026 : payé par le moteur, l’écran annonce 4 jours ouvrables payés (CCN 48.1.3.1.1, L3142-4 1°)', () => {
+    expect(statut('mariage', '2026-10-05').paye).toBe(true);
+    expect(libelleDureeSaisie('mariage', '2026-10-05')).toBe('4 jours ouvrables payés');
+  });
+  it('congé de deuil en 2026 : non géré par le moteur, l’écran le dit', () => {
+    expect(statut('deuil', '2026-10-05').paye).toBe(false);
+    expect(libelleDureeSaisie('deuil', '2026-10-05')).toMatch(/^Non géré par l’app/);
   });
 });
