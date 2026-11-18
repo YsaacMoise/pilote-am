@@ -67,8 +67,8 @@ export const RATES: Rates[] = [
   { from: '2024-11-01', smic: 1188, mg: 422, minConvBrut: 350, entretienPlancherJour: ENTRETIEN, netSurBrut: NET_BRUT,
     source: 'Décret n° 2024-951 du 23/10/2024 (SMIC 11,88 €, MG 4,22 €)' },
   {
-    from: '2025-01-01', smic: 1188, mg: 422, minConvBrut: 350, entretienPlancherJour: ENTRETIEN, netSurBrut: NET_BRUT,
-    source: 'SMIC 11,88 € et MG 4,22 € (décret du 23/10/2024) ; minimum conventionnel 3,50 € brut (avenant n° 8, jusqu’au 31/03/2025)',
+    from: '2025-01-01', smic: 1188, mg: 422, minConvBrut: 350, minConvNet: 274, entretienPlancherJour: ENTRETIEN, netSurBrut: NET_BRUT,
+    source: 'SMIC 11,88 € et MG 4,22 € (décret du 23/10/2024) ; minimum conventionnel 3,50 € brut (avenant n° 8, jusqu’au 31/03/2025) ; net 2,74 € (Urssaf, « Rémunérer un salarié à domicile ou un assistant maternel », mise à jour du 01/06/2026, historique « Du 1er janvier 2025 au 31 mars 2025 », métropole et Drom, lu le 18/11/2026, T-038)',
   },
   {
     from: '2025-04-01', smic: 1188, mg: 422, minConvBrut: 364, minConvNet: 286, entretienPlancherJour: ENTRETIEN, netSurBrut: NET_BRUT,
@@ -80,7 +80,7 @@ export const RATES: Rates[] = [
   },
   {
     from: '2026-06-01', smic: 1231, mg: 435, minConvBrut: 420, minConvNet: 328, entretienPlancherJour: ENTRETIEN, netSurBrut: NET_BRUT, repasAvantage: 550,
-    source: 'Arrêté du 22 mai 2026 : SMIC 12,31 €, MG 4,35 € ; minimum conventionnel AM 4,20 € brut / 3,28 € net (fiche DREETS du 12/06/2026)',
+    source: 'Arrêté du 22 mai 2026 : SMIC 12,31 €, MG 4,35 € ; minimum conventionnel AM 4,20 € brut / 3,28 € net (Urssaf, « Rémunérer un salarié à domicile ou un assistant maternel », mise à jour du 01/06/2026, tableau « Au 1er juin 2026 », métropole et Drom, lu le 18/11/2026, T-038 ; même valeur dans la fiche DREETS du 12/06/2026)',
   },
 ];
 

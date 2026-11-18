@@ -9,6 +9,7 @@ import type { AmLeave, Contract, Planning } from '../src/engine/model';
 import { makeCtx, monthBase, salaireMensualise } from '../src/engine/payroll';
 import { finDeContrat } from '../src/engine/fin';
 import { euros } from '../src/engine/money';
+import { ratesAt } from '../src/engine/rates';
 import { acquisition } from '../src/engine/conges';
 import { libelleDureeSaisie, statutJourEvenement } from '../src/engine/evenements';
 
@@ -178,5 +179,14 @@ describe('T-038 AC-3 : écran de saisie d’un événement familial, le texte su
   it('congé de deuil en 2026 : non géré par le moteur, l’écran le dit', () => {
     expect(statut('deuil', '2026-10-05').paye).toBe(false);
     expect(libelleDureeSaisie('deuil', '2026-10-05')).toMatch(/^Non géré par l’app/);
+  });
+});
+
+describe('T-038 M-1, M-2 : repères nets du minimum AM lus sur la page Urssaf (mise à jour du 01/06/2026)', () => {
+  it('du 01/01/2025 au 31/03/2025 : 3,50 € brut, 2,74 € net ; au 01/06/2026 : 4,20 € brut, 3,28 € net, source Urssaf', () => {
+    expect(ratesAt('2025-02-15')).toMatchObject({ minConvBrut: 350, minConvNet: 274 });
+    expect(ratesAt('2026-10-15')).toMatchObject({ minConvBrut: 420, minConvNet: 328 });
+    expect(ratesAt('2026-10-15')!.source).toMatch(/Urssaf/);
+    expect(ratesAt('2025-02-15')!.source).toMatch(/Urssaf/);
   });
 });
