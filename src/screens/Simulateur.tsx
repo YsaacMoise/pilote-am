@@ -270,7 +270,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
         <section class="card">
           <fieldset>
             <legend>Le tarif</legend>
-            <EuroInput label="Salaire horaire brut" hint={`Soit ${euros(r.tauxNet)} net. Minimum : ${euros(r.minimumBrut)} brut${minimumAmAp !== undefined ? ` (${euros(minimumAmAp)} avec le titre AM-AP)` : ''}.`} cents={i.tauxBrut} onChange={(v) => set({ tauxBrut: v ?? 0 })} />
+            <EuroInput label="Salaire horaire brut" hint={`Soit ${euros(r.tauxNet)} net. Minimum : ${euros(r.minimumBrut)} brut${minimumAmAp !== undefined ? ` (${euros(minimumAmAp)} avec le titre « Assistant maternel - garde d’enfants »)` : ''}.`} cents={i.tauxBrut} onChange={(v) => set({ tauxBrut: v ?? 0 })} />
             {r.sousMinimum && <Banner tone="warn">Ce taux est sous le minimum de la convention collective : {euros(r.minimumBrut)} brut de l’heure depuis le {dateLongue(minConvDepuis(d)!)}. {MINIMUM_SANS_TITRE}</Banner>}
             <Switch label="L’assistante maternelle travaille en Alsace-Moselle" hint="Bas-Rhin, Haut-Rhin ou Moselle : non géré par l’app, aucun résultat n’est donné." checked={i.alsaceMoselle} onChange={(v) => set({ alsaceMoselle: v })} />
             <Seg label="Indemnité d’entretien prévue" value={i.entretienMode} options={[{ v: 'jour', l: 'Par jour' }, { v: 'heure', l: 'Par heure' }]} onChange={(v) => set({ entretienMode: v, entretien: 0 })} />

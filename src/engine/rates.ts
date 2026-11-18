@@ -199,11 +199,16 @@ export function entretienHoraireMin(d: ISODate): number | undefined {
 }
 
 /**
- * Salaire horaire minimum brut avec le titre Assistant maternel – Assistant parental. Valeur reprise telle quelle de
- * Simulateur.tsx (« avenant n° 10, 1er juin 2026 »), non relue à la source par T-041. Elle ne vaut que tant que la grille
- * de l'annexe 5 n'a pas changé depuis sa date : sinon `undefined`, et l'écran ne cite pas de montant.
+ * Salaire horaire minimum brut majoré de 4 % pour l'assistant maternel titulaire du titre « Assistant maternel - garde
+ * d'enfants ». T-041 suite, relu le 18/11/2026 : Urssaf, « Rémunérer un salarié à domicile ou un assistant maternel »,
+ * « Mis à jour le 01 juin 2026 », tableau « Salaire horaire minimum pour l'emploi d'un assistant maternel », « Au 1er juin
+ * 2026 » : « Salaire horaire brut majoré (4 %)* 4,37 € » (métropole et Drom, et Bas-Rhin, Haut-Rhin et Moselle ; Mayotte
+ * « Non concerné ») ; renvoi * : « Le montant horaire minimum peut être majoré de 4 % (sauf à Mayotte) si l'assistant
+ * maternel est titulaire du titre « Assistant maternel - garde d'enfants ». »
+ * https://www.urssaf.fr/accueil/particulier/particulier-employeur/embaucher-un-salarie/remunerer-salarie-domicile.html
+ * La valeur ne vaut que tant que la grille n'a pas changé depuis sa date : sinon `undefined`, et l'écran ne la cite pas.
  */
-const MINIMUM_TITRE_AM_AP: { from: ISODate; brut: number }[] = [{ from: '2026-06-01', brut: 437 }];
+const MINIMUM_TITRE_AM_AP: { from: ISODate; brut: number }[] = [{ from: '2026-06-01', brut: 437 }]; // Urssaf, au 1er juin 2026
 export function minimumTitreAmAp(d: ISODate): number | undefined {
   const depuis = minConvDepuis(d);
   return MINIMUM_TITRE_AM_AP.find((x) => x.from === depuis)?.brut;
