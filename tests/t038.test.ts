@@ -9,6 +9,7 @@ import type { AmLeave, Contract, Planning } from '../src/engine/model';
 import { makeCtx, monthBase, salaireMensualise } from '../src/engine/payroll';
 import { finDeContrat } from '../src/engine/fin';
 import { euros } from '../src/engine/money';
+import { acquisition } from '../src/engine/conges';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
   const p: Planning = {};
@@ -145,5 +146,15 @@ describe('T-038 M-5 : pas de régularisation d’avenant si une absence non gér
     const b = monthBase(makeCtx(contract(av), [], [at], '2026-11-18'), '2026-09');
     expect(b.regulAvenant).toBeUndefined();
     expect(b.alerts.some((a) => a.startsWith('Régularisation à l’avenant du 01/09 non calculée : un cas non géré'))).toBe(true);
+  });
+});
+
+describe('T-038 point 10 (G-6) : un jour de l’enfant noté « sans solde » ne bloque plus le calcul des congés (année incomplète)', () => {
+  it('même acquisition qu’avec une absence voulue par les parents le même jour (CCN art. 105 al. 1 : absence payée)', () => {
+    const rec = (abs: 'sans_solde_enfant' | 'parents') => [{ key: `c1|2026-03-10`, cid: 'c1', date: '2026-03-10', abs }];
+    const ss = acquisition(makeCtx(contract(), rec('sans_solde_enfant'), [], '2026-11-18'), 2025);
+    const parents = acquisition(makeCtx(contract(), rec('parents'), [], '2026-11-18'), 2025);
+    expect(ss).toEqual(parents);
+    expect(ss.aConfirmer?.message ?? '').not.toContain('une absence (maladie, congé sans solde…) change le calcul');
   });
 });
