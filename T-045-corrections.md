@@ -91,3 +91,35 @@ URL consultées :
 - https://www.urssaf.fr/accueil/particulier/particulier-employeur/gerer-la-fin-du-contrat-de-trava/declarer-fin-contrat.html (redirection depuis l'ancienne page Pajemploi « les indemnités de fin de contrat »)
 - https://www.urssaf.fr/accueil/particulier/particulier-employeur/gerer-la-fin-du-contrat-de-trava/motifs-fin-contrat.html
 Navigateur : onglet tab-1 ouvert par tabs_create, fermé à la fin.
+
+## T-045b — constats P3-B1 et C3-1 de V5 (périmètre 3)
+
+### Ce qui manquait
+- P3-B1 : la réponse sur le préavis n'existait que dans l'écran Fin. Le calcul du mois ignorait le préavis : une date de fin saisie au 13/11/2026 donnait « Total à me verser : 444,02 € » sans alerte, alors que dans le cas B (dispense voulue par les parents) l'indemnité compensatrice reste due jusqu'au 04/12 (CCN art. 64.2 al. 1 et 66).
+- C3-1 : une date de fin saisie après la fin du préavis était ignorée sans message.
+
+### Règle codée (aucune nouvelle règle de paie : seulement des refus)
+- `Contract.rupture` (model.ts) : motif, date d'envoi, première présentation, préavis (`execute`, `am_acceptee`, `employeur`, `am_sans_accord`), dernier jour travaillé. L'écran Fin l'enregistre avec la date de fin (bouton « Enregistrer la fin du contrat ») et la reprend à l'ouverture.
+- `controleFinContrat` (nouveau src/engine/preavis.ts, qui reçoit aussi `preavisEmployeur` et `finPreavis`, déplacés de fin.ts sans changement) :
+  - date de fin sans réponse enregistrée : refus de la période du mois précédant la fin jusqu'à la fin (le préavis dure au plus un mois, art. 120), avec la règle de l'art. 64.2 et le renvoi à l'écran Fin ;
+  - cas B ou C enregistré : refus du dernier jour travaillé jusqu'à la fin du préavis, avec la règle ;
+  - cas A : la date de fin doit être le dernier jour travaillé, sinon refus ;
+  - préavis fait : la date de fin doit être une des fins admises, sinon refus. Les fins admises sont la fin calculée, son lendemain et, pour une démission de 3 mois à 1 an, la fin à un mois et son lendemain : ce sont les variantes déjà données « à confirmer » par T-038. Une date après la fin du préavis est donc refusée (C3-1).
+- Branchement par `nonGeresPeriode` : sont « non géré » le mois (payroll.ts, monthBase), donc aussi le total, les cases Pajemploi, le texte aux parents et le récapitulatif fiscal, qui respectent déjà `nonGere` (T-031). Sont aussi refusées la régularisation à l'avenant et la période de jours de congés acquis.
+  - Exception pour les jours acquis (conges.ts) : le refus ne joue que si une réponse enregistrée ne concorde pas, pas en l'absence de réponse. Raison : aucun montant n'est versé sans passer par le mois ou la fin de contrat, qui font le contrôle complet. Sans cette exception, le cas officiel C-CPA-05 (contrat fini au 30/09/2022, réponse inconnue) devenait faux. À valider par la direction.
+- fin.ts : ses contextes internes portent `finControlee` (date de fin contrôlée par fin.ts lui-même). Une date de fin saisie après la fin calculée, hors fins admises, est refusée (C3-1). L'écran Fin simule sans la date déjà enregistrée et signale l'écart.
+
+### Tests et contrôles
+- tests/t045b.test.ts : 7 tests, écrits avant (5 échecs, 2 réussites pour les cas inchangés), puis 7 réussites. Un attendu a été ajusté après le choix de la période : avec une fin au 13/11 sans réponse, octobre est aussi refusé (le préavis a pu commencer le 14/10) ; septembre ne l'est pas.
+- Sonde V5 rejouée sur m11 : mois de novembre (fin 13/11, sans réponse) : `nonGere` rempli, plus de ligne « Total à me verser ». Fin 31/01/2027 : refusée dans la fin de contrat.
+- npm test : 24 fichiers, 503 tests réussis. tsc sans erreur. Build réussi.
+- Comparateur de la vague 11 (copie /home/claude/m11-comp2 de /home/claude/v11, avec la famille S18N de C4) :
+  - avant T-045b (A = 93c1087) : F1 4 757, F3 302, F4 63, N 951 ;
+  - après (A = m11 3eb19ef) : F1 4 753, F3 302, F4 67, N 951.
+  - Seules 4 sorties changent : les cas officiels OFF-C-ABS-09 et OFF-C-ABS-10 (deduction, salaire_du), F1 → F4. Ce sont des contrats qui finissent en cours de mois (21/10 et 20/10/2026) sans réponse sur le préavis : A refuse le mois. Les familles S18 et S18N ne changent pas.
+
+### Point à trancher par la direction
+- Les deux cas officiels C-ABS-09 et C-ABS-10 passent en refus. Deux voies sont possibles. (a) Si la source officielle de ces cas dit ou suppose un préavis fait, C4 ajoute `rupture` (préavis fait, lettre cohérente) aux situations et à l'adaptateur. (b) Sinon, ils restent F4 : c'est l'effet voulu de « jamais un total silencieux ». Je n'ai pas relu ces sources et je n'invente pas de lettre.
+- Coût pour l'utilisatrice : tout contrat fini sans passer par l'écran Fin voit ses deux derniers mois refusés, avec le message qui dit quoi faire. L'aide de la date de fin dans l'écran Contrat le signale.
+
+Commits T-045b : c7e3911 (moteur et tests), 3eb19ef (écrans).
