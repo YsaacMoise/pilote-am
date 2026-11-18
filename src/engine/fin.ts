@@ -25,6 +25,16 @@ export const MOTIF_LABEL: Record<Motif, string> = {
   essai: 'Rupture pendant la période d’essai',
 };
 
+/**
+ * T-045 (constat B-2 de V5) : préavis non exécuté en tout ou en partie. CCN IDCC 3239, art. 64 (date de fin) et 64.2
+ * (inexécution), Légifrance KALITEXT000043941642, lus en entier le 18/11/2026.
+ * - `am_acceptee` : l'AM a demandé à ne pas faire tout ou partie du préavis et les parents l'ont accepté (art. 64.2, al. 2).
+ * - `employeur` : les parents dispensent l'AM de tout ou partie du préavis (art. 64.2, al. 1).
+ * - `am_sans_accord` : l'AM ne fait pas son préavis sans l'accord des parents (art. 64.2, al. 2, fin).
+ */
+export type DemandeurInexecution = 'am_acceptee' | 'employeur' | 'am_sans_accord';
+export interface Inexecution { demandeur: DemandeurInexecution; dernierJourTravaille: ISODate }
+
 export interface FinResult {
   ancienneteMois: number;
   preavisLabel: string;
@@ -180,7 +190,7 @@ function congesNonPris(endCtx: Ctx, c: Ctx['c'], dernierJour: ISODate, enfants: 
  * cette date ; en remise en main propre, c'est la date de remise (= `notif`). Jamais de l'annonce orale (C-017,
  * CCN art. 120 ; fiches DREETS Auvergne-Rhône-Alpes du 18/03/2024 ; code.travail.gouv.fr, IDCC 3239).
  */
-export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0, presentation?: ISODate): FinResult {
+export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0, presentation?: ISODate, inexecution?: Inexecution): FinResult {
   const c = ctx.c;
   const alertes: string[] = [];
   const anc = fullMonthsBetween(c.start, notif);
@@ -232,7 +242,37 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
       alertes.push(`Décès de l’enfant : l’indemnité égale au préavis est calculée du ${shortDate(debut)} au ${shortDate(fin)}. Aucun texte ne fixe le premier jour ; à partir du jour du décès, le montant serait le même.`);
     }
   }
-  const dernierJour = preavisFin;
+  // T-045 : préavis non exécuté. Art. 64 : la date de fin est « la date prévue de fin du préavis » si l'inexécution est à
+  // l'initiative de l'employeur, « le dernier jour travaillé » si elle est à l'initiative du salarié. Art. 64.2, al. 2 : avec
+  // l'accord de l'employeur, « le contrat de travail prend fin au dernier jour travaillé » ; aucune indemnité n'est prévue
+  // pour l'AM (service-public.fr F33164 et F16842 : l'AM « n'est pas payée pour la partie du préavis non réalisé »).
+  // Seul ce cas est calculé. Les deux autres sont refusés, le texte ne fixant pas tous leurs effets (voir T-045-corrections.md).
+  const refusFin: string[] = [];
+  let dernierJour = preavisFin;
+  let finAuDernierJourTravaille = false;
+  if (inexecution) {
+    const d = inexecution.dernierJourTravaille;
+    if (motif !== 'retrait' && motif !== 'demission') {
+      refusFin.push(`Préavis non exécuté : ce motif (${MOTIF_LABEL[motif].toLowerCase()}) n’a pas de préavis. Retire la réponse sur le préavis ou vérifie le motif.`);
+    } else if (d < notif) {
+      refusFin.push(`Préavis non exécuté : le dernier jour travaillé (${shortDate(d)}) est avant l’envoi de la lettre (${shortDate(notif)}). Cas non géré : vérifie les dates avec les parents.`);
+    } else if (d > preavisFin) {
+      refusFin.push(`Préavis non exécuté : le dernier jour travaillé (${shortDate(d)}) est après la fin du préavis calculée par l’app (${shortDate(preavisFin)}). Cas non géré : vérifie les dates avec les parents.`);
+    } else if (inexecution.demandeur === 'am_acceptee') {
+      dernierJour = d;
+      finAuDernierJourTravaille = true;
+      alertes.push(`Préavis non fait en entier, à ta demande, accepté par les parents : le contrat finit le ${shortDate(d)}, ton dernier jour travaillé (convention, articles 64 et 64.2). La partie du préavis non faite n’est pas payée. Garde l’accord des parents par écrit.`);
+    } else if (inexecution.demandeur === 'employeur') {
+      refusFin.push(`Préavis non fait à la demande des parents : le contrat finit à la date prévue de fin du préavis (${shortDate(preavisFin)}) et les parents te versent une indemnité compensatrice de préavis égale au salaire brut jusqu’à cette date ; la période compte pour tes congés et ton ancienneté (convention, articles 64, 64.2 et 66). L’app ne calcule pas ce cas : aucun texte ne dit comment cette indemnité entre dans l’indemnité de rupture, la régularisation et le dixième des congés. Fais le calcul avec les parents.`);
+    } else {
+      dernierJour = d;
+      refusFin.push(`Préavis non fait sans l’accord des parents : le contrat finit le ${shortDate(d)}, ton dernier jour travaillé (convention, article 64). Les parents peuvent te demander une indemnité égale au salaire net de la partie du préavis non faite (article 64.2) et des dommages et intérêts (code de l’action sociale et des familles, article L423-26). L’app ne calcule pas ce cas. Renseigne-toi avant de partir (relais petite enfance, DREETS).`);
+    }
+  }
+  // T-045 (B-2) : une date de fin du contrat déjà saisie avant la fin calculée n'est jamais dépassée en silence.
+  if (!refusFin.length && c.end && c.end < dernierJour) {
+    refusFin.push(`La date de fin du contrat (${shortDate(c.end)}) est avant ${finAuDernierJourTravaille ? 'le dernier jour travaillé indiqué' : 'la fin du préavis'} (${shortDate(dernierJour)}). Si le préavis n’a pas été fait en entier, dis-le dans la question sur le préavis ; sinon corrige la date de fin du contrat. L’app ne calcule rien tant que les deux dates ne concordent pas.`);
+  }
   const endCtx: Ctx = { ...ctx, c: { ...c, end: dernierJour }, cache: new Map() };
 
   // Salaires bruts depuis le début du contrat
@@ -321,8 +361,9 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // congés non pris. Un montant qui change d'une variante à l'autre, ou selon les jours « à confirmer » (B-1), n'est ni donné
   // ni compté : il est « à confirmer » avec ses valeurs.
   const variantes: { fin: ISODate; libelle: string }[] = [{ fin: dernierJour, libelle: `fin le ${shortDate(dernierJour)}` }];
-  if (preavisFinAConfirmer) variantes.push({ fin: addDays(dernierJour, 1), libelle: `fin le ${shortDate(addDays(dernierJour, 1))}` });
-  if (demission312) {
+  // T-045 : fin au dernier jour travaillé, avant la fin du préavis : la date de fin ne dépend plus du préavis.
+  if (preavisFinAConfirmer && !finAuDernierJourTravaille) variantes.push({ fin: addDays(dernierJour, 1), libelle: `fin le ${shortDate(addDays(dernierJour, 1))}` });
+  if (demission312 && !finAuDernierJourTravaille) {
     const finMois = finPreavis(depart, {});
     variantes.push({ fin: finMois, libelle: `préavis d’un mois, fin le ${shortDate(finMois)}` });
     variantes.push({ fin: addDays(finMois, 1), libelle: `préavis d’un mois, fin le ${shortDate(addDays(finMois, 1))}` });
@@ -397,7 +438,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
 
   // T-031 : un cas non géré pendant le contrat (Alsace-Moselle, horaires variables, accueil occasionnel, congé maternité,
   // accident du travail…) fausse les salaires de référence, l'ancienneté retenue ou les congés : aucun montant.
-  const nonGere = nonGeresPeriode(c, ctx.leaves, c.start, dernierJour);
+  const nonGere = [...refusFin, ...nonGeresPeriode(c, ctx.leaves, c.start, dernierJour)];
   if (nonGere.length) {
     return {
       ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture: 0, ruptureExplication: 'Non calculée : cas non géré.',
