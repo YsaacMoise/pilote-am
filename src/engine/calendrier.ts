@@ -36,8 +36,7 @@ export interface Calendrier {
   mois: MoisCalendrier[];
   /** Crédit d'impôt calculé par année de dépenses */
   creditParAnnee: Record<number, number>;
-  /** Total payé sur la période affichée, après aides et crédit reçus */
-  /** Somme des mois sûrs (T-038 suite, G-4 : les mois « à confirmer » n'y sont pas) */
+  /** Total payé sur la période affichée, après aides et crédit reçus : somme des mois sûrs (T-038 suite, G-4 : les mois « à confirmer » n'y sont pas) */
   total: number;
   /** Somme des mois « à confirmer », donnée à part */
   totalAConfirmer: number;
