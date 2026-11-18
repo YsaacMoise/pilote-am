@@ -9,7 +9,7 @@ import { MESSAGE_BAREMES_PROVISOIRES, MINIMUM_SANS_TITRE, baremesProvisoires } f
 import type { Plage, Planning } from '../engine/model';
 import { euros, hoursLabel } from '../engine/money';
 import {
-  HEURES_MAX_AN, HEURES_SANS_ACCORD, HEURES_MAX_JOUR, REPAS_NOMS, REPAS_REGLES, SITUATIONS_REVENUS, STATUTS, TYPES_REPAS, bornesKm, naissanceIlYA,
+  HEURES_MAX_AN, MESSAGE_ZONE_SIMULATEUR, HEURES_SANS_ACCORD, HEURES_MAX_JOUR, REPAS_NOMS, REPAS_REGLES, SITUATIONS_REVENUS, STATUTS, TYPES_REPAS, bornesKm, naissanceIlYA,
   planningDepuisTexte, planningRegulier, planningVersTexte, ratioNet, simuler, simulationParDefaut, type SimInput, type SituationRevenus, type Statut, type TypeRepas,
 } from '../engine/simulation';
 import { calendrier, levierTarif, selonRevenus, tarifMaxSansDepassement, type Evenement } from '../engine/calendrier';
@@ -451,6 +451,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
           {!r.cmgEligible && r.nbEnfants > 0 && <Banner tone="warn">Sans aide de la CAF, la famille paie toutes les cotisations sociales : {euros(r.cotisationsReste)} par mois en plus du salaire. Elles sont comptées dans le reste à payer.</Banner>}
           {r.congesAnnuels > 0 && <Banner tone="info" icon="sun">Moins de 52 semaines : les congés payés sont versés en juin, au congé principal ou au fil des congés. Le mois où ils sont payés, l’aide de la CAF peut être plafonnée.</Banner>}
           {r.cmgEligible && r.cmg.depassePlafond && <Banner tone="warn">Le coût de l’heure ({euros(r.cmg.coutHoraire)}, entretien et repas compris) dépasse {euros(r.cmg.params.plafondHoraire)}. L’aide de la CAF est calculée sur ce plafond, et elle ne prend en charge que {Math.round(r.cmg.partCotisations * 100)} % des cotisations : {euros(r.cotisationsReste)} par mois restent à la famille.</Banner>}
+          <p class="hint">{MESSAGE_ZONE_SIMULATEUR}</p>
         </section>
 
         {cal.mois.length > 0 && (

@@ -642,3 +642,12 @@ export function simulationParDefaut(d: ISODate): SimInput {
     debut: naissanceIlYA(d, -1), cpMode: 'juin', moisCongePrincipal: 8, adaptationHeures: 0, adaptationJours: 0, adaptationHeures2: 0, adaptationJours2: 0,
   };
 }
+
+/**
+ * T-038 suite 2 (décision du DG) : zone couverte par le simulateur. Urssaf, « Rémunérer un salarié à domicile ou un
+ * assistant maternel » (mise à jour du 01/06/2026, relue le 18/11/2026), tableau « Au 1er juin 2026 » : salaire horaire
+ * net minimum 3,28 € en « Métropole et Drom », 3,70 € à Mayotte ; majoration de 4 % « Non concerné » à Mayotte.
+ * https://www.urssaf.fr/accueil/particulier/particulier-employeur/embaucher-un-salarie/remunerer-salarie-domicile.html
+ */
+export const MESSAGE_ZONE_SIMULATEUR =
+  'Ces montants valent pour la métropole et les départements d’outre-mer, hors Mayotte. À Mayotte, le simulateur ne s’applique pas : le salaire minimum y est différent.';

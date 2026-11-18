@@ -211,3 +211,13 @@ describe('T-038 suite 2 (décision du DG) : crédit d’impôt calculé avec un 
     expect(c.moisCreditAConfirmer).toEqual([]);
   });
 });
+
+describe('T-038 suite 2 : zone couverte par le simulateur (métropole et DOM hors Mayotte)', () => {
+  it('la phrase existe et l’écran l’affiche près du résultat', async () => {
+    const { MESSAGE_ZONE_SIMULATEUR } = await import('../src/engine/simulation');
+    expect(MESSAGE_ZONE_SIMULATEUR).toMatch(/métropole et les départements d’outre-mer, hors Mayotte/);
+    expect(MESSAGE_ZONE_SIMULATEUR).toMatch(/À Mayotte, le simulateur ne s’applique pas/);
+    const { readFileSync } = await import('node:fs');
+    expect(readFileSync('src/screens/Simulateur.tsx', 'utf8')).toContain('<p class="hint">{MESSAGE_ZONE_SIMULATEUR}</p>');
+  });
+});
