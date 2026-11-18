@@ -87,20 +87,18 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   const anc = fullMonthsBetween(c.start, notif);
   const depart = presentation && presentation > notif ? presentation : notif;
 
-  // Préavis (art. 120). Retrait : 8 jours avant 3 mois. Démission : aucun préavis avant 3 mois.
+  // Préavis (art. 120) : « un préavis est à effectuer en cas de rupture à l'initiative du particulier employeur ou du
+  // salarié. Sa durée est au minimum de : – 8 jours calendaires lorsque l'enfant est accueilli depuis moins de 3 mois »
+  // (T-023 : la démission avant 3 mois a aussi 8 jours ; le conflit CASF L423-26 / CCN 120 de 3 mois à 1 an relève de T-024).
   // Inaptitude (avenant n° 10 du 9 septembre 2025, art. 119-5 et 64-4) : rupture sans préavis, à la date d'envoi.
   let preavisFin = notif;
   let preavisLabel = 'Pas de préavis';
   if (motif === 'inaptitude' || motif === 'inaptitude_pro') {
     preavisLabel = 'Pas de préavis en cas d’inaptitude : le contrat s’arrête à l’envoi de la lettre';
   } else if (motif === 'retrait' || motif === 'demission') {
-    if (anc < 3 && motif === 'demission') {
-      preavisLabel = 'Pas de préavis : moins de 3 mois d’ancienneté';
-    } else {
-      const p = preavisEmployeur(anc);
-      preavisLabel = p.label;
-      preavisFin = finPreavis(depart, p);
-    }
+    const p = preavisEmployeur(anc);
+    preavisLabel = p.label;
+    preavisFin = finPreavis(depart, p);
   }
   // Décès de l'enfant (R-FIN-07, CCN art. 119.4.2 ; Urssaf « motifs de fin de contrat » ; service-public.fr F16842) :
   // le contrat s'arrête le jour du décès, sans préavis à faire ; l'employeur verse une indemnité égale à l'indemnité

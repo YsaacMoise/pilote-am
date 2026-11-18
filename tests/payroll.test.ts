@@ -858,11 +858,15 @@ describe('audit C-017 : point de départ du préavis et inaptitude (art. 120, av
   it('une date de présentation antérieure à l’envoi est ignorée', () => {
     expect(finDeContrat(ctx9(), '2026-10-30', 'retrait', 0, '2026-10-20').preavisFin).toBe('2026-11-13');
   });
-  it('démission avant 3 mois : pas de préavis ; retrait avant 3 mois : 8 jours', () => {
+  // T-023 : CCN IDCC 3239 art. 120 (EN VIGUEUR ÉTENDU, relu par V2 le 18/11/2026, t021-contre-verification.md § 3) :
+  // « un préavis est à effectuer en cas de rupture à l'initiative du particulier employeur ou du salarié. Sa durée est
+  // au minimum de : – 8 jours calendaires lorsque l'enfant est accueilli depuis moins de 3 mois ». L'ancien attendu
+  // (« pas de préavis » pour la démission) était contraire au texte.
+  it('démission avant 3 mois : 8 jours calendaires, comme le retrait (CCN art. 120)', () => {
     const mk = () => makeCtx(contract({ start: '2026-09-01', trackedFrom: '2026-09-01' }), [], [], '2026-12-31');
     const d = finDeContrat(mk(), '2026-10-28', 'demission', 0, '2026-10-30');
-    expect(d.preavisFin).toBe('2026-10-28');
-    expect(d.preavisLabel).toMatch(/Pas de préavis/);
+    expect(d.preavisLabel).toBe('8 jours calendaires');
+    expect(d.preavisFin).toBe('2026-11-06');
     expect(finDeContrat(mk(), '2026-10-28', 'retrait', 0, '2026-10-30').preavisFin).toBe('2026-11-06');
   });
   it('inaptitude professionnelle : 2/80e dès 9 mois, rien avant, sans préavis', () => {
