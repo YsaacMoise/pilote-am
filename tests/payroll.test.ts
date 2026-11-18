@@ -362,9 +362,14 @@ describe('fin de contrat (art. 120, 121, 124)', () => {
     expect(f.indemniteRupture).toBeGreaterThan(0);
     const f2 = finDeContrat(makeCtx(contract({ start: '2026-05-04', trackedFrom: '2026-05-04' }), [], [], '2026-12-31'), '2026-10-30', 'retrait');
     expect(f2.indemniteRupture).toBe(0);
-    // Décès de l'enfant : 9 mois d'ancienneté exigés aussi (art. 119.4.2, fiche DREETS)
+    // T-034 (A-47) : décès de l'enfant, indemnité due avant 9 mois. Service-public F16842 : « En cas de décès de l'enfant
+    // du particulier employeur, cette condition d'ancienneté est supprimée et l'indemnité est due » ; « Son montant est
+    // égal à 1/80e du total des salaires bruts perçus pendant la durée du contrat ».
     const f3 = finDeContrat(makeCtx(contract({ start: '2026-05-04', trackedFrom: '2026-05-04' }), [], [], '2026-12-31'), '2026-10-30', 'deces');
-    expect(f3.indemniteRupture).toBe(0);
+    expect(f3.ancienneteMois).toBeLessThan(9);
+    expect(f3.indemniteRupture).toBeGreaterThan(0);
+    expect(f3.indemniteRupture).toBe(Math.round(f3.totalBrut / 80));
+    expect(f3.ruptureExplication).toMatch(/quelle que soit l’ancienneté/);
     const f4 = finDeContrat(makeCtx(contract({ start: '2026-01-05', trackedFrom: '2026-01-05' }), [], [], '2026-12-31'), '2026-10-30', 'deces');
     expect(f4.indemniteRupture).toBeGreaterThan(0);
   });

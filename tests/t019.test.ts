@@ -237,10 +237,10 @@ describe('T-019 (5) décès de l’enfant : indemnité égale au préavis, R-FIN
     expect(f.preavisLabel).toMatch(/^1 mois/);
     expect(f.indemnitePreavis).toBe(salaireMensualise(c));
   });
-  it('R-FIN-07 : l’indemnité égale au préavis est due aussi avant 9 mois (A-47 ne vise que le 1/80)', () => {
+  it('R-FIN-07 : l’indemnité égale au préavis est due aussi avant 9 mois, comme le 1/80 depuis T-034 (A-47, F16842)', () => {
     const c = contract({ start: '2026-03-02', trackedFrom: '2026-03-02', rateNet: 420 });
     const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-09-15', 'deces');
-    expect(f.indemniteRupture).toBe(0);
+    expect(f.indemniteRupture).toBe(Math.round(f.totalBrut / 80));
     expect(f.indemnitePreavis).toBeGreaterThan(0);
   });
   it('R-FIN-05 : pas d’indemnité égale au préavis pour un retrait ou une démission', () => {

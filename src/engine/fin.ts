@@ -172,12 +172,12 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   let indemniteRupture = 0;
   let ruptureExplication = '';
   if (motif === 'deces') {
-    if (anc >= 9) {
-      indemniteRupture = Math.round(totalBrut / 80);
-      ruptureExplication = 'Décès de l’enfant : 1/80e des salaires bruts (9 mois d’ancienneté atteints).';
-    } else {
-      ruptureExplication = `Décès de l’enfant : pas d’indemnité de rupture, moins de 9 mois d’ancienneté (${anc} mois).`;
-    }
+    // T-034 (A-47) : due quelle que soit l'ancienneté. CCN art. 119.4.2 : « une indemnité dont le montant est calculé de
+    // la même manière que l'indemnité de rupture en cas de retrait d'enfant prévue à l'article 121-1 » (renvoi au seul
+    // calcul du montant, aucune condition d'ancienneté) ; service-public.fr F16842 (vérifiée le 13/06/2025) : « En cas de
+    // décès de l'enfant du particulier employeur, cette condition d'ancienneté est supprimée et l'indemnité est due ».
+    indemniteRupture = Math.round(totalBrut / 80);
+    ruptureExplication = 'Décès de l’enfant : 1/80e des salaires bruts perçus depuis le début du contrat, due quelle que soit l’ancienneté (article 119.4.2 de la convention).';
   } else if (motif === 'inaptitude_pro') {
     // Avenant n° 10 du 9 septembre 2025 (étendu, JO du 4 avril 2026, en vigueur le 1er mai 2026), art. 119-5 :
     // indemnité spécifique de 2/80e, « selon les conditions d'ancienneté définies à l'article 121-1 » (9 mois).
