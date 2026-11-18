@@ -753,6 +753,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
 
   let cDays = 0, cMin = 0, dedDays = 0, dedMin = 0, actDays = 0, cpSansDroits = 0;
   let entretienNonVerifie = false;
+  let entretienSousMin = 0, entretienMinVerse = 0;
   let suspDays = 0, suspMin = 0, kmJours = 0;
   const suspRaisons: string[] = [];
   const forgotten: ISODate[] = [];
@@ -780,6 +781,9 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
         const plancher = entretienPlancher(d, di.presentMin);
         // T-023 : avant les barèmes vérifiés, le plancher légal n'est pas connu. L'app retient le montant du contrat et le dit.
         if (plancher === undefined) entretienNonVerifie = true;
+        // T-034 (ENTRETIEN-SOUS-MINIMUM) : le tarif du contrat sous le minimum est remplacé par le minimum (montant
+        // inchangé) et signalé, pour que le contrat soit corrigé.
+        if (plancher !== undefined && c.entretienJour < plancher) { entretienSousMin++; entretienMinVerse += plancher - c.entretienJour; }
         r.entretien += Math.max(c.entretienJour, plancher ?? 0);
         const nbRepas = di.rec?.repas ?? c.repasParJour;
         r.repas += nbRepas * c.repasPrix;
@@ -855,6 +859,9 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   // T-025 C-7 : mois terminé, peut-être déjà déclaré à Pajemploi avant la mise à jour qui a rendu ces montants « à confirmer ».
   if ((r.evenementAConfirmer || r.kmAConfirmer) && to < ctx.today && !r.alerts.includes(MESSAGE_MOIS_DEJA_DECLARE)) r.alerts.push(MESSAGE_MOIS_DEJA_DECLARE);
   if (kmJours && c.kmTaux > 0) for (const m of controleKm(ctx.c.kmCv, c.kmTaux, segFrom).messages) if (!r.alerts.includes(m)) r.alerts.push(m);
+  // CCN art. 114.1 : « le montant journalier de cette indemnité ne peut pas être inférieur à 2,65 € » et le montant horaire
+  // ne peut être « inférieur à 90 % du minimum garanti lorsque la durée de travail journalière est de 9 heures ».
+  if (entretienSousMin) r.alerts.push(`Indemnité d’entretien : le montant du contrat (${euros(c.entretienJour)} par jour) est sous le minimum de la convention (article 114.1) pour ${dayCountLabel(entretienSousMin)}. L’app verse le minimum, soit ${euros(entretienMinVerse)} de plus que le contrat ce mois-ci. Fais corriger le contrat avec les parents, par un avenant.`);
   if (entretienNonVerifie) r.alerts.push(`${MESSAGE_PERIODE_NON_GEREE} Indemnité d’entretien : l’app retient le montant du contrat, sans contrôle du minimum légal ; vérifie-le avec les parents.`);
   // R-CP-09 : un congé dont le décompte reste ambigu est signalé, pas tranché (T-019).
   for (const a of cpAConfirmerEntre(ctx, segFrom, segTo)) if (!r.alerts.includes(a)) r.alerts.push(a);

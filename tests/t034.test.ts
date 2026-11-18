@@ -89,3 +89,20 @@ describe('T-034 point 3 : congé sans solde de l’AM, déduction d’absence (f
     expect(b.base).toBe(51429);
   });
 });
+
+describe('T-034 point 4 : indemnité d’entretien du contrat sous le minimum (CCN art. 114.1), alerte sans changer le montant', () => {
+  // Art. 114.1 : « le montant journalier de cette indemnité ne peut pas être inférieur à 2,65 € ».
+  it('tarif de 1 € par jour : le minimum est versé (montant inchangé) et l’alerte est affichée', () => {
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', planning: week('08:00', '12:00'), entretienJour: 100 });
+    const avec = monthBase(makeCtx(c, [], [], '2026-12-31'), '2026-03');
+    expect(avec.presenceDays).toBeGreaterThan(0);
+    expect(avec.entretien).toBeGreaterThanOrEqual(265 * avec.presenceDays);
+    expect(avec.alerts.join(' ')).toMatch(/Indemnité d’entretien : le montant du contrat \(1,00\s€ par jour\) est sous le minimum de la convention \(article 114\.1\)/);
+  });
+  it('tarif au-dessus du minimum : aucune alerte', () => {
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', planning: week('08:00', '12:00'), entretienJour: 500 });
+    const b = monthBase(makeCtx(c, [], [], '2026-12-31'), '2026-03');
+    expect(b.entretien).toBe(500 * b.presenceDays);
+    expect(b.alerts.join(' ')).not.toMatch(/sous le minimum de la convention/);
+  });
+});
