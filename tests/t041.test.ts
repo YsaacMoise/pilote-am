@@ -5,6 +5,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Contract, DayRec, Planning } from '../src/engine/model';
 import { makeCtx, sickDeductible, sickLectures } from '../src/engine/payroll';
+import { RATES, dateLongue, entretienHoraireMin, minConvDepuis, minimumTitreAmAp, ratesConnus, repasAvantageAu, repasAvantageParAnnee, valeurDepuis, type Rates } from '../src/engine/rates';
+import { eurosTexte } from '../src/engine/money';
+import { controle } from '../src/engine/controle';
+import { computeMonth } from '../src/engine/month';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
   const p: Planning = {};
@@ -44,5 +48,66 @@ describe('T-041 M-6 : art. 105, certificat qui couvre le week-end après le dern
     const ctx = makeCtx(contract(), malade(['09', '10', '11', '12', '13', '16', '17', '18', '19', '20', '23']), [], '2026-04-01');
     expect(sickDeductible(ctx).size).toBe(10);
     expect(sickLectures(ctx).aConfirmer.size).toBe(0);
+  });
+});
+
+
+// R-2 : les textes qui citent un barème le lisent dans rates.ts à la date du calcul (valeurs du tableau RATES,
+// sources dans ses lignes : arrêté du 22 mai 2026, Urssaf mise à jour du 01/06/2026).
+describe('T-041 R-2 : montants et dates de barème lus dans rates.ts', () => {
+  it('au 18/11/2026 : minimum depuis le 1er juin 2026, entretien 0,435 € de l’heure et 2,65 € par jour', () => {
+    expect(minConvDepuis('2026-11-18')).toBe('2026-06-01');
+    expect(dateLongue(minConvDepuis('2026-11-18')!)).toBe('1er juin 2026');
+    expect(eurosTexte(entretienHoraireMin('2026-11-18')!)).toBe('0,435 €');
+    expect(eurosTexte(ratesConnus('2026-11-18').entretienPlancherJour)).toBe('2,65 €');
+    expect(minimumTitreAmAp('2026-11-18')).toBe(437);
+    expect(repasAvantageAu('2026-11-18')).toBe(550);
+    expect(repasAvantageParAnnee()).toEqual([{ annee: '2026', montant: 550 }]);
+  });
+  it('format des montants cités : 875 €, 1 750 €, 5 €, 2,60 €', () => {
+    expect(eurosTexte(87500)).toBe('875 €');
+    expect(eurosTexte(175000)).toBe('1 750 €');
+    expect(eurosTexte(500)).toBe('5 €');
+    expect(eurosTexte(260)).toBe('2,60 €');
+  });
+  it('une revalorisation ajoutée dans RATES change les textes (SMIC et MG au 1er décembre, grille au 1er janvier)', () => {
+    const base = RATES.at(-1)!;
+    const dec: Rates = { ...base, from: '2026-12-01', smic: base.smic + 20, mg: base.mg + 7, source: 'test' };
+    const jan: Rates = { ...dec, from: '2027-01-01', minConvBrut: base.minConvBrut + 10, minConvNet: (base.minConvNet ?? 0) + 8, repasAvantage: undefined, source: 'test' };
+    RATES.push(dec, jan);
+    try {
+      // SMIC et MG changent, la grille non : le minimum date toujours du 1er juin 2026, l'entretien suit le MG.
+      expect(minConvDepuis('2026-12-15')).toBe('2026-06-01');
+      expect(entretienHoraireMin('2026-12-15')).toBe((base.mg + 7) / 10);
+      expect(minimumTitreAmAp('2026-12-15')).toBe(437);
+      // La grille change : nouvelle date, et le minimum avec le titre AM-AP n'est plus cité (valeur non connue).
+      expect(minConvDepuis('2027-01-15')).toBe('2027-01-01');
+      expect(minimumTitreAmAp('2027-01-15')).toBeUndefined();
+      expect(repasAvantageAu('2027-01-15')).toBeUndefined();
+      // Contrôle du bulletin : la date du minimum net vient de la grille, pas de la dernière ligne de barèmes.
+      expect(valeurDepuis('2026-12-31', 'minConvNet')).toBe('2026-06-01');
+    } finally {
+      RATES.splice(RATES.indexOf(dec), 2);
+    }
+  });
+  it('minimum net : date de la première ligne qui porte la valeur (1er janvier 2025, pas avant)', () => {
+    expect(valeurDepuis('2025-02-15', 'minConvNet')).toBe('2025-01-01');
+    expect(valeurDepuis('2024-06-15', 'minConvNet')).toBeUndefined();
+  });
+});
+
+describe('T-041 R-2 : contrôle du bulletin, date du minimum net', () => {
+  it('avec une ligne SMIC au 1er décembre 2026, le minimum net de décembre date toujours du 01/06/2026', () => {
+    const base = RATES.at(-1)!;
+    const dec: Rates = { ...base, from: '2026-12-01', smic: base.smic + 20, mg: base.mg + 7, source: 'test' };
+    RATES.push(dec);
+    try {
+      const ctx = makeCtx(contract({ rateNet: 300 }), [], [], '2027-01-05');
+      const r = computeMonth(ctx, '2026-12');
+      const w = controle({ id: 'b', cid: 'c1', month: '2026-12', source: 'manuel' }, r, 300).find((x) => x.title === 'Taux du contrat sous le minimum')!;
+      expect(w.detail).toMatch(/\(3,28\s€\) depuis le 01\/06\/2026/);
+    } finally {
+      RATES.splice(RATES.indexOf(dec), 1);
+    }
   });
 });

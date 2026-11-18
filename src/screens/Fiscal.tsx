@@ -2,7 +2,8 @@ import { useState } from 'preact/hooks';
 import { ctxFor, useStore } from '../store';
 import { monthOf, today } from '../engine/dates';
 import { fiscalYear } from '../engine/fiscal';
-import { euros } from '../engine/money';
+import { euros, eurosTexte } from '../engine/money';
+import { repasAvantageParAnnee } from '../engine/rates';
 import { Banner, Gommette, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 
@@ -55,7 +56,7 @@ export function Fiscal() {
           <summary>Comment c’est calculé</summary>
           <div class="more-body">
             <p>Article 80 sexies du code général des impôts : pour chaque enfant et chaque jour d’accueil, l’abattement vaut 3 fois le SMIC horaire (4 fois pour un enfant en situation de handicap ou de maladie), au prorata si la journée dure moins de 8 heures. Le SMIC retenu est celui en vigueur le jour de la garde.</p>
-            <p>Quand les parents fournissent les repas, chaque jour d’accueil ajoute la valeur d’un repas aux sommes reçues (5,50 € en 2026 selon l’Urssaf ; pour les années d’avant, l’app ne connaît pas la valeur et te le dit) : c’est un avantage en nature imposable, selon impots.gouv.</p>
+            <p>Quand les parents fournissent les repas, chaque jour d’accueil ajoute la valeur d’un repas aux sommes reçues ({repasAvantageParAnnee().map((x) => `${eurosTexte(x.montant)} en ${x.annee}`).join(', ')} selon l’Urssaf ; pour les autres années, l’app ne connaît pas la valeur et te le dit) : c’est un avantage en nature imposable, selon impots.gouv.</p>
             <p>Le salaire net imposable est estimé : net versé + CSG non déductible et CRDS (2,9 % de 98,25 % du brut estimé). Les frais kilométriques ne sont pas comptés.</p>
           </div>
         </details>

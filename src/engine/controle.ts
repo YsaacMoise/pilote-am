@@ -2,7 +2,7 @@
 import { lastDay } from './dates';
 import type { Bulletin } from './model';
 import type { MonthResult } from './month';
-import { libelleMinimumBrut, MESSAGE_PERIODE_NON_GEREE, MINIMUM_SANS_TITRE, minimumBrut, ratesAt } from './rates';
+import { libelleMinimumBrut, MESSAGE_PERIODE_NON_GEREE, MINIMUM_SANS_TITRE, minimumBrut, ratesAt, valeurDepuis } from './rates';
 import { euros } from './money';
 
 export type Level = 'ok' | 'info' | 'warn';
@@ -59,7 +59,7 @@ export function controle(b: Bulletin, r: MonthResult, rateNet: number): Check[] 
   } else if (rates.minConvNet === undefined) {
     out.push({ level: 'info', title: 'Minimum net non contrôlé', detail: `Aucun repère net officiel n’est dans l’app pour cette période. Compare le brut horaire du contrat au minimum brut : ${minB ? libelleMinimumBrut(minB) : euros(rates.minConvBrut)}. ${MINIMUM_SANS_TITRE}` });
   } else if (rateNet < rates.minConvNet) {
-    out.push({ level: 'warn', title: 'Taux du contrat sous le minimum', detail: `Ton taux net (${euros(rateNet)}) est inférieur au minimum conventionnel net (${euros(rates.minConvNet)}) depuis le ${rates.from.split('-').reverse().join('/')}. ${MINIMUM_SANS_TITRE}` });
+    out.push({ level: 'warn', title: 'Taux du contrat sous le minimum', detail: `Ton taux net (${euros(rateNet)}) est inférieur au minimum conventionnel net (${euros(rates.minConvNet)}) depuis le ${valeurDepuis(lastDay(b.month), 'minConvNet')!.split('-').reverse().join('/')}. ${MINIMUM_SANS_TITRE}` });
   } else {
     out.push({ level: 'info', title: 'Minimum vérifié sans le titre', detail: `Ton taux net n’est pas sous le minimum conventionnel net (${euros(rates.minConvNet)}). ${MINIMUM_SANS_TITRE}` });
   }

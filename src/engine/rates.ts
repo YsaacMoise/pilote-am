@@ -1,6 +1,6 @@
 // Taux réglementaires datés. Une revalorisation = une ligne ajoutée en bas.
 // Montants en centimes entiers. Sources dans le README.
-import type { ISODate } from './dates';
+import { MOIS_NOMS, type ISODate } from './dates';
 
 export interface Rates {
   from: ISODate;
@@ -172,3 +172,63 @@ export function baremesProvisoires(d: ISODate): boolean {
 
 export const MESSAGE_BAREMES_PROVISOIRES =
   'Les barèmes officiels de cette période (SMIC, minimum garanti, cotisations, aide de la CAF) ne sont pas encore tous publiés. Ce calcul reprend les derniers barèmes connus : les montants pourront changer.';
+
+/*
+ * T-041 (R-2, relecture V4) : les textes des écrans qui citent un montant ou une date de barème les lisent ici,
+ * à la date du calcul, au lieu de les écrire en dur. Une revalorisation ajoutée dans RATES change donc aussi les textes.
+ */
+
+/** Premier jour depuis lequel la valeur `champ` en vigueur le jour `d` est inchangée (une ligne sans la valeur arrête). */
+export function valeurDepuis(d: ISODate, champ: 'smic' | 'mg' | 'minConvBrut' | 'minConvNet'): ISODate | undefined {
+  const r = ratesAt(d);
+  if (!r || r[champ] === undefined) return undefined;
+  let depuis = r.from;
+  for (let k = RATES.indexOf(r) - 1; k >= 0 && RATES[k][champ] === r[champ]; k--) depuis = RATES[k].from;
+  return depuis;
+}
+
+/** Premier jour depuis lequel le minimum conventionnel brut en vigueur le jour `d` a sa valeur actuelle. */
+export function minConvDepuis(d: ISODate): ISODate | undefined {
+  return valeurDepuis(d, 'minConvBrut');
+}
+
+/** Plancher horaire d'entretien (art. 114.1, 90 % du MG pour 9 h, soit MG ÷ 10), en centimes non arrondis. */
+export function entretienHoraireMin(d: ISODate): number | undefined {
+  const r = ratesAt(d);
+  return r ? r.mg / 10 : undefined;
+}
+
+/**
+ * Salaire horaire minimum brut avec le titre Assistant maternel – Assistant parental. Valeur reprise telle quelle de
+ * Simulateur.tsx (« avenant n° 10, 1er juin 2026 »), non relue à la source par T-041. Elle ne vaut que tant que la grille
+ * de l'annexe 5 n'a pas changé depuis sa date : sinon `undefined`, et l'écran ne cite pas de montant.
+ */
+const MINIMUM_TITRE_AM_AP: { from: ISODate; brut: number }[] = [{ from: '2026-06-01', brut: 437 }];
+export function minimumTitreAmAp(d: ISODate): number | undefined {
+  const depuis = minConvDepuis(d);
+  return MINIMUM_TITRE_AM_AP.find((x) => x.from === depuis)?.brut;
+}
+
+/**
+ * Valeur d'un repas (avantage en nature) au jour `d`, en centimes ; `undefined` si la valeur de la période n'a pas été
+ * lue à la source (voir `repasAvantage`). L'année affichée à côté est celle de `d`.
+ */
+export function repasAvantageAu(d: ISODate): number | undefined {
+  return ratesAt(d)?.repasAvantage;
+}
+
+/** Valeurs du repas lues à la source, par année (« 5,50 € en 2026 ») ; une année n'apparaît qu'avec une valeur unique. */
+export function repasAvantageParAnnee(): { annee: string; montant: number }[] {
+  const out = new Map<string, Set<number>>();
+  for (const r of RATES) if (r.repasAvantage !== undefined) {
+    const an = r.from.slice(0, 4);
+    out.set(an, (out.get(an) ?? new Set()).add(r.repasAvantage));
+  }
+  return [...out].filter(([, v]) => v.size === 1).map(([annee, v]) => ({ annee, montant: [...v][0] }));
+}
+
+/** Date en toutes lettres, « 1er juin 2026 » */
+export function dateLongue(d: ISODate): string {
+  const j = Number(d.slice(8, 10));
+  return `${j === 1 ? '1er' : j} ${MOIS_NOMS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}`;
+}

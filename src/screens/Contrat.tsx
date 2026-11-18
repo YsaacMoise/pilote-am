@@ -2,9 +2,9 @@ import { useEffect, useState } from 'preact/hooks';
 import { deleteContract, logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
 import { addMonthsToDate, deMois, firstDay, mondayOf, monthOf, shortDate, today, JOUR_NOMS, type Month } from '../engine/dates';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, semainesSansAccueilAnnee, termsAt, weeklyMinutes } from '../engine/payroll';
-import { entretienPlancher, MINIMUM_SANS_TITRE, ratesConnus } from '../engine/rates';
+import { entretienPlancher, MINIMUM_SANS_TITRE, ratesConnus, repasAvantageAu } from '../engine/rates';
 import { soldesDeDepart } from '../engine/conges';
-import { euros, hoursLabel } from '../engine/money';
+import { euros, eurosTexte, hoursLabel } from '../engine/money';
 import type { Avenant, Contract, Plage, Planning, Terms } from '../engine/model';
 import { Banner, CHILD_COLORS, Choices, COLOR_NAMES, couleurLibre, couleursPrises, DateInput, EuroInput, Gommette, NumberInput, Seg, Switch, TextInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
@@ -222,7 +222,7 @@ export function Contrat({ id }: { id?: string }) {
               onChange={(v) => set(v === 'parents' ? { repasParents: true, repasPrix: 0, repasParJour: 0 } : { repasParents: false })}
               options={[
                 { v: 'am', l: 'Moi', sub: 'Les parents me paient les repas' },
-                { v: 'parents', l: 'Les parents', sub: 'À ajouter à tes revenus pour les impôts (5,50 € par jour en 2026), l’app le compte' },
+                { v: 'parents', l: 'Les parents', sub: `À ajouter à tes revenus pour les impôts (${repasAvantageAu(today()) !== undefined ? `${eurosTexte(repasAvantageAu(today())!)} par jour en ${today().slice(0, 4)}` : `valeur de ${today().slice(0, 4)} pas encore dans l’app`}), l’app le compte` },
               ]} />
             {c.repasParents === false && (
               <div class="grid2">
