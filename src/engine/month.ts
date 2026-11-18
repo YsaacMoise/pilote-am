@@ -88,11 +88,16 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   if (r.evenementAConfirmer) out.push(`• Événement familial : ${euros(r.evenementAConfirmer)} à confirmer ensemble`);
   out.push('');
   if (r.kmAConfirmer) out.push(`• Frais kilométriques : ${r.kmAConfirmer} km à confirmer ensemble (familles qui ont demandé le trajet, enfants dans la voiture)`);
-  const aConfirmer = [r.cpAConfirmer ? 'les congés payés' : '', r.evenementAConfirmer ? 'l’événement familial' : '', r.kmAConfirmer ? 'les kilomètres' : ''].filter(Boolean);
+  const aConfirmer = partsAConfirmer(r);
   out.push(`Total à me verser : ${euros(r.netTotal + r.entretien + r.repas + r.km)}${aConfirmer.length ? `, sans ${aConfirmer.join(' ni ')} à confirmer` : ''}`);
   out.push('');
   out.push('Calcul fait avec l’application Arvela, outil d’aide indépendant de l’Urssaf : la déclaration Pajemploi fait foi.');
   out.push('');
   out.push(`Merci ! ${amName}`.trim());
   return out.join('\n');
+}
+
+/** Parts du mois sorties du total parce qu'elles sont à confirmer (T-025 C-5 : à dire partout où le total s'affiche) */
+export function partsAConfirmer(r: Pick<MonthResult, 'cpAConfirmer' | 'evenementAConfirmer' | 'kmAConfirmer'>): string[] {
+  return [r.cpAConfirmer ? 'les congés payés' : '', r.evenementAConfirmer ? 'l’événement familial' : '', r.kmAConfirmer ? 'les kilomètres' : ''].filter(Boolean);
 }

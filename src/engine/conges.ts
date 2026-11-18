@@ -526,17 +526,21 @@ export function compteur(ctx: Ctx, at: ISODate, enfantsACharge = 0): Compteur {
 }
 
 /** Base du dixième : salaires nets (hors frais) de la période, indemnités de congés versées incluses */
-export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; manquants: Month[]; aConfirmer: boolean } {
+export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; manquants: Month[]; aConfirmer: boolean; evenementAConfirmer: number } {
   return memo(ctx, `b10${y}|${enfants}`, () => {
     const p = cpPeriod(y);
     let base = 0;
     let aConfirmer = false;
+    let evenementAConfirmer = 0;
     const manquants: Month[] = [];
     for (const m of monthsBetween(monthOf(p.from), monthOf(p.to))) {
       const b = monthBase(ctx, m);
       if (!b.active) continue;
       if (b.missing) manquants.push(m);
       base += b.net;
+      // T-025 C-5 : salaire d'événement familial à confirmer, hors de `b.net`. CCN 48.1.3.1.1 : ces congés « sont
+      // assimilés à du temps de travail effectif pour la détermination du droit à congés payés ».
+      evenementAConfirmer += b.evenementAConfirmer;
       if (!b.fromHistory) {
         const cp = cpForMonth(ctx, m, enfants);
         base += cp.indemnite + cp.complement;
@@ -544,7 +548,7 @@ export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; m
         if (cp.aConfirmer) aConfirmer = true;
       }
     }
-    return { base, manquants, aConfirmer };
+    return { base, manquants, aConfirmer, evenementAConfirmer };
   });
 }
 
@@ -580,7 +584,7 @@ export interface IndemniteCP {
 export function indemnite(ctx: Ctx, y: number, enfants = 0): IndemniteCP {
   return memo(ctx, `ind${y}|${enfants}`, () => {
     const acq = acquisition(ctx, y, enfants);
-    const { base, manquants, aConfirmer: baseAC } = baseDixieme(ctx, y, enfants);
+    const { base, manquants, aConfirmer: baseAC, evenementAConfirmer: evAC } = baseDixieme(ctx, y, enfants);
     const dix = Math.round(base / 10);
     const at = `${y + 1}-06-01`;
     const mt = maintien(ctx, acq.jours, at);
@@ -599,6 +603,23 @@ export function indemnite(ctx: Ctx, y: number, enfants = 0): IndemniteCP {
       out.aConfirmer = { message: `Indemnité de congés payés à confirmer : elle dépend du nombre de jours acquis.${detail} ${acq.aConfirmer.message}`, montants, tous, baseSure: !baseAC };
     } else if (baseAC) {
       out.aConfirmer = { message: 'Indemnité de congés payés à confirmer : la règle du dixième compte l’indemnité de l’an dernier, qui est elle-même à confirmer.', montants: [], tous: [], baseSure: false };
+    }
+    // T-025 C-5 : si le salaire d'événement à confirmer change l'indemnité (le dixième l'emporte), l'indemnité est à
+    // confirmer, avec les deux montants. S'il ne la change pas (le maintien l'emporte dans les deux cas), rien ne change.
+    if (evAC > 0) {
+      const avec = Math.max(Math.round((base + evAC) / 10), mt);
+      if (avec !== out.montant) {
+        const msg = `L’indemnité de congés payés dépend d’un salaire d’événement familial encore à confirmer (${euros(evAC)}) : ${euros(avec)} s’il est payé, ${euros(out.montant)} sinon.`;
+        if (out.aConfirmer) {
+          out.aConfirmer = { ...out.aConfirmer, message: `${out.aConfirmer.message} ${msg}`, baseSure: false };
+        } else {
+          const montants = [
+            { libelle: 'événement familial payé', jours: acq.jours, montant: avec },
+            { libelle: 'événement familial non payé', jours: acq.jours, montant: out.montant },
+          ];
+          out.aConfirmer = { message: `Indemnité de congés payés à confirmer. ${msg}`, montants, tous: montants, baseSure: true };
+        }
+      }
     }
     return out;
   });

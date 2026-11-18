@@ -4,7 +4,7 @@
 // les présences, le carnet et les montants du mois.
 import { addDays, monthOf, addMonths, type ISODate, type Month } from '../engine/dates';
 import { dayInfo, inContract, type Ctx } from '../engine/payroll';
-import { computeMonth, declarationLines } from '../engine/month';
+import { computeMonth, declarationLines, partsAConfirmer } from '../engine/month';
 import { CHILD_ABS_LABEL, type Journal, type Plage, type Presence } from '../engine/model';
 import { detailReveilOublie, reveilOublie } from '../engine/carnet';
 
@@ -41,6 +41,8 @@ export interface MoisParent {
   repas: number;
   km: number;
   lignes: LigneDecl[];
+  /** T-025 C-5 : parts sorties du total, à confirmer (« l’événement familial », « les kilomètres »…). Absent : aucune. */
+  aConfirmer?: string[];
   joursAccueil: number;
   absences: number;
 }
@@ -94,6 +96,7 @@ function moisParent(ctx: Ctx, m: Month, enfants: number): MoisParent | null {
     repas: r.repas,
     km: r.km,
     lignes: declarationLines(ctx, r).map((l) => (l.hint ? { label: l.label, value: l.value, hint: l.hint } : { label: l.label, value: l.value })),
+    ...(partsAConfirmer(r).length ? { aConfirmer: partsAConfirmer(r) } : {}),
     joursAccueil: r.presenceDays,
     absences,
   };

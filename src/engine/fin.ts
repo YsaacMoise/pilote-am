@@ -122,6 +122,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // Salaires bruts depuis le début du contrat
   let totalBrut = 0;
   let cpManquants = false;
+  let evenementManquant = false;
   const manquants: Month[] = [];
   for (const m of monthsBetween(monthOf(c.start), monthOf(dernierJour))) {
     const b = monthBase(endCtx, m);
@@ -131,6 +132,8 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     const cp = cpForMonth(endCtx, m, enfants);
     totalBrut += netToBrut(cp.indemnite + cp.complement, lastDay(m));
     if (cp.aConfirmer) cpManquants = true;
+    // T-025 C-5 : salaire d'un événement familial à confirmer, absent de ce total (CCN 48.1.3.1.1 : pas de réduction de la rémunération).
+    if (b.evenementAConfirmer) evenementManquant = true;
   }
   if (manquants.length) {
     alertes.push(`Historique incomplet : ${manquants.length} mois sans bulletin. Ajoute les bulletins manquants dans l’historique pour un calcul juste.`);
@@ -182,9 +185,10 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     ruptureExplication = 'Pas d’indemnité pendant la période d’essai.';
   }
 
-  const ruptureAConfirmer = cpManquants && indemniteRupture > 0;
+  const ruptureAConfirmer = (cpManquants || evenementManquant) && indemniteRupture > 0;
   if (ruptureAConfirmer) {
-    alertes.push('Indemnité de rupture à confirmer : elle ne compte pas encore les congés payés à confirmer.');
+    const manque = [cpManquants ? 'les congés payés' : '', evenementManquant ? 'le salaire d’événement familial' : ''].filter(Boolean).join(' ni ');
+    alertes.push(`Indemnité de rupture à confirmer : elle ne compte pas encore ${manque} à confirmer.`);
   }
 
   // Régularisation : heures réellement dues (planning, hors absences retenues) contre heures payées,

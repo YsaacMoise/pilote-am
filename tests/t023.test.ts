@@ -10,6 +10,9 @@ import { controleKm } from '../src/engine/km';
 import type { DayRec } from '../src/engine/model';
 import { controle } from '../src/engine/controle';
 import { fiscalYear } from '../src/engine/fiscal';
+import { finDeContrat } from '../src/engine/fin';
+import { indemnite } from '../src/engine/conges';
+import { buildSnapshot } from '../src/partage/snapshot';
 import { entretienPlancher, minimumBrut, PREMIERE_DATE_GEREE, ratesAt } from '../src/engine/rates';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
@@ -387,5 +390,45 @@ describe('T-025 C-3 : minimum horaire brut = le plus haut de la grille et de 0,2
     expect(r.cpIndemnite + r.cpComplement + r.complMin + r.majContratMin + r.majMin).toBe(0);
     const b: Bulletin = { id: 'b', cid: 'c1', month: '2022-05', source: 'manuel', heures: 100, brut: 30000, net: r.netTotal };
     expect(controle(b, r, 234).find((x) => x.title === 'Brut horaire sous le minimum')?.detail).toMatch(/3,05 €/);
+  });
+});
+
+describe('T-025 C-5 : le salaire d’événement à confirmer n’est retiré en silence d’aucun calcul qui en dépend', () => {
+  // CCN 48.1.3.1.1 (lu le 18/11/2026) : « Ces congés n'entraînent pas de réduction de la rémunération. Ils sont assimilés
+  // à du temps de travail effectif pour la détermination du droit à congés payés et au titre de l'ancienneté. »
+  // Événement saisi sans nature (saisie d'avant T-023) : son salaire est « à confirmer » (T-023 (2)).
+  const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01' });
+  const sansNature: AmLeave = { id: 'x', type: 'evenement', from: '2026-03-02', to: '2026-03-02' };
+  const ctx = (leaves: AmLeave[], t = '2026-10-31') => makeCtx(c, [], leaves, t);
+
+  it('indemnité de rupture (1/80e des salaires) : à confirmer, avec la raison', () => {
+    expect(finDeContrat(ctx([]), '2026-10-28', 'retrait').ruptureAConfirmer).toBe(false);
+    const f = finDeContrat(ctx([sansNature]), '2026-10-28', 'retrait');
+    expect(f.ruptureAConfirmer).toBe(true);
+    expect(f.alertes.join(' ')).toMatch(/salaire d’événement familial/);
+  });
+  it('compteur fiscal : le montant non compté est dit', () => {
+    expect(fiscalYear(ctx([sansNature]), 2026).nonGere).toMatch(/Événement familial à confirmer/);
+    expect(fiscalYear(ctx([]), 2026).nonGere ?? '').not.toMatch(/Événement familial/);
+  });
+  it('dixième des congés : si le salaire à confirmer change l’indemnité, elle est à confirmer avec les deux montants', () => {
+    // Avenant au 01/05/2026 qui baisse le taux à 3 € net : le maintien de salaire (calculé au taux de juin) passe sous le
+    // dixième, qui dépend alors du salaire à confirmer.
+    const c2 = contract({ start: '2025-09-01', trackedFrom: '2025-09-01', avenants: [{ id: 'a', from: '2026-05-01', changes: { rateNet: 300 } }] });
+    const sans = indemnite(makeCtx(c2, [], [], '2026-10-31'), 2025);
+    expect(sans.methode).toBe('dixieme');
+    expect(sans.aConfirmer).toBeUndefined();
+    const avec = indemnite(makeCtx(c2, [], [sansNature], '2026-10-31'), 2025);
+    expect(avec.aConfirmer?.message).toMatch(/salaire d’événement familial encore à confirmer/);
+    expect(avec.aConfirmer?.montants.map((x) => x.montant)).toContain(avec.montant);
+    expect(avec.aConfirmer?.montants.some((x) => x.montant > avec.montant)).toBe(true);
+  });
+  it('dixième des congés : si le maintien l’emporte dans les deux cas, rien n’est à confirmer', () => {
+    expect(indemnite(ctx([]), 2025).methode).toBe('maintien');
+    expect(indemnite(ctx([sansNature]), 2025).aConfirmer).toBeUndefined();
+  });
+  it('page des parents : le total du mois dit ce qui est sorti du total', () => {
+    const snap = buildSnapshot({ ctx: makeCtx(c, [], [sansNature], '2026-04-10'), journal: [], amName: 'Ana', enfants: 0, now: 1 });
+    expect(snap.mois.find((x) => x.month === '2026-03')?.aConfirmer).toEqual(['l’événement familial']);
   });
 });
