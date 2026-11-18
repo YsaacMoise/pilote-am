@@ -1,6 +1,7 @@
 // Calendrier de l'accueil, mois par mois : ce que la famille paie réellement, et quand l'argent des aides arrive.
 // Règles et sources : docs/simulateur-regles.md (étape 4). Montants en centimes, aux barèmes en vigueur le jour de la simulation.
-import type { ISODate } from './dates';
+import { addDays, weekday, type ISODate } from './dates';
+import { holidaysOf } from './holidays';
 import {
   CREDIT_FORFAIT_ENTRETIEN_JOUR, CREDIT_PLAFOND_DEPENSES, CREDIT_TAUX, ageMois, cmgParams, cotisationsDuMois, derniereAnneeCredit, simuler,
   type SimInput, type SimResult,
@@ -27,6 +28,8 @@ export interface MoisCalendrier {
   /** Coût réel du mois : reste − crédit reçu */
   net: number;
   evenements: Evenement[];
+  /** Montant du mois à confirmer, et pourquoi (mois d'adaptation hors cas tranché par les textes) */
+  aConfirmer?: string;
 }
 
 export interface Calendrier {
@@ -46,9 +49,68 @@ export const moisSuivant = (m: string, n = 1): string => {
   return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`;
 };
 
+/** Jours fériés d'un mois « AAAA-MM » (Alsace-Moselle : Vendredi saint et 26 décembre en plus, comme `feriesParJour`). */
+function feriesDuMois(m: string, alsaceMoselle: boolean): ISODate[] {
+  const y = Number(m.slice(0, 4));
+  const jours = [...holidaysOf(y).keys()];
+  if (alsaceMoselle) {
+    const lundiPaques = [...holidaysOf(y).entries()].find(([, n]) => n === 'Lundi de Pâques')?.[0];
+    if (lundiPaques) jours.push(addDays(lundiPaques, -3));
+    jours.push(`${y}-12-26`);
+  }
+  return jours.filter((j) => j.startsWith(`${m}-`));
+}
+
+export const MESSAGE_ADAPTATION_A_CONFIRMER = 'Premier mois (adaptation) à confirmer.';
+
+/**
+ * Mois d'adaptation (T-035b). CCN IDCC 3239, socle AM, art. 108.1 al. 3 : « Pendant la période d'adaptation, le particulier
+ * employeur déduit du salaire mensualisé les heures de travail non effectuées par l'assistant maternel en procédant à un
+ * calcul de déduction d'absence conformément aux dispositions de l'article 111 ». Urssaf, « Préparer le contrat de travail »
+ * (12/03/2026) : formule en heures « quel que soit le type de contrat » ; dénominateur = « nombre exact d'heures de travail
+ * que le salarié aurait dû effectuer dans le mois considéré (il ne s'agit pas du nombre d'heures mensualisées) » ;
+ * heures à déclarer = « Rémunération due […] ÷ taux horaire net ». L'embauche en cours de mois (T-034) se déduit par la même
+ * formule sur le même dénominateur : les deux se cumulent dans les heures saisies.
+ * Tranché seulement en année complète (52 semaines), sans jour férié sur un jour d'accueil du mois, sans heures au-delà
+ * du planning ni heures majorées. Sinon le montant est calculé par la même formule mais marqué « à confirmer ».
+ */
+export function moisAdaptation(i: SimInput, r: SimResult, m: string, salaireMensualise: number): { salaire: number; heures: number; heuresPrevues: number; aConfirmer?: string } {
+  const [y, mo] = m.split('-').map(Number);
+  const nbJours = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  const minutesJour = new Map(r.parJour.map((p) => [p.jour, p.minutes]));
+  const feries = new Set(feriesDuMois(m, i.alsaceMoselle));
+  let prevuesMin = 0;
+  let ferieAccueil = false;
+  for (let k = 1; k <= nbJours; k++) {
+    const jour = `${m}-${String(k).padStart(2, '0')}`;
+    const min = minutesJour.get(weekday(jour)) ?? 0;
+    prevuesMin += min;
+    if (min > 0 && feries.has(jour)) ferieAccueil = true;
+  }
+  const faitesMin = Math.max(0, Math.round(i.adaptationHeures * 60));
+  const nonFaitesMin = Math.max(0, prevuesMin - faitesMin);
+  const salaire = prevuesMin > 0 ? Math.round(salaireMensualise - (salaireMensualise * nonFaitesMin) / prevuesMin) : 0;
+  const heures = r.tauxNet > 0 ? salaire / r.tauxNet : 0;
+  const raisons: string[] = [];
+  if (i.yearType === 'incomplete') {
+    raisons.push('Contrat sur 46 semaines ou moins : la convention (articles 108.1 et 111) retient les jours non travaillés, Urssaf les heures. L’app retient les heures et suppose l’enfant accueilli toutes les semaines du mois.');
+  }
+  if (ferieAccueil) {
+    raisons.push('Un jour férié tombe sur un jour d’accueil ce mois-là : il est payé ou non selon l’article 47 de la convention. L’app le compte comme une heure non faite.');
+  }
+  if (faitesMin > prevuesMin) {
+    raisons.push(`Les heures saisies dépassent les ${Math.round(prevuesMin / 60)} heures prévues ce mois-là : les heures en plus ne sont pas comptées.`);
+  }
+  if (r.heuresMajMoisMin > 0) {
+    raisons.push('Le contrat dépasse 45 heures par semaine : les heures majorées du premier mois ne sont pas calculées.');
+  }
+  return { salaire, heures, heuresPrevues: prevuesMin / 60, aConfirmer: raisons.length ? `${MESSAGE_ADAPTATION_A_CONFIRMER} ${raisons.join(' ')}` : undefined };
+}
+
 /**
  * Le calendrier suit le contrat depuis `i.debut`. Hypothèses (affichées à l'écran) :
- * - salaire mensualisé chaque mois ; le premier mois, s'il y a adaptation, heures réelles × taux net (CCN art. 95) ;
+ * - salaire mensualisé chaque mois ; le premier mois, s'il y a adaptation, salaire mensualisé moins les heures non faites
+ *   (déduction d'absence, CCN art. 108.1 et 111 ; Urssaf « Préparer le contrat », formule en heures) : voir `moisAdaptation` ;
  * - entretien, repas et kilomètres à leur moyenne mensuelle (jours fériés répartis) ;
  * - année incomplète : congés payés = 10 % des salaires nets de la période du 1er juin au 31 mai, versés en juin
  *   ou au mois du congé principal (CCN art. 102) ; année complète : compris dans le salaire ;
@@ -88,12 +150,14 @@ export function calendrier(i: SimInput, d: ISODate, r: SimResult = simuler(i, d)
   for (let m = debut; m <= finCalcul; m = moisSuivant(m)) {
     const mo = Number(m.slice(5, 7));
     const adaptation = m === debut && i.adaptationHeures > 0;
+    const adapt = adaptation ? moisAdaptation(i, r, m, salaire1) : undefined;
     const ratioJours = adaptation ? Math.min(1, (i.adaptationJours || 0) / Math.max(1, r.joursMois)) : 1;
-    const salaire = adaptation ? Math.round(i.adaptationHeures * r.tauxNet) : salaire1;
+    const salaire = adapt ? adapt.salaire : salaire1;
     const reduc = adaptation ? 0 : reduc1;
     const entretien = Math.round(entretien1 * ratioJours);
     const repas = Math.round(repas1 * ratioJours);
-    const heuresMois = adaptation ? i.adaptationHeures : heures;
+    // Heures déclarées du mois d'adaptation : rémunération due ÷ taux horaire net (Urssaf, « Préparer le contrat »).
+    const heuresMois = adapt ? adapt.heures : heures;
     const evenements: Evenement[] = adaptation ? ['adaptation'] : [];
 
     // Congés payés (année incomplète) : la période se clôt le 31 mai ; versement en juin ou au congé principal.
@@ -127,7 +191,7 @@ export function calendrier(i: SimInput, d: ISODate, r: SimResult = simuler(i, d)
     verse = Math.round(verse);
     autres = Math.min(autres, Math.max(0, verse + cot - cmg));
     const reste = verse + cot - cmg - autres;
-    lignes.push({ mois: m, verse, conges: conges * n, cotisationsReste: cot, cmg, autresAides: autres, reste, credit: 0, net: reste, evenements: [...new Set(evenements)], depenses });
+    lignes.push({ mois: m, verse, conges: conges * n, cotisationsReste: cot, cmg, autresAides: autres, reste, credit: 0, net: reste, evenements: [...new Set(evenements)], depenses, ...(adapt?.aConfirmer ? { aConfirmer: adapt.aConfirmer } : {}) });
   }
 
   // Crédit d'impôt par année civile de dépenses, par enfant (moins de 6 ans au 1er janvier).

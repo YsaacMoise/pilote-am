@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calendrier, levierTarif, selonRevenus, tarifMaxSansDepassement, MOIS_CALENDRIER } from '../src/engine/calendrier';
+import { MESSAGE_ADAPTATION_A_CONFIRMER, calendrier, levierTarif, moisAdaptation, selonRevenus, tarifMaxSansDepassement, MOIS_CALENDRIER } from '../src/engine/calendrier';
 import { planningRegulier, simuler, simulationParDefaut } from '../src/engine/simulation';
 
 const D = '2026-11-01';
@@ -42,11 +42,40 @@ describe('calendrier mois par mois (étape 4)', () => {
     expect(c.mois.find((m) => m.mois === '2028-06')!.conges).toBe(Math.round(r.salaire * 12 * 0.1));
   });
 
-  it('adaptation : premier mois payé aux heures réelles', () => {
-    const c = calendrier({ ...base, adaptationHeures: 40, adaptationJours: 8 }, D);
+  // T-035b. CCN art. 108.1 al. 3 et 111 ; Urssaf « Préparer le contrat » : salaire mensualisé − (salaire mensualisé × heures
+  // d'absence ÷ heures exactes qui auraient dû être faites dans le mois). Février 2027 : 20 jours ouvrés du lundi au vendredi,
+  // 8 h par jour = 160 h prévues, aucun férié. 40 h faites → 120 h d'absence → un quart du salaire mensualisé.
+  it('adaptation, année complète : salaire mensualisé moins les heures non faites (art. 108.1 et 111)', () => {
+    const i = { ...base, debut: '2027-02', adaptationHeures: 40, adaptationJours: 5 };
+    const r = simuler(i, D);
+    const S = r.parEnfant.salaire;
+    const a = moisAdaptation(i, r, '2027-02', S);
+    expect(a.heuresPrevues).toBe(160);
+    expect(a.salaire).toBe(Math.round(S - (S * 120) / 160));
+    expect(a.heures).toBeCloseTo(a.salaire / r.tauxNet, 6);
+    expect(a.aConfirmer).toBeUndefined();
+    const c = calendrier(i, D);
     expect(c.mois[0].evenements).toContain('adaptation');
+    expect(c.mois[0].aConfirmer).toBeUndefined();
     expect(c.mois[0].verse).toBeLessThan(c.mois[1].verse);
-    expect(c.mois[0].verse).toBeGreaterThanOrEqual(40 * 398);
+    expect(c.mois[1].aConfirmer).toBeUndefined();
+  });
+
+  it('adaptation : toutes les heures prévues faites → aucune déduction', () => {
+    const i = { ...base, debut: '2027-02', adaptationHeures: 160, adaptationJours: 20 };
+    const r = simuler(i, D);
+    expect(moisAdaptation(i, r, '2027-02', r.parEnfant.salaire).salaire).toBe(r.parEnfant.salaire);
+  });
+
+  it('adaptation à confirmer : 46 semaines (A-08), férié sur un jour d’accueil (art. 47), heures au-delà du planning', () => {
+    const inc = calendrier({ ...base, debut: '2027-02', yearType: 'incomplete' as const, semainesAbsence: 4, adaptationHeures: 40, adaptationJours: 5 }, D);
+    expect(inc.mois[0].aConfirmer).toContain(MESSAGE_ADAPTATION_A_CONFIRMER);
+    expect(inc.mois[0].aConfirmer).toContain('46 semaines');
+    // Décembre 2026 : Noël tombe un vendredi, jour d'accueil.
+    const dec = calendrier({ ...base, debut: '2026-12', adaptationHeures: 40, adaptationJours: 5 }, D);
+    expect(dec.mois[0].aConfirmer).toContain('férié');
+    const plus = calendrier({ ...base, debut: '2027-02', adaptationHeures: 170, adaptationJours: 20 }, D);
+    expect(plus.mois[0].aConfirmer).toContain('160 heures prévues');
   });
 
   it('fin de l’aide de la CAF après le mois des 6 ans ; cotisations à la charge de la famille ensuite', () => {
