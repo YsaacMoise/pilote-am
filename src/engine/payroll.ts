@@ -627,32 +627,49 @@ export function planningBrutMin(t: Contract, d: ISODate): number {
  * Régularisation (année incomplète, art. 109.2) : salaire des heures prévues réellement dues (hors absences retenues),
  * chacune au taux de son jour, moins le salaire de base versé par la mensualisation sur [from, to].
  * `cur` donne le salaire de base du mois en cours de calcul (évite la récursion).
+ * T-038 (B-1, relecture V4) : les jours « à confirmer » (événement familial, enfant malade selon l'art. 105, congés au-delà
+ * des droits) ne sont ni payés ni retenus dans leur mois ; leur salaire est montré à part. La régularisation ne doit pas
+ * le verser en silence. Deux lectures : `dus` (ces jours sont dus, donc payés dans leur mois : leur salaire compte dans
+ * les heures dues et dans ce qui est versé) ; `retenus` (ils ne sont pas dus : ni dans les heures dues ni dans ce qui est
+ * versé). Voir `regularisationLectures`.
  */
-export function regularisation(ctx: Ctx, from: ISODate, to: ISODate, cur?: { m: Month; payees: number }): { minutes: number; montant: number } {
+export function regularisation(ctx: Ctx, from: ISODate, to: ISODate, cur?: { m: Month; payees: number; aConfirmer?: number }, lecture: 'dus' | 'retenus' = 'dus'): { minutes: number; montant: number } {
   const c = ctx.c;
   if (to < from) return { minutes: 0, montant: 0 };
   let dues = 0, payees = 0;
   for (const d of eachDay(from, to)) {
     const di = dayInfo(ctx, d);
-    if (di.inDivisor && !di.deducted) dues += (di.plannedMin * termsAt(c, d).rateNet) / 60;
+    if (di.inDivisor && !di.deducted && !(lecture === 'retenus' && di.aConfirmer)) dues += (di.plannedMin * termsAt(c, d).rateNet) / 60;
   }
   for (const m of monthsBetween(monthOf(from), monthOf(to))) {
-    if (cur && m === cur.m) { payees += cur.payees; continue; }
+    if (cur && m === cur.m) { payees += cur.payees + (lecture === 'dus' ? cur.aConfirmer ?? 0 : 0); continue; }
     const b = monthBase(ctx, m);
     if (!b.active || b.fromHistory) continue;
+    const verse = b.base + (lecture === 'dus' ? b.evenementAConfirmer : 0);
     if (m === monthOf(from) && from > c.start && from.slice(8) !== '01') {
       // Mois entamé : seule la part postérieure au début de la période compte.
       let part = 0;
       for (const d of eachDay(from, lastDay(m))) if (inContract(c, d)) part += planningBrutMin(termsAt(c, d), d);
-      payees += (b.base * part) / (b.contractMin || 1);
+      payees += (verse * part) / (b.contractMin || 1);
     } else {
-      payees += b.base;
+      payees += verse;
     }
   }
   const montant = Math.max(0, Math.round(dues - payees));
   const taux = termsAt(c, to).rateNet;
   return { minutes: taux ? Math.round((montant * 60) / taux) : 0, montant };
 }
+
+/** T-038 (B-1) : les deux lectures de la régularisation ; `sure` faux si elles diffèrent (montant « à confirmer »). */
+export function regularisationLectures(ctx: Ctx, from: ISODate, to: ISODate, cur?: { m: Month; payees: number; aConfirmer?: number }): { dus: { minutes: number; montant: number }; retenus: { minutes: number; montant: number }; sure: boolean } {
+  const dus = regularisation(ctx, from, to, cur, 'dus');
+  const retenus = regularisation(ctx, from, to, cur, 'retenus');
+  return { dus, retenus, sure: dus.montant === retenus.montant };
+}
+
+/** T-038 (B-1) : phrase qui explique les deux lectures d'une régularisation qui dépend de jours « à confirmer » */
+export const libelleRegulJoursAConfirmer = (dus: number, retenus: number): string =>
+  `${euros(dus)} si les jours à confirmer sont dus (leur salaire, montré à part dans leur mois, reste alors à payer en plus), ${euros(retenus)} s’ils ne le sont pas`;
 
 /**
  * Régularisation versée le mois d'un avenant qui fait passer de l'année incomplète à l'année complète (fiche DDETS 31, 2021).
@@ -670,8 +687,14 @@ function applyAvenantRegul(ctx: Ctx, m: Month, r: MonthBase, firstPart?: MonthBa
       continue;
     }
     const start = regulStart(c, a.from);
-    const cur = a.from.slice(8) !== '01' && firstPart ? { m, payees: firstPart.base } : undefined;
-    const reg = regularisation(ctx, start, veille, cur);
+    const cur = a.from.slice(8) !== '01' && firstPart ? { m, payees: firstPart.base, aConfirmer: firstPart.evenementAConfirmer } : undefined;
+    const lect = regularisationLectures(ctx, start, veille, cur);
+    if (!lect.sure) {
+      // T-038 (B-1) : rien n'est versé ; les deux montants sont montrés.
+      r.alerts.push(`Régularisation à l’avenant du ${a.from.slice(8, 10)}/${a.from.slice(5, 7)} à confirmer, non comprise dans le total : elle dépend de jours encore à confirmer depuis le ${start.split('-').reverse().join('/')} (voir les mois concernés). ${libelleRegulJoursAConfirmer(lect.dus.montant, lect.retenus.montant).replace(/^./, (x) => x.toUpperCase())}.`);
+      continue;
+    }
+    const reg = lect.dus;
     if (reg.montant > 0) {
       r.regulAvenant = (r.regulAvenant ?? 0) + reg.montant;
       r.net += reg.montant;

@@ -1,0 +1,71 @@
+// T-038 : corrections des constats de la relecture V4 (projet/regles/t036-relecture.md). Attendus tirés des textes ou des
+// sondes de V4, jamais du code :
+// - B-1 (sonde S1 de V4) : un jour « à confirmer » n'est ni payé ni retenu dans son mois ; la régularisation (art. 109.2)
+//   ne doit pas verser son salaire en silence. S'il est dû, tout se passe comme sans absence ; s'il ne l'est pas, comme
+//   un congé sans solde (absence retenue par la déduction de l'art. 111). Les deux montants sont donnés, rien n'est compté.
+// - Art. 111 (déduction d'absence en jours, année incomplète) : 600 € × 2 jours ÷ 22 jours prévus en mars 2026 = 54,55 €.
+import { describe, expect, it } from 'vitest';
+import type { AmLeave, Contract, Planning } from '../src/engine/model';
+import { makeCtx, monthBase, salaireMensualise } from '../src/engine/payroll';
+import { finDeContrat } from '../src/engine/fin';
+import { euros } from '../src/engine/money';
+
+function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
+  const p: Planning = {};
+  for (const d of days) p[d] = [{ start, end }];
+  return p;
+}
+const lundis = (from: string, n: number) => Array.from({ length: n }, (_, i) => {
+  const d = new Date(`${from}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 7 * i);
+  return d.toISOString().slice(0, 10);
+});
+// 36 semaines (16 semaines sans accueil par année de contrat), 40 h du lundi au vendredi, 5 € net : 600 € par mois (art. 109).
+const SEMAINES_OFF = [...lundis('2025-10-20', 2), ...lundis('2025-12-22', 2), ...lundis('2026-02-16', 2), ...lundis('2026-04-13', 2), ...lundis('2026-07-06', 8), '2026-10-19'];
+function contract(over: Partial<Contract> = {}): Contract {
+  return {
+    id: 'c1', child: 'Léa', family: 'Martin', color: 0, start: '2025-09-01', yearType: 'incomplete', weeks: 36, weeksOff: SEMAINES_OFF,
+    planning: week('08:00', '16:00'), rateNet: 500, majoration: 10, entretienJour: 0, repasPrix: 0, repasParJour: 0,
+    kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: '2025-09-01',
+    alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false,
+    balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 0, ...over,
+  };
+}
+// Événement familial sans nature : jours « à confirmer » (statutJourEvenement). Congé sans solde : jours retenus (T-034).
+const EVENEMENT: AmLeave = { id: 'e', type: 'evenement', from: '2026-03-10', to: '2026-03-11' };
+const SANS_SOLDE: AmLeave = { id: 's', type: 'sans_solde', from: '2026-03-10', to: '2026-03-11' };
+const fin = (leaves: AmLeave[], c = contract()) => finDeContrat(makeCtx(c, [], leaves, '2026-11-18'), '2026-10-28', 'retrait');
+
+describe('T-038 B-1 : la régularisation ne verse jamais en silence un salaire « à confirmer »', () => {
+  it('mars 2026 : 2 jours d’événement à confirmer, 54,55 € sortis du salaire (art. 111 : 600 × 2 ÷ 22)', () => {
+    expect(salaireMensualise(contract())).toBe(60000);
+    const b = monthBase(makeCtx(contract(), [], [EVENEMENT], '2026-11-18'), '2026-03');
+    expect(b.evenementAConfirmer).toBe(5455);
+    expect(b.base).toBe(60000 - 5455);
+  });
+  it('fin de contrat (sonde S1) : régularisation à confirmer, ni comptée ni donnée, avec les deux lectures', () => {
+    const sans = fin([]);
+    const retenu = fin([SANS_SOLDE]);
+    const f = fin([EVENEMENT]);
+    expect(sans.regularisationAConfirmer).toBeUndefined();
+    expect(sans.regularisation).toBeGreaterThan(0);
+    // Avant la correction : sans.regularisation + 54,55 € comptés dans le total.
+    expect(f.regularisation).toBe(0);
+    expect(f.regularisationAConfirmer).toContain(`${euros(sans.regularisation)} si les jours à confirmer sont dus`);
+    expect(f.regularisationAConfirmer).toContain(`${euros(retenu.regularisation)} s’ils ne le sont pas`);
+    // Le congé sans solde retient les mêmes 2 jours : la lecture « non dus » est plus basse que la lecture « dus ».
+    expect(retenu.regularisation).toBeLessThan(sans.regularisation);
+  });
+  it('avenant qui passe en année complète au 01/09/2026 : rien n’est versé, les deux montants sont dans l’alerte', () => {
+    const av = { avenants: [{ id: 'a1', from: '2026-09-01', changes: { yearType: 'complete' as const, weeks: 52 } }] };
+    const ref = monthBase(makeCtx(contract(av), [], [], '2026-11-18'), '2026-09');
+    const retenu = monthBase(makeCtx(contract(av), [], [SANS_SOLDE], '2026-11-18'), '2026-09');
+    const b = monthBase(makeCtx(contract(av), [], [EVENEMENT], '2026-11-18'), '2026-09');
+    expect(ref.regulAvenant).toBeGreaterThan(0);
+    expect(b.regulAvenant).toBeUndefined();
+    expect(b.net).toBe(ref.net - ref.regulAvenant!);
+    const alerte = b.alerts.find((a) => a.startsWith('Régularisation à l’avenant du 01/09 à confirmer'));
+    expect(alerte).toContain(`${euros(ref.regulAvenant!)} si les jours à confirmer sont dus`);
+    expect(alerte).toContain(`${euros(retenu.regulAvenant!)} s’ils ne le sont pas`);
+  });
+});
