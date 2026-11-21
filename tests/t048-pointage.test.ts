@@ -269,7 +269,6 @@ describe('T-048 R2 : « +N min payées » donné par le moteur', () => {
     planning, rateNet: 400, majoration: 10, entretienJour: 0, repasPrix: 0, repasParJour: 0,
     kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: '2026-09-01',
     balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 0,
-    alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false,
   });
   const LUNDI = '2026-11-23';
   const r = (pres: Jour['pres']): Jour => ({ key: `c1|${LUNDI}`, cid: 'c1', date: LUNDI, pres });
