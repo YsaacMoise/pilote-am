@@ -1,13 +1,14 @@
 // T-048 : pointage loin de l'heure prévue. L'app demande quelle heure est vraie au lieu de noter l'heure de l'appui.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import type { DayRec as Jour, Plage } from '../src/engine/model';
+import type { Contract, DayRec as Jour, Plage } from '../src/engine/model';
+import { dayInfo, makeCtx } from '../src/engine/payroll';
 
 // Journée réduite aux champs utiles au pointage (clé, contrat et date ne jouent pas ici).
 type DayRec = Jour;
 const J = (x: Partial<Jour>): Jour => x as Jour;
 import {
-  choixPointage, enregistrerChoix, heureLisible, MSG_DEPART_AVANT_ARRIVEE, MSG_HEURE_FUTURE, nextAction, pointerJour,
+  choixPointage, decisionAppui, enregistrerChoix, heureLisible, minutesPayeesEnPlus, msAvantMinuteSuivante, MSG_DEPART_AVANT_ARRIVEE, MSG_HEURE_FUTURE, nextAction, pointerJour,
   SEUIL_ARRIVEE_MIN, SEUIL_DEPART_MIN, textesChoix, verifierHeure,
 } from '../src/screens/Today';
 import { evChoixPointage, evCorrection, evCorrections, evPointage, heureCorrigee, heureCorrigeeDetail, type GestePointage } from '../src/usage-events';
@@ -47,12 +48,17 @@ describe('T-048 : textes', () => {
       titre: 'Arrivée prévue à 8 h 15', prevue: 'À 8 h 15', maintenant: 'Maintenant, 9 h 05', autre: 'Autre heure',
     });
   });
-  it('départ, avec les minutes payées en plus', () => {
+  it('départ, avec les minutes payées en plus (chiffre donné par le moteur, voir plus bas)', () => {
     const rec = J({ pres: [{ a: '08:15' }] });
-    expect(textesChoix(choix(JOUR, rec, '17:40')!)).toEqual({
+    expect(textesChoix({ ...choix(JOUR, rec, '17:40')!, payeesMin: 40 })).toEqual({
       titre: 'Départ prévu à 17 h', prevue: 'À 17 h', maintenant: 'Maintenant, 17 h 40 (+40 min payées)', autre: 'Autre heure',
     });
-    expect(textesChoix(choix(JOUR, rec, '18:15')!).maintenant).toBe('Maintenant, 18 h 15 (+75 min payées)');
+    expect(textesChoix({ ...choix(JOUR, rec, '18:15')!, payeesMin: 75 }).maintenant).toBe('Maintenant, 18 h 15 (+75 min payées)');
+  });
+  it('rien de payé en plus : pas de parenthèse', () => {
+    const rec = J({ pres: [{ a: '08:15' }] });
+    expect(textesChoix(choix(JOUR, rec, '17:40')!).maintenant).toBe('Maintenant, 17 h 40');
+    expect(textesChoix({ ...choix(JOUR, rec, '17:40')!, payeesMin: 0 }).maintenant).toBe('Maintenant, 17 h 40');
   });
 });
 
@@ -172,10 +178,11 @@ describe('T-048 : vue en liste et réévaluation', () => {
   });
   it('l’écran se réévalue chaque minute et au retour sur l’app', () => {
     const t = src.slice(src.indexOf('export function Today'), src.indexOf('const kids'));
-    expect(t).toContain('setInterval(tic, 60_000)');
+    // Calée sur le début de chaque minute, relancée à chaque minute, nettoyée au démontage
+    expect(t).toContain('setTimeout(() => { tic(); planifier(); }, msAvantMinuteSuivante(Date.now()))');
     expect(t).toContain("addEventListener('visibilitychange', retour)");
     expect(t).toContain("addEventListener('focus', tic)");
-    expect(t).toContain('clearInterval(id)');
+    expect(t).toContain('clearTimeout(id)');
   });
 });
 
@@ -223,5 +230,84 @@ describe('T-048 : mesure d’usage', () => {
   it('la fiche de la journée envoie les événements de correction détaillés', () => {
     const src = readFileSync('src/screens/Today.tsx', 'utf8');
     expect(src).toContain("for (const ev of evCorrections(day, today(), rec?.pres, apres)) logUsage(ev, 'aujourdhui');");
+  });
+});
+
+// ---------- Relecture : réserves R1 et R2 ----------
+
+describe('T-048 R1 : le choix est recalculé à l’heure de l’appui', () => {
+  it('écran affiché à 9:00 (bouton simple), appui à 9:01 : rien n’est noté, les trois choix s’ouvrent', () => {
+    const planned: Plage[] = [{ start: '08:30', end: '17:00' }];
+    const na = nextAction({ planned }, undefined);
+    // Au rendu de 9:00, 30 min pile : bouton simple
+    expect(choixPointage(planned, na, '09:00')).toBeNull();
+    // Appui à 9:01 : 31 min, le geste ouvre les trois choix
+    expect(decisionAppui(planned, na, '09:01')).toBe('choix');
+    expect(decisionAppui(planned, na, '09:00')).toBe('direct');
+    // Départ : même règle
+    const naD = nextAction({ planned }, J({ pres: [{ a: '08:30' }] }));
+    expect(decisionAppui(planned, naD, '17:15')).toBe('direct');
+    expect(decisionAppui(planned, naD, '17:16')).toBe('choix');
+    // Accueil imprévu : toujours direct
+    expect(decisionAppui([], nextAction({ planned: [] }, undefined), '23:00')).toBe('direct');
+  });
+  it('le bouton simple passe par decisionAppui avant d’enregistrer', () => {
+    const src = readFileSync('src/screens/Today.tsx', 'utf8');
+    expect(src).toContain("if (decisionAppui(di.planned, na, heure) === 'choix') { setFiche('choix'); return; }");
+  });
+  it('minuterie calée sur le début de la minute suivante', () => {
+    const base = Date.UTC(2026, 10, 23, 8, 0, 0);
+    expect(msAvantMinuteSuivante(base + 50_000)).toBe(10_050);
+    expect(msAvantMinuteSuivante(base)).toBe(60_050);
+    expect(msAvantMinuteSuivante(base + 59_999)).toBe(51);
+  });
+});
+
+describe('T-048 R2 : « +N min payées » donné par le moteur', () => {
+  const contrat = (planning: Contract['planning']): Contract => ({
+    id: 'c1', child: 'Rose', family: 'Diallo', color: 1, start: '2026-09-01', yearType: 'complete', weeks: 52, weeksOff: [],
+    planning, rateNet: 400, majoration: 10, entretienJour: 0, repasPrix: 0, repasParJour: 0,
+    kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: '2026-09-01',
+    balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 0,
+    alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false,
+  });
+  const LUNDI = '2026-11-23';
+  const r = (pres: Jour['pres']): Jour => ({ key: `c1|${LUNDI}`, cid: 'c1', date: LUNDI, pres });
+
+  it('deux plages, matin non pointé, arrivée notée « À 7 h 30 » à 17:10, départ à 18:35 : chiffre du moteur, pas 605', () => {
+    const c = contrat({ 1: [{ start: '07:30', end: '08:30' }, { start: '16:30', end: '18:30' }] });
+    const ctx = makeCtx(c, [r([{ a: '07:30' }])], [], LUNDI);
+    const ch = choixPointage(dayInfo(ctx, LUNDI).planned, nextAction(dayInfo(ctx, LUNDI), ctx.days.get(LUNDI)), '18:35')!;
+    expect(ch).toMatchObject({ kind: 'd', idx: 0, prevue: '08:30', ecartMin: 605 });
+    const n = minutesPayeesEnPlus(ctx, LUNDI, ch.idx, '18:35');
+    // Moteur : 7:30-18:35 = 665 min de présence, dont 180 dans les plages prévues → 485 en plus ; départ à 8:30 → 0.
+    const avec = makeCtx(c, [r([{ a: '07:30', d: '18:35' }])], [], LUNDI);
+    const fin = makeCtx(c, [r([{ a: '07:30', d: '08:30' }])], [], LUNDI);
+    expect(n).toBe(dayInfo(avec, LUNDI).extraMin - dayInfo(fin, LUNDI).extraMin);
+    expect(n).toBe(485);
+    expect(textesChoix({ ...ch, payeesMin: n }).maintenant).toBe('Maintenant, 18 h 35 (+485 min payées)');
+  });
+  it('arrivée à 17:05 après une fin prévue à 17:00, départ à 17:30 : 25 min payées, pas 30', () => {
+    const c = contrat({ 1: [{ start: '08:15', end: '17:00' }] });
+    const ctx = makeCtx(c, [r([{ a: '17:05' }])], [], LUNDI);
+    const ch = choixPointage(dayInfo(ctx, LUNDI).planned, { idx: 0, kind: 'd' }, '17:30')!;
+    expect(ch.ecartMin).toBe(30);
+    const n = minutesPayeesEnPlus(ctx, LUNDI, 0, '17:30');
+    expect(n).toBe(25);
+    expect(textesChoix({ ...ch, payeesMin: n }).maintenant).toBe('Maintenant, 17 h 30 (+25 min payées)');
+  });
+  it('le contexte de l’écran et son cache ne sont pas touchés', () => {
+    const c = contrat({ 1: [{ start: '08:15', end: '17:00' }] });
+    const ctx = makeCtx(c, [r([{ a: '08:15' }])], [], LUNDI);
+    const avant = dayInfo(ctx, LUNDI);
+    expect(minutesPayeesEnPlus(ctx, LUNDI, 0, '17:40')).toBe(40);
+    expect(dayInfo(ctx, LUNDI)).toBe(avant);
+    expect(ctx.days.get(LUNDI)!.pres).toEqual([{ a: '08:15' }]);
+  });
+  it('départ à l’heure ou sans heure de plus payée : 0, pas de parenthèse', () => {
+    const c = contrat({ 1: [{ start: '08:15', end: '17:00' }] });
+    const ctx = makeCtx(c, [r([{ a: '08:15' }])], [], LUNDI);
+    expect(minutesPayeesEnPlus(ctx, LUNDI, 0, '17:00')).toBe(0);
+    expect(minutesPayeesEnPlus(ctx, LUNDI, 1, '17:40')).toBe(0);
   });
 });
