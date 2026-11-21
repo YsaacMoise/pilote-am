@@ -184,7 +184,7 @@ export function Toaster() {
 
 export function Banner({ tone = 'info', icon, children }: { tone?: 'info' | 'warn' | 'ok'; icon?: IconName; children: ComponentChildren }) {
   return (
-    <div class={`banner ${tone}`} role={tone === 'warn' ? 'alert' : undefined}>
+    <div class={`banner ${tone}`} role={tone === 'warn' ? 'alert' : 'status'}>
       <span class="b-ico"><Icon name={icon ?? (tone === 'warn' ? 'alert' : tone === 'ok' ? 'check' : 'info')} /></span>
       <div class="b-body">{children}</div>
     </div>

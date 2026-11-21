@@ -1,0 +1,45 @@
+{
+ "source": "Mesuré par scripts/reperes.py depuis voix/aide-mois.json — ne pas modifier à la main",
+ "fichier": "voix/aide-mois.wav",
+ "duree": 8.6,
+ "mots": {
+  "fin": 0.257,
+  "calcule": 1.88,
+  "ordre": 2.96,
+  "cases": 3.3,
+  "envoyer": 5.24,
+  "recoit": 6.6,
+  "montants": 7.08,
+  "recopier": 7.84,
+  "finRecopier": 8.24
+ },
+ "phrases": [
+  {
+   "texte": "Fin du mois.",
+   "debut": 0.257,
+   "fin": 0.78
+  },
+  {
+   "texte": "Tout est déjà calculé, dans l'ordre des cases Pajemploi.",
+   "debut": 1.24,
+   "fin": 3.62
+  },
+  {
+   "texte": "Touche « Envoyer au parent ».",
+   "debut": 4.44,
+   "fin": 5.76
+  },
+  {
+   "texte": "Il reçoit les montants, prêts à recopier.",
+   "debut": 6.48,
+   "fin": 8.24
+  }
+ ],
+ "a_ecouter": [
+  {
+   "attendu": "cases pajemploi",
+   "entendu": "casse -pages emplois.",
+   "vers": 3.3
+  }
+ ]
+}

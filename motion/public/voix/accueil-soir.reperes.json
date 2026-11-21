@@ -1,0 +1,27 @@
+{
+ "source": "Mesuré par scripts/reperes.py depuis voix/accueil-soir.json — ne pas modifier à la main",
+ "fichier": "voix/accueil-soir.wav",
+ "duree": 5.6,
+ "mots": {
+  "soir": 0.38,
+  "recopier": 1.84,
+  "mois": 2.8,
+  "calcule": 3.2,
+  "seul": 3.8,
+  "declarer": 4.7,
+  "fin": 5.12
+ },
+ "phrases": [
+  {
+   "texte": "Le soir, plus rien à recopier.",
+   "debut": 0.275,
+   "fin": 2.26
+  },
+  {
+   "texte": "Ton mois se calcule tout seul, prêt à déclarer.",
+   "debut": 2.64,
+   "fin": 5.12
+  }
+ ],
+ "a_ecouter": []
+}

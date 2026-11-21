@@ -2,7 +2,7 @@
 import { lastDay, monthLabel, type Month } from './dates';
 import { cpForMonth } from './conges';
 import { libelleSalaireAConfirmer, monthBase, naturesAConfirmer, termsAt, type Ctx, type MonthBase } from './payroll';
-import { netToBrut } from './rates';
+import { netToBrut, REDUCTION_HS } from './rates';
 import { euros, hoursLabel } from './money';
 
 export interface MonthResult extends MonthBase {
@@ -15,6 +15,15 @@ export interface MonthResult extends MonthBase {
   /** Salaire net à déclarer, congés compris */
   netTotal: number;
   brutEstime: number;
+  /**
+   * Heures complémentaires et majorées (CGI art. 81 quater, CSS art. L241-17 : pour une assistante maternelle, heures
+   * au-delà du contrat jusqu'à 45 h et heures au-delà de 45 h, prévues au contrat ou en plus) : valeur nette déclarée.
+   */
+  hsNet: number;
+  /** Brut estimé de ces heures */
+  hsBrut: number;
+  /** Réduction de cotisations salariales de ces heures, versée en plus du net déclaré (estimation) */
+  reductionHS: number;
 }
 
 export function computeMonth(ctx: Ctx, m: Month, enfants = 0): MonthResult {
@@ -22,6 +31,8 @@ export function computeMonth(ctx: Ctx, m: Month, enfants = 0): MonthResult {
   const cp = cpForMonth(ctx, m, enfants);
   const netTotal = b.net + cp.indemnite + cp.complement;
   const alerts = cp.aConfirmer ? [...b.alerts, cp.aConfirmer] : [...b.alerts];
+  const hsNet = b.complAmount + b.majAmount + b.majContratAmount;
+  const hsBrut = netToBrut(hsNet, lastDay(m));
   return {
     ...b,
     alerts,
@@ -32,7 +43,15 @@ export function computeMonth(ctx: Ctx, m: Month, enfants = 0): MonthResult {
     cpNote: cp.note,
     netTotal,
     brutEstime: b.brut ?? netToBrut(netTotal, lastDay(m)),
+    hsNet,
+    hsBrut,
+    reductionHS: Math.round(hsBrut * REDUCTION_HS),
   };
+}
+
+/** Total à verser par la famille : salaire net, entretien, repas et kilomètres (écran Mois, message au parent, relevé) */
+export function totalAVerser(r: MonthResult): number {
+  return r.netTotal + r.entretien + r.repas + r.km;
 }
 
 export interface DeclLine { label: string; value: string; hint?: string }
@@ -102,7 +121,7 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   if (r.entretienAConfirmer) out.push(`• Indemnité d’entretien : ${euros(r.entretienAConfirmer)} à confirmer ensemble (${raisonsEntretienAConfirmer(r)})`);
   if (r.kmAConfirmer) out.push(`• Frais kilométriques : ${r.kmAConfirmer} km à confirmer ensemble (familles qui ont demandé le trajet, enfants dans la voiture)`);
   const aConfirmer = partsAConfirmer(r);
-  out.push(`Total à me verser : ${euros(r.netTotal + r.entretien + r.repas + r.km)}${aConfirmer.length ? `, sans ${aConfirmer.join(' ni ')} à confirmer` : ''}`);
+  out.push(`Total à me verser : ${euros(totalAVerser(r))}${aConfirmer.length ? `, sans ${aConfirmer.join(' ni ')} à confirmer` : ''}`);
   out.push('');
   out.push('Calcul fait avec l’application Arvela, outil d’aide indépendant de l’Urssaf : la déclaration Pajemploi fait foi.');
   out.push('');

@@ -1,0 +1,22 @@
+{
+ "id": "accueil-soir",
+ "usage": "Vidéo d'accueil, fin de journée et fin de mois (prise séparée, « mois » articulé).",
+ "outil": "Google AI Studio, page Generate speech",
+ "modele": "Gemini 3.8 Flash TTS",
+ "voix": "Nika",
+ "style": "Voix française chaleureuse et douce, avec le sourire, comme une amie assistante maternelle qui raconte une belle journée. Débit naturel et fluide, un peu enjoué, jamais lent. Pauses courtes entre les phrases. Jamais commercial, jamais robotique. Articuler nettement « mois ».",
+ "texte": "Le soir, plus rien à recopier. Ton mois se calcule tout seul, prêt à déclarer.",
+ "fichier": "public/voix/accueil-soir.wav",
+ "reperes": {
+  "soir": "soir",
+  "recopier": "recopier",
+  "mois": "mois",
+  "calcule": "calcule",
+  "seul": "seul",
+  "declarer": "déclarer",
+  "fin": {
+   "mot": "déclarer",
+   "bord": "fin"
+  }
+ }
+}

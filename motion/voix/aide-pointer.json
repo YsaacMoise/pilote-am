@@ -1,0 +1,24 @@
+{
+ "id": "aide-pointer",
+ "usage": "Aide de l'écran Aujourd'hui (« Ça coince »). Public : l'assistante maternelle, l'écran devant elle.",
+ "outil": "Google AI Studio, page Generate speech",
+ "modele": "Gemini 3.8 Flash TTS",
+ "voix": "Nika",
+ "style": "Voix française claire et souriante, comme une collègue qui montre un geste en passant. Débit vif et naturel, phrases courtes, pauses brèves. Jamais commercial, jamais robotique.",
+ "texte": "Un enfant arrive ? Touche Arrivée. Le soir, Départ. Un oubli, une erreur ? Modifier, et tu corriges l'heure.",
+ "fichier": "public/voix/aide-pointer.wav",
+ "reperes": {
+  "arrive": "arrive",
+  "arrivee": "arrivée",
+  "soir": "soir",
+  "depart": "départ",
+  "oubli": "oubli",
+  "modifier": "modifier",
+  "corriges": "corriges",
+  "heure": "heure",
+  "fin": {
+   "mot": "heure",
+   "bord": "fin"
+  }
+ }
+}

@@ -5,6 +5,7 @@
 // arrivent en direct et sont rangés dans la base locale.
 import * as db from './db';
 import { PASSWORD_RULE, passwordChecks } from './password';
+import { acceptationConditions } from './legal';
 import { autoCopy, ctxFor, load, logErreur, logUsage, putContract, saveSettings, state, subscribe, toast } from './store';
 import { buildSnapshot } from './partage/snapshot';
 import { newShare, seal } from './partage/crypto';
@@ -488,6 +489,8 @@ export async function createAccount(email: string, password: string) {
   const done = nextLink();
   try { await b.createAccount(email.trim(), password); } catch (e) { settle(); throw friendly(e); }
   await done.catch((e) => { throw friendly(e); });
+  // Accord aux conditions d'utilisation donné en créant le compte : version et date gardées dans les réglages, copiés dans le compte.
+  await saveSettings({ conditionsAcceptees: acceptationConditions() });
   logUsage('compte_cree');
   // E-mail de confirmation d'adresse : sans lui, une faute de frappe rendrait le mot de passe oublié impossible à récupérer.
   b.sendVerification().then(() => logUsage('confirmation_envoyee')).catch(() => {});

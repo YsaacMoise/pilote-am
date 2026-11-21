@@ -1,0 +1,23 @@
+{
+ "source": "Mesuré par scripts/reperes.py depuis voix/signature-parents.json — ne pas modifier à la main",
+ "fichier": "voix/signature-parents.wav",
+ "duree": 4.76,
+ "mots": {
+  "arvela": 0.301,
+  "carnet": 1.6,
+  "fin": 4.4
+ },
+ "phrases": [
+  {
+   "texte": "Arvela.",
+   "debut": 0.301,
+   "fin": 0.92
+  },
+  {
+   "texte": "Le carnet de liaison avec votre assistante maternelle.",
+   "debut": 1.38,
+   "fin": 4.4
+  }
+ ],
+ "a_ecouter": []
+}

@@ -84,6 +84,28 @@ export const RATES: Rates[] = [
   },
 ];
 
+/**
+ * Réduction de cotisations salariales des heures complémentaires et majorées (CSS art. L241-17, décret 2019-40 :
+ * 11,31 % de leur rémunération brute, dans la limite des cotisations d'assurance vieillesse).
+ * NON VÉRIFIÉ à la source officielle (Légifrance et pages Pajemploi illisibles par un robot le 04/11/2026) : la
+ * mécanique retenue (net déclaré et brut inchangés, réduction ajoutée à la somme versée) vient de sites spécialisés
+ * et doit être confirmée sur un vrai bulletin Pajemploi avec des heures majorées (constat C-010).
+ */
+export const REDUCTION_HS = 0.1131;
+
+/**
+ * Plafond annuel de l'exonération d'impôt de ces heures (CGI art. 81 quater), en rémunération nette imposable,
+ * par année de revenus. 7 500 € depuis 2022 (brochure IR 2026, p. 105 ; inchangé par la loi de finances 2026).
+ * Une hausse est discutée pour 2027 : ajouter une ligne quand la loi de finances 2027 sera publiée.
+ */
+const PLAFONDS_HS: { from: number; montant: number }[] = [{ from: 2022, montant: 750000 }];
+export const PLAFOND_HS_EXONEREES = 750000;
+export function plafondHS(annee: number): number {
+  let p = PLAFONDS_HS[0].montant;
+  for (const x of PLAFONDS_HS) if (x.from <= annee) p = x.montant;
+  return p;
+}
+
 /** Premier jour couvert par des barèmes vérifiés à la source (T-023). Avant : « période non gérée ». */
 export const PREMIERE_DATE_GEREE: ISODate = RATES[0].from;
 
@@ -237,3 +259,4 @@ export function dateLongue(d: ISODate): string {
   const j = Number(d.slice(8, 10));
   return `${j === 1 ? '1er' : j} ${MOIS_NOMS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}`;
 }
+

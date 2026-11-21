@@ -1,0 +1,18 @@
+{
+ "id": "signature",
+ "usage": "Signature de fin des vidéos de l'assistante maternelle.",
+ "outil": "Google AI Studio, page Generate speech",
+ "modele": "Gemini 3.8 Flash TTS",
+ "voix": "Nika",
+ "style": "Voix française chaleureuse et douce, avec le sourire. Articuler nettement « Arvela » (ar-vé-la) et « maternelles ». Débit naturel.",
+ "texte": "Arvela. Le carnet de bord des assistantes maternelles.",
+ "fichier": "public/voix/signature.wav",
+ "reperes": {
+  "arvela": "arvela",
+  "carnet": "carnet",
+  "fin": {
+   "mot": "maternelles",
+   "bord": "fin"
+  }
+ }
+}

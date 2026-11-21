@@ -58,6 +58,11 @@ export interface FinResult {
   /** T-038 (R-1) : le montant change selon le premier jour retenu ; `indemnitePreavis` vaut 0 et n'est pas compté */
   indemnitePreavisAConfirmer?: string;
   totalBrut: number;
+  /**
+   * C-008 : mois dont le brut est estimé à partir du net (rapport fixe), faute de brut lu sur un bulletin.
+   * Vide quand le total des salaires bruts a été saisi.
+   */
+  brutsEstimes: Month[];
   regularisation: number;
   regulMinutes: number;
   cpJoursRestants: number;
@@ -176,7 +181,23 @@ function congesNonPris(endCtx: Ctx, c: Ctx['c'], dernierJour: ISODate, enfants: 
  * cette date ; en remise en main propre, c'est la date de remise (= `notif`). Jamais de l'annonce orale (C-017,
  * CCN art. 120 ; fiches DREETS Auvergne-Rhône-Alpes du 18/03/2024 ; code.travail.gouv.fr, IDCC 3239).
  */
-export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0, presentation?: ISODate, inexecution?: Inexecution): FinResult {
+/** Bruts réels connus : par mois (bulletins contrôlés), ou total saisi depuis les bulletins Pajemploi (C-008, main) */
+export interface BrutsReels {
+  parMois?: Partial<Record<Month, number>>;
+  /** Total des bruts des bulletins Pajemploi, du début du contrat jusqu'au mois `jusqua` compris */
+  total?: number;
+  /** Dernier mois compris dans `total` ; les mois suivants (préavis, mois en cours) restent comptés à part */
+  jusqua?: Month;
+}
+
+/**
+ * T-050 (fusion) : le 6e paramètre est l'inexécution du préavis (T-045, direction) ou, pour les appels écrits avant la
+ * fusion (écran Fin et tests de main), les bruts réels (C-008, main). Les deux ensemble : inexécution en 6e, bruts en 7e.
+ */
+export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0, presentation?: ISODate,
+  inexecutionOuBruts?: Inexecution | BrutsReels, brutsReels?: BrutsReels): FinResult {
+  const inexecution = inexecutionOuBruts && 'demandeur' in inexecutionOuBruts ? inexecutionOuBruts : undefined;
+  const bruts: BrutsReels = brutsReels ?? (inexecutionOuBruts && !('demandeur' in inexecutionOuBruts) ? inexecutionOuBruts : {});
   const c = ctx.c;
   const alertes: string[] = [];
   const anc = fullMonthsBetween(c.start, notif);
@@ -275,10 +296,21 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   let evenementManquant = false;
   const naturesManquantes = new Set<'evenement' | 'cp' | 'maladie'>();
   const manquants: Month[] = [];
+  const brutsEstimes: Month[] = [];
+  // C-008 : le total saisi depuis les bulletins Pajemploi remplace les mois qu'il couvre ; les mois suivants
+  // (préavis, mois sans bulletin encore) restent comptés, estimés si besoin (relecture contradictoire du 04/11/2026).
+  const saisi = bruts.total != null && bruts.total > 0;
+  const couvert = (m: Month) => saisi && (!bruts.jusqua || m <= bruts.jusqua);
+  if (saisi) totalBrut = bruts.total!;
   for (const m of monthsBetween(monthOf(c.start), monthOf(dernierJour))) {
+    if (couvert(m)) continue;
     const b = monthBase(endCtx, m);
     if (!b.active) continue;
     if (b.missing) { manquants.push(m); continue; }
+    // Brut d'un bulletin contrôlé : congés compris, rien à ajouter.
+    const lu = bruts.parMois?.[m];
+    if (lu != null && lu > 0) { totalBrut += lu; continue; }
+    if (!b.brut) brutsEstimes.push(m);
     totalBrut += monthBrut(endCtx, m);
     const cp = cpForMonth(endCtx, m, enfants);
     totalBrut += netToBrut(cp.indemnite + cp.complement, lastDay(m));
@@ -423,7 +455,9 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   let ruptureVariantes: string | undefined;
   if (indemniteRupture > 0 && !ruptureAConfirmer && variantes.length > 1) {
     const facteur = motif === 'inaptitude_pro' ? 2 : 1;
-    const autres = variantes.map((v) => ({ ...v, montant: v.fin === dernierJour ? indemniteRupture : Math.round((brutJusqua(ctxFin(v.fin), c, v.fin, enfants) * facteur) / 80) }));
+    // T-050 : écart de bruts entre la variante et la fin calculée, ajouté au total retenu (qui peut venir des bulletins saisis, C-008).
+    const brutFin = brutJusqua(endCtx, c, dernierJour, enfants);
+    const autres = variantes.map((v) => ({ ...v, montant: v.fin === dernierJour ? indemniteRupture : Math.round(((totalBrut + brutJusqua(ctxFin(v.fin), c, v.fin, enfants) - brutFin) * facteur) / 80) }));
     if (autres.some((v) => v.montant !== indemniteRupture)) {
       ruptureVariantes = `Indemnité de rupture à confirmer : elle dépend de la date de fin du préavis, à confirmer. ${autres.map((v) => `${v.libelle.replace(/^./, (x) => x.toUpperCase())} : ${euros(v.montant)}`).join(' ; ')}. Elle n'est pas comptée dans le total.`;
       ruptureAConfirmer = true;
@@ -437,11 +471,11 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     return {
       ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture: 0, ruptureExplication: 'Non calculée : cas non géré.',
       totalBrut: 0, indemnitePreavis: 0, regularisation: 0, regulMinutes: 0, cpJoursRestants: 0, cpIndemnite: 0,
-      cpExplication: 'Non calculés : cas non géré.', manquants, alertes, nonGere,
+      cpExplication: 'Non calculés : cas non géré.', manquants, brutsEstimes, alertes, nonGere,
     };
   }
   return {
-    ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, ruptureVariantes, totalBrut,
+    ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, ruptureVariantes, totalBrut, brutsEstimes,
     indemnitePreavis, indemnitePreavisExplication, indemnitePreavisAConfirmer,
     regularisation: regularisation_, regulMinutes, cpJoursRestants, cpIndemnite, cpExplication, cpAConfirmer, regularisationAConfirmer, manquants, alertes,
   };

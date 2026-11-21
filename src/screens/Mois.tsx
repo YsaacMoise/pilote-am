@@ -2,9 +2,9 @@ import { AVERTISSEMENT_CALCUL, PAJEMPLOI_PLUS_DATE, PAJEMPLOI_PLUS_RAPPEL } from
 import { useState } from 'preact/hooks';
 import { ctxFor, logUsage, toast, useStore, state } from '../store';
 import { addMonths, dayLabel, eachDay, firstDay, lastDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
-import { computeMonth, declarationLines, declarationText } from '../engine/month';
+import { computeMonth, declarationLines, declarationText, totalAVerser } from '../engine/month';
 import { dayInfo, termsAt } from '../engine/payroll';
-import { euros, hoursLabel } from '../engine/money';
+import { euros, eurosArrondis, hoursLabel } from '../engine/money';
 import { MESSAGE_BAREMES_PROVISOIRES, baremesProvisoires } from '../engine/rates';
 import { CHILD_ABS_LABEL, AM_ABS_LABEL, type Contract } from '../engine/model';
 import { Banner, Gommette, Topbar } from '../ui/kit';
@@ -12,6 +12,34 @@ import { Icon } from '../ui/icons';
 import { shareText } from '../share';
 import { AideVideo } from '../ui/VideoGuide';
 import { DaySheet } from './Today';
+import { releveDonnees } from '../releve/donnees';
+
+declare const __APP_VERSION__: string;
+
+/** Ouvre le partage du téléphone avec le PDF ; sinon le télécharge. 'refuse' : iPhone a refusé le partage (trop long après le geste). */
+async function partagerPdf(file: File): Promise<'ok' | 'refuse' | 'annule'> {
+  const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
+  if (nav.share && nav.canShare?.({ files: [file] })) {
+    try {
+      // Le fichier seul, sans texte : avec un texte, iOS n'enregistre que le texte (bug WebKit 244408).
+      await nav.share({ files: [file] });
+      return 'ok';
+    } catch (e) {
+      const n = (e as DOMException)?.name;
+      if (n === 'AbortError') return 'annule';
+      if (n === 'NotAllowedError') return 'refuse';
+    }
+  }
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = file.name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return 'ok';
+}
 
 export function Mois({ month: m0, cid: c0 }: { month?: string; cid?: string }) {
   const s = useStore();
@@ -43,7 +71,7 @@ export function Mois({ month: m0, cid: c0 }: { month?: string; cid?: string }) {
         {!c ? (
           <div class="card empty"><h2>Pas de contrat ce mois-ci</h2><p class="muted">Change de mois ou ajoute un enfant depuis « Plus ».</p></div>
         ) : (
-          <MonthView c={c} month={month} onEdit={setEdit} />
+          <MonthView key={`${c.id}|${month}`} c={c} month={month} onEdit={setEdit} />
         )}
       </main>
       {edit && c && <DaySheet c={c} day={edit} onClose={() => setEdit(null)} />}
@@ -56,7 +84,35 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
   const r = computeMonth(ctx, month, state.settings.enfantsACharge);
   const lines = declarationLines(ctx, r);
   const current = month === monthOf(today());
-  const totalVerse = r.netTotal + r.entretien + r.repas + r.km;
+  const totalVerse = totalAVerser(r);
+  const [occupe, setOccupe] = useState(false);
+  const [pret, setPret] = useState<File | null>(null);
+  const [partage, setPartage] = useState(false);
+  const envoyer = async (file: File) => {
+    if (partage) return; // un second appui pendant que la feuille de partage est ouverte lancerait un téléchargement
+    setPartage(true);
+    const res = await partagerPdf(file).finally(() => setPartage(false));
+    // iPhone : le partage doit suivre de près un geste ; s'il a été refusé, un second bouton le relance.
+    setPret(res === 'refuse' ? file : null);
+  };
+  const fabriquer = async () => {
+    if (occupe) return;
+    setOccupe(true);
+    try {
+      const d = releveDonnees(ctx, month, {
+        amName: state.settings.amName, enfants: state.settings.enfantsACharge, now: new Date(),
+        version: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'inconnue',
+      });
+      const { genererRelevePdf } = await import('../releve/fabrication');
+      const pdf = await genererRelevePdf(d);
+      logUsage('releve_pdf');
+      await envoyer(new File([pdf as Uint8Array<ArrayBuffer>], d.nomFichier, { type: 'application/pdf' }));
+    } catch {
+      toast('Le relevé n’a pas pu être fabriqué. Réessaie.');
+    } finally {
+      setOccupe(false);
+    }
+  };
 
   if (r.fromHistory) {
     return (
@@ -89,7 +145,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
       <section class="summary stack" aria-labelledby="tot">
         <span class="summary-label" id="tot">À verser par la famille {c.family ? `(${c.family})` : ''}</span>
         <span class="total">{euros(totalVerse)}</span>
-        <span class="summary-sub">dont salaire net {euros(r.netTotal)}, soit environ {euros(r.brutEstime)} brut</span>
+        <span class="summary-sub">dont salaire net {euros(r.netTotal)}, soit {r.brut ? euros(r.brutEstime) : `environ ${eurosArrondis(r.brutEstime)}`} brut</span>
         {current && <span class="summary-note">Provisoire jusqu’à la fin du mois</span>}
       </section>
 
@@ -123,8 +179,16 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
         >
           <Icon name="share" />Envoyer au parent
         </button>
+        <button class="btn btn-outline btn-lg" type="button" onClick={fabriquer} disabled={occupe} aria-busy={occupe}>
+          <Icon name="file" />{occupe ? 'Fabrication du relevé…' : 'Relevé du mois (PDF)'}
+        </button>
         <a class="btn btn-outline btn-lg" href={`#/controle/${c.id}/${month}`}><Icon name="receipt" />Contrôler le bulletin</a>
       </div>
+      {pret && (
+        <Banner tone="info">
+          Le relevé est prêt. <button class="btn-link" type="button" disabled={partage} onClick={() => envoyer(pret)}>Partager le relevé</button>
+        </Banner>
+      )}
 
       <details class="more">
         <summary>Comment c’est calculé</summary>
@@ -145,6 +209,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
             {r.repas > 0 && (<><dt>Repas</dt><dd>{euros(r.repas)}</dd></>)}
             {r.km > 0 && (<><dt>Kilomètres</dt><dd>{euros(r.km)}</dd></>)}
           </dl>
+          {r.reductionHS > 0 && <p class="muted small">Heures complémentaires et majorées : elles ouvrent une réduction de tes cotisations d’environ {eurosArrondis(r.reductionHS)} (11,31 % de leur brut, art. L241-17 du code de la sécurité sociale), que Pajemploi ajoute en principe à la somme à verser : vérifie-la sur ton bulletin. Ces heures sont aussi exonérées d’impôt, dans la limite de 7 500 € par an.</p>}
           <p class="muted small">
             {termsAt(c, `${month}-01`).yearType === 'complete'
               ? 'Année complète : retenue = salaire mensualisé × heures non payées ÷ heures prévues dans le mois (art. 111).'

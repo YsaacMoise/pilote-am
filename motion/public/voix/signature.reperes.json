@@ -1,0 +1,23 @@
+{
+ "source": "Mesuré par scripts/reperes.py depuis voix/signature.json — ne pas modifier à la main",
+ "fichier": "voix/signature.wav",
+ "duree": 3.8,
+ "mots": {
+  "arvela": 0.287,
+  "carnet": 1.36,
+  "fin": 3.42
+ },
+ "phrases": [
+  {
+   "texte": "Arvela.",
+   "debut": 0.287,
+   "fin": 0.8
+  },
+  {
+   "texte": "Le carnet de bord des assistantes maternelles.",
+   "debut": 1.26,
+   "fin": 3.42
+  }
+ ],
+ "a_ecouter": []
+}
