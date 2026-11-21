@@ -1,0 +1,32 @@
+# Garde-fou : rien ne disparaît sans être annoncé (décision du DG du 21/11/2026).
+# Tout fichier supprimé ou renommé par la demande doit être cité dans son corps,
+# section « Suppressions voulues », sinon ce contrôle est rouge et la fusion bloquée.
+name: Garde-fou
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+permissions:
+  contents: read
+jobs:
+  garde-fou-suppressions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fichiers supprimés ou renommés
+        env:
+          CORPS: ${{ github.event.pull_request.body }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git diff --name-status --diff-filter=DR "$BASE"...HEAD | awk '{print $2}' > partis.txt
+          if [ ! -s partis.txt ]; then echo "Aucun fichier supprimé ni renommé."; exit 0; fi
+          section=$(printf '%s\n' "$CORPS" | awk '/Suppressions voulues/{f=1} f')
+          manque=0
+          while IFS= read -r chemin; do
+            if printf '%s' "$section" | grep -qF -- "$chemin"; then echo "Annoncé : $chemin"; else echo "::error::Supprimé ou renommé sans être annoncé : $chemin"; manque=1; fi
+          done < partis.txt
+          { echo "## Garde-fou"; echo; sed 's/^/- /' partis.txt; } >> "$GITHUB_STEP_SUMMARY"
+          exit $manque
