@@ -838,6 +838,7 @@ def grille():
                  [{"id": "f", "type": "fin", "notification": "2026-09-15", "motif": "deces",
                    "sorties": ["preavis", "indemnite_rupture"]}], theme="décès de l'enfant après 6 mois"))
     S += situations_t027()
+    S += situations_s50b()  # T-050c
     return S
 
 
@@ -908,6 +909,104 @@ def situations_t027():
             S.append(sit(f"EVT-MOIS-{an}-{nom}", "absences", ka, [mois("m", "2026-09")],
                          {"absences_am": [dict(conge("evenement", du, au), nature=nat)]},
                          theme="mois avec congé pour événement familial nommé"))
+    return S
+
+
+# ---------------- T-050c : famille S50B (assiette du 1/80, A-45 ; regularisation dans le dixieme de fin, A-50)
+S50B_MER = semaine([3], "08:00", "18:00")  # famille 1, annee incomplete : aucun mercredi ferie de 06/2025 a 10/2026
+S50B_MAR = semaine([2], "08:00", "17:00")  # famille 2, annee incomplete : feries du mardi (11/11/2025, 14/07/2026) en semaine sans accueil
+S50B_MAJE = semaine([2, 4], "08:00", "18:00")  # famille 2, annee complete
+MARQUE_S50B = ("T-050c : assiette du 1/80 en brut, estimée par A depuis le taux net (rates.ts) ; l'adaptateur B "
+               "convertit les mêmes montants de la même façon avant l'appel à B")
+
+
+def situations_s50b():
+    """T-050c : met a l'epreuve A-45 (ICCP, CP payes et regularisation dans l'assiette du 1/80) et A-50
+    (regularisation due dans la base du dixieme de fin). Donnees choisies pour que les jours de conges soient surs
+    dans les deux moteurs : annee complete sur une periode de reference entiere ; annee incomplete de 46 semaines
+    dont les semaines comptees et les mois d'accueil donnent le meme nombre de jours (18 ou 30, multiples de 6).
+    Toutes les semaines sans accueil de chaque annee de contrat sont saisies. Le deces de l'enfant (pas de preavis,
+    CCN art. 119.4.2) evite la date de fin « a confirmer » du preavis de A ; le meme contrat est aussi donne en
+    retrait ou en demission. Aucun resultat attendu n'est calcule ici."""
+    S = []
+
+    def fin_(id_, k, notif, motif, theme, ev=None):
+        k = dict(k)
+        if motif != "deces":
+            k["rupture"] = {"motif": motif, "notif": notif, "preavis": "execute"}
+        S.append(sit(id_, "fin de contrat", k,
+                     [{"id": "f", "type": "fin", "notification": notif, "motif": motif, "comparer_assiette": True}],
+                     ev, theme=theme, marques={"indemnite_rupture": MARQUE_S50B, "assiette_rupture": MARQUE_S50B}))
+
+    def kc(pl, taux, deb, fin):
+        return dict(contrat_grille("C52", "H32", "T420", debut=deb, fin=fin), planning=pl, taux=taux)
+
+    def ki(pl, taux, deb, fin, off):
+        return dict(contrat_grille("I46", "H40", "T420", debut=deb, fin=fin), planning=pl, taux=taux, semaines=46,
+                    semaines_sans_accueil=sorted(off))
+
+    # Annee complete (mardi a vendredi : le lundi de Pentecote ne bloque pas B, A-31).
+    cp24 = [conge("cp", "2025-07-15", "2025-07-28"), conge("cp", "2025-08-19", "2025-09-01"),
+            conge("cp", "2025-10-21", "2025-10-27")]
+    fin_("S50B-C52-F1-1P-DECES", kc(PMaJ9, 420, "2025-06-01", "2026-05-31"), "2026-05-31", "deces",
+         "année complète, une période entière, ICCP de la période en cours")
+    fin_("S50B-C52-F2-1P-DECES", kc(S50B_MAJE, 500, "2025-06-01", "2026-05-31"), "2026-05-31", "deces",
+         "année complète, une période entière, seconde famille")
+    fin_("S50B-C52-F1-1P-RETRAIT", kc(PMaJ9, 420, "2025-06-01", "2026-05-31"), "2026-05-17", "retrait",
+         "année complète, retrait au 31 mai")
+    fin_("S50B-C52-F2-1P-RETRAIT", kc(S50B_MAJE, 500, "2025-06-01", "2026-05-31"), "2026-05-17", "retrait",
+         "année complète, retrait au 31 mai, seconde famille")
+    fin_("S50B-C52-F1-1P-DEMISSION", kc(PMaJ9, 420, "2025-06-01", "2026-05-31"), "2026-05-17", "demission",
+         "année complète, démission au 31 mai")
+    fin_("S50B-C52-F1-2P-PRIS-DECES", kc(PMaJ9, 420, "2024-06-01", "2026-05-31"), "2026-05-31", "deces",
+         "année complète, deux périodes, congés de la première pris", {"absences_am": cp24})
+    fin_("S50B-C52-F1-2P-NONPRIS-DECES", kc(PMaJ9, 420, "2024-06-01", "2026-05-31"), "2026-05-31", "deces",
+         "année complète, deux périodes, ICCP des deux périodes")
+    fin_("S50B-C52-F1-2P-MOITIE-DECES", kc(PMaJ9, 420, "2024-06-01", "2026-05-31"), "2026-05-31", "deces",
+         "année complète, deux périodes, congés de la première pris en partie", {"absences_am": cp24[:1]})
+    fin_("S50B-C52-F1-JUIN-DECES", kc(PMaJ9, 420, "2025-06-01", "2026-06-30"), "2026-06-30", "deces",
+         "année complète, fin en cours de période (juin)")
+    fin_("S50B-C52-F1-NOV-DECES", kc(PMaJ9, 420, "2025-01-06", "2025-11-30"), "2025-11-30", "deces",
+         "année complète, fin en cours de période (novembre)")
+    # Annee incomplete, 46 semaines. Famille 1 : mercredi, 10 h, 4,20 EUR. Famille 2 : mardi, 9 h, 5,00 EUR.
+    for fam, pl, taux, ferie in (("F1", S50B_MER, 420, None), ("F2", S50B_MAR, 500, "2025-11-10")):
+        # Contrat du 02/06/2025 au 31/05/2026 : 5 semaines sans accueil dans la periode, la 6e apres la fin (juin 2026).
+        off = ["2025-08-04", ferie or "2025-10-27", "2025-12-22", "2026-02-16", "2026-04-13", "2026-06-01"]
+        k = ki(pl, taux, "2025-06-02", "2026-05-31", off)
+        fin_(f"S50B-I46-{fam}-FP-DECES", k, "2026-05-31", "deces",
+             "année incomplète, fin au 31 mai, régularisation positive")
+        if fam == "F1":
+            fin_(f"S50B-I46-{fam}-FP-RETRAIT", k, "2026-05-17", "retrait",
+                 "année incomplète, retrait au 31 mai, régularisation positive")
+            fin_(f"S50B-I46-{fam}-FP-DEMISSION", k, "2026-05-17", "demission",
+                 "année incomplète, démission au 31 mai")
+            # Debut le 09/06/2025 : 4 semaines dans la periode, 2 apres la fin.
+            off_b = ["2025-08-04", "2025-10-27", "2025-12-22", "2026-04-13", "2026-06-01", "2026-06-08"]
+            fin_(f"S50B-I46-{fam}-FP-B-DECES", ki(pl, taux, "2025-06-09", "2026-05-31", off_b), "2026-05-31", "deces",
+                 "année incomplète, fin au 31 mai, régularisation positive plus forte")
+        # Contrat du 01/11/2025 : periode 2025 de 7 mois (18 jours), 2 semaines sans accueil de novembre a mai.
+        a1 = [ferie or "2025-11-17", "2026-03-02"]
+        fin_(f"S50B-I46-{fam}-7M-DECES", ki(pl, taux, "2025-11-01", "2026-05-31",
+                                             a1 + ["2026-06-01", "2026-06-08", "2026-07-20", "2026-08-03"]),
+             "2026-05-31", "deces", "année incomplète, une période de 7 mois, fin au 31 mai")
+        # Fin au 28/06/2026, aucun accueil en juin : periode en cours sans jours, regularisation negative.
+        fin_(f"S50B-I46-{fam}-NEG-DECES", ki(pl, taux, "2025-11-01", "2026-06-28",
+                                              a1 + ["2026-06-01", "2026-06-08", "2026-06-15", "2026-06-22"]),
+             "2026-06-28", "deces", "année incomplète, fin en cours de période, régularisation négative")
+        # Deux periodes : 18 jours payes en juin 2026, 30 jours de la periode 2026 non pris a la fin (31/05/2027).
+        a1b = a1 + ["2026-06-01", "2026-06-08", "2026-07-13" if fam == "F2" else "2026-07-20", "2026-08-03"]
+        a2 = ["2026-11-09", "2027-06-07", "2027-06-14", "2027-07-05", "2027-07-12", "2027-08-02"]
+        k2 = ki(pl, taux, "2025-11-01", "2027-05-31", a1b + a2)
+        fin_(f"S50B-I46-{fam}-2P-DECES", k2, "2027-05-31", "deces",
+             "année incomplète, deux périodes, fin au 31 mai, régularisation positive")
+        if fam == "F1":
+            fin_(f"S50B-I46-{fam}-2P-RETRAIT", k2, "2027-05-01", "retrait",
+                 "année incomplète, deux périodes, retrait au 31 mai")
+        # Fin en cours de periode : contrat du 01/06/2026, 7 mois (18 jours), fin le 27/12/2026.
+        fin_(f"S50B-I46-{fam}-DEC-DECES", ki(pl, taux, "2026-06-01", "2026-12-27",
+                                              [("2026-07-13" if fam == "F2" else "2026-08-03"), "2026-11-09",
+                                               "2027-02-15", "2027-02-22", "2027-04-12", "2027-04-19"]),
+             "2026-12-27", "deces", "année incomplète, fin en cours de période (décembre)")
     return S
 
 

@@ -744,6 +744,16 @@ def cp_mois_b(ctx, m):
 
 # ------------------------------------------------------------------ fin de contrat
 
+# T-050c : part du net dans le brut utilisee par A pour estimer le brut (src/engine/rates.ts, NET_BRUT = 7810, la meme
+# pour toutes les periodes). Arrondi de Math.round (demi vers le haut). Sert seulement a l'assiette du 1/80.
+NET_SUR_BRUT_A = 7810
+
+
+def _brut_comme_a(net):
+    x = Fraction(net * 10000, NET_SUR_BRUT_A) + Fraction(1, 2)
+    return x.numerator // x.denominator
+
+
 def fin_b(ctx, k):
     out = {}
     auteur = "am" if k["motif"] == "demission" else "employeur"
@@ -872,15 +882,28 @@ def fin_b(ctx, k):
         if essai["statut"] in ("ok", "provisoire") and essai["resultat"].get("raison"):
             out["indemnite_rupture"] = essai["resultat"]["indemnite_centimes"]
             raise StopIteration
-        sal = salaires_periode(ctx, ctx.debut, fin)
-        iccp_v = out["iccp"] if not isinstance(out["iccp"], Refus) else None
+        # T-050c : l'assiette du 1/80 est en BRUT (CCN art. 121.1). Le taux de la situation est lu en net par A
+        # (Contract.rateNet) et en brut par B. Les deux moteurs donnent donc les memes montants mensuels, mais A
+        # convertit l'assiette en brut (src/engine/fin.ts, netToBrut). L'adaptateur fait la meme conversion avant de
+        # donner les montants a B (_brut_comme_a), mois par mois comme A, pour comparer la composition de l'assiette
+        # (A-45), le 1/80 et l'arrondi, et non la convention net/brut du comparateur.
+        sal = 0
         icp = 0
-        if ctx.type == "incomplete":
-            for m in mois_entre(ctx.debut, fin):
-                v = cp_mois_b(ctx, m)["cp_indemnite_mois"]
-                if isinstance(v, Refus):
-                    raise v
-                icp += v
+        for m in mois_entre(ctx.debut, fin):
+            if not any(ctx.dans_contrat(d) for d in jours_entre(premier(m), dernier(m))):
+                continue
+            v = mois_b(ctx, m)["salaire_mois_hors_cp"]
+            if isinstance(v, Refus):
+                raise v
+            sal += _brut_comme_a(v)
+            # CP payes dans le mois (annee incomplete) et complement de juin (annee complete), comme A
+            # (cpForMonth : indemnite + complement, convertis le dernier jour du mois).
+            cm = cp_mois_b(ctx, m)
+            for cle in ("cp_indemnite_mois", "cp_complement_mois"):
+                if isinstance(cm[cle], Refus):
+                    raise cm[cle]
+            icp += _brut_comme_a(cm["cp_indemnite_mois"] + cm["cp_complement_mois"])
+        iccp_v = out["iccp"] if not isinstance(out["iccp"], Refus) else None
         # T-050b (A-45) : ICCP, CP payes et regularisation de fin entrent dans l'assiette (CCN art. 121.1, 124).
         # Une somme que B ne calcule pas est passee « a confirmer » : B refuse au lieu d'une assiette incomplete.
         reg_v = out["regularisation_fin"]
@@ -891,9 +914,14 @@ def fin_b(ctx, k):
         if isinstance(reg_v, Refus):
             a_confirmer.append("regularisation (" + reg_v.code + ")")
             reg_v = 0
-        r = appel("indemnite_rupture", motif_b, auteur, ctx.debut, env, sal, iccp_centimes=iccp_v, icp_centimes=icp,
-                  regularisation_centimes=reg_v, sommes_a_confirmer=a_confirmer)
+        # A convertit l'ICCP et la regularisation ensemble, au dernier jour du dernier mois (assietteFinNet).
+        reg_brut = _brut_comme_a(reg_v)
+        iccp_brut = _brut_comme_a(iccp_v + reg_v) - reg_brut
+        r = appel("indemnite_rupture", motif_b, auteur, ctx.debut, env, sal, iccp_centimes=iccp_brut, icp_centimes=icp,
+                  regularisation_centimes=reg_brut, sommes_a_confirmer=a_confirmer)
         out["indemnite_rupture"] = r["resultat"]["indemnite_centimes"]
+        if k.get("comparer_assiette"):
+            out["assiette_rupture"] = r["resultat"]["assiette_centimes"]
     except StopIteration:
         pass
     except Refus as e:

@@ -188,7 +188,12 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       out.assiette_rupture = ok(f.totalBrut);
       if (f.preavisFinAConfirmer) out.date_fin_preavis = refus(`A : date calculée ${f.preavisFin}, affichée à confirmer (${f.preavisFinAConfirmer})`);
       if (f.ruptureAConfirmer) out.indemnite_rupture = refus(`A : indemnité affichée à confirmer (${f.indemniteRupture} calculés)`);
+      // T-050c : l'assiette (totalBrut) n'est pas définitive quand l'indemnité est « à confirmer » (une somme à confirmer n'y est pas).
+      if (f.ruptureAConfirmer) out.assiette_rupture = refus(`A : assiette affichée à confirmer (${f.totalBrut} calculés)`);
       if (f.cpAConfirmer) out.iccp = refus(`A : à confirmer (${f.cpAConfirmer})`);
+      // T-050c : régularisation « à confirmer » (T-038, variantes de date de fin) : A la met à 0 hors du total ; c'est un refus, pas 0.
+      const regAConf = (f as { regularisationAConfirmer?: string }).regularisationAConfirmer;
+      if (regAConf) out.regularisation_fin = refus(`A : à confirmer (${regAConf})`);
       if (f.nonGere?.length) for (const cle of Object.keys(out)) if (cle !== 'preavis') out[cle] = refus(`A : non géré (${f.nonGere.join(' ')})`);
       break;
     }
