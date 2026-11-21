@@ -21,12 +21,18 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          git diff --name-status --diff-filter=DR "$BASE"...HEAD | awk '{print $2}' > partis.txt
+          # Chemins exacts (espaces et accents gardés), un par ligne ; pour un renommage, l'ancien chemin.
+          git -c core.quotePath=false diff -z --name-status --diff-filter=DR "$BASE"...HEAD \
+            | python3 -c 'import sys; p=sys.stdin.buffer.read().split(b"\0"); i=0
+          while i < len(p) and p[i]:
+              s=p[i].decode(); print(p[i+1].decode()); i += 3 if s.startswith("R") else 2' > partis.txt
           if [ ! -s partis.txt ]; then echo "Aucun fichier supprimé ni renommé."; exit 0; fi
-          section=$(printf '%s\n' "$CORPS" | awk '/Suppressions voulues/{f=1} f')
+          # Lignes de la section « Suppressions voulues », nettoyées : puces, guillemets, accents graves, espaces de bord.
+          printf '%s\n' "$CORPS" | tr -d '\r' | awk '/Suppressions voulues/{f=1;next} f' \
+            | sed -E 's/^[[:space:]]*([-*+]|[0-9]+\.)[[:space:]]+//; s/`//g; s/[[:space:]]+(:|—|–|-)[[:space:]].*$//; s/^[[:space:]]+//; s/[[:space:]]+$//' > annonces.txt
           manque=0
           while IFS= read -r chemin; do
-            if printf '%s' "$section" | grep -qF -- "$chemin"; then echo "Annoncé : $chemin"; else echo "::error::Supprimé ou renommé sans être annoncé : $chemin"; manque=1; fi
+            if grep -qxF -- "$chemin" annonces.txt; then echo "Annoncé : $chemin"; else echo "::error::Supprimé ou renommé sans être annoncé : $chemin"; manque=1; fi
           done < partis.txt
-          { echo "## Garde-fou"; echo; sed 's/^/- /' partis.txt; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "## Garde-fou"; echo; sed 's/^/- /' partis.txt; echo; echo "Chaque chemin doit être écrit seul sur une ligne de la section « Suppressions voulues », suivi au besoin de « : raison »."; } >> "$GITHUB_STEP_SUMMARY"
           exit $manque
