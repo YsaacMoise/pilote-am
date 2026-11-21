@@ -7,7 +7,7 @@ import { AM_ABS_NON_GEREES } from '../src/engine/model';
 import { absenceSaisie, normaliserAbsence, type AbsenceLue } from '../src/engine/absences';
 import { dureeEvenement, NATURE_EVENEMENT_LABEL } from '../src/engine/evenements';
 import { makeCtx } from '../src/engine/payroll';
-import { computeMonth } from '../src/engine/month';
+import { computeMonth, declarationText } from '../src/engine/month';
 import { buildSnapshot } from '../src/partage/snapshot';
 import { forRemote } from '../src/sync/plan';
 
@@ -146,5 +146,15 @@ describe('lien des parents : aucun motif d’absence de l’AM', () => {
     expect(JSON.stringify(snap)).not.toMatch(/maternit|non gérée|accident/i);
     expect(snap.jours.filter((j) => j.statut === 'am').length).toBeGreaterThan(0);
     expect(snap.jours.filter((j) => j.statut === 'am').every((j) => j.motif === 'Ana absente')).toBe(true);
+  });
+  it('texte copié par l’AM pour les parents (écran Mois) : même formulation que le lien, sans « événement familial »', () => {
+    const l = absenceSaisie('evenement', 'handicap_enfant', 'e', '2026-10-05', '2026-10-23')!;
+    const ctx = makeCtx(c, [], [l], '2026-11-10');
+    const r = computeMonth(ctx, '2026-10');
+    expect(r.evenementAConfirmer).toBeGreaterThan(0);
+    const t = declarationText(ctx, r, 'Ana');
+    expect(t).toMatch(/• Salaire : \+ .+ de salaire à confirmer ensemble/);
+    expect(t).toMatch(/sans une part du salaire à confirmer/);
+    expect(t).not.toMatch(/[ée]v[ée]nement|handicap|mariage|décès/i);
   });
 });

@@ -188,7 +188,7 @@ describe('T-023 (2) événements familiaux, R-ABS-06', () => {
     expect(r.evenementAConfirmer).toBeGreaterThan(0);
     expect(r.retenue).toBe(0);
     expect(r.alerts.join(' ')).toMatch(/durée payée n’est pas renseignée/);
-    expect(declarationText(makeCtx(c, [], leaves, '2026-12-31'), r, 'Ana')).toMatch(/sans l’événement familial à confirmer/);
+    expect(declarationText(makeCtx(c, [], leaves, '2026-12-31'), r, 'Ana')).toMatch(/sans une part du salaire à confirmer/);
   });
 
   it('annonce d’un handicap le 02/03/2026 : 5 jours (avant la loi du 12 juin 2026) ; le 15/06/2026 : 10 jours', () => {

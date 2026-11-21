@@ -103,7 +103,7 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
       `Merci ! ${amName}`.trim(),
     ].join('\n');
   }
-  const lines = declarationLines(ctx, r);
+  const lines = declarationLines(ctx, r, true);
   const out: string[] = [];
   out.push(`Bonjour, voici les éléments à déclarer sur Pajemploi pour ${c.child}, ${monthLabel(r.month)} :`);
   out.push('');
@@ -119,11 +119,12 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   if (r.cpIndemnite) out.push(`• Indemnité de congés payés : ${euros(r.cpIndemnite)}`);
   if (r.cpComplement) out.push(`• Complément de congés payés : ${euros(r.cpComplement)}`);
   if (r.cpAConfirmer) out.push('• Indemnité de congés payés : à confirmer ensemble');
-  if (r.evenementAConfirmer) out.push(`• Salaire ${libelleSalaireAConfirmer(r)} : ${euros(r.evenementAConfirmer)} à confirmer ensemble`);
+  // Décision du DG du 21/11/2026 : comme le lien des parents, le texte envoyé aux parents ne nomme pas la raison.
+  if (r.evenementAConfirmer) out.push(`• Salaire : + ${euros(r.evenementAConfirmer)} de salaire à confirmer ensemble`);
   out.push('');
   if (r.entretienAConfirmer) out.push(`• Indemnité d’entretien : ${euros(r.entretienAConfirmer)} à confirmer ensemble (${raisonsEntretienAConfirmer(r)})`);
   if (r.kmAConfirmer) out.push(`• Frais kilométriques : ${r.kmAConfirmer} km à confirmer ensemble (familles qui ont demandé le trajet, enfants dans la voiture)`);
-  const aConfirmer = partsAConfirmer(r);
+  const aConfirmer = partsAConfirmer(r, true);
   out.push(`Total à me verser : ${euros(totalAVerser(r))}${aConfirmer.length ? `, sans ${aConfirmer.join(' ni ')} à confirmer` : ''}`);
   out.push('');
   out.push('Calcul fait avec l’application Arvela, outil d’aide indépendant de l’Urssaf : la déclaration Pajemploi fait foi.');
