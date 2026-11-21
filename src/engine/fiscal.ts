@@ -1,8 +1,9 @@
 // Compteur fiscal (CGI art. 80 sexies) : abattement spécifique et revenu imposable estimé.
-import { eachDay, lastDay, monthsBetween, type Month } from './dates';
+import { eachDay, lastDay, monthLabel, monthsBetween, type Month } from './dates';
 import { computeMonth } from './month';
-import { dayInfo, termsAt, type Ctx } from './payroll';
-import { plafondHS, ratesAt } from './rates';
+import { dayInfo, joindre, naturesAConfirmer, termsAt, type Ctx } from './payroll';
+import { MESSAGE_PERIODE_NON_GEREE, plafondHS, ratesAt } from './rates';
+import { euros } from './money';
 
 export interface FiscalChild {
   cid: string;
@@ -36,6 +37,8 @@ export interface FiscalChild {
   smics: number[];
   facteur: number;
   partiel: boolean;
+  /** T-023 : barème absent pour une partie de l'année (SMIC ou avantage repas) : estimation incomplète, à confirmer */
+  nonGere?: string;
   /** Mois repris d'un bulletin : heures exonérées et kilomètres inconnus, comptés comme imposables ou absents */
   moisHistorique: number;
 }
@@ -47,9 +50,17 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
   const c = ctx.c;
   // SMIC horaire en vigueur le jour de la garde (BOI-RSA-CHAMP-10-20-10 § 490)
   const smics: number[] = [];
+  const nonGere = new Set<string>();
+  // T-023 : jamais le SMIC d'une autre période. Avant les barèmes vérifiés, pas d'abattement calculé pour ce jour.
   const smicAt = (d: string): number => {
-    const v = ratesAt(d).smic;
+    const v = ratesAt(d)?.smic;
+    if (v === undefined) { nonGere.add(`${MESSAGE_PERIODE_NON_GEREE} L’abattement de ces jours n’est pas calculé.`); return 0; }
     if (smics[smics.length - 1] !== v) smics.push(v);
+    return v;
+  };
+  const repasAt = (d: string): number => {
+    const v = ratesAt(d)?.repasAvantage;
+    if (v === undefined) { nonGere.add('Repas fournis par les parents : la valeur officielle du repas pour cette année n’est pas dans l’app. Ils ne sont pas comptés ; ajoute-les toi-même.'); return 0; }
     return v;
   };
   const facteur = c.majoreFiscal ? 4 : 3;
@@ -61,26 +72,40 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
     const r = computeMonth(ctx, m, enfants);
     if (!r.active) continue;
     if (r.missing) { partiel = true; continue; }
+    // T-031 : mois refusé (cas non géré) : ni ses sommes ni ses jours ne sont comptés, et c'est dit.
+    if (r.nonGere.length) {
+      nonGere.add(`${monthLabel(m).replace(/^./, (x) => x.toUpperCase())} n’est pas calculé (cas non géré) : ses sommes et ses jours d’accueil ne sont pas comptés. Ajoute-les à partir du bulletin de salaire.`);
+      continue;
+    }
     // C-019 : les heures complémentaires et majorées sont exonérées d'impôt (CGI art. 81 quater) ; elles sortent du net
     // imposable et des sommes reçues du régime spécial, dans la limite du plafond annuel (fiscalYears).
     const hsPart = r.hsNet + Math.round(r.hsBrut * PART_NON_DEDUCTIBLE);
     net += r.netTotal + Math.round(r.brutEstime * PART_NON_DEDUCTIBLE) - hsPart;
     hs += hsPart + r.reductionHS;
+    // T-025 C-5 : un salaire d'événement familial à confirmer n'est pas dans ce net : le dire, ne pas le compter en silence.
+    // T-028 : des congés payés à confirmer ne sont pas dans ce net (comme l'événement familial) : le dire.
+    if (r.cpAConfirmer) nonGere.add(`Congés payés à confirmer en ${monthLabel(m)} : ils ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
+    if (r.evenementAConfirmer) nonGere.add(`${joindre(naturesAConfirmer(r).map((n) => ({ evenement: 'événement familial', cp: 'congés au-delà des droits', maladie: 'jours d’enfant malade' })[n])).replace(/^./, (x) => x.toUpperCase())} à confirmer : ${euros(r.evenementAConfirmer)} de salaire en ${monthLabel(m)} ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
     er += r.entretien + r.repas;
     km += r.km;
+    // T-044b (relecture V5, C2-2) : la part d'entretien à confirmer n'est pas dans ces sommes : le dire. Les km
+    // confirmés sont comptés dans les sommes reçues (C-018, main) ; ceux à confirmer sont signalés pour que rien ne
+    // disparaisse sans message.
+    if (r.entretienAConfirmer) nonGere.add(`Indemnité d’entretien à confirmer : ${euros(r.entretienAConfirmer)} en ${monthLabel(m)} ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
+    if (r.kmAConfirmer) nonGere.add(`Frais kilométriques à confirmer en ${monthLabel(m)} (${r.kmAConfirmer} km) : ils ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
     if (r.fromHistory) {
       moisHistorique++;
       // Sans détail des jours : jours d'activité du bulletin, journées supposées de 8 h ou plus.
       jours += r.joursActivite;
       abat += r.joursActivite * facteur * smicAt(lastDay(m));
-      if (termsAt(c, `${m}-01`).repasParents) rp += r.joursActivite * ratesAt(lastDay(m)).repasAvantage;
+      if (termsAt(c, `${m}-01`).repasParents) rp += r.joursActivite * repasAt(lastDay(m));
       continue;
     }
     for (const d of eachDay(`${m}-01`, lastDay(m))) {
       const di = dayInfo(ctx, d);
       if (di.presentMin <= 0 || (di.kind !== 'present' && di.kind !== 'prevu')) continue;
       jours++;
-      if (termsAt(c, d).repasParents) rp += ratesAt(d).repasAvantage;
+      if (termsAt(c, d).repasParents) rp += repasAt(d);
       const ratio = Math.min(1, di.presentMin / 480);
       if (ratio < 1) courts++;
       abat += facteur * smicAt(d) * ratio;
@@ -91,7 +116,8 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
   const abattement = Math.min(abattementBrut, recu);
   return {
     cid: c.id, recu, netImposable: net, hsValeur: hs, hsExonere: hs, hsImposable: 0, entretienRepas: er, km, repasParents: rp, jours, joursCourts: courts, abattementBrut, abattement,
-    imposable: recu - abattement, smic: smics[smics.length - 1] ?? ratesAt(`${year}-01-01`).smic, smics, facteur, partiel, moisHistorique,
+    imposable: recu - abattement, smic: smics[smics.length - 1] ?? ratesAt(`${year}-01-01`)?.smic ?? 0, smics, facteur, partiel, moisHistorique,
+    nonGere: nonGere.size ? [...nonGere].join(' ') : undefined,
   };
 }
 

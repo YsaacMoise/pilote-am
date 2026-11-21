@@ -2,16 +2,20 @@ import { useEffect, useState } from 'preact/hooks';
 import { deleteContract, logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
 import { addMonthsToDate, deMois, firstDay, mondayOf, monthOf, shortDate, today, JOUR_NOMS, type Month } from '../engine/dates';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, semainesSansAccueilAnnee, termsAt, weeklyMinutes } from '../engine/payroll';
-import { entretienPlancher, ratesAt } from '../engine/rates';
+import { entretienPlancher, MINIMUM_SANS_TITRE, ratesConnus, repasAvantageAu } from '../engine/rates';
 import { soldesDeDepart } from '../engine/conges';
-import { euros, hoursLabel } from '../engine/money';
+import { euros, eurosTexte, hoursLabel } from '../engine/money';
 import type { Avenant, Contract, Plage, Planning, Terms } from '../engine/model';
+import { EntretienSaisie, libelleEntretien } from './EntretienSaisie';
 import { Banner, CHILD_COLORS, Choices, COLOR_NAMES, couleurLibre, couleursPrises, DateInput, EuroInput, Gommette, NumberInput, Seg, Switch, TextInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { BROUILLON_CONTRAT } from './Simulateur';
 import { PartageCard } from './PartageCard';
 import { de } from '../engine/texte';
-import { ALSACE_MOSELLE_NON_GEREE, PAJEMPLOI_PLUS_AIDE } from '../legal';
+import { PAJEMPLOI_PLUS_AIDE } from '../legal';
+import { NON_GERE_47_51, nonGeresContrat, semaines4751 } from '../engine/nonGeres';
+
+const ouiNon = (b: boolean | undefined): 'oui' | 'non' | undefined => (b === undefined ? undefined : b ? 'oui' : 'non');
 
 /** Contrat qui vient d'être créé : sa page s'ouvre sur la carte du lien parent */
 let montrerLienDe: string | undefined;
@@ -36,7 +40,7 @@ function brouillon(): Partial<Contract> | null {
       pl = {};
       for (let d = 1; d <= n; d++) pl[d] = [{ start: '08:00', end: `${String(Math.floor(fin / 60)).padStart(2, '0')}:${String(fin % 60).padStart(2, '0')}` }];
     }
-    return { planning: pl, yearType: b.yearType, weeks: b.weeks, majoration: b.majoration, rateNet: b.rateNet, entretienJour: b.entretienJour, repasPrix: b.repasPrix, repasParJour: b.repasParJour, kmTaux: b.kmTaux ?? 0 };
+    return { planning: pl, yearType: b.yearType, weeks: b.weeks, majoration: b.majoration, rateNet: b.rateNet, entretienJour: b.entretienJour, entretienHeure: b.entretienHeure ?? 0, ...(b.entretienMode === 'heure' || b.entretienMode === 'jour' ? { entretienMode: b.entretienMode } : {}), repasPrix: b.repasPrix, repasParJour: b.repasParJour, kmTaux: b.kmTaux ?? 0 };
   } catch { return null; }
 }
 
@@ -46,7 +50,7 @@ function blank(): Contract {
   for (let d = 1; d <= 5; d++) pl[d] = [{ start: '08:30', end: '17:30' }];
   return {
     id: uid(), child: '', family: '', color: couleurLibre(couleursPrises(state.contracts, '', t)), start: t, yearType: 'complete', weeks: 52,
-    weeksOff: [], planning: pl, rateNet: ratesAt(t).minConvNet, majoration: 10, entretienJour: 0, repasPrix: 0, repasParJour: 0,
+    weeksOff: [], planning: pl, rateNet: ratesConnus(t).minConvNet ?? 0, majoration: 10, entretienJour: 0, repasPrix: 0, repasParJour: 0,
     kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: t, balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 },
     history: [], createdAt: Date.now(),
     ...(brouillon() ?? {}),
@@ -65,7 +69,7 @@ export function Contrat({ id }: { id?: string }) {
   const curMonthStart = firstDay(monthOf(today()));
   const reprise = c.start < curMonthStart;
   const wk = weeklyMinutes(c.planning);
-  const rates = ratesAt(today());
+  const rates = ratesConnus(today());
   useEffect(() => {
     if (!existing || montrerLienDe !== existing.id) return;
     montrerLienDe = undefined;
@@ -75,7 +79,9 @@ export function Contrat({ id }: { id?: string }) {
   const [cpManuel, setCpManuel] = useState(!isNew);
   const [prisDepuisJuin, setPris] = useState(0);
   const suiviDepuis = isNew ? (reprise ? curMonthStart : c.start) : c.trackedFrom;
-  const soldes = c.start && suiviDepuis > c.start && wk > 0 ? soldesDeDepart(c, suiviDepuis, prisDepuisJuin, state.settings.enfantsACharge) : undefined;
+  const soldes = c.start && suiviDepuis > c.start && wk > 0 ? soldesDeDepart(c, suiviDepuis, prisDepuisJuin, state.settings.enfantsACharge, state.settings.amMoins21Jusqu) : undefined;
+  // T-019 : année incomplète, l'app ne propose pas de soldes calculés (méthode d'acquisition non tranchée, SUS-11).
+  const soldesProposes = soldes && !soldes.aConfirmer ? soldes : undefined;
 
   function setDay(d: number, plages: Plage[]) {
     set({ planning: { ...c.planning, [d]: plages } });
@@ -87,19 +93,26 @@ export function Contrat({ id }: { id?: string }) {
     if (!c.start) errs.push('Indique la date de début du contrat.');
     if (wk <= 0) errs.push('Le planning est vide : ajoute au moins un jour d’accueil.');
     for (let d = 1; d <= 7; d++) for (const p of c.planning[d] ?? []) if (p.end <= p.start) errs.push(`${JOUR_NOMS[d - 1]} : l’heure de fin doit être après le début.`);
-    if (c.yearType === 'incomplete' && (c.weeks < 1 || c.weeks > 46)) errs.push('En année incomplète, le nombre de semaines va de 1 à 46.');
+    if (semaines4751(c.yearType, c.weeks)) errs.push(NON_GERE_47_51);
+    else if (c.yearType === 'incomplete' && (c.weeks < 1 || c.weeks > 46)) errs.push('En année incomplète, le nombre de semaines va de 1 à 46.');
     // Audit C-002 : les semaines sans accueil manquantes sont signalées dans le formulaire (bandeau) sans bloquer,
     // car elles peuvent être communiquées plus tard, par écrit, deux mois à l'avance (art. 98.1.2) ;
     // la régularisation n'est pas calculée tant qu'une année terminée en manque.
     if (c.end && c.end < c.start) errs.push('La date de fin est avant le début.');
     if (c.repasParents === undefined) errs.push('Indique qui fournit les repas de l’enfant.');
+    if (c.alsaceMoselle === undefined) errs.push('Indique où tu travailles (Alsace-Moselle ou non).');
+    if (c.planningVariable === undefined) errs.push('Indique si les horaires sont les mêmes chaque semaine.');
+    if (c.accueilOccasionnel === undefined) errs.push('Indique si l’accueil est régulier.');
+    if (c.cdd === undefined) errs.push('Indique si le contrat est un CDI ou un CDD.');
+    // T-044b : choix explicite du mode de l'indemnité d'entretien sur un nouveau contrat.
+    if (isNew && !c.entretienMode) errs.push('Indique si l’indemnité d’entretien est fixée par heure ou par jour.');
     setErrors(errs);
     // C-101 : chaque enregistrement refusé est noté (relecture contradictoire : le deuxième refus passait inaperçu).
     if (errs.length) logErreur('contrat_incomplet');
     if (errs.length) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const toSave: Contract = {
       ...c,
-      balances: !cpManuel && soldes ? { ...c.balances, cpRestants: soldes.cpRestants, cpEnCours: soldes.cpEnCours } : c.balances,
+      balances: !cpManuel && soldesProposes ? { ...c.balances, cpRestants: soldesProposes.cpRestants, cpEnCours: soldesProposes.cpEnCours } : c.balances,
       child: c.child.trim(),
       family: c.family.trim(),
       weeks: c.yearType === 'complete' ? 52 : c.weeks,
@@ -162,16 +175,26 @@ export function Contrat({ id }: { id?: string }) {
           <fieldset>
             <legend>Le contrat</legend>
             <DateInput label="Date de début réelle" hint="Le premier jour d’accueil, même si c’était il y a longtemps" value={c.start} onChange={(v) => set({ start: v })} />
-            {isNew && <p class="hint">{ALSACE_MOSELLE_NON_GEREE}</p>}
-            {!isNew && <DateInput label="Date de fin (si le contrat est terminé)" value={c.end ?? ''} onChange={(v) => set({ end: v || undefined })} />}
+            {!isNew && <DateInput label="Date de fin (si le contrat est terminé)" hint="Mieux : passe par l’écran Fin de contrat, qui enregistre aussi la lettre et le préavis. Sans eux, les derniers mois ne sont pas calculés." value={c.end ?? ''} onChange={(v) => set({ end: v || undefined })} />}
             <Seg label="Accueil sur l’année" value={c.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(c.weeks, 46) || 46 })}
               options={[{ v: 'complete', l: 'Toute l’année (52 sem.)' }, { v: 'incomplete', l: 'Année incomplète' }]} />
             {c.yearType === 'incomplete' && (
               <>
-                <NumberInput label="Semaines d’accueil par an" hint="46 au plus, sans compter tes congés payés" value={c.weeks} min={1} max={46} onChange={(v) => set({ weeks: v ?? 46 })} />
+                <NumberInput label="Semaines d’accueil par an" hint="46 au plus, sans compter tes congés payés" value={c.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />
+                {semaines4751(c.yearType, c.weeks) && <Banner tone="warn">{NON_GERE_47_51}</Banner>}
                 <WeeksOff c={c} onChange={(w) => set({ weeksOff: w })} />
               </>
             )}
+            {/* T-031 : cas que l'app ne gère pas. Une réponse est demandée : sans elle, l'app ne sait pas si ses montants valent. */}
+            <Choices label="Où travailles-tu ?" value={c.mayotte ? 'mayotte' : ouiNon(c.alsaceMoselle)} onChange={(v) => set({ alsaceMoselle: v === 'oui', mayotte: v === 'mayotte' })}
+              options={[{ v: 'non', l: 'Ailleurs en France (hors Mayotte)' }, { v: 'oui', l: 'Bas-Rhin, Haut-Rhin ou Moselle', sub: 'Alsace-Moselle : non géré par l’app' }, { v: 'mayotte', l: 'Mayotte', sub: 'Non géré par l’app' }]} />
+            <Choices label="Les horaires sont-ils les mêmes chaque semaine ?" value={ouiNon(c.planningVariable === undefined ? undefined : !c.planningVariable)} onChange={(v) => set({ planningVariable: v === 'non' })}
+              options={[{ v: 'oui', l: 'Oui, la même semaine type', sub: 'Sans compter les semaines sans accueil' }, { v: 'non', l: 'Non, ils changent', sub: 'Semaines A et B, planning remis chaque mois : non géré par l’app' }]} />
+            <Choices label="L’accueil est-il régulier ?" value={ouiNon(c.accueilOccasionnel === undefined ? undefined : !c.accueilOccasionnel)} onChange={(v) => set({ accueilOccasionnel: v === 'non' })}
+              options={[{ v: 'oui', l: 'Oui, régulier' }, { v: 'non', l: 'Non, occasionnel', sub: 'Court et sans régularité (article 97.2 de la convention) : non géré par l’app' }]} />
+            <Choices label="Quel type de contrat ?" value={ouiNon(c.cdd)} onChange={(v) => set({ cdd: v === 'oui' })}
+              options={[{ v: 'non', l: 'CDI', sub: 'Contrat à durée indéterminée, sans date de fin prévue' }, { v: 'oui', l: 'CDD', sub: 'Contrat à durée déterminée : non géré par l’app' }]} />
+            {nonGeresContrat(c).map((t) => <Banner tone="warn">{t}</Banner>)}
           </fieldset>
         </section>
 
@@ -194,14 +217,24 @@ export function Contrat({ id }: { id?: string }) {
           <fieldset>
             <legend>La rémunération</legend>
             {!!c.avenants?.length && <p class="hint">Ce sont les conditions de départ. Les changements datés sont dans les avenants, plus bas.</p>}
-            <EuroInput label="Taux horaire net" hint={`Minimum conventionnel : ${euros(rates.minConvNet)} net (${euros(rates.minConvBrut)} brut)`} cents={c.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
-            {c.rateNet > 0 && c.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel. Vérifie le contrat.</Banner>}
-            <EuroInput label="Indemnité d’entretien par jour" hint={`Si elle est plus basse, l’app applique le minimum légal (${euros(entretienPlancher(today(), 540))} pour 9 h)`} cents={c.entretienJour} onChange={(v) => set({ entretienJour: v ?? 0 })} />
+            <EuroInput label="Taux horaire net" hint={rates.minConvNet !== undefined ? `Minimum conventionnel : ${euros(rates.minConvNet)} net (${euros(rates.minConvBrut)} brut)` : `Minimum conventionnel : ${euros(rates.minConvBrut)} brut`} cents={c.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
+            {c.rateNet > 0 && rates.minConvNet !== undefined && c.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel. Vérifie le contrat.</Banner>}
+            {rates.minConvNet !== undefined && <p class="hint">{MINIMUM_SANS_TITRE}</p>}
+            {isNew
+              ? <EntretienSaisie t={c} set={set} hint={`Si le montant est plus bas, l’app verse le minimum légal (${euros(entretienPlancher(today(), 540)!)} pour 9 h).`} />
+              : (
+                <div class="field">
+                  <span class="label">Indemnité d’entretien</span>
+                  <p><b>{libelleEntretien(c)}</b></p>
+                  {/* T-044b (relecture V5, C2-1) : changer ici recalculerait en silence les mois passés. Un avenant daté ne change que la suite. */}
+                  <p class="hint">Pour la changer, fais un avenant daté (plus bas) : les mois d’avant gardent leur calcul.</p>
+                </div>
+              )}
             <Choices label="Qui fournit les repas de l’enfant ?" value={c.repasParents === undefined ? undefined : c.repasParents ? 'parents' : 'am'}
               onChange={(v) => set(v === 'parents' ? { repasParents: true, repasPrix: 0, repasParJour: 0 } : { repasParents: false })}
               options={[
                 { v: 'am', l: 'Moi', sub: 'Les parents me paient les repas' },
-                { v: 'parents', l: 'Les parents', sub: 'À ajouter à tes revenus pour les impôts (5,50 € par jour en 2026), l’app le compte' },
+                { v: 'parents', l: 'Les parents', sub: `À ajouter à tes revenus pour les impôts (${repasAvantageAu(today()) !== undefined ? `${eurosTexte(repasAvantageAu(today())!)} par jour en ${today().slice(0, 4)}` : `valeur de ${today().slice(0, 4)} pas encore dans l’app`}), l’app le compte` },
               ]} />
             {c.repasParents === false && (
               <div class="grid2">
@@ -210,7 +243,9 @@ export function Contrat({ id }: { id?: string }) {
               </div>
             )}
             <EuroInput label="Indemnité kilométrique (par km)" hint="0 si tu ne transportes pas l’enfant" cents={c.kmTaux} onChange={(v) => set({ kmTaux: v ?? 0 })} />
+            {c.kmTaux > 0 && <NumberInput label="Puissance fiscale de ta voiture (CV)" hint="Sur la carte grise. Sert à vérifier le tarif : entre le barème de l’administration et le barème fiscal (article 57)." value={c.kmCv} min={1} max={30} onChange={(v) => set({ kmCv: v || undefined })} />}
             <NumberInput label="Majoration après 45 h par semaine (%)" hint="10 % au minimum" value={c.majoration} min={10} max={100} onChange={(v) => set({ majoration: v ?? 10 })} />
+            <NumberInput label="Majoration des heures complémentaires (%)" hint="Heures en plus jusqu’à 45 h par semaine. Seulement si ton contrat la prévoit, sinon laisse 0." value={c.majorationCompl ?? 0} min={0} max={100} onChange={(v) => set({ majorationCompl: v ?? 0 })} />
             {c.yearType === 'incomplete' && (
               <Seg label="Paiement des congés payés" value={c.cpMode} onChange={(v) => set({ cpMode: v })}
                 options={[{ v: 'juin', l: 'En juin' }, { v: 'principale', l: 'À la prise principale' }, { v: 'fur', l: 'Au fur et à mesure' }]} />
@@ -225,14 +260,15 @@ export function Contrat({ id }: { id?: string }) {
             <fieldset>
               <legend>Reprise d’un contrat en cours</legend>
               <p class="hint">Le contrat a commencé avant l’app. L’app calcule à partir du {shortDate(isNew ? curMonthStart : c.trackedFrom)} ; pour le passé, reprends tes compteurs et tes bulletins.</p>
-              {!cpManuel && soldes ? (
+              {!cpManuel && soldesProposes ? (
                 <>
-                  <NumberInput label={`Jours de congés déjà pris depuis le ${shortDate(soldes.depuis)}`} hint="Compte les jours du lundi au samedi, sans les jours fériés : une semaine de congés = 6 jours. 0 si tu n’en as pas pris." value={prisDepuisJuin} step={1} max={60} onChange={(v) => setPris(v ?? 0)} />
-                  <p class="hint">Calculé par l’app à partir du début du contrat : {soldes.droitsAnDernier} jours de droits de l’an dernier, donc <b>{soldes.cpRestants} jours restants</b> ; et {soldes.cpEnCours.toLocaleString('fr-FR')} jours gagnés depuis le {shortDate(soldes.depuis)}.</p>
-                  <button type="button" class="btn btn-ghost" onClick={() => { set({ balances: { ...c.balances, cpRestants: soldes.cpRestants, cpEnCours: soldes.cpEnCours } }); setCpManuel(true); }}>Ces chiffres sont faux : les saisir moi-même</button>
+                  <NumberInput label={`Jours de congés déjà pris depuis le ${shortDate(soldesProposes.depuis)}`} hint="Compte les jours du lundi au samedi, sans les jours fériés : une semaine de congés = 6 jours. 0 si tu n’en as pas pris." value={prisDepuisJuin} step={1} max={60} onChange={(v) => setPris(v ?? 0)} />
+                  <p class="hint">Calculé par l’app à partir du début du contrat : {soldesProposes.droitsAnDernier} jours de droits de l’an dernier, donc <b>{soldesProposes.cpRestants} jours restants</b> ; et {soldesProposes.cpEnCours.toLocaleString('fr-FR')} jours gagnés depuis le {shortDate(soldesProposes.depuis)}.</p>
+                  <button type="button" class="btn btn-ghost" onClick={() => { set({ balances: { ...c.balances, cpRestants: soldesProposes.cpRestants, cpEnCours: soldesProposes.cpEnCours } }); setCpManuel(true); }}>Ces chiffres sont faux : les saisir moi-même</button>
                 </>
               ) : (
                 <>
+                  {soldes?.aConfirmer && <p class="hint">{soldes.aConfirmer}</p>}
                   <NumberInput label="Congés restants de l’an dernier (jours)" hint="Acquis avant le dernier 1er juin et pas encore pris" value={c.balances.cpRestants} step={0.5} max={60} onChange={(v) => set({ balances: { ...c.balances, cpRestants: v ?? 0 } })} />
                   <NumberInput label="Congés en cours d’acquisition (jours)" hint="Acquis depuis le 1er juin, avant le suivi par l’app" value={c.balances.cpEnCours} step={0.5} max={30} onChange={(v) => set({ balances: { ...c.balances, cpEnCours: v ?? 0 } })} />
                 </>
@@ -324,12 +360,17 @@ export function avenantSummary(before: Contract, ch: Partial<Terms>): string[] {
   const out: string[] = [];
   if (ch.rateNet != null && ch.rateNet !== before.rateNet) out.push(`Taux : ${euros(before.rateNet)} → ${euros(ch.rateNet)} net de l’heure`);
   if (ch.planning) out.push(`Planning : ${hoursLabel(weeklyMinutes(before.planning))} → ${hoursLabel(weeklyMinutes(ch.planning))} par semaine`);
-  if (ch.entretienJour != null) out.push(`Entretien : ${euros(before.entretienJour)} → ${euros(ch.entretienJour)} par jour`);
+  // T-044 : tarif par jour ou par heure.
+  if (ch.entretienJour != null || ch.entretienHeure != null || ch.entretienMode != null) {
+    const apres = { ...before, ...ch };
+    if (libelleEntretien(apres) !== libelleEntretien(before)) out.push(`Entretien : ${libelleEntretien(before)} → ${libelleEntretien(apres)}`);
+  }
   if (ch.repasParents != null && ch.repasParents !== before.repasParents) out.push(ch.repasParents ? 'Repas : fournis par les parents' : 'Repas : fournis par toi');
   if (ch.repasPrix != null && ch.repasPrix !== before.repasPrix) out.push(`Prix du repas : ${euros(before.repasPrix)} → ${euros(ch.repasPrix)}`);
   if (ch.repasParJour != null && ch.repasParJour !== before.repasParJour) out.push(`Repas par jour : ${before.repasParJour} → ${ch.repasParJour}`);
   if (ch.kmTaux != null) out.push(`Indemnité kilométrique : ${euros(before.kmTaux)} → ${euros(ch.kmTaux)} par km`);
   if (ch.majoration != null) out.push(`Majoration après 45 h : ${before.majoration} % → ${ch.majoration} %`);
+  if (ch.majorationCompl != null && ch.majorationCompl !== (before.majorationCompl ?? 0)) out.push(`Majoration des heures complémentaires : ${before.majorationCompl ?? 0} % → ${ch.majorationCompl} %`);
   if (ch.yearType && ch.yearType !== before.yearType) out.push(ch.yearType === 'complete' ? 'Passage en année complète (52 semaines)' : `Passage en année incomplète (${ch.weeks ?? before.weeks} semaines)`);
   else if (ch.weeks != null && ch.weeks !== before.weeks) out.push(`Semaines d’accueil : ${before.weeks} → ${ch.weeks}`);
   if (ch.weeksOff) out.push('Semaines sans accueil modifiées');

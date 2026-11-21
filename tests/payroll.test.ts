@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AmLeave, Contract, DayRec, Planning } from '../src/engine/model';
-import { makeCtx, salaireMensualise, joursMensualises, mensuelMinutes, monthBase, sickDeductible, dayInfo } from '../src/engine/payroll';
+import { makeCtx, messageSansSoldeEnfant, salaireMensualise, joursMensualises, mensuelMinutes, monthBase, sickDeductible, sickLectures, dayInfo } from '../src/engine/payroll';
 import { computeMonth, declarationLines } from '../src/engine/month';
 import { acquisition, compteur, cpForMonth, indemnite, joursOuvrables } from '../src/engine/conges';
 import { finDeContrat } from '../src/engine/fin';
@@ -21,7 +21,9 @@ function contract(over: Partial<Contract> = {}): Contract {
     id: 'c1', child: 'Léa', family: 'Martin', color: 0, start: '2026-01-05', yearType: 'complete', weeks: 52, weeksOff: [],
     planning: week('08:00', '17:00'), rateNet: 350, majoration: 10, entretienJour: 0, repasPrix: 0, repasParJour: 0,
     kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: '2026-01-05',
-    balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 0, ...over,
+    balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 0,
+    // Décision du DG du 18/11/2026 : sans réponse aux 3 questions T-031, le mois n'est pas calculé.
+    alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false, ...over,
   };
 }
 
@@ -77,6 +79,17 @@ describe('retenue pour absence (art. 111)', () => {
   it('absence voulue par les parents : payée', () => {
     const ctx = makeCtx(contract(), [rec('2026-10-14', { abs: 'parents' })], [], '2026-11-15');
     expect(monthBase(ctx, '2026-10').base).toBe(68250);
+  });
+  // T-035b. CCN art. 105 al. 1 : « les temps d'absence non prévus sont rémunérés » ; CASF L423-20 ; service-public F12812
+  // (« Autre cas ») : jours prévus non effectués du fait de l'absence de l'enfant = rémunérés. Salaire attendu : art. 109,
+  // 45 h × 52 ÷ 12 = 195 h à 3,50 € = 682,50 €.
+  it('absence de l’enfant notée « sans solde » (saisie d’avant) : payée, et signalée', () => {
+    const ctx = makeCtx(contract(), [rec('2026-10-14', { abs: 'sans_solde_enfant' })], [], '2026-11-15');
+    const b = monthBase(ctx, '2026-10');
+    expect(b.base).toBe(68250);
+    expect(b.deductedDays).toBe(0);
+    expect(b.alerts).toContain(messageSansSoldeEnfant('2026-10-14'));
+    expect(b.alerts.join(' ')).toMatch(/avenant/);
   });
   it('jour férié chômé : payé et compté dans le diviseur (audit C-006, fiches DREETS Occitanie et DDETS 31)', () => {
     const ctx = makeCtx(contract(), [], [], '2026-12-15');
@@ -182,10 +195,12 @@ describe('seuil des 45 h selon les absences de la semaine (art. 96-4, 99 ; Cass.
     expect(b.complMin).toBe(240);
     expect(b.majMin).toBe(0);
   });
-  it('absence sans solde de l’enfant : le jour ne compte pas', () => {
+  // T-035b : CCN art. 105 al. 1, absence non prévue = rémunérée ; plus de retenue. Le jour noté « sans solde » est traité
+  // comme l'absence voulue par les parents.
+  it('absence de l’enfant notée « sans solde » : payée, le jour compte comme une absence voulue par les parents', () => {
     const b = semaine([rec('2026-10-05', { abs: 'sans_solde_enfant' }), ...plus4h]);
-    expect(b.complMin).toBe(240);
-    expect(b.majMin).toBe(0);
+    expect(b.complMin).toBe(0);
+    expect(b.majMin).toBe(240);
   });
   it('congés payés de l’AM avec droits acquis : le jour compte (Cass. soc. 10/09/2025)', () => {
     const cp: AmLeave[] = [{ id: 'l', type: 'cp', from: '2026-10-05', to: '2026-10-05' }];
@@ -253,7 +268,8 @@ describe('indemnité d’entretien (art. 114.1)', () => {
   });
   it('repas et kilomètres', () => {
     const c = contract({ repasPrix: 300, repasParJour: 1, kmTaux: 41 });
-    const ctx = makeCtx(c, [rec('2026-10-05', { repas: 2, km: 12 })], [], '2026-11-01');
+    // T-017 : un seul enfant dans la voiture (CCN art. 113) → 12 km × 0,41 € en entier
+    const ctx = makeCtx(c, [rec('2026-10-05', { repas: 2, km: 12, kmEnfants: 1 })], [], '2026-11-01');
     const b = monthBase(ctx, '2026-10');
     expect(b.repas).toBe(23 * 300);
     expect(b.km).toBe(492);
@@ -269,6 +285,8 @@ describe('congés payés (art. 48 et 102)', () => {
     const ctx = makeCtx(contract({ start: '2025-06-01', trackedFrom: '2025-06-01', yearType: 'incomplete', weeks: 46 }), [], [], '2026-06-15');
     expect(acquisition(ctx, 2025).jours).toBe(29);
     expect(acquisition(ctx, 2025, 1).jours).toBe(30); // +2 par enfant à charge, plafonné à 30
+    // T-019 (SUS-11) : en année incomplète, ce nombre n'est plus affiché ni payé, il est « à confirmer ».
+    expect(acquisition(ctx, 2025).aConfirmer).toBeDefined();
   });
   it('début en cours de période : arrondi au supérieur', () => {
     // 1er sept. 2026 → 31 mai 2027 : 273 jours = 39 semaines → 24,375 → 25
@@ -286,6 +304,7 @@ describe('congés payés (art. 48 et 102)', () => {
     const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', yearType: 'incomplete', weeks: 46 });
     const ctx = makeCtx(c, [], [{ id: 'm', type: 'am_malade', from: '2025-10-06', to: '2025-11-30' }], '2026-06-15');
     expect(acquisition(ctx, 2025).jours).toBe(28);
+    expect(acquisition(ctx, 2025).aConfirmer).toBeDefined(); // T-019 (SUS-11) : à confirmer, non affiché
   });
   it('arrêt maladie toute la période : 24 jours au plus', () => {
     const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01' });
@@ -308,19 +327,19 @@ describe('congés payés (art. 48 et 102)', () => {
     expect(k.pris).toBe(11); // 3 → 15 août, sans le 15 (férié) ni les dimanches
     expect(k.reste).toBe(9);
   });
-  it('année incomplète : indemnité en juin = max(dixième, maintien)', () => {
+  it('année incomplète : indemnité de juin « à confirmer », jamais payée sur des jours non tranchés (T-019, SUS-11)', () => {
     const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', yearType: 'incomplete', weeks: 46 });
     const ctx = makeCtx(c, [], [], '2026-07-01');
     const ind = indemnite(ctx, 2025);
-    // base : 12 × 603,75 € = 7 245 € → dixième 724,50 € ; maintien 29 j ÷ 6 × 45 h × 3,50 = 761,25 €
+    // base : 12 × 603,75 € = 7 245 € → dixième 724,50 € (ne dépend pas du nombre de jours acquis)
     expect(ind.dixieme).toBe(72450);
-    expect(ind.maintien).toBe(76125);
-    expect(ind.montant).toBe(76125);
+    expect(ind.aConfirmer).toBeDefined();
     const juin = cpForMonth(ctx, '2026-06');
-    expect(juin.indemnite).toBe(76125);
-    expect(juin.jours).toBe(29);
+    expect(juin.indemnite).toBe(0);
+    expect(juin.aConfirmer).toMatch(/à confirmer/);
     const r = computeMonth(ctx, '2026-06');
-    expect(r.netTotal).toBe(60375 + 76125);
+    expect(r.netTotal).toBe(60375);
+    expect(r.cpAConfirmer).toBeDefined();
   });
   it('année complète : complément du dixième en juin seulement s’il est plus favorable', () => {
     const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01' });
@@ -331,12 +350,12 @@ describe('congés payés (art. 48 et 102)', () => {
     expect(ind.maintien).toBe(78750);
     expect(cpForMonth(ctx, '2026-06').complement).toBe(3150);
   });
-  it('versement au fur et à mesure', () => {
+  it('versement au fur et à mesure : « à confirmer » tant que les jours acquis ne sont pas tranchés (T-019, SUS-11)', () => {
     const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', yearType: 'incomplete', weeks: 46, cpMode: 'fur' });
     const ctx = makeCtx(c, [], [{ id: 'l', type: 'cp', from: '2026-07-06', to: '2026-07-11' }], '2026-08-01');
     const juil = cpForMonth(ctx, '2026-07');
-    expect(juil.jours).toBe(6);
-    expect(juil.indemnite).toBe(Math.round((76125 * 6) / 29));
+    expect(juil.indemnite).toBe(0);
+    expect(juil.aConfirmer).toMatch(/à confirmer/);
   });
 });
 
@@ -356,9 +375,14 @@ describe('fin de contrat (art. 120, 121, 124)', () => {
     expect(f.indemniteRupture).toBeGreaterThan(0);
     const f2 = finDeContrat(makeCtx(contract({ start: '2026-05-04', trackedFrom: '2026-05-04' }), [], [], '2026-12-31'), '2026-10-30', 'retrait');
     expect(f2.indemniteRupture).toBe(0);
-    // Décès de l'enfant : 9 mois d'ancienneté exigés aussi (art. 119.4.2, fiche DREETS)
+    // T-034 (A-47) : décès de l'enfant, indemnité due avant 9 mois. Service-public F16842 : « En cas de décès de l'enfant
+    // du particulier employeur, cette condition d'ancienneté est supprimée et l'indemnité est due » ; « Son montant est
+    // égal à 1/80e du total des salaires bruts perçus pendant la durée du contrat ».
     const f3 = finDeContrat(makeCtx(contract({ start: '2026-05-04', trackedFrom: '2026-05-04' }), [], [], '2026-12-31'), '2026-10-30', 'deces');
-    expect(f3.indemniteRupture).toBe(0);
+    expect(f3.ancienneteMois).toBeLessThan(9);
+    expect(f3.indemniteRupture).toBeGreaterThan(0);
+    expect(f3.indemniteRupture).toBe(Math.round(f3.totalBrut / 80));
+    expect(f3.ruptureExplication).toMatch(/quelle que soit l’ancienneté/);
     const f4 = finDeContrat(makeCtx(contract({ start: '2026-01-05', trackedFrom: '2026-01-05' }), [], [], '2026-12-31'), '2026-10-30', 'deces');
     expect(f4.indemniteRupture).toBeGreaterThan(0);
   });
@@ -375,6 +399,15 @@ describe('fin de contrat (art. 120, 121, 124)', () => {
     const f = finDeContrat(makeCtx(c, [], [], '2026-04-30'), '2026-03-20', 'retrait');
     expect(f.regulMinutes).toBeGreaterThan(0);
     expect(f.regularisation).toBe(Math.round((f.regulMinutes * 350) / 60));
+  });
+  it('T-033 : régularisation à confirmer quand elle change si le préavis finit un jour plus tard (date de fin à confirmer)', () => {
+    const ete = ['2026-07-20', '2026-07-27', '2026-08-03', '2026-08-10', '2026-08-17', '2026-08-24'];
+    const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', yearType: 'incomplete', weeks: 46, weeksOff: ete });
+    // Lettre présentée le dimanche 22/03 : 8 jours, fin le dimanche 29/03 ; le lendemain est un lundi accueilli.
+    const f = finDeContrat(makeCtx(c, [], [], '2026-04-30'), '2026-03-22', 'retrait');
+    expect(f.preavisFinAConfirmer).toBeDefined();
+    expect(f.regularisation).toBe(0);
+    expect(f.regularisationAConfirmer).toMatch(/Régularisation à confirmer.*29\/03.*30\/03/);
   });
   it('audit C-002 (cas M3c) : une année terminée sans ses semaines sans accueil bloque la régularisation, avec une alerte', () => {
     const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01', yearType: 'incomplete', weeks: 46 });
@@ -421,7 +454,17 @@ describe('contrôle du bulletin', () => {
     const ctx = makeCtx(contract({ rateNet: 400 }), [], [], '2026-11-01');
     const r = computeMonth(ctx, '2026-10');
     const checks = controle({ id: 'b', cid: 'c1', month: '2026-10', net: r.netTotal, brut: netToBrut(r.netTotal, '2026-10-31'), heures: r.heuresNormales, jours: r.joursActivite, source: 'manuel' }, r, 400);
-    expect(checks.every((x) => x.level === 'ok')).toBe(true);
+    // T-033 : seule une information reste, le minimum ne compte pas la majoration du titre (Urssaf, renvoi *)
+    expect(checks.filter((x) => x.level !== 'ok').map((x) => x.title)).toEqual(['Minimum vérifié sans le titre']);
+    expect(checks.find((x) => x.level === 'info')!.detail).toMatch(/majoration de 4 %.*« Assistant maternel - garde d’enfants »/);
+  });
+  it('T-033 : taux sous le minimum, le message dit que la majoration du titre n’est pas comptée', () => {
+    const ctx = makeCtx(contract({ rateNet: 300 }), [], [], '2026-11-01');
+    const r = computeMonth(ctx, '2026-10');
+    const checks = controle({ id: 'b', cid: 'c1', month: '2026-10', source: 'manuel' }, r, 300);
+    const w = checks.find((x) => x.title === 'Taux du contrat sous le minimum')!;
+    expect(w.detail).toMatch(/minimum conventionnel net \(3,28\s€\)/); // Urssaf, au 1er juin 2026 : « Salaire horaire net 3,28 € »
+    expect(w.detail).toMatch(/ne compte pas la majoration de 4 %/);
   });
 });
 
@@ -469,8 +512,11 @@ describe('régressions (relecture indépendante)', () => {
     const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', yearType: 'incomplete', weeks: 46, cpMode: 'principale' });
     const leaves: AmLeave[] = [{ id: 'l', type: 'cp', from: '2026-08-03', to: '2026-08-14' }];
     const ctx = makeCtx(c, [], leaves, '2027-01-10');
-    expect(cpForMonth(ctx, '2026-08').indemnite).toBe(76125);
+    // T-019 (SUS-11) : année incomplète, l'indemnité de la prise principale est « à confirmer », pas payée.
+    expect(cpForMonth(ctx, '2026-08').indemnite).toBe(0);
+    expect(cpForMonth(ctx, '2026-08').aConfirmer).toBeDefined();
     const f = finDeContrat(ctx, '2027-01-04', 'demission');
+    expect(f.cpAConfirmer).toBeDefined();
     const seul = finDeContrat(makeCtx({ ...c, cpMode: 'principale' }, [], leaves, '2027-01-10'), '2027-01-04', 'demission');
     // Rien de plus que la période en cours : la période précédente est soldée.
     expect(f.cpIndemnite).toBe(seul.cpIndemnite);
@@ -525,7 +571,8 @@ describe('corrections après audit de paie (28/10/2026)', () => {
   it('congés année incomplète : 40 semaines → 40 ÷ 4 × 2,5 = 25 jours, pas 26', () => {
     const c = contract({ start: '2026-06-01', trackedFrom: '2026-06-01', yearType: 'incomplete', weeks: 40, planning: week('08:00', '16:00'), rateNet: 380 });
     const ctx = makeCtx(c, [], [], '2027-06-15');
-    expect(acquisition(ctx, 2026).jours).toBe(25);
+    expect(acquisition(ctx, 2026).jours).toBe(25); // C-CPA-10 (Urssaf) : 40 × 2,5 ÷ 4 = 25
+    expect(acquisition(ctx, 2026).aConfirmer).toBeDefined(); // T-019 (SUS-11) : à confirmer, non affiché
   });
   it('maintien : heures au-delà de 45 h majorées comme dans le salaire', () => {
     // 47,5 h : 45 × 3,60 + 2,5 × 3,96 = 171,90 € par semaine ; 30 jours = 5 semaines = 859,50 €
@@ -542,16 +589,38 @@ describe('règles tranchées le 28/10/2026 (texte et fiches officielles)', () =>
     const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-14', 'retrait');
     expect(f.indemniteRupture).toBe(0);
   });
-  it('enfant malade : 5 jours courts et une longue absence se cumulent', () => {
-    // 1 jour court, puis absence du 9 au 20 mars (10 jours prévus) : 1 + 10 retenus
+  // T-033 (A-17) : une absence de plus de 5 jours qui dure moins de 14 jours calendaires se lit de deux façons (art. 105 ;
+  // DREETS BFC 2026 fiche 03 : « Une absence de 9 jours consécutifs devra ainsi être considérée comme une absence
+  // courte et les 4 derniers jours devront faire l'objet d'une rémunération »). Retenu seulement ce que les deux
+  // lectures retiennent ; le reste est à confirmer.
+  it('enfant malade : 1 jour court puis 10 jours prévus du 9 au 20 mars (12 jours calendaires) : 5 retenus, 6 à confirmer', () => {
+    // Lecture 1 : 1 + 10 retenus (absence longue). Lecture 2 : 1 + 4 (fin des 5 jours), 6 payés.
     const days = ['2026-02-02', ...['09', '10', '11', '12', '13', '16', '17', '18', '19', '20'].map((d) => `2026-03-${d}`)]
       .map((d) => rec(d, { abs: 'malade_certif' }));
-    expect(sickDeductible(makeCtx(contract(), days, [], '2026-04-01')).size).toBe(11);
+    const ctx = makeCtx(contract(), days, [], '2026-04-01');
+    expect(sickDeductible(ctx).size).toBe(5);
+    expect(sickLectures(ctx).aConfirmer.size).toBe(6);
+    const m = monthBase(ctx, '2026-03');
+    expect(m.joursMaladieAConfirmer).toBe(6);
+    expect(m.evenementAConfirmer).toBeGreaterThan(0);
+    expect(m.alerts.join(' ')).toMatch(/Enfant malade du 09\/03 au 20\/03 : 6 jours ni payés ni retenus/);
+    expect(m.alerts.join(' ')).toMatch(/Enfant malade : 6 jours ni payés ni retenus/);
   });
-  it('enfant malade : après la longue absence, les absences courtes restent retenues', () => {
+  it('enfant malade : 8 jours (10 jours calendaires) puis 1 jour : 5 retenus, 4 à confirmer (l’absence suivante aussi)', () => {
+    // Lecture 1 : 8 (absence longue) + 1 (courte) = 9. Lecture 2 : 5 retenus, 3 payés ; le 14/04 payé (5 jours épuisés).
     const days = [...['09', '10', '11', '12', '13', '16', '17', '18'].map((d) => `2026-03-${d}`), '2026-04-14']
       .map((d) => rec(d, { abs: 'malade_certif' }));
-    expect(sickDeductible(makeCtx(contract(), days, [], '2026-05-01')).size).toBe(9);
+    const ctx = makeCtx(contract(), days, [], '2026-05-01');
+    expect(sickDeductible(ctx).size).toBe(5);
+    expect([...sickLectures(ctx).aConfirmer.keys()]).toEqual(['2026-03-16', '2026-03-17', '2026-03-18', '2026-04-14']);
+  });
+  it('enfant malade : absence de 14 jours calendaires ou plus : les deux lectures concordent (14 jours retenus, puis payé)', () => {
+    // Du lundi 2 au vendredi 20 mars : 15 jours prévus, 19 jours calendaires. Retenue jusqu'au 15/03 (14 jours calendaires).
+    const days = ['02', '03', '04', '05', '06', '09', '10', '11', '12', '13', '16', '17', '18', '19', '20']
+      .map((d) => rec(`2026-03-${d}`, { abs: 'malade_certif' }));
+    const ctx = makeCtx(contract(), days, [], '2026-04-01');
+    expect(sickDeductible(ctx).size).toBe(10);
+    expect(sickLectures(ctx).aConfirmer.size).toBe(0);
   });
   it('férié chômé non payé si l’AM est absente (maladie) le jour prévu juste avant', () => {
     // Lundi de Pâques 06/04/2026 ; AM malade le vendredi 03/04
@@ -698,10 +767,17 @@ describe('corrections après audit indépendant (31 octobre 2026)', () => {
     // 7 jours ouvrables posés (lundi 6 → lundi 13 juillet, le 14 juillet étant férié).
     const c = contract({ start: '2026-04-27', trackedFrom: '2026-04-27' });
     const leaves: AmLeave[] = [{ id: 'cp', type: 'cp', from: '2026-07-06', to: '2026-07-13' }];
-    // Sans enfant : vendredi 10, samedi 11 et lundi 13 au-delà des droits → 2 jours prévus retenus
-    expect(monthBase(makeCtx(c, [], leaves, '2026-08-15', 0), '2026-07').deductedDays).toBe(2);
-    // Avec 1 enfant : seul le lundi 13 dépasse
-    expect(monthBase(makeCtx(c, [], leaves, '2026-08-15', 1), '2026-07').deductedDays).toBe(1);
+    // T-030 (A-23) : droits à confirmer. Lectures : 4 jours (5 semaines), 3 (mai seul, avril commencé non compté ;
+    // ou 1 période entière de 4 semaines), 5 (avril commencé compté). Avec 1 enfant : 6, 5, 7.
+    // Sans enfant : jours 1 à 3 payés, 4 et 5 (jeudi 9, vendredi 10) à confirmer, samedi 11 et lundi 13 au-delà de
+    // toute lecture → seul le lundi 13 (jour prévu) est retenu.
+    const sans = monthBase(makeCtx(c, [], leaves, '2026-08-15', 0), '2026-07');
+    expect(sans.deductedDays).toBe(1);
+    expect(sans.joursCpAConfirmer).toBe(2);
+    // Avec 1 enfant : rien n'est retenu ; samedi 11 et lundi 13 sont à confirmer (seul le lundi est un jour prévu)
+    const avec = monthBase(makeCtx(c, [], leaves, '2026-08-15', 1), '2026-07');
+    expect(avec.deductedDays).toBe(0);
+    expect(avec.joursCpAConfirmer).toBe(1);
   });
   it('C-006 : retenue d’un jour en novembre 2026 : le 11 novembre compte dans le diviseur (189 h et non 180 h)', () => {
     // Jeudi 19 novembre (pas le 12 : une absence au lendemain du 11 rendrait le férié non payé, article 47)
@@ -851,11 +927,15 @@ describe('audit C-017 : point de départ du préavis et inaptitude (art. 120, av
   it('une date de présentation antérieure à l’envoi est ignorée', () => {
     expect(finDeContrat(ctx9(), '2026-10-30', 'retrait', 0, '2026-10-20').preavisFin).toBe('2026-11-13');
   });
-  it('démission avant 3 mois : pas de préavis ; retrait avant 3 mois : 8 jours', () => {
+  // T-023 : CCN IDCC 3239 art. 120 (EN VIGUEUR ÉTENDU, relu par V2 le 18/11/2026, t021-contre-verification.md § 3) :
+  // « un préavis est à effectuer en cas de rupture à l'initiative du particulier employeur ou du salarié. Sa durée est
+  // au minimum de : – 8 jours calendaires lorsque l'enfant est accueilli depuis moins de 3 mois ». L'ancien attendu
+  // (« pas de préavis » pour la démission) était contraire au texte.
+  it('démission avant 3 mois : 8 jours calendaires, comme le retrait (CCN art. 120)', () => {
     const mk = () => makeCtx(contract({ start: '2026-09-01', trackedFrom: '2026-09-01' }), [], [], '2026-12-31');
     const d = finDeContrat(mk(), '2026-10-28', 'demission', 0, '2026-10-30');
-    expect(d.preavisFin).toBe('2026-10-28');
-    expect(d.preavisLabel).toMatch(/Pas de préavis/);
+    expect(d.preavisLabel).toBe('8 jours calendaires');
+    expect(d.preavisFin).toBe('2026-11-06');
     expect(finDeContrat(mk(), '2026-10-28', 'retrait', 0, '2026-10-30').preavisFin).toBe('2026-11-06');
   });
   it('inaptitude professionnelle : 2/80e dès 9 mois, rien avant, sans préavis', () => {
@@ -900,7 +980,8 @@ describe('audit C-003 : un avenant en cours de mois ne change pas les jours d’
   });
   it('avenant en cours de mois avec un jour retenu : un jour de moins', () => {
     const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', avenants: [{ id: 'a1', from: '2026-11-16', changes: { rateNet: 400 } }] });
-    const days = [rec('2026-11-20', { abs: 'sans_solde_enfant' })];
+    // T-035b : le jour retenu est une absence pour maladie avec certificat (art. 105), et non plus un jour « sans solde ».
+    const days = [rec('2026-11-20', { abs: 'malade_certif' })];
     expect(monthBase(makeCtx(c, days, [], '2026-12-15'), '2026-11').joursActivite).toBe(21);
   });
   it('entrée dans le mois : jours réellement prévus, inchangé', () => {
@@ -930,5 +1011,8 @@ describe('barèmes provisoires', () => {
     const { baremesProvisoires, BAREMES_VERIFIES_JUSQU_AU } = await import('../src/engine/rates');
     expect(baremesProvisoires(BAREMES_VERIFIES_JUSQU_AU)).toBe(false);
     expect(baremesProvisoires('2027-01-01')).toBe(true);
+    // T-014 : SMIC relevé au 1er décembre 2026, décret non publié au 18/11/2026
+    expect(baremesProvisoires('2026-12-01')).toBe(true);
+    expect(baremesProvisoires('2026-11-30')).toBe(false);
   });
 });

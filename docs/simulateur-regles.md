@@ -64,7 +64,7 @@ Tests : les 4 exemples chiffrés du communiqué de presse CAF du 15/09/2025 (co�
 
 Moteur : src/engine/calendrier.ts. 24 mois à partir du premier mois du contrat, aux barèmes du jour.
 
-- Adaptation (CCN art. 95, 30 jours au plus) : premier mois payé aux heures réellement faites ; entretien et repas au prorata des jours saisis.
+- Adaptation (CCN art. 94, 30 jours au plus) : salaire mensualisé moins les heures non faites, par la déduction d'absence (CCN art. 108.1 al. 3 et 111 ; Urssaf « Préparer le contrat de travail », 12/03/2026 : formule en heures, dénominateur = heures exactes prévues dans le mois). Heures déclarées = salaire dû ÷ taux net. « À confirmer » si contrat sur 46 semaines ou moins (CCN : jours ; Urssaf : heures, ambiguïté A-08), jour férié sur un jour d'accueil du mois (CCN art. 47), heures saisies au-delà du planning, ou heures majorées. Entretien et repas au prorata des jours saisis.
 - Congés payés en année incomplète (CCN art. 102) : 10 % des salaires nets de la période de référence (1er juin → 31 mai ; la première, de l'embauche au 31 mai), versés en juin ou au mois du congé principal (juin à octobre). Le paiement par douzième est interdit (« toute autre modalité est proscrite »). Le maintien de salaire, s'il est plus favorable, n'est pas calculé.
 - CMG du mois des congés : les congés s'ajoutent au coût aidé, hors vérification du plafond horaire (LFSS 2026, art. 100). Hypothèse : aucun texte ne précise si la CAF les retient dans le coût depuis 2026 (Pajemploi : oui en 2025).
 - Fin de l'aide : après le mois des 6 ans (12 ans pour un parent seul) ; ensuite, toutes les cotisations reviennent à la famille.

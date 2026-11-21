@@ -1,12 +1,13 @@
-import { ABSENCES_NON_GEREES } from '../legal';
-import { useState } from 'preact/hooks';
+import { ABSENCE_NON_GEREE_CHOISIE, ABSENCES_NON_GEREES } from '../legal';
+import { useEffect, useState } from 'preact/hooks';
 import { activeContracts, ctxFor, logUsage, putLeave, saveSettings, state, toast, uid, updateDay, useStore } from '../store';
 import { addDays, dayLabel, minutes, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NOMS, daysBetween } from '../engine/dates';
-import { dayInfo, type DayInfo } from '../engine/payroll';
-import { AM_ABS_LABEL, CHILD_ABS_LABEL, type AmAbs, type ChildAbs, type Contract, type DayRec, type Presence } from '../engine/model';
+import { dayInfo, type Ctx, type DayInfo } from '../engine/payroll';
+import { AM_ABS_LABEL, AM_ABS_NON_GEREES, CHILD_ABS_LABEL, type AmAbs, type ChildAbs, type Contract, type DayRec, type NatureEvenement, type Plage, type Presence } from '../engine/model';
+import { libelleDureeSaisie, NATURE_EVENEMENT_LABEL } from '../engine/evenements';
 import { hoursLabel } from '../engine/money';
 import { Banner, CHILD_COLORS, Choices, DateInput, Gommette, Sheet, Stepper, Switch, Topbar, useErreurAffichee } from '../ui/kit';
-import { evAnnulation, evCorrection, heureCorrigee } from '../usage-events';
+import { evAnnulation, evCorrections, evPointage, type GestePointage } from '../usage-events';
 import { AideVideo, BienvenueDemo } from '../ui/VideoGuide';
 import { isDemo } from '../db';
 import { Icon } from '../ui/icons';
@@ -36,6 +37,20 @@ export function Today() {
   const [day, setDay] = useState(t);
   const [edit, setEdit] = useState<Contract | null>(null);
   const [amSheet, setAmSheet] = useState(false);
+  // T-048 : l'écran se réévalue chaque minute et au retour sur l'app, pour que le bouton change sans recharger.
+  const [, setMinute] = useState(0);
+  useEffect(() => {
+    const tic = () => setMinute((m) => m + 1);
+    // Calée sur le début de chaque minute : la minuterie se relance jusqu'à la minute suivante (toutes les 60 s),
+    // sans dériver même si le téléphone a ralenti les minuteries pendant que l'app était en arrière-plan.
+    let id: ReturnType<typeof setTimeout>;
+    const planifier = () => { id = setTimeout(() => { tic(); planifier(); }, msAvantMinuteSuivante(Date.now())); };
+    planifier();
+    const retour = () => { if (document.visibilityState === 'visible') tic(); };
+    document.addEventListener('visibilitychange', retour);
+    window.addEventListener('focus', tic);
+    return () => { clearTimeout(id); document.removeEventListener('visibilitychange', retour); window.removeEventListener('focus', tic); };
+  }, []);
   const kids = s.contracts.filter((c) => c.start <= day && (!c.end || c.end >= day));
   const base = day < addDays(t, -5) ? addDays(day, 5) : t;
   const days = Array.from({ length: 7 }, (_, i) => addDays(base, i - 5));
@@ -95,10 +110,10 @@ export function Today() {
         )}
         {s.settings.compact && kids.length > 1 ? (
           <div class="kid-list">
-            {kids.map((c) => <KidCard c={c} day={day} compact onEdit={() => setEdit(c)} />)}
+            {kids.map((c) => <KidCard key={c.id} c={c} day={day} compact onEdit={() => setEdit(c)} />)}
           </div>
         ) : (
-          kids.map((c) => <KidCard c={c} day={day} onEdit={() => setEdit(c)} />)
+          kids.map((c) => <KidCard key={c.id} c={c} day={day} onEdit={() => setEdit(c)} />)
         )}
         {day === t && forgotten.length > 0 && (
           <Banner tone="warn">
@@ -133,7 +148,130 @@ export function Today() {
   );
 }
 
-function nextAction(di: DayInfo, rec: DayRec | undefined): { idx: number; kind: 'a' | 'd' } | null {
+// ---------- T-048 : heure vraie quand l'appui arrive loin de l'heure prévue ----------
+// Seuils stricts, en minutes : au-delà, l'app demande quelle heure est vraie au lieu de noter l'heure de l'appui.
+/** Arrivée : plus de 30 minutes après le début prévu (seuil fixé par le DG). */
+export const SEUIL_ARRIVEE_MIN = 30;
+/** Départ : plus de 15 minutes après la fin prévue (chaque minute après la fin prévue est payée en plus). */
+export const SEUIL_DEPART_MIN = 15;
+
+/** Heure lisible des textes T-048 : « 8 h 15 », « 17 h » (sans « 00 », sans zéro devant l'heure). */
+export function heureLisible(t: string): string {
+  const [h, m] = t.split(':').map(Number);
+  return m === 0 ? `${h} h` : `${h} h ${String(m).padStart(2, '0')}`;
+}
+
+/** Les trois choix à proposer, quand le seuil est passé. */
+export interface ChoixPointage {
+  kind: 'a' | 'd';
+  idx: number;
+  /** Heure prévue : début de la plage pour l'arrivée, fin pour le départ */
+  prevue: string;
+  /** Heure de l'appui, au rendu */
+  maintenant: string;
+  /** Minutes entre l'heure prévue et maintenant */
+  ecartMin: number;
+  /**
+   * Départ : minutes que le moteur paiera en plus avec un départ « maintenant » plutôt qu'à la fin prévue
+   * (voir minutesPayeesEnPlus). Absent ou ≤ 0 : pas de parenthèse « (+N min payées) ».
+   */
+  payeesMin?: number;
+}
+
+/** Délai jusqu'au début de la minute suivante (petite marge de 50 ms pour tomber après le changement de minute). */
+export function msAvantMinuteSuivante(nowMs: number): number {
+  return 60_000 - (nowMs % 60_000) + 50;
+}
+
+/**
+ * Appui sur le bouton simple « Arrivée » / « Départ » : le choix est recalculé avec l'heure du geste.
+ * « choix » : le seuil est passé entre deux réévaluations de l'écran ; rien n'est enregistré, les trois choix s'ouvrent.
+ * « direct » : l'heure de l'appui est notée, comme avant T-048.
+ */
+export function decisionAppui(planned: Plage[], na: { idx: number; kind: 'a' | 'd' } | null, heureGeste: string): 'choix' | 'direct' {
+  return choixPointage(planned, na, heureGeste) ? 'choix' : 'direct';
+}
+
+/**
+ * Minutes payées en plus par un départ à `heureDepart` plutôt qu'à la fin prévue de la plage `idx`, selon le moteur :
+ * différence d'extraMin de dayInfo entre les deux journées simulées. Le contexte est copié (journées dans une Map neuve,
+ * cache neuf) : ni le contexte de l'écran ni son cache ne sont touchés.
+ */
+export function minutesPayeesEnPlus(ctx: Ctx, day: string, idx: number, heureDepart: string): number {
+  const rec = ctx.days.get(day);
+  const plage = dayInfo(ctx, day).planned[idx];
+  if (!rec || !plage) return 0;
+  const simule = (heure: string) => {
+    const days = new Map(ctx.days);
+    days.set(day, pointerJour(rec, idx, 'd', heure, true));
+    return dayInfo({ ...ctx, days, cache: new Map() }, day).extraMin;
+  };
+  return simule(heureDepart) - simule(plage.end);
+}
+
+/**
+ * Choix à proposer pour la plage à pointer (celle de nextAction), ou null : rien ne change (avant le seuil,
+ * plage sans heure prévue, accueil imprévu, rien à pointer).
+ */
+export function choixPointage(planned: Plage[], na: { idx: number; kind: 'a' | 'd' } | null, maintenant: string): ChoixPointage | null {
+  if (!na) return null;
+  const plage = planned[na.idx];
+  if (!plage) return null;
+  const prevue = na.kind === 'a' ? plage.start : plage.end;
+  const ecartMin = minutes(maintenant) - minutes(prevue);
+  const seuil = na.kind === 'a' ? SEUIL_ARRIVEE_MIN : SEUIL_DEPART_MIN;
+  if (ecartMin <= seuil) return null;
+  return { kind: na.kind, idx: na.idx, prevue, maintenant, ecartMin };
+}
+
+/** Textes de la carte et de la fiche : ligne d'en-tête et libellés des trois boutons. */
+export function textesChoix(ch: ChoixPointage): { titre: string; prevue: string; maintenant: string; autre: string } {
+  const arr = ch.kind === 'a';
+  return {
+    titre: `${arr ? 'Arrivée' : 'Départ'} prévu${arr ? 'e' : ''} à ${heureLisible(ch.prevue)}`,
+    prevue: `À ${heureLisible(ch.prevue)}`,
+    maintenant: `Maintenant, ${heureLisible(ch.maintenant)}${!arr && (ch.payeesMin ?? 0) > 0 ? ` (+${ch.payeesMin} min payées)` : ''}`,
+    autre: 'Autre heure',
+  };
+}
+
+export const MSG_DEPART_AVANT_ARRIVEE = 'L’heure de départ doit être après l’arrivée.';
+export const MSG_HEURE_FUTURE = 'Cette heure n’est pas encore passée.';
+export const MSG_HEURE_VIDE = 'Choisis une heure.';
+
+/**
+ * Vérifie l'heure à enregistrer : pas d'heure future ; un départ après l'arrivée de la plage.
+ * Rend le message à afficher, ou '' si l'heure est acceptée.
+ */
+export function verifierHeure(kind: 'a' | 'd', heure: string, maintenant: string, arrivee?: string): string {
+  if (!/^\d{2}:\d{2}$/.test(heure)) return MSG_HEURE_VIDE;
+  if (minutes(heure) > minutes(maintenant)) return MSG_HEURE_FUTURE;
+  if (kind === 'd' && arrivee && minutes(heure) <= minutes(arrivee)) return MSG_DEPART_AVANT_ARRIVEE;
+  return '';
+}
+
+/**
+ * Enregistre un choix seulement si l'heure est acceptée : appelle pointer une fois, ou jamais.
+ * Rend le message de refus, ou '' quand le pointage est parti. Seul chemin d'écriture des trois choix.
+ */
+export function enregistrerChoix(
+  ch: Pick<ChoixPointage, 'kind'>, heure: string, geste: GestePointage, maintenant: string, arrivee: string | undefined,
+  pointer: (heure: string, geste: GestePointage) => unknown,
+): string {
+  const e = verifierHeure(ch.kind, heure, maintenant, arrivee);
+  if (!e) void pointer(heure, geste);
+  return e;
+}
+
+/** Journée après le pointage : la même mise à jour que le bouton d'avant T-048, avec l'heure choisie. */
+export function pointerJour(r: DayRec, idx: number, kind: 'a' | 'd', heure: string, avecPlanning: boolean): DayRec {
+  const p: Presence[] = [...(r.pres ?? [])];
+  while (p.length <= idx) p.push({});
+  p[idx] = kind === 'a' ? { a: heure } : { ...p[idx], d: heure };
+  return { ...r, pres: p, extra: avecPlanning ? r.extra : true };
+}
+
+export function nextAction(di: Pick<DayInfo, 'planned'>, rec: DayRec | undefined): { idx: number; kind: 'a' | 'd' } | null {
   const pres = rec?.pres ?? [];
   const n = Math.max(di.planned.length, 1);
   for (let i = 0; i < n; i++) {
@@ -145,8 +283,16 @@ function nextAction(di: DayInfo, rec: DayRec | undefined): { idx: number; kind: 
 }
 
 function KidCard({ c, day, onEdit, compact }: { c: Contract; day: string; onEdit: () => void; compact?: boolean }) {
+  // Heure lue à chaque rendu (l'écran se réévalue chaque minute, et après un appui).
+  const maintenant = nowHHMM();
   const t = today();
-  const di = dayInfo(ctxFor(c), day);
+  // T-048 : fiche ouverte : « choix » (vue en liste) ou « autre » (saisie de l'heure)
+  const [fiche, setFiche] = useState<'choix' | 'autre' | null>(null);
+  let choix: ChoixPointage | null = null;
+  let pointer: ((heure: string, geste: GestePointage | null) => Promise<void>) | null = null;
+  let arriveePlage: string | undefined;
+  const ctx = ctxFor(c);
+  const di = dayInfo(ctx, day);
   const rec = di.rec;
   const color = CHILD_COLORS[c.color % CHILD_COLORS.length];
   const tags: { tone: string; text: string }[] = [];
@@ -172,31 +318,48 @@ function KidCard({ c, day, onEdit, compact }: { c: Contract; day: string; onEdit
     const na = nextAction(di, rec);
     if (na) {
       const isArr = na.kind === 'a';
+      arriveePlage = isArr ? undefined : rec?.pres?.[na.idx]?.a;
+      // Enregistre l'heure choisie : même mise à jour, même message avec « Annuler ».
+      pointer = async (heure: string, geste: GestePointage | null) => {
+        const undo = await updateDay(c.id, day, (r) => pointerJour(r, na.idx, na.kind, heure, di.planned.length > 0));
+        // « arrivee » ou « depart » toujours ; le choix fait en plus quand les trois choix étaient proposés (T-048).
+        for (const ev of evPointage(isArr, geste)) logUsage(ev, 'aujourdhui');
+        // C-101 : une annulation juste après le pointage dit que le bouton a été touché par erreur.
+        const annuler = async () => { await undo(); logUsage(evAnnulation(isArr), 'aujourdhui'); };
+        let extra = '';
+        if (!isArr) {
+          const plage = di.planned[na.idx];
+          if (plage && minutes(heure) > minutes(plage.end)) extra = ` (+${hoursLabel(minutes(heure) - minutes(plage.end))})`;
+        }
+        toast(`${isArr ? 'Arrivée' : 'Départ'} ${de(c.child)} à ${fmtH(heure)}${extra}`, annuler);
+      };
+      // T-048 : seuil passé pour une plage qui a une heure prévue : trois choix au lieu de l'heure de l'appui.
+      choix = choixPointage(di.planned, na, maintenant);
+      if (choix?.kind === 'd') choix = { ...choix, payeesMin: minutesPayeesEnPlus(ctx, day, choix.idx, choix.maintenant) };
+      const enregistrer = pointer;
       action = {
         label: isArr ? (di.planned.length || pres.length ? 'Arrivée' : 'Imprévu') : 'Départ',
         quiet: !di.planned.length && !pres.length,
         icon: isArr ? 'in' : 'out',
-        run: async () => {
-          const now = nowHHMM();
-          const undo = await updateDay(c.id, day, (r) => {
-            const p: Presence[] = [...(r.pres ?? [])];
-            while (p.length <= na.idx) p.push({});
-            p[na.idx] = isArr ? { a: now } : { ...p[na.idx], d: now };
-            return { ...r, pres: p, extra: di.planned.length ? r.extra : true };
-          });
-          logUsage(isArr ? 'arrivee' : 'depart', 'aujourdhui');
-          // C-101 : une annulation juste après le pointage dit que le bouton a été touché par erreur.
-          const annuler = async () => { await undo(); logUsage(evAnnulation(isArr), 'aujourdhui'); };
-          let extra = '';
-          if (!isArr) {
-            const plage = di.planned[na.idx];
-            if (plage && minutes(now) > minutes(plage.end)) extra = ` (+${hoursLabel(minutes(now) - minutes(plage.end))})`;
-          }
-          toast(`${isArr ? 'Arrivée' : 'Départ'} ${de(c.child)} à ${fmtH(now)}${extra}`, annuler);
+        run: () => {
+          // R1 : seuil passé depuis le dernier rendu : rien n'est noté, les trois choix s'ouvrent.
+          const heure = nowHHMM();
+          if (decisionAppui(di.planned, na, heure) === 'choix') { setFiche('choix'); return; }
+          void enregistrer(heure, null);
         },
       };
     }
   }
+
+  // T-048 : les trois choix (carte, ou fiche de la vue en liste) et la fiche « Autre heure ».
+  const choixVue = choix && pointer && (
+    <ChoixHeure ch={choix} child={c.child} arrivee={arriveePlage} pointer={pointer} onAutre={() => setFiche('autre')} onFait={() => setFiche(null)} />
+  );
+  const fiches = choix && pointer && fiche && (
+    fiche === 'choix'
+      ? <Sheet title={`${choix.kind === 'a' ? 'Arrivée' : 'Départ'} ${de(c.child)}`} onClose={() => setFiche(null)}>{choixVue}</Sheet>
+      : <AutreHeureSheet ch={choix} child={c.child} arrivee={arriveePlage} pointer={pointer} onClose={() => setFiche(null)} />
+  );
 
   if (compact) {
     // Une ligne par enfant : pastille, prénom, l'état le plus utile, et le bouton du moment
@@ -211,10 +374,11 @@ function KidCard({ c, day, onEdit, compact }: { c: Contract; day: string; onEdit
           </span>
         </button>
         {action && (
-          <button class={action.quiet ? 'btn btn-outline' : 'btn btn-primary'} onClick={action.run} aria-label={`${action.label} ${de(c.child)}`}>
+          <button class={action.quiet ? 'btn btn-outline' : 'btn btn-primary'} onClick={choix ? () => setFiche('choix') : action.run} aria-label={`${action.label} ${de(c.child)}`} aria-haspopup={choix ? 'dialog' : undefined}>
             <Icon name={action.icon} />{action.label}
           </button>
         )}
+        {fiches}
       </article>
     );
   }
@@ -233,17 +397,78 @@ function KidCard({ c, day, onEdit, compact }: { c: Contract; day: string; onEdit
           {tags.map((x) => <span class={`tag ${x.tone}`}>{x.text}</span>)}
         </div>
       )}
-      <div class="kid-actions" style={!action ? { gridTemplateColumns: '1fr' } : undefined}>
-        {action && (
+      {choixVue}
+      <div class="kid-actions" style={!action || choix ? { gridTemplateColumns: '1fr' } : undefined}>
+        {action && !choix && (
           <button class={action.quiet ? 'btn btn-outline' : 'btn btn-primary btn-lg'} onClick={action.run} aria-label={action.quiet ? `Accueil imprévu : arrivée ${de(c.child)}` : undefined}>
             <Icon name={action.icon} />{action.label}
           </button>
         )}
-        <button class={`btn btn-edit ${action && !action.quiet ? 'btn-secondary btn-lg' : 'btn-secondary'}`} onClick={onEdit} aria-label={`${action ? 'Modifier' : day > t ? 'Prévoir une absence' : 'Modifier la journée'} (${c.child})`}>
+        <button class={`btn btn-edit ${action && !action.quiet && !choix ? 'btn-secondary btn-lg' : 'btn-secondary'}`} onClick={onEdit} aria-label={`${action ? 'Modifier' : day > t ? 'Prévoir une absence' : 'Modifier la journée'} (${c.child})`}>
           <Icon name="edit" />{action ? 'Modifier' : day > t ? 'Prévoir une absence' : 'Modifier la journée'}
         </button>
       </div>
+      {fiches}
     </article>
+  );
+}
+
+type Pointer = (heure: string, geste: GestePointage | null) => Promise<void>;
+
+/** T-048 : « Arrivée prévue à 8 h 15 », puis « À 8 h 15 » (principal), « Maintenant, 9 h 05 », « Autre heure ». */
+function ChoixHeure({ ch, child, arrivee, pointer, onAutre, onFait }: { ch: ChoixPointage; child: string; arrivee?: string; pointer: Pointer; onAutre: () => void; onFait: () => void }) {
+  const tx = textesChoix(ch);
+  const quoi = `${ch.kind === 'a' ? 'Arrivée' : 'Départ'} ${de(child)}`;
+  // « À <heure de fin prévue> » ne doit pas donner un départ avant (ou à) l'arrivée enregistrée.
+  const refusPrevue = verifierHeure(ch.kind, ch.prevue, ch.maintenant, arrivee);
+  const [err, setErr] = useState('');
+  useErreurAffichee('depart_avant_arrivee', err === MSG_DEPART_AVANT_ARRIVEE);
+  const choisir = (heure: string, geste: GestePointage) => {
+    // L'heure de l'appui est relue au moment du geste.
+    const e = enregistrerChoix(ch, heure, geste, nowHHMM(), arrivee, pointer);
+    if (e) setErr(e); else onFait();
+  };
+  return (
+    <div class="pointage-choix" role="group" aria-label={`${quoi} : quelle heure est vraie ?`}>
+      <p class="pointage-choix-titre">{tx.titre}</p>
+      <button class="btn btn-primary btn-lg btn-block" disabled={!!refusPrevue} onClick={() => choisir(ch.prevue, 'prevue')} aria-label={`${quoi} ${tx.prevue.replace(/^À/, 'à')}`}>
+        <Icon name={ch.kind === 'a' ? 'in' : 'out'} />{tx.prevue}
+      </button>
+      {refusPrevue && <p class="err">{refusPrevue}</p>}
+      <button class="btn btn-secondary btn-lg btn-block" onClick={() => choisir(nowHHMM(), 'maintenant')} aria-label={`${quoi} : ${tx.maintenant}`}>
+        {tx.maintenant}
+      </button>
+      <button class="btn btn-outline btn-block" onClick={onAutre} aria-haspopup="dialog" aria-label={`${quoi} : ${tx.autre}`}>
+        <Icon name="clock" />{tx.autre}
+      </button>
+      {err && <p class="err" role="alert">{err}</p>}
+    </div>
+  );
+}
+
+/** T-048 : la seule heure à choisir, réglée d'avance sur l'heure prévue. Rien n'est enregistré avant « Enregistrer ». */
+function AutreHeureSheet({ ch, child, arrivee, pointer, onClose }: { ch: ChoixPointage; child: string; arrivee?: string; pointer: Pointer; onClose: () => void }) {
+  const arr = ch.kind === 'a';
+  const [heure, setHeure] = useState(ch.prevue);
+  const [err, setErr] = useState('');
+  useErreurAffichee('depart_avant_arrivee', err === MSG_DEPART_AVANT_ARRIVEE);
+  useErreurAffichee('saisie', !!err && err !== MSG_DEPART_AVANT_ARRIVEE);
+  function save() {
+    // Rien n'est écrit avant ce geste ; fermer la fiche n'écrit rien.
+    const e = enregistrerChoix(ch, heure, 'autre', nowHHMM(), arrivee, pointer);
+    if (e) setErr(e); else onClose();
+  }
+  return (
+    <Sheet title={`${arr ? 'Arrivée' : 'Départ'} ${de(child)}`} onClose={onClose}>
+      <p class="muted">{textesChoix(ch).titre}</p>
+      <div class="field">
+        <label for="autre-heure">Heure {arr ? 'd’arrivée' : 'de départ'}</label>
+        <input id="autre-heure" class="input num" type="time" value={heure} max={nowHHMM()} min={!arr && arrivee ? arrivee : undefined}
+          onInput={(e) => { setHeure((e.target as HTMLInputElement).value); setErr(''); }} />
+      </div>
+      {err && <p class="err" role="alert">{err}</p>}
+      <button class="btn btn-primary btn-block btn-lg" onClick={save}>Enregistrer</button>
+    </Sheet>
   );
 }
 
@@ -252,8 +477,10 @@ const CHILD_ABS_OPTIONS: { v: ChildAbs | 'none'; l: string; sub?: string }[] = [
   { v: 'malade_certif', l: CHILD_ABS_LABEL.malade_certif, sub: 'Retenu dans la limite de 5 jours par an, plus une absence de 14 jours d’affilée' },
   { v: 'malade', l: CHILD_ABS_LABEL.malade, sub: 'Payé' },
   { v: 'parents', l: CHILD_ABS_LABEL.parents, sub: 'Payé' },
-  { v: 'sans_solde_enfant', l: CHILD_ABS_LABEL.sans_solde_enfant, sub: 'Retenu sur le salaire' },
 ];
+// T-035b : l'absence « sans solde » de l'enfant n'est plus proposée (CCN art. 105 : absence non prévue = payée). Elle reste
+// affichée seulement sur un jour déjà noté ainsi, pour pouvoir le corriger.
+const OPTION_SANS_SOLDE_ENFANT = { v: 'sans_solde_enfant' as const, l: CHILD_ABS_LABEL.sans_solde_enfant, sub: 'Payé : la convention ne permet pas de le retenir (article 105)' };
 
 export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClose: () => void }) {
   const di = dayInfo(ctxFor(c), day);
@@ -267,6 +494,9 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
   const [abs, setAbs] = useState<ChildAbs | 'none'>(rec?.abs ?? 'none');
   const [repas, setRepas] = useState<number>(rec?.repas ?? c.repasParJour);
   const [km, setKm] = useState<number>(rec?.km ?? 0);
+  const [kmEnfants, setKmEnfants] = useState<number>(rec?.kmEnfants ?? 0);
+  // T-025 C-2 : saisie d'avant (champ absent) avec un seul enfant dans la voiture = une seule famille demandeuse.
+  const [kmPartage, setKmPartage] = useState<boolean>(rec?.kmPartage ?? (rec?.kmEnfants !== undefined && rec.kmEnfants > 1));
   const [ferieT, setFerieT] = useState<boolean>(!!rec?.ferieTravaille);
   const [err, setErr] = useState('');
   const future = day > today();
@@ -288,6 +518,8 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
       }
       if (repas !== c.repasParJour) next.repas = repas; else delete next.repas;
       if (km) next.km = km; else delete next.km;
+      if (km) next.kmPartage = kmPartage; else delete next.kmPartage;
+      if (km && kmPartage && kmEnfants >= 1) next.kmEnfants = kmEnfants; else delete next.kmEnfants;
       if (ferieT) next.ferieTravaille = true; else delete next.ferieTravaille;
       return next;
     });
@@ -296,7 +528,8 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
     // Heures effectives, plage par plage (sans filtrer, pour garder les index) : celles du formulaire, qui valent
     // le planning quand rien n'a changé (relecture contradictoire : faux « heure corrigée » quand samePlan).
     const apres = abs !== 'none' ? [] : pres;
-    if (heureCorrigee(rec?.pres, apres)) logUsage(evCorrection(day, today()), 'aujourdhui');
+    // T-048 : le jour même, heure_corrigee part avec heure_corrigee_arrivee et/ou heure_corrigee_depart.
+    for (const ev of evCorrections(day, today(), rec?.pres, apres)) logUsage(ev, 'aujourdhui');
     onClose();
     toast(`Journée ${de(c.child)} enregistrée`, undo);
   }
@@ -305,7 +538,7 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
     <Sheet title={`${c.child}, ${dayLabel(day)}`} onClose={onClose}>
       <p class="muted">{planText(di)}</p>
       {di.ferie && <Switch label={`Jour férié (${di.ferie}) travaillé`} hint={day.endsWith('05-01') ? '1er mai : payé double' : 'Majoré de 10 %'} checked={ferieT} onChange={setFerieT} />}
-      <Choices label="Ce jour-là" value={abs} options={CHILD_ABS_OPTIONS} onChange={setAbs} />
+      <Choices label="Ce jour-là" value={abs} options={rec?.abs === 'sans_solde_enfant' ? [...CHILD_ABS_OPTIONS, OPTION_SANS_SOLDE_ENFANT] : CHILD_ABS_OPTIONS} onChange={setAbs} />
       {abs === 'none' && !future && (
         <fieldset>
           <legend>Heures réelles</legend>
@@ -332,6 +565,9 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
         <>
           {c.repasPrix > 0 && <Stepper label="Repas fournis" value={repas} onChange={setRepas} max={4} />}
           {c.kmTaux > 0 && <Stepper label="Kilomètres" value={km} onChange={setKm} max={500} unit="km" />}
+          {c.kmTaux > 0 && km > 0 && <Switch label="Une autre famille a aussi demandé ce trajet" hint="Non : ces km sont dus en entier par cette famille (article 113)." checked={kmPartage} onChange={setKmPartage} />}
+          {c.kmTaux > 0 && km > 0 && kmPartage && <Stepper label="Enfants dans la voiture" value={kmEnfants} onChange={setKmEnfants} max={8} />}
+          {c.kmTaux > 0 && km > 0 && kmPartage && <p class="hint">Compte tous les enfants dans la voiture, les tiens compris si le trajet est aussi pour eux. Chaque famille paie sa part, au prorata des enfants (article 113). À moins de 2, les km restent à confirmer.</p>}
         </>
       )}
       <button class="btn btn-primary btn-block btn-lg" onClick={save}>Enregistrer</button>
@@ -343,12 +579,15 @@ const AM_OPTIONS: { v: AmAbs; l: string; sub: string }[] = [
   { v: 'cp', l: AM_ABS_LABEL.cp, sub: 'Décomptés de ton compteur de congés' },
   { v: 'am_malade', l: AM_ABS_LABEL.am_malade, sub: 'Non payé par les parents (indemnités de la Sécurité sociale)' },
   { v: 'am_enfant_malade', l: AM_ABS_LABEL.am_enfant_malade, sub: 'Non payé (3 jours par an, 5 dans certains cas)' },
-  { v: 'evenement', l: AM_ABS_LABEL.evenement, sub: 'Mariage, naissance, décès… : payé sur justificatif' },
+  { v: 'evenement', l: AM_ABS_LABEL.evenement, sub: 'Mariage, naissance, décès… : payé sur justificatif, selon la durée prévue' },
   { v: 'sans_solde', l: AM_ABS_LABEL.sans_solde, sub: 'Non payé, avec l’accord des parents' },
+  // T-031 : absences que l'app ne calcule pas. Les saisir bloque les mois concernés au lieu de les payer comme travaillés.
+  ...AM_ABS_NON_GEREES.map((v) => ({ v, l: AM_ABS_LABEL[v], sub: 'Non géré par l’app : les mois concernés sont bloqués' })),
 ];
 
 export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () => void }) {
   const [type, setType] = useState<AmAbs>('cp');
+  const [nature, setNature] = useState<NatureEvenement | undefined>(undefined);
   const [from, setFrom] = useState(start);
   const [to, setTo] = useState(start);
   const err = to < from ? 'La date de fin doit être après le début.' : '';
@@ -357,17 +596,23 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
     <Sheet title="Je serai absente" onClose={onClose}>
       <p class="muted">Pour tous les enfants. Les parents ne te paient pas les jours non payés : l’app fait la retenue toute seule.</p>
       <Choices label="Raison" value={type} options={AM_OPTIONS} onChange={setType} />
-      <p class="hint">{ABSENCES_NON_GEREES}</p>
+      {type === 'evenement' && (
+        <Choices label="Quel événement ?" value={nature} onChange={setNature}
+          options={(Object.keys(NATURE_EVENEMENT_LABEL) as NatureEvenement[]).map((v) => ({ v, l: NATURE_EVENEMENT_LABEL[v], sub: libelleDureeSaisie(v, from) }))} />
+      )}
+      {type === 'evenement' && <p class="hint">Déplacement de plus de 600 km aller-retour : le jour en plus est non rémunéré, saisis-le en congé sans solde.</p>}
+      {(AM_ABS_NON_GEREES as AmAbs[]).includes(type) ? <Banner tone="warn">{ABSENCE_NON_GEREE_CHOISIE}</Banner> : <p class="hint">{ABSENCES_NON_GEREES}</p>}
       <div class="grid2">
         <DateInput label="Du" value={from} onChange={(v) => { setFrom(v); if (to < v) setTo(v); }} />
         <DateInput label="Au (inclus)" value={to} min={from} onChange={setTo} />
       </div>
+      {type === 'cp' && <p class="hint">Mets ton dernier jour de congé. L’app compte les jours du lundi au samedi jusqu’à la veille de ta reprise : le samedi avant un retour le lundi compte aussi.</p>}
       {err && <p class="err" role="alert">{err}</p>}
       <button
         class="btn btn-primary btn-block btn-lg"
-        disabled={!!err || !from || !to}
+        disabled={!!err || !from || !to || (type === 'evenement' && !nature)}
         onClick={async () => {
-          const undo = await putLeave({ id: uid(), type, from, to });
+          const undo = await putLeave(type === 'evenement' ? { id: uid(), type, from, to, nature } : { id: uid(), type, from, to });
           logUsage('absence_am', 'aujourdhui');
           onClose();
           toast(`${AM_ABS_LABEL[type]} enregistré${type === 'cp' ? 's' : ''}`, undo);

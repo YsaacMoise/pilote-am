@@ -4,6 +4,8 @@ import { mesureActive, setMesure } from '../analytics';
 import { isDemo } from '../db';
 import { Seg, Stepper, Switch, TextInput, Topbar } from '../ui/kit';
 import { getTheme, setTheme, type Theme } from '../theme';
+import { cpPeriodStartYear, today } from '../engine/dates';
+import { moinsDe21Ans } from '../engine/conges';
 
 declare const __APP_VERSION__: string;
 
@@ -11,6 +13,8 @@ export function Reglages() {
   const s = useStore();
   const [mesure, setM] = useState(mesureActive());
   const [theme, setT] = useState<Theme>(getTheme());
+  // Période de congés en cours (du 1er juin au 31 mai) : l'âge se lit au 30 avril de son année de début (C. trav. L3141-8)
+  const anneeCP = cpPeriodStartYear(today());
   return (
     <>
       <Topbar title="Réglages" back="#/plus" screen="reglages" />
@@ -20,7 +24,8 @@ export function Reglages() {
             <legend>Toi</legend>
             <TextInput label="Ton prénom" hint="Pour signer les messages envoyés aux parents" value={s.settings.amName} onChange={(v) => saveSettings({ amName: v })} autoComplete="given-name" />
             <Stepper label="Tes propres enfants à charge" value={s.settings.enfantsACharge} onChange={(v) => saveSettings({ enfantsACharge: v })} max={10} />
-            <p class="hint">Tes enfants à toi, pas ceux que tu gardes : moins de 15 ans au 30 avril, ou en situation de handicap quel que soit leur âge, et qui vivent chez toi. Chacun peut te donner 2 jours de congés en plus, sans dépasser 30 jours par an.</p>
+            <p class="hint">Tes enfants à toi, pas ceux que tu gardes : moins de 15 ans au 30 avril, ou en situation de handicap quel que soit leur âge, et qui vivent chez toi. Chacun peut te donner 2 jours de congés en plus, sans dépasser 30 jours par an. Avant 21 ans, cette limite ne s’applique pas.</p>
+            {s.settings.enfantsACharge > 0 && <Switch label={`J’avais moins de 21 ans le 30 avril ${anneeCP}`} hint="Avant 21 ans, chacun de tes enfants te donne 2 jours, même au-delà de 30 jours. Coche seulement si c’est ton cas." checked={moinsDe21Ans(s.settings.amMoins21Jusqu, anneeCP)} onChange={(v) => saveSettings({ amMoins21Jusqu: v ? anneeCP : (s.settings.amMoins21Jusqu !== undefined && s.settings.amMoins21Jusqu < anneeCP ? s.settings.amMoins21Jusqu : undefined) })} />}
           </fieldset>
         </section>
         <section class="card">

@@ -4,7 +4,7 @@ import { useState } from 'preact/hooks';
 import { planningRegulier, simuler, simulationParDefaut } from '../engine/simulation';
 import { today } from '../engine/dates';
 import { euros } from '../engine/money';
-import { ratesAt } from '../engine/rates';
+import { BAREMES_VERIFIES_JUSQU_AU, baremesProvisoires, ratesConnus } from '../engine/rates';
 import { logUsage } from '../store';
 import { Icon } from '../ui/icons';
 
@@ -16,7 +16,7 @@ const nf = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
 export function SimApercu() {
   const d = today();
   // Curseur par pas de 5 centimes : on part du minimum conventionnel brut arrondi au-dessus, jusqu'à 13,00 € brut.
-  const min = Math.ceil(ratesAt(d).minConvBrut / 5) * 5;
+  const min = Math.ceil(ratesConnus(d).minConvBrut / 5) * 5;
   const [heures, setHeures] = useState(40);
   const [taux, setTaux] = useState(Math.max(min, 510));
   // La CAF compte le revenu imposable de l'année N-2 (avis d'impôt), divisé par 12.
@@ -28,7 +28,7 @@ export function SimApercu() {
   return (
     <section class="sim-apercu" aria-labelledby="sim-t">
       <div class="sim-apercu-txt">
-        <span class="eyebrow">Simulateur gratuit · règles 2026</span>
+        <span class="eyebrow">Simulateur gratuit · règles {(baremesProvisoires(d) ? BAREMES_VERIFIES_JUSQU_AU : d).slice(0, 4)}</span>
         <h2 id="sim-t">Le coût réel d’une assistante maternelle pour une famille</h2>
         <p>Salaire, aide de la CAF et crédit d’impôt, calculés en direct : le reste à payer chaque mois. Pour répondre aux parents que tu rencontres.</p>
       </div>

@@ -6,6 +6,16 @@ export function euros(c: number): string {
   return `${nf.format(c / 100)}\u00a0€`.replace(/ /g, ' ');
 }
 
+/**
+ * T-041 (R-2) : montant de barème cité dans un texte, sans « ,00 » pour un montant rond (« 875 € »), avec jusqu'à
+ * 3 décimales pour un taux horaire (« 0,435 € »). Centimes, éventuellement non entiers.
+ */
+export function eurosTexte(c: number): string {
+  const e = c / 100;
+  const f = Number.isInteger(Math.round(e * 1000) / 1000) ? { maximumFractionDigits: 0 } : { minimumFractionDigits: 2, maximumFractionDigits: 3 };
+  return `${new Intl.NumberFormat('fr-FR', f).format(e)}\u00a0€`.replace(/\u202f/g, '\u00a0');
+}
+
 const nf0 = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
 
 /** Montant estimé, arrondi à l'euro (C-008 : rien qui dépende du brut estimé n'est affiché au centime) */

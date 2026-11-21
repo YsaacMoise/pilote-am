@@ -1,0 +1,24 @@
+# Second moteur de paie à chaque demande de fusion (décision du DG du 21/11/2026).
+# Le moteur de l'app (A) et le second moteur (B, verification/moteur-b) calculent les mêmes
+# situations ; le moindre désaccord met ce contrôle au rouge et bloque la fusion.
+name: Second moteur
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  second-moteur:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Tests propres du moteur B
+        run: cd verification/moteur-b && python3 -m unittest discover -s tests
+      - name: Comparaison A et B
+        run: python3 verification/verifier_paie.py
