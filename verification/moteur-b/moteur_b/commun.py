@@ -1,0 +1,302 @@
+"""Outils communs du moteur B (Calculateur Arvela, tache T-007).
+
+Principes appliques partout :
+- Les montants sont en centimes entiers. Les calculs intermediaires sont faits
+  en nombres rationnels exacts (fractions.Fraction). Aucun nombre a virgule
+  flottante n'est accepte pour l'argent, les heures ou les taux.
+- Aucune regle d'arrondi monetaire n'est ecrite dans regles-v0.md ni dans
+  contre-verification-v0.md (voir SUS-01, SUS-07, A-03, A-36). Jusqu'a T-040c,
+  le moteur refusait (ARR-01). Depuis T-040d : centime le plus proche, decision
+  ARR-01 du DG du 18/11/2026, trace dans details.arrondis_arr01 avec la valeur
+  exacte (voir vers_centimes).
+- Toute ambiguite non tranchee (A-xx, SUS-xx), toute regle douteuse et tout cas
+  exclu produisent un refus explicite « non gere ».
+"""
+
+from fractions import Fraction
+from datetime import date
+import functools
+
+# Derniere date de verification des baremes (contre-verification T-005 du 18/11/2026).
+DATE_DERNIERE_VERIFICATION = date(2026, 11, 18)
+
+# Date d'application par defaut de la CCN IDCC 3239 (regles-v0, « Comment lire »).
+DATE_APPLICATION_CCN = date(2022, 1, 1)
+
+
+class NonGere(Exception):
+    """Refus explicite : le cas n'est pas gere par le moteur B."""
+
+    def __init__(self, code, regles=(), precision=None, details=None):
+        super().__init__(code)
+        self.code = code
+        self.regles = list(regles)
+        self.precision = precision
+        self.details = details or {}
+
+
+class ErreurSaisie(Exception):
+    """Donnee d'entree invalide (type, signe, valeur contraire a une regle)."""
+
+    def __init__(self, message, regles=()):
+        super().__init__(message)
+        self.message = message
+        self.regles = list(regles)
+
+
+# Registre des motifs de refus. Chaque code renvoie a regles-v0.md,
+# contre-verification-v0.md ou cas-officiels-v0.md (liste des suspects).
+QUOI_FAIRE_DEFAUT = (
+    "Cas non gere par Arvela. Faites ce calcul avec le simulateur officiel "
+    "Pajemploi ou demandez une reponse ecrite a la DDETS. La direction du projet "
+    "doit trancher ce point (tache T-015)."
+)
+
+CODES = {
+    "ARR-01": "Code leve par T-040d (centime le plus proche, decision ARR-01 du DG du 18/11/2026 dans l'attente de la DDETS) ; garde pour l'historique.",
+    "A-01": "Accueil de 47 a 51 semaines : aucun texte ne le classe en annee complete ou incomplete.",
+    "A-02": "Formule ecrite en brut par la CCN et en net par l'Urssaf : le moteur B ne calcule qu'en brut.",
+    "A-04": "Horaires variables d'une semaine a l'autre : la formule de mensualisation n'est pas adaptee.",
+    "A-05": "Semaine partiellement travaillee : comptage dans les « semaines programmees » non defini.",
+    "A-06": "« Heures reellement effectuees » non defini pour la regularisation (heures complementaires, feries chomes payes, absences remunerees).",
+    "A-08": "Adaptation en annee incomplete : deduction en jours (CCN art. 111) ou en heures (Urssaf).",
+    "A-09": "Semaine avec absence et heures en plus : compensation ou non, non ecrit.",
+    "A-13": "Contrat de plus de 45 heures : majoration dans le mensualise ou a part, non ecrit.",
+    "A-15": "« Jour d'absence » non defini (jour calendaire, jour d'accueil, demi-journee).",
+    "A-16": "Periode d'appreciation : « 12 mois glissants » contre « a compter de la date anniversaire ».",
+    "A-17": "Lien entre la limite de 5 jours et celle de 14 jours calendaires consecutifs non ecrit.",
+    "A-18": "Nombre de longues absences possibles par periode non ecrit.",
+    "A-19": "Code leve par T-040 (CCN art. 111, dernier alinea : semaines de non-accueil au denominateur) ; garde pour l'historique et le preavis (R-FIN-05).",
+    "A-20": "Code leve par T-040 (CCN art. 111 : salaire du nul) ; garde pour l'historique.",
+    "A-21": "Absence de quelques heures en annee incomplete : la formule ne compte que des jours.",
+    "A-23": "Periode equivalente (mois, 4 semaines, jours) : les methodes donnent des resultats differents et aucun texte ne dit laquelle retenir.",
+    "A-25": "Conges complementaires non payes en annee complete : mode de deduction non ecrit.",
+    "A-26": "Formule du maintien de salaire non donnee par la CCN ; les formules possibles donnent des resultats differents ici.",
+    "A-28": "Assiette du dixieme : indemnite de CP « versee pendant la periode » (CCN) ou « de l'annee precedente » (CASF).",
+    "A-29": "Annee complete : moment et forme du complement quand le dixieme depasse le maintien non ecrits.",
+    "A-30": "Paiement « au fur et a mesure » : repartition de l'indemnite annuelle par jour pris non definie.",
+    "A-31": "Code leve par T-040 (lundi de Pentecote ferie ordinaire : CCN art. 47.2, C. trav. L3133-1, 6°) ; garde pour l'historique.",
+    "A-32": "Condition de presence autour du ferie quand l'absence vient de l'enfant ou de l'employeur.",
+    "A-33": "Ferie travaille : majoration en plus du mensualise ou paiement complet en plus.",
+    "A-34": "Conversion du brut vers le net : regle incomplete (assiette CSG/CRDS, arrondis Pajemploi, reduction sur heures en plus).",
+    "A-35": "Code leve par T-040b (minimum proportionnel a la duree, plancher 2,65 EUR : CCN 114.1, CASF D423-7, Urssaf, DREETS BFC) ; garde pour l'historique.",
+    "A-36": "Code leve par T-040c (arrondi au centime le plus proche, decision ARR-01 du DG du 18/11/2026 dans l'attente de la DDETS) ; garde pour l'historique.",
+    "A-37": "Bareme fiscal kilometrique non verifie (code leve par T-027 : CGI ann. IV art. 6 B relu).",
+    "A-38": "Tranche kilometrique : cumul sur l'annee, le contrat ou l'employeur, non defini ; le controle du taux depend ici de la tranche.",
+    "A-43": "Anciennete mesuree a l'envoi, preavis compte a la presentation : les deux dates donnent des durees differentes.",
+    "A-45": "Assiette du 1/80 : l'ICCP, les CP payes et la regularisation y entrent (T-050b, CCN art. 121.1 et 124) ; restent non tranches l'indemnite de preavis (art. 64.2 non relu) et une regularisation negative.",
+    "ASSIETTE-A-CONFIRMER": "Une somme de l'assiette (ICCP ou regularisation de fin) n'est pas calculee : le montant qui en depend n'est pas donne (T-050b).",
+    "A-47": "Deces de l'enfant avant 9 mois d'accueil (levee par T-035a : indemnite due, CCN 119.4.2, F16842 ; code garde pour l'historique).",
+    "A-48": "Retrait d'agrement : qui supporte l'ICCP, non tranche.",
+    "A-49": "ICCP en cas de faute lourde : regle R-FIN-09 douteuse, exclusion a valider par la direction.",
+    "A-50": "Dixieme de l'ICCP : ICCP de la periode precedente dans la base (SUS-04) et repartition quand des jours sont deja payes, non tranchees. La regularisation de fin, elle, entre dans la base (T-050b).",
+    "A-52": "Hausse du SMIC annoncee au 1er decembre 2026 sans texte publie au 18/11/2026 : SMIC, minimum legal et MG inconnus.",
+    "A-54": "Titre AM-AP obtenu dans le mois : date de prise d'effet de la majoration non ecrite.",
+    "A-55": "Majoration pour difficultes particulieres : mode d'application et minimum non etablis.",
+    "SUS-11": "Acquisition des CP en annee incomplete : divergence majeure entre sources (methode par mois contre methode en semaines ou jours).",
+    "R-MENS-10": "Regle douteuse : lissage sur 12 mois du CDD de remplacement sans texte fondateur.",
+    "R-PAJ-04": "Regle douteuse : passage au net non etabli.",
+    "R-ABS-06": "Evenement familial sans nature precisee : la duree du conge depend de l'evenement (utiliser conge_evenement_familial).",
+    "EVT-OUVRES-2021": "Deces d'un enfant de moins de 25 ans avant le 21/07/2023 : la loi compte « sept jours ouvres », la CCN 9 jours ouvrables ; comparaison d'unites non ecrite.",
+    "EVT-VERSION": "Evenement familial : les versions applicables de la CCN ou de la loi donnent des durees differentes a cette date.",
+    "EVT-FERIE": "Jour ferie pendant un conge pour evenement familial : le texte ne dit pas s'il compte comme jour ouvrable.",
+    "EVT-HORS-DROIT": "Jour d'absence au-dela de la duree du conge pour evenement familial : a qualifier autrement (conge sans solde, CP, etc.).",
+    "KM-SUR-PLAFOND": "Taux kilometrique contractuel superieur au bareme fiscal (CCN art. 57) : le contrat doit etre corrige.",
+    "KM-ELECTRIQUE-INCONNU": "Motorisation du vehicule inconnue : le plafond fiscal est majore de 20 % pour un vehicule electrique (CGI ann. IV art. 6 B, II) et le controle en depend.",
+    "KM-PUISSANCE-INCONNUE": "Puissance administrative du vehicule inconnue : les baremes ne peuvent pas etre lus.",
+    "KM-PARTAGE-AM": "Trajet demande par un seul employeur et fait aussi pour les enfants de l'AM : partage non prevu par l'art. 113, non tranche.",
+    "PREAVIS-DEMISSION-3-12": "Demission, enfant accueilli de 3 mois a moins d'un an : CASF L423-26 (1 mois, sauf si l'employeur accepte d'abreger) contre CCN art. 120 (15 jours calendaires). Question posee a la DDETS (questions-ddets-v2, n° 2).",
+    "M-05": "Evenement familial indemnise par la Securite sociale : maintien sous deduction des indemnites journalieres, montants hors moteur.",
+    "M-06": "Conge complementaire de deuil : indemnise par la Securite sociale (C. trav. L3142-2, CSS L331-9) ; salaire maintenu sous deduction des indemnites journalieres (CCN 48.1.3.1.3), montants hors moteur.",
+    "CP-SUPP": "Jours supplementaires (enfants, fractionnement) : effet sur le dixieme non ecrit, et le resultat en depend ici.",
+    "CP-ARRONDI-PARTS": "Arrondi des jours de CP : arrondir chaque part (travail, maladie) ou le total, non ecrit, et le resultat en depend ici.",
+    "CP-REPORT": "Report des CP non pris pour maladie : section du Code du travail non applicable telle quelle aux AM (CASF L423-2, 11°), non relue.",
+    "R-CP-02-DATE": "Maladie et CP avant le 24 avril 2024 : regime retroactif et forclusion non geres.",
+    "R-CP-08-PRISE": "Prise principale des conges sur deux mois : mois de versement non ecrit.",
+    "R-JF-02-LIMITE": "Jour ferie pendant une semaine de non-accueil en annee incomplete : cas limite non tranche (R-JF-02).",
+    "ENTRETIEN-DUREE-ACCUEIL-OU-TRAVAIL": "Indemnite d'entretien : duree de travail (CCN art. 114.1 et 99) ou duree d'accueil (CASF L423-18, D423-7, Urssaf, service-public) ; aucun texte ne tranche et les deux donnent ici des montants differents (T-040e).",
+    "ENTRETIEN-SOUS-MINIMUM": "Montant contractuel d'entretien inferieur au minimum conventionnel : le contrat doit etre corrige.",
+    "KM-SOUS-PLANCHER": "Taux kilometrique contractuel inferieur au bareme de l'administration : le contrat doit etre corrige.",
+    "PREAVIS-DATE-FIN": "Date de fin du preavis : methode de calcul non ecrite (R-FIN-03).",
+    "LIMITE-ANCIENNETE": "Anciennete exactement a un seuil (3 mois, 9 mois, 1 an) : cas limite non tranche par le texte.",
+    "DATE-MOIS": "Calcul en mois depuis un 29, 30 ou 31 : methode non ecrite.",
+    "BAREME-ABSENT": "Aucun bareme verifie pour cette date.",
+    "HORS-CCN": "Date anterieure au 1er janvier 2022 : la CCN IDCC 3239 ne s'applique pas encore.",
+    "EXCLU-ALSACE-MOSELLE": "Alsace-Moselle exclue de la version 0.",
+    "EXCLU-HORS-METROPOLE": "Hors France metropolitaine : exclu de la version 0.",
+    "EXCLU-OCCASIONNEL": "Accueil occasionnel exclu de la version 0.",
+    "EXCLU-ALTERNEES": "Semaines alternees exclues de la version 0.",
+    "EXCLU-MATERNITE": "Maternite, paternite, adoption et conges de naissance exclus de la version 0.",
+    "EXCLU-AT": "Accident du travail, maladie professionnelle, accident de trajet exclus de la version 0.",
+    "EXCLU-INAPTITUDE": "Inaptitude exclue de la version 0.",
+    "EXCLU-RETRAITE": "Depart a la retraite exclu (indemnite versee par l'Ircem).",
+    "EXCLU-DECES-PARTIE": "Deces de l'employeur ou de l'AM exclu de la version 0.",
+    "EXCLU-CDD-ANTICIPE": "Rupture anticipee du CDD exclue de la version 0.",
+    "EXCLU-SAISONNIER": "CDD saisonnier ou d'usage : disposition conventionnelle plus favorable non verifiee.",
+}
+
+
+def resultat_ok(regles, resultat, provisoire=False, notes=None):
+    """Resultat valide. Statut « provisoire » si un bareme utilise est date
+    apres DATE_DERNIERE_VERIFICATION."""
+    sortie = {
+        "statut": "provisoire" if provisoire else "ok",
+        "regles": list(regles),
+        "resultat": resultat,
+    }
+    if provisoire:
+        sortie["avertissement"] = (
+            "Resultat provisoire : bareme non verifie apres le "
+            + DATE_DERNIERE_VERIFICATION.strftime("%d/%m/%Y")
+            + "."
+        )
+    if notes:
+        sortie["notes"] = list(notes)
+    return sortie
+
+
+def resultat_non_gere(exc, regles_fonction):
+    regles = list(regles_fonction)
+    for r in exc.regles:
+        if r not in regles:
+            regles.append(r)
+    sortie = {
+        "statut": "non_gere",
+        "code": exc.code,
+        "regles": regles,
+        "motif": CODES.get(exc.code, exc.code),
+        "quoi_faire": QUOI_FAIRE_DEFAUT,
+    }
+    if exc.precision:
+        sortie["precision"] = exc.precision
+    if exc.details:
+        sortie["details"] = exc.details
+    return sortie
+
+
+def resultat_erreur(exc, regles_fonction):
+    return {
+        "statut": "erreur_saisie",
+        "regles": list(regles_fonction) + [r for r in exc.regles if r not in regles_fonction],
+        "message": exc.message,
+    }
+
+
+def api(*regles):
+    """Decorateur des fonctions publiques : convertit les refus et erreurs en
+    dictionnaires de sortie. Les fonctions decorees renvoient deja un dict."""
+
+    def deco(f):
+        @functools.wraps(f)
+        def enveloppe(*args, **kwargs):
+            _PILE_ARRONDIS.append([])
+            try:
+                sortie = f(*args, **kwargs)
+            except NonGere as e:
+                return resultat_non_gere(e, regles)
+            except ErreurSaisie as e:
+                return resultat_erreur(e, regles)
+            finally:
+                arrondis = _PILE_ARRONDIS.pop()
+                if _PILE_ARRONDIS:
+                    _PILE_ARRONDIS[-1].extend(arrondis)
+            if arrondis and isinstance(sortie, dict) and sortie.get("statut") in ("ok", "provisoire"):
+                sortie.setdefault("details", {})["arrondis_arr01"] = arrondis
+            return sortie
+
+        enveloppe.regles = list(regles)
+        enveloppe.interne = f
+        return enveloppe
+
+    return deco
+
+
+def exact(valeur, nom):
+    """Convertit une entree en Fraction exacte. Refuse les float et bool.
+    Accepte int, Fraction, ou une chaine decimale ecrite ("12.5", "40/3")."""
+    if isinstance(valeur, bool) or valeur is None:
+        raise ErreurSaisie(f"{nom} : valeur manquante ou invalide.")
+    if isinstance(valeur, float):
+        raise ErreurSaisie(f"{nom} : nombre a virgule flottante refuse (utiliser un entier ou une chaine exacte).")
+    if isinstance(valeur, (int, Fraction)):
+        return Fraction(valeur)
+    if isinstance(valeur, str):
+        try:
+            return Fraction(valeur.replace(",", "."))
+        except (ValueError, ZeroDivisionError):
+            raise ErreurSaisie(f"{nom} : chaine non numerique « {valeur} ».")
+    raise ErreurSaisie(f"{nom} : type non accepte ({type(valeur).__name__}).")
+
+
+def entier(valeur, nom, minimum=0):
+    if isinstance(valeur, bool) or not isinstance(valeur, int):
+        raise ErreurSaisie(f"{nom} : un entier est attendu.")
+    if valeur < minimum:
+        raise ErreurSaisie(f"{nom} : doit etre superieur ou egal a {minimum}.")
+    return valeur
+
+
+def positif(valeur, nom):
+    v = exact(valeur, nom)
+    if v < 0:
+        raise ErreurSaisie(f"{nom} : doit etre positif ou nul.")
+    return v
+
+
+# T-040d (MB5) : decision ARR-01 du DG du 18/11/2026 (03-JOURNAL.md, l. 117 : « arrondi
+# au centime : arrondi au plus proche garde, avec une phrase [...] jusqu'a la reponse de
+# la DDETS » ; l. 164 : etendue a l'arrondi jour par jour des km). Tout montant exact non
+# entier en centimes est arrondi au centime le plus proche (demi-centime : vers le haut
+# en valeur absolue). Chaque arrondi est trace dans la sortie (cle details.arrondis_arr01)
+# avec la valeur exacte non arrondie. Les arrondis d'heures ou de jours (A-03) ne sont
+# pas concernes : ils ne passent pas par cette fonction.
+MENTION_ARR01 = ("arrondi au centime le plus proche, decision ARR-01 du DG du 18/11/2026 "
+                 "dans l'attente de la DDETS")
+_PILE_ARRONDIS = []
+
+
+def arrondi_arr01(m):
+    """Centime le plus proche ; demi-centime arrondi en s'eloignant de zero."""
+    m = Fraction(m)
+    a = abs(m)
+    r = a.numerator * 2 + a.denominator
+    v = r // (2 * a.denominator)
+    return v if m >= 0 else -v
+
+
+def vers_centimes(montant_exact, quoi, regles=()):
+    """Montant exact (Fraction, en centimes) vers entier. Montant non entier :
+    centime le plus proche (decision ARR-01, T-040d), trace dans la sortie."""
+    m = Fraction(montant_exact)
+    if m.denominator != 1:
+        v = arrondi_arr01(m)
+        if _PILE_ARRONDIS:
+            _PILE_ARRONDIS[-1].append({
+                "element": quoi,
+                "valeur_exacte_centimes": str(m),
+                "arrondi_centimes": v,
+                "mention": MENTION_ARR01,
+            })
+        return v
+    return int(m)
+
+
+def texte_fraction(f):
+    f = Fraction(f)
+    return str(f.numerator) if f.denominator == 1 else f"{f.numerator}/{f.denominator}"
+
+
+def verifier_date_ccn(d, regles=()):
+    """La CCN IDCC 3239 s'applique a partir du 1er janvier 2022 (regles-v0)."""
+    if d is None:
+        return
+    if not isinstance(d, date):
+        raise ErreurSaisie("date : un objet datetime.date est attendu.")
+    if d < DATE_APPLICATION_CCN:
+        raise NonGere("HORS-CCN", regles, precision=f"Date {d.isoformat()}.")
+
+
+def type_annee_valide(type_annee):
+    if type_annee not in ("complete", "incomplete"):
+        raise ErreurSaisie("type_annee : « complete » (52 semaines) ou « incomplete » (46 semaines ou moins).")
+    return type_annee

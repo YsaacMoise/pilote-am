@@ -4,7 +4,7 @@
 // les présences, le carnet et les montants du mois.
 import { addDays, monthOf, addMonths, type ISODate, type Month } from '../engine/dates';
 import { dayInfo, inContract, type Ctx } from '../engine/payroll';
-import { computeMonth, declarationLines } from '../engine/month';
+import { computeMonth, declarationLines, partsAConfirmer } from '../engine/month';
 import { CHILD_ABS_LABEL, type Journal, type Plage, type Presence } from '../engine/model';
 import { detailReveilOublie, reveilOublie } from '../engine/carnet';
 
@@ -41,6 +41,10 @@ export interface MoisParent {
   repas: number;
   km: number;
   lignes: LigneDecl[];
+  /** T-025 C-5 : parts sorties du total, à confirmer (« une part du salaire », « les kilomètres »…). Absent : aucune. */
+  aConfirmer?: string[];
+  /** T-031 : mois que l'app ne calcule pas (cas non géré) : aucun montant ni aucune case n'est envoyé */
+  nonGere?: boolean;
   joursAccueil: number;
   absences: number;
 }
@@ -85,6 +89,9 @@ function moisParent(ctx: Ctx, m: Month, enfants: number): MoisParent | null {
   const r = computeMonth(ctx, m, enfants);
   if (!r.active || r.fromHistory) return null;
   const absences = [...ctx.days.values()].filter((x) => monthOf(x.date) === m && x.abs && inContract(ctx.c, x.date)).length;
+  if (r.nonGere.length) {
+    return { month: m, termine: m < monthOf(ctx.today), total: 0, net: 0, entretien: 0, repas: 0, km: 0, lignes: [], nonGere: true, joursAccueil: r.presenceDays, absences };
+  }
   return {
     month: m,
     termine: m < monthOf(ctx.today),
@@ -93,7 +100,9 @@ function moisParent(ctx: Ctx, m: Month, enfants: number): MoisParent | null {
     entretien: r.entretien,
     repas: r.repas,
     km: r.km,
-    lignes: declarationLines(ctx, r).map((l) => (l.hint ? { label: l.label, value: l.value, hint: l.hint } : { label: l.label, value: l.value })),
+    // Décision du DG du 21/11/2026 : aucun motif d'absence de l'AM sur le lien (« pourParents »).
+    lignes: declarationLines(ctx, r, true).map((l) => (l.hint ? { label: l.label, value: l.value, hint: l.hint } : { label: l.label, value: l.value })),
+    ...(partsAConfirmer(r, true).length ? { aConfirmer: partsAConfirmer(r, true) } : {}),
     joursAccueil: r.presenceDays,
     absences,
   };

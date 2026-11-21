@@ -2,8 +2,8 @@ import { useState } from 'preact/hooks';
 import { ctxFor, useStore } from '../store';
 import { monthOf, today } from '../engine/dates';
 import { fiscalYears } from '../engine/fiscal';
-import { plafondHS } from '../engine/rates';
-import { euros, eurosArrondis } from '../engine/money';
+import { euros, eurosArrondis, eurosTexte } from '../engine/money';
+import { plafondHS, repasAvantageParAnnee } from '../engine/rates';
 import { Banner, Gommette, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 
@@ -17,6 +17,7 @@ export function Fiscal() {
   const rows = cs.map((c, i) => ({ c, f: fs[i] }));
   const tot = rows.reduce((a, r) => ({ recu: a.recu + r.f.recu, abat: a.abat + r.f.abattement, imp: a.imp + r.f.imposable, hsExo: a.hsExo + r.f.hsExonere, hsImp: a.hsImp + r.f.hsImposable }), { recu: 0, abat: 0, imp: 0, hsExo: 0, hsImp: 0 });
   const partiel = rows.some((r) => r.f.partiel);
+  const nonGere = [...new Set(rows.map((r) => r.f.nonGere).filter(Boolean))];
   const moisHisto = rows.reduce((a, r) => a + r.f.moisHistorique, 0);
   // Arrondis à l'euro d'abord, soustraction ensuite : la ligne affichée tombe juste.
   const e = (c: number) => Math.round(c / 100) * 100;
@@ -44,6 +45,7 @@ export function Fiscal() {
           <p class="hint">Avec le régime spécial des assistantes maternelles, tu déclares ce montant au lieu du salaire pré-rempli. Compare avec le pré-rempli : le plus favorable est à retenir.</p>
         </section>
         {partiel && <Banner tone="warn">Des mois manquent dans l’historique : l’estimation est incomplète.</Banner>}
+        {nonGere.map((t) => <Banner tone="warn">{t}</Banner>)}
         {moisHisto > 0 && <Banner tone="warn">{moisHisto} mois viennent de bulletins saisis : l’app n’y connaît ni les heures complémentaires et majorées, ni les kilomètres. Le revenu imposable est donc un peu trop haut, et le montant exonéré trop bas : pour la case 1GH, garde celui que Pajemploi a pré-rempli.</Banner>}
         {rows.map(({ c, f }) => (
           <section class="card stack" aria-label={`Impôts, ${c.child}`}>
@@ -65,7 +67,7 @@ export function Fiscal() {
           <summary>Comment c’est calculé</summary>
           <div class="more-body">
             <p>Article 80 sexies du code général des impôts : pour chaque enfant et chaque jour d’accueil, l’abattement vaut 3 fois le SMIC horaire (4 fois pour un enfant en situation de handicap ou de maladie), au prorata si la journée dure moins de 8 heures. Le SMIC retenu est celui en vigueur le jour de la garde.</p>
-            <p>Quand les parents fournissent les repas, chaque jour d’accueil ajoute la valeur d’un repas aux sommes reçues (5,50 € en 2026, 5,45 € en 2025) : c’est un avantage en nature imposable, selon impots.gouv.</p>
+            <p>Quand les parents fournissent les repas, chaque jour d’accueil ajoute la valeur d’un repas aux sommes reçues ({repasAvantageParAnnee().map((x) => `${eurosTexte(x.montant)} en ${x.annee}`).join(', ')} selon l’Urssaf ; pour les autres années, l’app ne connaît pas la valeur et te le dit) : c’est un avantage en nature imposable, selon impots.gouv.</p>
             <p>Le salaire net imposable est estimé : net versé + CSG non déductible et CRDS (2,9 % de 98,25 % du brut estimé).</p>
             <p>Les heures complémentaires (au-delà du contrat, jusqu’à 45 h dans la semaine) et les heures majorées (au-delà de 45 h, prévues au contrat ou en plus) sont exonérées d’impôt jusqu’à {eurosArrondis(plafondHS(year))} par an, tous employeurs réunis (article 81 quater du code général des impôts). Elles sont retirées du salaire imposable avec la réduction de cotisations qui les accompagne (11,31 % de leur brut, article L241-17 du code de la sécurité sociale ; montant estimé, à comparer avec ton bulletin). Les mois repris d’un bulletin n’ont pas ce détail : leurs heures restent comptées comme imposables.</p>
             <p>Les indemnités kilométriques versées par les parents font partie des sommes reçues, comme l’entretien et les repas (bulletin officiel des impôts, BOI-RSA-CHAMP-10-20-10 § 440 et 460).</p>

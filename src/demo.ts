@@ -23,7 +23,7 @@ export async function seedDemo() {
   const leo: Contract = {
     id: 'demo-leo', child: 'Adam', family: 'Martin', color: 0, start: firstDay(addMonths(cur, -14)), yearType: 'complete', weeks: 52, weeksOff: [],
     planning: week([1, 2, 3, 4, 5], [{ start: '08:00', end: '17:30' }]), rateNet: 360, majoration: 10, entretienJour: 400, repasPrix: 300,
-    repasParJour: 1, repasParents: false, kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: firstDay(addMonths(cur, -3)),
+    repasParJour: 1, repasParents: false, kmTaux: 0, cpMode: 'juin', majoreFiscal: false, alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false, trackedFrom: firstDay(addMonths(cur, -3)),
     balances: { cpRestants: 18, cpEnCours: 7.5, maladieDeduits: 1 }, history: [], createdAt: 1,
   };
   // Historique : bulletins des mois passés (un mois laissé manquant pour montrer l'alerte)
@@ -35,13 +35,13 @@ export async function seedDemo() {
   const ines: Contract = {
     id: 'demo-ines', child: 'Rose', family: 'Diallo', color: 1, start: firstDay(addMonths(cur, -7)), yearType: 'incomplete', weeks: 36, weeksOff: [],
     planning: week([1, 2, 4, 5], [{ start: '07:30', end: '08:30' }, { start: '16:30', end: '18:30' }]), rateNet: 380, majoration: 10,
-    entretienJour: 0, repasPrix: 0, repasParJour: 0, repasParents: true, kmTaux: 41, cpMode: 'juin', majoreFiscal: false, trackedFrom: firstDay(addMonths(cur, -7)),
+    entretienJour: 0, repasPrix: 0, repasParJour: 0, repasParents: true, kmTaux: 41, kmCv: 5, cpMode: 'juin', majoreFiscal: false, alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false, trackedFrom: firstDay(addMonths(cur, -7)),
     balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 2,
   };
   const malo: Contract = {
     id: 'demo-malo', child: 'Violette', family: 'Bernard', color: 2, start: firstDay(addMonths(cur, -1)), yearType: 'complete', weeks: 52, weeksOff: [],
     planning: week([1, 2, 3, 4], [{ start: '08:30', end: '17:00' }]), rateNet: 340, majoration: 15, entretienJour: 0, repasPrix: 250, repasParJour: 1, repasParents: false,
-    kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: firstDay(addMonths(cur, -1)),
+    kmTaux: 0, cpMode: 'juin', majoreFiscal: false, alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false, trackedFrom: firstDay(addMonths(cur, -1)),
     balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 3,
   };
 
@@ -55,12 +55,12 @@ export async function seedDemo() {
   rec(leo, y3, { abs: 'malade_certif' });
   rec(leo, y6, { abs: 'parents' });
   rec(malo, y2, { pres: [{ a: '08:30' }] }); // départ oublié
-  rec(ines, y1, { pres: [{ a: '07:30', d: '08:30' }, { a: '16:30', d: '19:00' }], km: 6 });
+  rec(ines, y1, { pres: [{ a: '07:30', d: '08:30' }, { a: '16:30', d: '19:00' }], km: 6, kmPartage: false });
   if (weekday(t) <= 5) rec(leo, t, { pres: [{ a: '07:58' }] });
 
   const leaves: AmLeave[] = [
     { id: 'demo-cp1', type: 'cp', from: addDays(firstDay(addMonths(cur, -2)), 9), to: addDays(firstDay(addMonths(cur, -2)), 14) },
-    { id: 'demo-ev', type: 'evenement', from: addDays(t, 16), to: addDays(t, 16) },
+    { id: 'demo-ev', type: 'evenement', from: addDays(t, 16), to: addDays(t, 16), joursEvenement: 1 },
   ];
   const journal: Journal[] = weekday(t) <= 5 ? [
     { id: 'demo-j1', cid: leo.id, date: t, time: '09:30', kind: 'humeur', detail: 'De bonne humeur' },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calendrier, levierTarif, selonRevenus, tarifMaxSansDepassement, MOIS_CALENDRIER } from '../src/engine/calendrier';
+import { MESSAGE_ADAPTATION_2_A_CONFIRMER, MESSAGE_ADAPTATION_A_CONFIRMER, calendrier, levierTarif, moisAdaptation, selonRevenus, tarifMaxSansDepassement, MOIS_CALENDRIER } from '../src/engine/calendrier';
 import { planningRegulier, simuler, simulationParDefaut } from '../src/engine/simulation';
 
 const D = '2026-11-01';
@@ -42,11 +42,44 @@ describe('calendrier mois par mois (étape 4)', () => {
     expect(c.mois.find((m) => m.mois === '2028-06')!.conges).toBe(Math.round(r.salaire * 12 * 0.1));
   });
 
-  it('adaptation : premier mois payé aux heures réelles', () => {
-    const c = calendrier({ ...base, adaptationHeures: 40, adaptationJours: 8 }, D);
+  // T-035b. CCN art. 108.1 al. 3 et 111 ; Urssaf « Préparer le contrat » : salaire mensualisé − (salaire mensualisé × heures
+  // d'absence ÷ heures exactes qui auraient dû être faites dans le mois). Février 2027 : 20 jours ouvrés du lundi au vendredi,
+  // 8 h par jour = 160 h prévues, aucun férié. 40 h faites → 120 h d'absence → un quart du salaire mensualisé.
+  it('adaptation, année complète : salaire mensualisé moins les heures non faites (art. 108.1 et 111)', () => {
+    const i = { ...base, debut: '2027-02', adaptationHeures: 40, adaptationJours: 5 };
+    const r = simuler(i, D);
+    const S = r.parEnfant.salaire;
+    const a = moisAdaptation(i, r, '2027-02', S);
+    expect(a.heuresPrevues).toBe(160);
+    expect(a.salaire).toBe(Math.round(S - (S * 120) / 160));
+    // T-038 (G-3) : heures à déclarer, deux règles sur la même page Urssaf (étape 2 : rémunération due ÷ taux horaire net ;
+    // étape 3 : heures effectuées, ici 40 h). Elles diffèrent : « à confirmer » avec les deux valeurs, le salaire reste calculé.
+    expect(a.heuresFaites).toBe(40);
+    const etape2 = (a.salaire / r.tauxNet).toFixed(2).replace('.', ',');
+    expect(a.aConfirmer).toContain(MESSAGE_ADAPTATION_A_CONFIRMER);
+    expect(a.aConfirmer).toContain(`taux horaire net (${etape2} h) ou les heures effectuées (40 h)`);
+    const c = calendrier(i, D);
     expect(c.mois[0].evenements).toContain('adaptation');
+    expect(c.mois[0].aConfirmer).toBe(a.aConfirmer);
     expect(c.mois[0].verse).toBeLessThan(c.mois[1].verse);
-    expect(c.mois[0].verse).toBeGreaterThanOrEqual(40 * 398);
+    expect(c.mois[1].aConfirmer).toBeUndefined();
+  });
+
+  it('adaptation : toutes les heures prévues faites → aucune déduction', () => {
+    const i = { ...base, debut: '2027-02', adaptationHeures: 160, adaptationJours: 20 };
+    const r = simuler(i, D);
+    expect(moisAdaptation(i, r, '2027-02', r.parEnfant.salaire).salaire).toBe(r.parEnfant.salaire);
+  });
+
+  it('adaptation à confirmer : 46 semaines (A-08), férié sur un jour d’accueil (art. 47), heures au-delà du planning', () => {
+    const inc = calendrier({ ...base, debut: '2027-02', yearType: 'incomplete' as const, semainesAbsence: 4, adaptationHeures: 40, adaptationJours: 5 }, D);
+    expect(inc.mois[0].aConfirmer).toContain(MESSAGE_ADAPTATION_A_CONFIRMER);
+    expect(inc.mois[0].aConfirmer).toContain('46 semaines');
+    // Décembre 2026 : Noël tombe un vendredi, jour d'accueil.
+    const dec = calendrier({ ...base, debut: '2026-12', adaptationHeures: 40, adaptationJours: 5 }, D);
+    expect(dec.mois[0].aConfirmer).toContain('férié');
+    const plus = calendrier({ ...base, debut: '2027-02', adaptationHeures: 170, adaptationJours: 20 }, D);
+    expect(plus.mois[0].aConfirmer).toContain('160 heures prévues');
   });
 
   it('fin de l’aide de la CAF après le mois des 6 ans ; cotisations à la charge de la famille ensuite', () => {
@@ -81,5 +114,110 @@ describe('calendrier mois par mois (étape 4)', () => {
     expect(simuler({ ...base, tauxBrut: max }, D).cmg.partCotisations).toBe(1);
     expect(simuler({ ...base, tauxBrut: max + 1 }, D).cmg.partCotisations).toBeLessThan(1);
     expect(max).toBeGreaterThan(900);
+  });
+});
+
+// T-038 (G-2) : CCN art. 94, « Elle débute le premier jour de travail effectif, pour une durée maximale de 30 jours
+// calendaires » (Urssaf « Préparer le contrat », 12/03/2026, même phrase). Une adaptation commencée en cours de mois peut
+// finir le mois suivant : ce mois suit la même déduction (art. 108.1 al. 3 et 111). Mars 2027 : 23 jours du lundi au
+// vendredi, aucun férié, 8 h par jour = 184 h prévues ; 46 h faites → 138 h d'absence → un quart du salaire mensualisé.
+describe('T-038 G-2 : adaptation qui déborde sur le 2e mois', () => {
+  it('le 2e mois suit la même déduction (art. 108.1 et 111), avec ses propres heures', () => {
+    const i = { ...base, debut: '2027-02', adaptationHeures: 40, adaptationJours: 5, adaptationHeures2: 46, adaptationJours2: 6 };
+    const r = simuler(i, D);
+    const S = r.parEnfant.salaire;
+    const a2 = moisAdaptation({ ...i, adaptationHeures: 46 }, r, '2027-03', S, 2);
+    expect(a2.heuresPrevues).toBe(184);
+    expect(a2.salaire).toBe(Math.round(S - (S * 138) / 184));
+    const c = calendrier(i, D);
+    expect(c.mois[1].evenements).toContain('adaptation');
+    const sans = calendrier({ ...i, adaptationHeures2: 0, adaptationJours2: 0 }, D);
+    expect(c.mois[1].verse).toBeLessThan(sans.mois[1].verse);
+    expect(c.mois[2].evenements).not.toContain('adaptation');
+  });
+  it('2e mois avec un férié sur un jour d’accueil (mai 2027) : « à confirmer », avec le préfixe du 2e mois', () => {
+    const c = calendrier({ ...base, debut: '2027-04', adaptationHeures: 40, adaptationJours: 5, adaptationHeures2: 40, adaptationJours2: 5 }, D);
+    expect(c.mois[1].aConfirmer).toContain(MESSAGE_ADAPTATION_2_A_CONFIRMER);
+    expect(c.mois[1].aConfirmer).toContain('férié');
+  });
+});
+
+describe('T-038 suite (G-4) : le total « Mois par mois » ne compte pas en silence un mois à confirmer', () => {
+  it('46 semaines (A-08) : le 1er mois est à part, total = somme des autres mois', () => {
+    const c = calendrier({ ...base, debut: '2027-02', yearType: 'incomplete' as const, semainesAbsence: 4, adaptationHeures: 40, adaptationJours: 5 }, D);
+    expect(c.moisAConfirmer).toEqual(['2027-02']);
+    expect(c.totalAConfirmer).toBe(c.mois[0].net);
+    expect(c.total).toBe(c.mois.slice(1).reduce((t, m) => t + m.net, 0));
+  });
+  it('sans adaptation : aucun mois à part', () => {
+    const c = calendrier({ ...base, debut: '2027-02' }, D);
+    expect(c.moisAConfirmer).toEqual([]);
+    expect(c.total).toBe(c.mois.reduce((t, m) => t + m.net, 0));
+  });
+});
+
+// T-038 suite (G-5). La page Urssaf « Préparer le contrat » (12/03/2026, relue) donne les formules sans exemple chiffré :
+// les attendus sont ces formules appliquées aux chiffres du contrat, sans passer par le code. Contrat de base : 40 h par
+// semaine sur 52 semaines, soit 40 × 52 ÷ 12 = 173,33 h mensualisées (art. 109). Février 2027 : 160 h prévues (20 jours
+// de 8 h, aucun férié). 40 h faites : salaire dû = S − S × 120 ÷ 160 = S ÷ 4.
+describe('T-038 suite (G-5) : tests de l’adaptation renforcés', () => {
+  const i = { ...base, debut: '2027-02', adaptationHeures: 40, adaptationJours: 5 };
+  it('étape 2 (rémunération due ÷ taux net) : 173,33 h ÷ 4 = 43,33 h ; étape 3 (heures effectuées) : 40 h ; les deux dans le message', () => {
+    const r = simuler(i, D);
+    const a = moisAdaptation(i, r, '2027-02', r.parEnfant.salaire);
+    expect(a.heures).toBeCloseTo((40 * 52) / 12 / 4, 1);
+    expect(a.heuresFaites).toBe(40);
+    expect(a.aConfirmer).toContain('(43,33 h) ou les heures effectuées (40 h)');
+  });
+  it('embauche le lundi 15/02/2027 : les heures avant l’embauche sont des heures non faites, même dénominateur de 160 h ; le 2e mois (mars) a le sien, 184 h', () => {
+    // Du 15 au 28/02 l'AM fait 40 h ; l'adaptation (30 jours calendaires, art. 94) court jusqu'au 16/03 : 46 h faites en mars.
+    const j = { ...i, adaptationHeures2: 46, adaptationJours2: 6 };
+    const r = simuler(j, D);
+    const S = r.parEnfant.salaire;
+    expect(moisAdaptation(j, r, '2027-02', S).salaire).toBe(Math.round(S / 4));
+    expect(moisAdaptation({ ...j, adaptationHeures: 46 }, r, '2027-03', S, 2).salaire).toBe(Math.round(S - (S * 138) / 184));
+  });
+  it('46 semaines ou moins (A-08) : le montant reste chiffré, à part du total, et marqué à confirmer', () => {
+    const inc = { ...i, yearType: 'incomplete' as const, semainesAbsence: 4 };
+    const r = simuler(inc, D);
+    const a = moisAdaptation(inc, r, '2027-02', r.parEnfant.salaire);
+    expect(a.salaire).toBe(Math.round(r.parEnfant.salaire / 4));
+    const c = calendrier(inc, D);
+    expect(c.mois[0].aConfirmer).toContain('46 semaines');
+    expect(c.totalAConfirmer).toBe(c.mois[0].net);
+    expect(c.mois[0].net).toBeGreaterThan(0);
+  });
+});
+
+describe('T-038 suite 2 (décision du DG) : crédit d’impôt calculé avec un mois à confirmer', () => {
+  const inc = { ...base, debut: '2027-02', yearType: 'incomplete' as const, semainesAbsence: 4, adaptationHeures: 40, adaptationJours: 5 };
+  it('année 2027 avec le mois d’adaptation à confirmer : le crédit versé en juillet 2028 est à part, signalé, hors total', () => {
+    const c = calendrier(inc, D);
+    const juillet = c.mois.find((m) => m.mois === '2028-07')!;
+    expect(juillet.credit).toBe(0);
+    expect(juillet.creditAConfirmer).toBe(c.creditParAnnee[2027]);
+    expect(juillet.aConfirmer).toMatch(/^Crédit d’impôt à confirmer : il compte les dépenses de 2027/);
+    // L'avance de janvier 2029 (60 % du crédit de 2027, service-public F35936) dépend aussi de 2027 : à part elle aussi.
+    expect(c.moisCreditAConfirmer).toEqual(['2028-07', '2029-01']);
+    expect(c.creditAConfirmer).toBe(c.creditParAnnee[2027] + Math.round(c.creditParAnnee[2027] * 0.6));
+    // Le coût sûr de juillet 2028 reste dans le total ; seul le mois d'adaptation en est sorti.
+    expect(c.moisAConfirmer).toEqual(['2027-02']);
+    expect(juillet.net).toBe(juillet.reste);
+  });
+  it('sans mois à confirmer : crédit versé normalement', () => {
+    const c = calendrier({ ...inc, adaptationHeures: 0, adaptationJours: 0 }, D);
+    const juillet = c.mois.find((m) => m.mois === '2028-07')!;
+    expect(juillet.credit).toBe(c.creditParAnnee[2027]);
+    expect(c.moisCreditAConfirmer).toEqual([]);
+  });
+});
+
+describe('T-038 suite 2 : zone couverte par le simulateur (métropole et DOM hors Mayotte)', () => {
+  it('la phrase existe et l’écran l’affiche près du résultat', async () => {
+    const { MESSAGE_ZONE_SIMULATEUR } = await import('../src/engine/simulation');
+    expect(MESSAGE_ZONE_SIMULATEUR).toMatch(/métropole et les départements d’outre-mer, hors Mayotte/);
+    expect(MESSAGE_ZONE_SIMULATEUR).toMatch(/À Mayotte, le simulateur ne s’applique pas/);
+    const { readFileSync } = await import('node:fs');
+    expect(readFileSync('src/screens/Simulateur.tsx', 'utf8')).toContain('<p class="hint">{MESSAGE_ZONE_SIMULATEUR}</p>');
   });
 });

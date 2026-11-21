@@ -4,6 +4,7 @@ import * as db from './db';
 import type { AmLeave, Bulletin, Contract, DayRec, Journal, Settings } from './engine/model';
 import { makeCtx, type Ctx } from './engine/payroll';
 import { today } from './engine/dates';
+import { liensApresSuppression, normaliserAbsences, type AbsenceLue } from './engine/absences';
 import { ecranDe, evErreur, type ErreurCode } from './usage-events';
 
 export interface Feedback { id: string; ts: number; screen: string; text: string }
@@ -61,14 +62,22 @@ export function uid(): string {
 export async function load(): Promise<void> {
   const [kv, contracts, days, leaves, bulletins, journal, feedback, usage] = await Promise.all([
     db.getAll<{ k: string; v: unknown }>('kv'), db.getAll<Contract>('contracts'), db.getAll<DayRec>('days'),
-    db.getAll<AmLeave>('leaves'), db.getAll<Bulletin>('bulletins'), db.getAll<Journal>('journal'),
+    db.getAll<AbsenceLue>('leaves'), db.getAll<Bulletin>('bulletins'), db.getAll<Journal>('journal'),
     db.getAll<Feedback>('feedback'), db.getAll<Usage>('usage'),
   ]);
   const s = kv.find((x) => x.k === 'settings');
   state.settings = { ...DEFAULT_SETTINGS, ...((s?.v as Settings) ?? {}) };
   state.contracts = contracts.sort((a, b) => a.createdAt - b.createdAt);
   state.days = new Map(days.map((d) => [d.key, d]));
-  state.leaves = leaves.sort((a, b) => a.from.localeCompare(b.from));
+  // Décision du DG du 21/11/2026 (« sans la raison ») : une absence enregistrée avec sa nature ou son cas non géré est
+  // ramenée à la forme sans raison, puis réécrite (téléphone et compte en ligne). Jours et dates gardés.
+  // Le lien « suite de » est posé avant, selon l'ancienne règle (normaliserAbsences), pour garder la même paie.
+  const normalisees = normaliserAbsences(leaves);
+  const ramenees = normalisees.filter((n, i) => n !== leaves[i]);
+  state.leaves = normalisees.sort((a, b) => a.from.localeCompare(b.from));
+  for (const l of ramenees) {
+    try { await db.put('leaves', l); } catch { /* réécrite au prochain chargement ; la forme lue est déjà sans raison */ }
+  }
   state.bulletins = bulletins;
   state.journal = journal;
   state.feedback = feedback;
@@ -169,10 +178,20 @@ export async function putLeave(l: AmLeave): Promise<Undo> {
 
 export async function deleteLeave(id: string): Promise<Undo> {
   const prev = state.leaves.find((x) => x.id === id);
+  // Relecture n° 52 (N1) : le groupe d'un événement familial reste entier quand une de ses absences est supprimée.
+  const relies = liensApresSuppression(id, state.leaves);
+  const avant = relies.map((r) => state.leaves.find((x) => x.id === r.id)!);
+  for (const r of relies) {
+    state.leaves = state.leaves.map((x) => (x.id === r.id ? r : x));
+    await db.put('leaves', r);
+  }
   state.leaves = state.leaves.filter((x) => x.id !== id);
   await db.del('leaves', id);
   emit();
-  return async () => { if (prev) await putLeave(prev); };
+  return async () => {
+    if (prev) await putLeave(prev);
+    for (const a of avant) await putLeave(a);
+  };
 }
 
 export async function putBulletin(b: Bulletin) {
@@ -233,10 +252,11 @@ export function logErreur(code: ErreurCode) {
 const ctxCache = new Map<string, Ctx>();
 export function ctxFor(c: Contract, at = today()): Ctx {
   const enfants = state.settings?.enfantsACharge ?? 0;
-  const k = c.id + at + '|' + enfants;
+  const moins21 = state.settings?.amMoins21Jusqu;
+  const k = c.id + at + '|' + enfants + '|' + (moins21 ?? '');
   let x = ctxCache.get(k);
   if (!x) {
-    x = makeCtx(c, [...state.days.values()].filter((d) => d.cid === c.id), state.leaves, at, enfants);
+    x = makeCtx(c, [...state.days.values()].filter((d) => d.cid === c.id), state.leaves, at, enfants, moins21);
     ctxCache.set(k, x);
   }
   return x;

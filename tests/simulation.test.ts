@@ -162,11 +162,21 @@ describe('accueil jour par jour (étape 2)', () => {
     expect(avec.reste - sans.reste).toBe(4000);
   });
 
-  it('barème kilométrique : administratif au minimum, fiscal au maximum', () => {
-    expect(bornesKm(5, 1200)).toEqual({ min: 320, max: 636 });
-    expect(bornesKm(6, 3000)).toEqual({ min: 510, max: 665 });
-    expect(bornesKm(9, 12000)).toEqual({ min: 320, max: 697 });
-    expect(bornesKm(3, 1000)).toEqual({ min: 320, max: 529 });
+  // T-017 : plancher = arrêté du 3 juillet 2006 (taux de l'arrêté du 14 mars 2022, puis arrêté du 29 mai 2026 du 01/06 au
+  // 31/12/2026) ; plafond = CGI ann. IV art. 6 B (arrêté du 27 mars 2023). Valeurs relues au JORF le 18/11/2026.
+  it('barème kilométrique : administratif au minimum, fiscal au maximum, selon la date', () => {
+    expect(bornesKm(5, 1200, '2026-03-10')).toEqual({ min: 320, max: 636 }); // 5 CV, ≤ 2 000 km : 0,32 ; fiscal d × 0,636
+    expect(bornesKm(5, 1200, '2026-07-10')).toEqual({ min: 330, max: 636 }); // barème majoré : 0,33
+    expect(bornesKm(6, 3000, '2026-03-10')).toEqual({ min: 510, max: 665 }); // 6-7 CV, 2 001 à 10 000 km : 0,51 ; fiscal 6 CV d × 0,665
+    expect(bornesKm(6, 3000, '2026-07-10')).toEqual({ min: 530, max: 665 }); // barème majoré : 0,53
+    // 8 CV et plus, après 10 000 km : 0,32 ; fiscal 7 CV et plus de 5 001 à 20 000 km : (d × 0,394) + 1 515 € → 0,52025 € par km à 12 000 km
+    expect(bornesKm(9, 12000, '2026-03-10')).toEqual({ min: 320, max: 520 });
+    expect(bornesKm(3, 1000, '2026-03-10')).toEqual({ min: 320, max: 529 });
+    // T-033 : au-delà du 31/12/2026, barèmes en vigueur sans date de fin (arrêté du 3 juillet 2006, art. 1er : 5 CV et
+    // moins jusqu'à 2 000 km 0,32 € ; CGI ann. IV art. 6 B : 3 CV et moins jusqu'à 5 000 km d × 0,529)
+    expect(bornesKm(3, 1000, '2027-01-10')).toEqual({ min: 320, max: 529 });
+    // Avant le 01/01/2022 : aucun barème lu
+    expect(bornesKm(3, 1000, '2021-12-10')).toEqual({ min: null, max: null });
   });
 
   it('lien partagé : le planning s’écrit et se relit', () => {
