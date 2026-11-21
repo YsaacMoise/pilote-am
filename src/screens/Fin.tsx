@@ -43,6 +43,8 @@ export function Fin({ id }: { id?: string }) {
   const parMois: Partial<Record<Month, number>> = {};
   for (const b of s.bulletins) if (b.cid === c.id && b.brut) parMois[b.month] = b.brut;
   const f = finDeContrat(ctxFor({ ...c, end: undefined }), envoi, motif, s.settings.enfantsACharge, pres, inexecution, { parMois, total: brutTotal, jusqua: brutJusqua });
+  // T-050d (C-4) : le dernier mois est dans les bulletins (total saisi ou brut lu) : l'ICCP et la régularisation y sont déjà.
+  const finDansBulletins = ((brutTotal ?? 0) > 0 && brutJusqua >= monthOf(f.dernierJour)) || (parMois[monthOf(f.dernierJour)] ?? 0) > 0;
   const rupture: Rupture = {
     motif, notif: envoi, ...(pres !== envoi ? { presentation: pres } : {}),
     preavis: inexecution ? inexecution.demandeur : 'execute', ...(inexecution ? { dernierJourTravaille: inexecution.dernierJourTravaille } : {}),
@@ -142,7 +144,7 @@ export function Fin({ id }: { id?: string }) {
             <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{f.cpAConfirmer ? 'à confirmer' : euros(f.cpIndemnite)}</span></div>
           </div>
           <div class="spread"><b>{aConfirmer ? 'Total estimé, hors salaire du dernier mois et sommes à confirmer' : 'Total estimé, hors salaire du dernier mois'}</b><span class="decl-value">{estime && f.indemniteRupture > 0 && !f.ruptureAConfirmer ? `environ ${eurosArrondis(total)}` : euros(total)}</span></div>
-          <p class="hint">L’indemnité de rupture est calculée sur {estime ? `environ ${eurosArrondis(f.totalBrut)}` : euros(f.totalBrut)} de salaires bruts, régularisation et indemnité de congés de la fin comprises{f.cpAConfirmer || f.regularisationAConfirmer ? ' (celles qui sont à confirmer n’y sont pas encore comptées)' : ''}{estime ? ', en partie estimés à partir du net : saisis le total de tes bulletins plus haut pour un montant exact' : ''}. Elle n’est pas soumise aux cotisations.</p>
+          <p class="hint">L’indemnité de rupture est calculée sur {estime ? `environ ${eurosArrondis(f.totalBrut)}` : euros(f.totalBrut)} de salaires bruts, régularisation et indemnité de congés de la fin comprises{finDansBulletins ? ' (elles sont dans tes bulletins)' : f.cpAConfirmer || f.regularisationAConfirmer ? ' (celles qui sont à confirmer n’y sont pas encore comptées)' : ''}{estime ? ', en partie estimés à partir du net : saisis le total de tes bulletins plus haut pour un montant exact' : ''}. Elle n’est pas soumise aux cotisations.{motif === 'deces' ? ' L’indemnité égale au préavis n’y est pas comptée pour l’instant : ce point est en cours d’examen.' : ''}</p>
         </section>
         </>}
         <section class="card stack" aria-labelledby="fin-save">

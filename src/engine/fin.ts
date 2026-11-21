@@ -183,8 +183,11 @@ export function congesNonPris(endCtx: Ctx, c: Ctx['c'], dernierJour: ISODate, en
   // dixième régularisation comprise (montant = plus favorable entre dixième et maintien).
   let msgCur = acq.aConfirmer?.message ?? indCur.aConfirmer?.message;
   if (!acq.aConfirmer && indCur.aConfirmer && regulDue > 0) {
-    const avec = indCur.aConfirmer.montants.map((x) => `${euros(Math.max(dixiemeEnCours, x.montant))} (${x.libelle})`);
-    msgCur = `${indCur.aConfirmer.message} Ces montants ne comptent pas la régularisation de fin de contrat (${euros(regulDue)}), qui entre dans la base du dixième (convention, articles 48.1.1.5 et 124) : ${avec.length ? `avec elle, ${avec.join(', ou ')}` : `avec elle, le dixième vaut ${euros(dixiemeEnCours)}`}.`;
+    // T-050d (C-3) : base du dixième elle-même incomplète (indemnité de l'an dernier ou salaire à confirmer, baseSure faux) :
+    // chaque montant donné n'est qu'un minimum.
+    const auMoins = indCur.aConfirmer.baseSure ? '' : 'au moins ';
+    const avec = indCur.aConfirmer.montants.map((x) => `${auMoins}${euros(Math.max(dixiemeEnCours, x.montant))} (${x.libelle})`);
+    msgCur = `${indCur.aConfirmer.message} Ces montants ne comptent pas la régularisation de fin de contrat (${euros(regulDue)}), qui entre dans la base du dixième (convention, articles 48.1.1.5 et 124) : ${avec.length ? `avec elle, ${avec.join(', ou ')}` : `avec elle, le dixième vaut ${auMoins}${euros(dixiemeEnCours)}`}.`;
   }
   const motifsAC = [
     msgCur,
@@ -384,7 +387,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     if (debut >= regStart && attendu > 0 && saisies === 0) manque += attendu;
   }
   if (manque > 0) {
-    alertes.push(`Régularisation non calculée : il manque ${manque} semaine${manque > 1 ? 's' : ''} sans accueil dans le contrat. Saisis-les d’abord, sinon les vacances compteraient comme des semaines accueillies.`);
+    alertes.push(`Régularisation non calculée : il manque ${manque} semaine${manque > 1 ? 's' : ''} sans accueil dans le contrat. Saisis-les d’abord, sinon les vacances compteraient comme des semaines accueillies. L’indemnité de congés non pris en dépend : elle est à confirmer. L’indemnité de rupture aussi, sauf si le total de tes bulletins couvre le dernier mois.`);
   } else if (finTerms.yearType === 'incomplete') {
     alertes.push('Vérifie que toutes les semaines sans accueil de la dernière année sont saisies : une semaine non saisie compte comme accueillie dans la régularisation.');
   }
@@ -447,6 +450,16 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     }
   }
 
+  // T-050d (C-1) : régularisation non calculée (semaines sans accueil manquantes, C-002) en année incomplète. Elle entre dans
+  // la base du dixième (A-50) : l'indemnité de congés non pris ne peut pas être donnée. Elle est « à confirmer », avec la raison.
+  const regulNonCalculee = finTerms.yearType === 'incomplete' && manque > 0;
+  if (regulNonCalculee) {
+    const raison = `Indemnité de congés non pris à confirmer : la régularisation de fin de contrat n’est pas calculée (il manque ${manque} semaine${manque > 1 ? 's' : ''} sans accueil), or elle entre dans la base du dixième (convention, articles 48.1.1.5 et 124). Elle n'est pas comptée dans le total.`;
+    cpAConfirmer = cpAConfirmer ? `${cpAConfirmer} ${raison}` : raison;
+    cpIndemnite = 0;
+    cpExplication = 'À confirmer : le montant dépend de la régularisation, qui n’est pas calculée. L’app ne donne pas de montant.';
+  }
+
   // T-050b (A-45, regles/t050-trois-regles.md, point 2) : assiette de l'indemnité de rupture. CCN art. 121.1 : 1/80 « du
   // total des salaires bruts perçus pendant la durée du contrat », « hors indemnités non soumises à contributions et
   // cotisations sociales » (seule exclusion écrite). L'ICCP des deux périodes (art. 123.1, 123.2 et 48.1.1.5 : « revêt le
@@ -462,7 +475,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   const ajoutFin = (fin: ISODate) => (finCouverte(monthOf(fin)) ? 0 : netToBrut(assietteFinNet, lastDay(monthOf(fin))));
   totalBrut += ajoutFin(dernierJour);
   const iccpManquante = !finCouverte(dernierMois) && !!cpAConfirmer;
-  const regulManquante = !finCouverte(dernierMois) && !!regularisationAConfirmer;
+  const regulManquante = !finCouverte(dernierMois) && (!!regularisationAConfirmer || regulNonCalculee);
 
   // Indemnité de rupture. Ancienneté appréciée à la date d'envoi de la lettre (ou au décès), comme pour le préavis.
   let indemniteRupture = 0;
@@ -511,8 +524,11 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
       .map((n) => ({ evenement: 'd’événement familial', cp: 'de congés pris au-delà des droits', maladie: 'd’enfant malade' })[n]);
     const evenement = evenementManquant ? `le salaire ${natures.length > 1 ? `${natures.slice(0, -1).join(', ')} ou ${natures.at(-1)}` : natures[0] ?? 'd’événement familial'}` : '';
     // T-050b : l'indemnité de congés non pris et la régularisation de la fin entrent dans l'assiette (A-45).
-    const manque = [cpManquants ? 'les congés payés' : '', evenement, iccpManquante ? 'l’indemnité de congés non pris' : '', regulManquante ? 'la régularisation de fin de contrat' : ''].filter(Boolean).join(' ni ');
-    alertes.push(`Indemnité de rupture à confirmer : elle ne compte pas encore ${manque} à confirmer.`);
+    // T-050d (C-1) : une régularisation non calculée (semaines sans accueil manquantes) est dite telle quelle.
+    const regulAC = regulManquante && !regulNonCalculee;
+    const manque = [cpManquants ? 'les congés payés' : '', evenement, iccpManquante ? 'l’indemnité de congés non pris' : '', regulAC ? 'la régularisation de fin de contrat' : ''].filter(Boolean).join(' ni ');
+    const nonCalculee = regulManquante && regulNonCalculee ? 'la régularisation de fin de contrat, qui n’est pas calculée : il manque des semaines sans accueil' : '';
+    alertes.push(`Indemnité de rupture à confirmer : elle ne compte pas encore ${[manque ? `${manque} à confirmer` : '', nonCalculee].filter(Boolean).join(', ni ')}.`);
   }
 
   // T-038 suite (point 3 remonté au DG) : l'indemnité de rupture (1/80 ou 2/80 des salaires bruts jusqu'à la fin) change si la
@@ -521,9 +537,13 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   if (indemniteRupture > 0 && !ruptureAConfirmer && variantes.length > 1) {
     const facteur = motif === 'inaptitude_pro' ? 2 : 1;
     // T-050 : écart de bruts entre la variante et la fin calculée, ajouté au total retenu (qui peut venir des bulletins saisis, C-008).
-    // T-050b : même assiette pour chaque variante (ICCP et régularisation de la fin, sauf mois de fin couvert par les bulletins).
+    // T-050b : même assiette pour chaque variante (ICCP et régularisation de la fin).
+    // T-050d (B-1) : ces sommes sont dans le total retenu une seule fois : ajoutées au dernier mois (ajoutFin), ou déjà dans
+    // les bulletins saisis ou lus quand ils couvrent ce mois. Dans une variante, elles quittent le dernier mois pour le mois de
+    // la variante : seul l'écart de conversion en brut entre les deux mois s'ajoute, jamais une seconde fois la somme.
     const brutFin = brutJusqua(endCtx, c, dernierJour, enfants);
-    const autres = variantes.map((v) => ({ ...v, montant: v.fin === dernierJour ? indemniteRupture : Math.round(((totalBrut + brutJusqua(ctxFin(v.fin), c, v.fin, enfants) - brutFin + ajoutFin(v.fin) - ajoutFin(dernierJour)) * facteur) / 80) }));
+    const conversionFin = (fin: ISODate) => netToBrut(assietteFinNet, lastDay(monthOf(fin)));
+    const autres = variantes.map((v) => ({ ...v, montant: v.fin === dernierJour ? indemniteRupture : Math.round(((totalBrut + brutJusqua(ctxFin(v.fin), c, v.fin, enfants) - brutFin + conversionFin(v.fin) - conversionFin(dernierJour)) * facteur) / 80) }));
     if (autres.some((v) => v.montant !== indemniteRupture)) {
       ruptureVariantes = `Indemnité de rupture à confirmer : elle dépend de la date de fin du préavis, à confirmer. ${autres.map((v) => `${v.libelle.replace(/^./, (x) => x.toUpperCase())} : ${euros(v.montant)}`).join(' ; ')}. Elle n'est pas comptée dans le total.`;
       ruptureAConfirmer = true;
