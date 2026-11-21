@@ -269,10 +269,35 @@ describe('congés payés (art. 48 et 102)', () => {
     const ctx = makeCtx(contract({ start: '2025-06-01', trackedFrom: '2025-06-01', yearType: 'incomplete', weeks: 46 }), [], [], '2026-06-15');
     expect(acquisition(ctx, 2025).jours).toBe(29);
     expect(acquisition(ctx, 2025, 1).jours).toBe(30); // +2 par enfant à charge, plafonné à 30
+    // T-019 (SUS-11) : en année incomplète, ce nombre n'est plus affiché ni payé, il est « à confirmer ».
+    expect(acquisition(ctx, 2025).aConfirmer).toBeDefined();
   });
   it('début en cours de période : arrondi au supérieur', () => {
     // 1er sept. 2026 → 31 mai 2027 : 273 jours = 39 semaines → 24,375 → 25
     const ctx = makeCtx(contract({ start: '2026-09-01', trackedFrom: '2026-09-01' }), [], [], '2027-06-15');
+    expect(acquisition(ctx, 2026).jours).toBe(25);
+  });
+  it('arrêt maladie de l’AM : 2 jours par mois au lieu de 2,5 (loi d’avril 2024)', () => {
+    // 1er sept. 2026 → 31 mai 2027 : 39 semaines, dont 4 d'arrêt : 35 ÷ 4 × 2,5 + 4 ÷ 4 × 2 = 23,875 → 24 (25 sans arrêt)
+    const c = contract({ start: '2026-09-01', trackedFrom: '2026-09-01' });
+    const ctx = makeCtx(c, [], [{ id: 'm', type: 'am_malade', from: '2026-11-02', to: '2026-11-29' }], '2027-06-15');
+    expect(acquisition(ctx, 2026).jours).toBe(24);
+  });
+  it('arrêt maladie en année incomplète : au prorata des semaines programmées', () => {
+    // 46 semaines ; 8 semaines d'arrêt = 56 ÷ 365 × 46 = 7,06 semaines programmées → 27,87 → 28 (29 sans arrêt)
+    const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', yearType: 'incomplete', weeks: 46 });
+    const ctx = makeCtx(c, [], [{ id: 'm', type: 'am_malade', from: '2025-10-06', to: '2025-11-30' }], '2026-06-15');
+    expect(acquisition(ctx, 2025).jours).toBe(28);
+    expect(acquisition(ctx, 2025).aConfirmer).toBeDefined(); // T-019 (SUS-11) : à confirmer, non affiché
+  });
+  it('arrêt maladie toute la période : 24 jours au plus', () => {
+    const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01' });
+    const ctx = makeCtx(c, [], [{ id: 'm', type: 'am_malade', from: '2025-06-01', to: '2026-05-31' }], '2026-06-15');
+    expect(acquisition(ctx, 2025).jours).toBe(24);
+  });
+  it('les autres absences de l’AM ne changent pas l’acquisition', () => {
+    const c = contract({ start: '2026-09-01', trackedFrom: '2026-09-01' });
+    const ctx = makeCtx(c, [], [{ id: 'e', type: 'evenement', from: '2026-11-02', to: '2026-11-06' }], '2027-06-15');
     expect(acquisition(ctx, 2026).jours).toBe(25);
   });
   it('jours ouvrables : lundi à samedi hors fériés', () => {
@@ -286,19 +311,19 @@ describe('congés payés (art. 48 et 102)', () => {
     expect(k.pris).toBe(11); // 3 → 15 août, sans le 15 (férié) ni les dimanches
     expect(k.reste).toBe(9);
   });
-  it('année incomplète : indemnité en juin = max(dixième, maintien)', () => {
+  it('année incomplète : indemnité de juin « à confirmer », jamais payée sur des jours non tranchés (T-019, SUS-11)', () => {
     const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', yearType: 'incomplete', weeks: 46 });
     const ctx = makeCtx(c, [], [], '2026-07-01');
     const ind = indemnite(ctx, 2025);
-    // base : 12 × 603,75 € = 7 245 € → dixième 724,50 € ; maintien 29 j ÷ 6 × 45 h × 3,50 = 761,25 €
+    // base : 12 × 603,75 € = 7 245 € → dixième 724,50 € (ne dépend pas du nombre de jours acquis)
     expect(ind.dixieme).toBe(72450);
-    expect(ind.maintien).toBe(76125);
-    expect(ind.montant).toBe(76125);
+    expect(ind.aConfirmer).toBeDefined();
     const juin = cpForMonth(ctx, '2026-06');
-    expect(juin.indemnite).toBe(76125);
-    expect(juin.jours).toBe(29);
+    expect(juin.indemnite).toBe(0);
+    expect(juin.aConfirmer).toMatch(/à confirmer/);
     const r = computeMonth(ctx, '2026-06');
-    expect(r.netTotal).toBe(60375 + 76125);
+    expect(r.netTotal).toBe(60375);
+    expect(r.cpAConfirmer).toBeDefined();
   });
   it('année complète : complément du dixième en juin seulement s’il est plus favorable', () => {
     const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01' });
@@ -309,12 +334,12 @@ describe('congés payés (art. 48 et 102)', () => {
     expect(ind.maintien).toBe(78750);
     expect(cpForMonth(ctx, '2026-06').complement).toBe(3150);
   });
-  it('versement au fur et à mesure', () => {
+  it('versement au fur et à mesure : « à confirmer » tant que les jours acquis ne sont pas tranchés (T-019, SUS-11)', () => {
     const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', yearType: 'incomplete', weeks: 46, cpMode: 'fur' });
     const ctx = makeCtx(c, [], [{ id: 'l', type: 'cp', from: '2026-07-06', to: '2026-07-11' }], '2026-08-01');
     const juil = cpForMonth(ctx, '2026-07');
-    expect(juil.jours).toBe(6);
-    expect(juil.indemnite).toBe(Math.round((76125 * 6) / 29));
+    expect(juil.indemnite).toBe(0);
+    expect(juil.aConfirmer).toMatch(/à confirmer/);
   });
 });
 
@@ -447,8 +472,11 @@ describe('régressions (relecture indépendante)', () => {
     const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', yearType: 'incomplete', weeks: 46, cpMode: 'principale' });
     const leaves: AmLeave[] = [{ id: 'l', type: 'cp', from: '2026-08-03', to: '2026-08-14' }];
     const ctx = makeCtx(c, [], leaves, '2027-01-10');
-    expect(cpForMonth(ctx, '2026-08').indemnite).toBe(76125);
+    // T-019 (SUS-11) : année incomplète, l'indemnité de la prise principale est « à confirmer », pas payée.
+    expect(cpForMonth(ctx, '2026-08').indemnite).toBe(0);
+    expect(cpForMonth(ctx, '2026-08').aConfirmer).toBeDefined();
     const f = finDeContrat(ctx, '2027-01-04', 'demission');
+    expect(f.cpAConfirmer).toBeDefined();
     const seul = finDeContrat(makeCtx({ ...c, cpMode: 'principale' }, [], leaves, '2027-01-10'), '2027-01-04', 'demission');
     // Rien de plus que la période en cours : la période précédente est soldée.
     expect(f.cpIndemnite).toBe(seul.cpIndemnite);
@@ -503,7 +531,8 @@ describe('corrections après audit de paie (28/10/2026)', () => {
   it('congés année incomplète : 40 semaines → 40 ÷ 4 × 2,5 = 25 jours, pas 26', () => {
     const c = contract({ start: '2026-06-01', trackedFrom: '2026-06-01', yearType: 'incomplete', weeks: 40, planning: week('08:00', '16:00'), rateNet: 380 });
     const ctx = makeCtx(c, [], [], '2027-06-15');
-    expect(acquisition(ctx, 2026).jours).toBe(25);
+    expect(acquisition(ctx, 2026).jours).toBe(25); // C-CPA-10 (Urssaf) : 40 × 2,5 ÷ 4 = 25
+    expect(acquisition(ctx, 2026).aConfirmer).toBeDefined(); // T-019 (SUS-11) : à confirmer, non affiché
   });
   it('maintien : heures au-delà de 45 h majorées comme dans le salaire', () => {
     // 47,5 h : 45 × 3,60 + 2,5 × 3,96 = 171,90 € par semaine ; 30 jours = 5 semaines = 859,50 €
@@ -900,5 +929,16 @@ describe('audit C-017, relecture contradictoire', () => {
   it('inaptitude notifiée avant le 1er mai 2026 : alerte', () => {
     expect(finDeContrat(ctx(), '2026-04-15', 'inaptitude_pro').alertes.join(' ')).toMatch(/avant le 1er mai 2026/);
     expect(finDeContrat(ctx(), '2026-05-04', 'inaptitude_pro').alertes.join(' ')).not.toMatch(/avant le 1er mai 2026/);
+  });
+});
+
+describe('barèmes provisoires', () => {
+  it('avertit au-delà du dernier barème vérifié', async () => {
+    const { baremesProvisoires, BAREMES_VERIFIES_JUSQU_AU } = await import('../src/engine/rates');
+    expect(baremesProvisoires(BAREMES_VERIFIES_JUSQU_AU)).toBe(false);
+    expect(baremesProvisoires('2027-01-01')).toBe(true);
+    // T-014 : SMIC relevé au 1er décembre 2026, décret non publié au 18/11/2026
+    expect(baremesProvisoires('2026-12-01')).toBe(true);
+    expect(baremesProvisoires('2026-11-30')).toBe(false);
   });
 });

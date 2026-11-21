@@ -31,8 +31,8 @@ export interface StartBalances {
 }
 
 /** Conditions du contrat qu'un avenant peut changer */
-export type Terms = Pick<Contract, 'planning' | 'rateNet' | 'majoration' | 'entretienJour' | 'repasPrix' | 'repasParJour' | 'repasParents' | 'kmTaux' | 'yearType' | 'weeks' | 'weeksOff'>;
-export const TERM_KEYS: (keyof Terms)[] = ['planning', 'rateNet', 'majoration', 'entretienJour', 'repasPrix', 'repasParJour', 'repasParents', 'kmTaux', 'yearType', 'weeks', 'weeksOff'];
+export type Terms = Pick<Contract, 'planning' | 'rateNet' | 'majoration' | 'majorationCompl' | 'entretienJour' | 'repasPrix' | 'repasParJour' | 'repasParents' | 'kmTaux' | 'yearType' | 'weeks' | 'weeksOff'>;
+export const TERM_KEYS: (keyof Terms)[] = ['planning', 'rateNet', 'majoration', 'majorationCompl', 'entretienJour', 'repasPrix', 'repasParJour', 'repasParents', 'kmTaux', 'yearType', 'weeks', 'weeksOff'];
 
 /** Avenant : nouvelles conditions à partir d'une date */
 export interface Avenant {
@@ -63,6 +63,11 @@ export interface Contract {
   rateNet: number;
   /** Majoration des heures au-delà de 45 h (pour cent, ≥ 10) */
   majoration: number;
+  /**
+   * Majoration des heures complémentaires (jusqu'à 45 h), seulement si le contrat la prévoit (pour cent, 0 par défaut).
+   * R-HC-02 : CCN art. 96.4 et 110.2. Non renseigné sur les anciens contrats : 0.
+   */
+  majorationCompl?: number;
   /** Indemnité d'entretien prévue au contrat par jour (centimes) — le plancher légal s'applique s'il est supérieur */
   entretienJour: number;
   /** Prix d'un repas fourni (centimes) et nombre de repas par jour d'accueil */
@@ -77,6 +82,11 @@ export interface Contract {
   cpMode: CpPayMode;
   /** Enfant ouvrant droit à l'abattement fiscal majoré (handicap, maladie, inadaptation) */
   majoreFiscal: boolean;
+  /**
+   * Le parent a adhéré à Pajemploi+ : l'Urssaf prélève le parent et verse le salaire à l'AM.
+   * Condition du CMG à partir du 1er septembre 2027 (LFSS 2026, article 101). Non renseigné sur les anciens contrats.
+   */
+  pajemploiPlus?: boolean;
   /** Date à partir de laquelle l'app suit le contrat (avant : historique) */
   trackedFrom: ISODate;
   balances: StartBalances;
@@ -118,6 +128,12 @@ export interface Settings {
   amName: string;
   /** Enfants à charge de l'AM de moins de 15 ans (congés supplémentaires) */
   enfantsACharge: number;
+  /**
+   * Dernière année `y` où l'AM avait moins de 21 ans au 30 avril `y`, déclarée par une case à cocher (pas de date de
+   * naissance, décision du DG du 18/11/2026 : donnée minimale). Sert seulement aux jours pour enfants à charge
+   * (R-CP-03 ; CCN art. 48.1.3.3 ; C. trav. L3141-8). Vide : l'app applique la règle des 21 ans et plus.
+   */
+  amMoins21Jusqu?: number;
   lastBackup?: number;
   lastAutoCopy?: number;
   lastExport?: Month;

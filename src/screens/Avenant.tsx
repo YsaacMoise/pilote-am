@@ -109,6 +109,7 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
             )}
             <EuroInput label="Indemnité kilométrique (par km)" cents={t.kmTaux} onChange={(v) => set({ kmTaux: v ?? 0 })} />
             <NumberInput label="Majoration après 45 h par semaine (%)" value={t.majoration} min={10} max={100} onChange={(v) => set({ majoration: v ?? 10 })} />
+            <NumberInput label="Majoration des heures complémentaires (%)" hint="Seulement si le contrat la prévoit, sinon 0." value={t.majorationCompl ?? 0} min={0} max={100} onChange={(v) => set({ majorationCompl: v ?? 0 })} />
           </fieldset>
         </section>
 

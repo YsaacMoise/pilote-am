@@ -5,7 +5,7 @@ import {
 } from './dates';
 import { holidayName, isMayDay } from './holidays';
 import { entretienPlancher, netToBrut } from './rates';
-import { cpExces } from './conges';
+import { cpAConfirmerEntre, cpExces } from './conges';
 import type { AmAbs, AmLeave, Contract, DayRec, Plage, Planning } from './model';
 
 export interface Ctx {
@@ -15,6 +15,8 @@ export interface Ctx {
   today: ISODate;
   /** Enfants à charge de l'AM (2 jours de congés en plus chacun) : sert au contrôle des droits à congés (C-004) */
   enfants?: number;
+  /** Dernière année où l'AM avait moins de 21 ans au 30 avril, si elle l'a cochée : jours pour enfants à charge (R-CP-03) */
+  amMoins21Jusqu?: number;
   cache?: Map<string, unknown>;
 }
 
@@ -28,10 +30,10 @@ export function termsAt(c: Contract, d: ISODate): Contract {
   return out;
 }
 
-export function makeCtx(c: Contract, recs: DayRec[], leaves: AmLeave[], today: ISODate, enfants = 0): Ctx {
+export function makeCtx(c: Contract, recs: DayRec[], leaves: AmLeave[], today: ISODate, enfants = 0, amMoins21Jusqu?: number): Ctx {
   const days = new Map<ISODate, DayRec>();
   for (const r of recs) if (r.cid === c.id) days.set(r.date, r);
-  return { c, days, leaves, today, enfants, cache: new Map() };
+  return { c, days, leaves, today, enfants, amMoins21Jusqu, cache: new Map() };
 }
 
 function memo<T>(ctx: Ctx, key: string, f: () => T): T {
@@ -704,6 +706,8 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   if (entreeSortie) r.joursActivite = actDays + r.extraDays;
   else if (startsOrEndsInMonth) r.joursActivite = Math.max(0, (joursMensualises(c) * (fullDays ? segDays / fullDays : 0)) - dedDays) + r.extraDays;
   else r.joursActivite = Math.max(0, joursMensualises(c) - dedDays) + r.extraDays;
+  // R-CP-09 : un congé dont le décompte reste ambigu est signalé, pas tranché (T-019).
+  for (const a of cpAConfirmerEntre(ctx, segFrom, segTo)) if (!r.alerts.includes(a)) r.alerts.push(a);
   if (cpSansDroits) {
     r.alerts.push(`${dayCountLabel(cpSansDroits)} de congés pris au-delà de tes droits acquis : retenu${cpSansDroits > 1 ? 's' : ''} comme congés sans solde. Si ton solde de congés au début du suivi est faux, corrige-le dans le contrat ; si les parents ont accepté par écrit des congés par anticipation, signale-le avec « Ça coince ».`);
   }
@@ -721,7 +725,8 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
       r.majMin += v.maj;
     }
   }
-  r.complAmount = Math.round((r.complMin * c.rateNet) / 60);
+  // R-HC-02 (CCN art. 96.4 et 110.2) : payées au taux du contrat, majorées seulement si le contrat le prévoit (T-019).
+  r.complAmount = Math.round((r.complMin * c.rateNet * (100 + (c.majorationCompl ?? 0))) / 100 / 60);
   r.majAmount = Math.round((r.majMin * c.rateNet * (100 + c.majoration)) / 100 / 60);
 
   r.net = r.base + r.complAmount + r.majAmount + r.ferieAmount;

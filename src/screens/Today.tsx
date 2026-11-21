@@ -1,3 +1,4 @@
+import { ABSENCES_NON_GEREES } from '../legal';
 import { useState } from 'preact/hooks';
 import { activeContracts, ctxFor, logUsage, putLeave, saveSettings, state, toast, uid, updateDay, useStore } from '../store';
 import { addDays, dayLabel, minutes, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NOMS, daysBetween } from '../engine/dates';
@@ -356,10 +357,12 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
     <Sheet title="Je serai absente" onClose={onClose}>
       <p class="muted">Pour tous les enfants. Les parents ne te paient pas les jours non payés : l’app fait la retenue toute seule.</p>
       <Choices label="Raison" value={type} options={AM_OPTIONS} onChange={setType} />
+      <p class="hint">{ABSENCES_NON_GEREES}</p>
       <div class="grid2">
         <DateInput label="Du" value={from} onChange={(v) => { setFrom(v); if (to < v) setTo(v); }} />
         <DateInput label="Au (inclus)" value={to} min={from} onChange={setTo} />
       </div>
+      {type === 'cp' && <p class="hint">Mets ton dernier jour de congé. L’app compte les jours du lundi au samedi jusqu’à la veille de ta reprise : le samedi avant un retour le lundi compte aussi.</p>}
       {err && <p class="err" role="alert">{err}</p>}
       <button
         class="btn btn-primary btn-block btn-lg"

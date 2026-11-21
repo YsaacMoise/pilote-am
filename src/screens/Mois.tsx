@@ -1,10 +1,11 @@
-import { AVERTISSEMENT_CALCUL } from '../legal';
+import { AVERTISSEMENT_CALCUL, PAJEMPLOI_PLUS_DATE, PAJEMPLOI_PLUS_RAPPEL } from '../legal';
 import { useState } from 'preact/hooks';
 import { ctxFor, logUsage, toast, useStore, state } from '../store';
 import { addMonths, dayLabel, eachDay, firstDay, lastDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
 import { computeMonth, declarationLines, declarationText } from '../engine/month';
 import { dayInfo, termsAt } from '../engine/payroll';
 import { euros, hoursLabel } from '../engine/money';
+import { MESSAGE_BAREMES_PROVISOIRES, baremesProvisoires } from '../engine/rates';
 import { CHILD_ABS_LABEL, AM_ABS_LABEL, type Contract } from '../engine/model';
 import { Banner, Gommette, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
@@ -80,12 +81,14 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
         {current && <span class="summary-note">Provisoire jusqu’à la fin du mois</span>}
       </section>
 
+      {baremesProvisoires(lastDay(month)) && <Banner tone="info">{MESSAGE_BAREMES_PROVISOIRES}</Banner>}
+      {!c.pajemploiPlus && (!c.end || c.end >= PAJEMPLOI_PLUS_DATE) && <Banner tone="info">{PAJEMPLOI_PLUS_RAPPEL}</Banner>}
       {r.alerts.map((a) => <Banner tone="warn">{a}</Banner>)}
       {r.cpNote && <Banner tone="info" icon="sun">{r.cpNote}</Banner>}
 
       <section class="card" aria-labelledby="decl-t">
         <h2 id="decl-t" style={{ marginBottom: '4px' }}>À déclarer sur Pajemploi</h2>
-        <p class="muted small" style={{ marginBottom: '8px' }}>Une déclaration par enfant, faite par le parent, dans cet ordre.</p>
+        <p class="muted small" style={{ marginBottom: '8px' }}>Une déclaration par enfant, faite par le parent entre le 25 et le 5 du mois suivant, dans cet ordre.</p>
         <p class="hint" style={{ marginBottom: '8px' }}>{AVERTISSEMENT_CALCUL}</p>
         <div class="decl">
           {lines.map((l) => (

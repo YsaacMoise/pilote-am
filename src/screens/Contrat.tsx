@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { deleteContract, logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
 import { addMonthsToDate, deMois, firstDay, mondayOf, monthOf, shortDate, today, JOUR_NOMS, type Month } from '../engine/dates';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, semainesSansAccueilAnnee, termsAt, weeklyMinutes } from '../engine/payroll';
@@ -11,6 +11,10 @@ import { Icon } from '../ui/icons';
 import { BROUILLON_CONTRAT } from './Simulateur';
 import { PartageCard } from './PartageCard';
 import { de } from '../engine/texte';
+import { ALSACE_MOSELLE_NON_GEREE, PAJEMPLOI_PLUS_AIDE } from '../legal';
+
+/** Contrat qui vient d'être créé : sa page s'ouvre sur la carte du lien parent */
+let montrerLienDe: string | undefined;
 
 /** Conditions venues du simulateur (lues une seule fois) : son planning, ou des journées égales à partir de 8 h (anciennes versions). */
 function brouillon(): Partial<Contract> | null {
@@ -62,11 +66,18 @@ export function Contrat({ id }: { id?: string }) {
   const reprise = c.start < curMonthStart;
   const wk = weeklyMinutes(c.planning);
   const rates = ratesAt(today());
+  useEffect(() => {
+    if (!existing || montrerLienDe !== existing.id) return;
+    montrerLienDe = undefined;
+    requestAnimationFrame(() => document.getElementById('partage-t')?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+  }, [existing?.id]);
   // Saisie simplifiée des congés à la reprise : seulement les jours déjà pris depuis le 1er juin (nouveaux contrats).
   const [cpManuel, setCpManuel] = useState(!isNew);
   const [prisDepuisJuin, setPris] = useState(0);
   const suiviDepuis = isNew ? (reprise ? curMonthStart : c.start) : c.trackedFrom;
-  const soldes = c.start && suiviDepuis > c.start && wk > 0 ? soldesDeDepart(c, suiviDepuis, prisDepuisJuin, state.settings.enfantsACharge) : undefined;
+  const soldes = c.start && suiviDepuis > c.start && wk > 0 ? soldesDeDepart(c, suiviDepuis, prisDepuisJuin, state.settings.enfantsACharge, state.settings.amMoins21Jusqu) : undefined;
+  // T-019 : année incomplète, l'app ne propose pas de soldes calculés (méthode d'acquisition non tranchée, SUS-11).
+  const soldesProposes = soldes && !soldes.aConfirmer ? soldes : undefined;
 
   function setDay(d: number, plages: Plage[]) {
     set({ planning: { ...c.planning, [d]: plages } });
@@ -90,7 +101,7 @@ export function Contrat({ id }: { id?: string }) {
     if (errs.length) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const toSave: Contract = {
       ...c,
-      balances: !cpManuel && soldes ? { ...c.balances, cpRestants: soldes.cpRestants, cpEnCours: soldes.cpEnCours } : c.balances,
+      balances: !cpManuel && soldesProposes ? { ...c.balances, cpRestants: soldesProposes.cpRestants, cpEnCours: soldesProposes.cpEnCours } : c.balances,
       child: c.child.trim(),
       family: c.family.trim(),
       weeks: c.yearType === 'complete' ? 52 : c.weeks,
@@ -102,7 +113,12 @@ export function Contrat({ id }: { id?: string }) {
     const prev = await putContract(toSave);
     logUsage(isNew ? 'contrat_cree' : 'contrat_modifie', 'contrat');
     toast(isNew ? `Contrat ${de(toSave.child)} créé` : 'Contrat enregistré', prev ? async () => { await putContract(prev); } : async () => { await deleteContract(toSave.id); });
-    location.hash = isNew && reprise ? `#/historique/${toSave.id}` : '#/plus';
+    if (isNew && reprise) location.hash = `#/historique/${toSave.id}`;
+    else if (isNew) {
+      // Juste après la création, la page du contrat s'ouvre sur « Lien pour les parents » : c'est le moment de l'envoyer.
+      montrerLienDe = toSave.id;
+      location.hash = `#/contrat/${toSave.id}`;
+    } else location.hash = '#/plus';
   }
 
   return (
@@ -148,6 +164,7 @@ export function Contrat({ id }: { id?: string }) {
           <fieldset>
             <legend>Le contrat</legend>
             <DateInput label="Date de début réelle" hint="Le premier jour d’accueil, même si c’était il y a longtemps" value={c.start} onChange={(v) => set({ start: v })} />
+            {isNew && <p class="hint">{ALSACE_MOSELLE_NON_GEREE}</p>}
             {!isNew && <DateInput label="Date de fin (si le contrat est terminé)" value={c.end ?? ''} onChange={(v) => set({ end: v || undefined })} />}
             <Seg label="Accueil sur l’année" value={c.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(c.weeks, 46) || 46 })}
               options={[{ v: 'complete', l: 'Toute l’année (52 sem.)' }, { v: 'incomplete', l: 'Année incomplète' }]} />
@@ -196,11 +213,13 @@ export function Contrat({ id }: { id?: string }) {
             )}
             <EuroInput label="Indemnité kilométrique (par km)" hint="0 si tu ne transportes pas l’enfant" cents={c.kmTaux} onChange={(v) => set({ kmTaux: v ?? 0 })} />
             <NumberInput label="Majoration après 45 h par semaine (%)" hint="10 % au minimum" value={c.majoration} min={10} max={100} onChange={(v) => set({ majoration: v ?? 10 })} />
+            <NumberInput label="Majoration des heures complémentaires (%)" hint="Heures en plus jusqu’à 45 h par semaine. Seulement si ton contrat la prévoit, sinon laisse 0." value={c.majorationCompl ?? 0} min={0} max={100} onChange={(v) => set({ majorationCompl: v ?? 0 })} />
             {c.yearType === 'incomplete' && (
               <Seg label="Paiement des congés payés" value={c.cpMode} onChange={(v) => set({ cpMode: v })}
                 options={[{ v: 'juin', l: 'En juin' }, { v: 'principale', l: 'À la prise principale' }, { v: 'fur', l: 'Au fur et à mesure' }]} />
             )}
             <Switch label="Enfant en situation de handicap ou de maladie" hint="Abattement fiscal majoré (4 SMIC par jour au lieu de 3)" checked={c.majoreFiscal} onChange={(v) => set({ majoreFiscal: v })} />
+            <Switch label="Les parents ont adhéré à Pajemploi+" hint={PAJEMPLOI_PLUS_AIDE} checked={!!c.pajemploiPlus} onChange={(v) => set({ pajemploiPlus: v })} />
           </fieldset>
         </section>
 
@@ -209,14 +228,15 @@ export function Contrat({ id }: { id?: string }) {
             <fieldset>
               <legend>Reprise d’un contrat en cours</legend>
               <p class="hint">Le contrat a commencé avant l’app. L’app calcule à partir du {shortDate(isNew ? curMonthStart : c.trackedFrom)} ; pour le passé, reprends tes compteurs et tes bulletins.</p>
-              {!cpManuel && soldes ? (
+              {!cpManuel && soldesProposes ? (
                 <>
-                  <NumberInput label={`Jours de congés déjà pris depuis le ${shortDate(soldes.depuis)}`} hint="Compte les jours du lundi au samedi, sans les jours fériés : une semaine de congés = 6 jours. 0 si tu n’en as pas pris." value={prisDepuisJuin} step={1} max={60} onChange={(v) => setPris(v ?? 0)} />
-                  <p class="hint">Calculé par l’app à partir du début du contrat : {soldes.droitsAnDernier} jours de droits de l’an dernier, donc <b>{soldes.cpRestants} jours restants</b> ; et {soldes.cpEnCours.toLocaleString('fr-FR')} jours gagnés depuis le {shortDate(soldes.depuis)}.</p>
-                  <button type="button" class="btn btn-ghost" onClick={() => { set({ balances: { ...c.balances, cpRestants: soldes.cpRestants, cpEnCours: soldes.cpEnCours } }); setCpManuel(true); }}>Ces chiffres sont faux : les saisir moi-même</button>
+                  <NumberInput label={`Jours de congés déjà pris depuis le ${shortDate(soldesProposes.depuis)}`} hint="Compte les jours du lundi au samedi, sans les jours fériés : une semaine de congés = 6 jours. 0 si tu n’en as pas pris." value={prisDepuisJuin} step={1} max={60} onChange={(v) => setPris(v ?? 0)} />
+                  <p class="hint">Calculé par l’app à partir du début du contrat : {soldesProposes.droitsAnDernier} jours de droits de l’an dernier, donc <b>{soldesProposes.cpRestants} jours restants</b> ; et {soldesProposes.cpEnCours.toLocaleString('fr-FR')} jours gagnés depuis le {shortDate(soldesProposes.depuis)}.</p>
+                  <button type="button" class="btn btn-ghost" onClick={() => { set({ balances: { ...c.balances, cpRestants: soldesProposes.cpRestants, cpEnCours: soldesProposes.cpEnCours } }); setCpManuel(true); }}>Ces chiffres sont faux : les saisir moi-même</button>
                 </>
               ) : (
                 <>
+                  {soldes?.aConfirmer && <p class="hint">{soldes.aConfirmer}</p>}
                   <NumberInput label="Congés restants de l’an dernier (jours)" hint="Acquis avant le dernier 1er juin et pas encore pris" value={c.balances.cpRestants} step={0.5} max={60} onChange={(v) => set({ balances: { ...c.balances, cpRestants: v ?? 0 } })} />
                   <NumberInput label="Congés en cours d’acquisition (jours)" hint="Acquis depuis le 1er juin, avant le suivi par l’app" value={c.balances.cpEnCours} step={0.5} max={30} onChange={(v) => set({ balances: { ...c.balances, cpEnCours: v ?? 0 } })} />
                 </>
@@ -314,6 +334,7 @@ export function avenantSummary(before: Contract, ch: Partial<Terms>): string[] {
   if (ch.repasParJour != null && ch.repasParJour !== before.repasParJour) out.push(`Repas par jour : ${before.repasParJour} → ${ch.repasParJour}`);
   if (ch.kmTaux != null) out.push(`Indemnité kilométrique : ${euros(before.kmTaux)} → ${euros(ch.kmTaux)} par km`);
   if (ch.majoration != null) out.push(`Majoration après 45 h : ${before.majoration} % → ${ch.majoration} %`);
+  if (ch.majorationCompl != null && ch.majorationCompl !== (before.majorationCompl ?? 0)) out.push(`Majoration des heures complémentaires : ${before.majorationCompl ?? 0} % → ${ch.majorationCompl} %`);
   if (ch.yearType && ch.yearType !== before.yearType) out.push(ch.yearType === 'complete' ? 'Passage en année complète (52 semaines)' : `Passage en année incomplète (${ch.weeks ?? before.weeks} semaines)`);
   else if (ch.weeks != null && ch.weeks !== before.weeks) out.push(`Semaines d’accueil : ${before.weeks} → ${ch.weeks}`);
   if (ch.weeksOff) out.push('Semaines sans accueil modifiées');

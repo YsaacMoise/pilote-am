@@ -1,7 +1,7 @@
 // Carnet de liaison : textes lisibles tirés des champs précis (sieste, biberon, température) et résumé du jour.
 // Fonctions pures, testées (tests/carnet.test.ts). Le texte « detail » reste la seule chose lue par le lien
 // parent et par le résumé : les champs précis servent à le recalculer et à modifier une note.
-import { minutes } from './dates';
+import { minutes, type ISODate } from './dates';
 import type { Journal } from './model';
 import { de as deNom } from './texte';
 
@@ -160,4 +160,15 @@ export function resumeJour(o: { enfant: string; jour: string; presence?: string;
 
   lignes.push('', 'Bonne soirée !');
   return lignes.join('\n');
+}
+
+/**
+ * Plus ancien jour consultable dans le carnet : le début du plus ancien contrat ou la plus ancienne note.
+ * Aucune limite de durée : tout l'historique reste consultable tant que l'AM ne l'efface pas.
+ */
+export function premierJourCarnet(contracts: { start: ISODate }[], journal: { date: ISODate }[], t: ISODate): ISODate {
+  let d = t;
+  for (const c of contracts) if (c.start < d) d = c.start;
+  for (const j of journal) if (j.date < d) d = j.date;
+  return d;
 }

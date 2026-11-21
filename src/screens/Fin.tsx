@@ -26,7 +26,8 @@ export function Fin({ id }: { id?: string }) {
   const presVue = presentation && presentation > envoi ? presentation : envoi;
   const pres = avecPreavis && remise === 'recommande' ? presVue : envoi;
   const f = finDeContrat(ctxFor(c), envoi, motif, s.settings.enfantsACharge, pres);
-  const total = f.indemniteRupture + f.regularisation + f.cpIndemnite;
+  const total = (f.ruptureAConfirmer ? 0 : f.indemniteRupture) + f.regularisation + f.cpIndemnite + f.indemnitePreavis;
+  const aConfirmer = !!f.cpAConfirmer || !!f.ruptureAConfirmer;
   return (
     <>
       <Topbar title="Fin de contrat" back="#/plus" screen="fin" />
@@ -66,19 +67,21 @@ export function Fin({ id }: { id?: string }) {
           </fieldset>
         </section>
         {f.alertes.map((a) => <Banner tone="warn">{a} <a href={`#/historique/${c.id}`}>Ouvrir l’historique</a></Banner>)}
+        {f.cpAConfirmer && <Banner tone="warn">{f.cpAConfirmer}</Banner>}
         <section class="card stack" aria-labelledby="fin-res" aria-live="polite">
           <h2 id="fin-res">Ce qui t’est dû</h2>
           <dl class="kv">
             <dt>{avecLettre ? 'Ancienneté à l’envoi de la lettre' : 'Ancienneté'}</dt><dd>{f.ancienneteMois} mois</dd>
             <dt>Préavis</dt><dd>{f.preavisLabel}</dd>
-            <dt>Dernier jour (préavis inclus)</dt><dd>{shortDate(f.dernierJour)}</dd>
+            <dt>{motif === 'deces' ? 'Dernier jour' : 'Dernier jour (préavis inclus)'}</dt><dd>{shortDate(f.dernierJour)}</dd>
           </dl>
           <div class="decl">
-            <div class="decl-line"><span class="decl-label"><span>Indemnité de rupture</span><span class="decl-hint">{f.ruptureExplication}</span></span><span class="decl-value">{euros(f.indemniteRupture)}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>Indemnité de rupture</span><span class="decl-hint">{f.ruptureExplication}</span></span><span class="decl-value">{f.ruptureAConfirmer ? 'à confirmer' : euros(f.indemniteRupture)}</span></div>
+            {motif === 'deces' && <div class="decl-line"><span class="decl-label"><span>Indemnité égale au préavis</span><span class="decl-hint">{f.indemnitePreavisExplication}</span></span><span class="decl-value">{euros(f.indemnitePreavis)}</span></div>}
             <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint">{f.regularisation > 0 || termsAt(c, f.dernierJour).yearType === 'incomplete' ? (f.regulMinutes ? `${hoursLabel(f.regulMinutes)} accueillies mais non payées par la mensualisation` : 'Pas d’heures accueillies au-delà de ce qui a été payé') : 'Année complète : pas de régularisation'}</span></span><span class="decl-value">{euros(f.regularisation)}</span></div>
-            <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{euros(f.cpIndemnite)}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{f.cpAConfirmer ? 'à confirmer' : euros(f.cpIndemnite)}</span></div>
           </div>
-          <div class="spread"><b>Total estimé, hors salaire du dernier mois</b><span class="decl-value">{euros(total)}</span></div>
+          <div class="spread"><b>{aConfirmer ? 'Total estimé, hors salaire du dernier mois et sommes à confirmer' : 'Total estimé, hors salaire du dernier mois'}</b><span class="decl-value">{euros(total)}</span></div>
           <p class="hint">L’indemnité de rupture est calculée sur {euros(f.totalBrut)} de salaires bruts (estimés à partir du net quand le brut est inconnu). Elle n’est pas soumise aux cotisations.</p>
         </section>
       </main>

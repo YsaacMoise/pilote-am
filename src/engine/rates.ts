@@ -52,3 +52,19 @@ export function entretienPlancher(d: ISODate, min: number): number {
 export function netToBrut(net: number, d: ISODate): number {
   return Math.round((net * 10000) / ratesAt(d).netSurBrut);
 }
+
+/**
+ * Dernier jour couvert par des barèmes vérifiés. Le SMIC, le minimum garanti et les cotisations sont revalorisés
+ * au moins chaque 1er janvier, le CMG chaque 1er avril : au-delà de cette date, l'app reprend les derniers barèmes
+ * connus et doit le dire. À avancer à chaque revalorisation ajoutée (ici, dans simulation.ts et dans conges.ts).
+ * 30/11/2026 : hausse du SMIC de 1,6 % annoncée au 1er décembre 2026, décret non publié (Calculateur Arvela, T-014).
+ */
+export const BAREMES_VERIFIES_JUSQU_AU: ISODate = '2026-11-30';
+
+/** Vrai si un calcul à cette date repose sur des barèmes pas encore publiés */
+export function baremesProvisoires(d: ISODate): boolean {
+  return d > BAREMES_VERIFIES_JUSQU_AU;
+}
+
+export const MESSAGE_BAREMES_PROVISOIRES =
+  'Les barèmes officiels de cette période (SMIC, minimum garanti, cotisations, aide de la CAF) ne sont pas encore tous publiés. Ce calcul reprend les derniers barèmes connus : les montants pourront changer.';

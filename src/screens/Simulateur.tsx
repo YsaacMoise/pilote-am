@@ -4,7 +4,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { SIM_RESSOURCES } from './SimApercu';
 import { logUsage } from '../store';
-import { JOUR_NOMS, MOIS_NOMS, monthLabel, today } from '../engine/dates';
+import { JOUR_NOMS, MOIS_NOMS, addDays, monthLabel, today } from '../engine/dates';
+import { MESSAGE_BAREMES_PROVISOIRES, baremesProvisoires } from '../engine/rates';
 import type { Plage, Planning } from '../engine/model';
 import { euros, hoursLabel } from '../engine/money';
 import {
@@ -213,6 +214,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
       <main class="sim-main">
         <div class="sim-form">
         <p class="hint">Pour une famille qui emploie une assistante maternelle. Tout est calculé sur ce téléphone : rien n’est envoyé.</p>
+        {baremesProvisoires(addDays(d, 365)) && <Banner tone="info">{MESSAGE_BAREMES_PROVISOIRES.replace('Ce calcul reprend', 'Les mois concernés reprennent')}</Banner>}
         {connecte && <AideVideo id="simulateur" />}
 
         <section class="card">

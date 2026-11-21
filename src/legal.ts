@@ -17,6 +17,19 @@ export const LEGAL = {
 };
 
 /** Phrase de responsabilité reprise dans l'app et dans le message envoyé au parent (C-120, C-121) */
+/** Pajemploi+ : vérifié sur Légifrance le 06/11/2026 (LFSS 2026, article 101 : « Le I du présent article entre en vigueur le 1er septembre 2027 ») */
+export const PAJEMPLOI_PLUS_DATE = '2027-09-01';
+export const PAJEMPLOI_PLUS_AIDE =
+  'Avec Pajemploi+, l’Urssaf prélève le parent et te verse ton salaire. À partir du 1er septembre 2027, l’aide de la CAF (CMG) ne sera versée qu’aux parents qui y ont adhéré.';
+export const PAJEMPLOI_PLUS_RAPPEL =
+  'Pajemploi+ n’est pas coché pour ce contrat. À partir du 1er septembre 2027, l’adhésion à Pajemploi+ sera la condition pour que les parents touchent l’aide de la CAF (CMG). Coche-le dans le contrat quand ils l’ont activé.';
+
+/** Cas que le moteur de paie ne calcule pas : à dire plutôt qu'à calculer faux (README, « Interprétations de paie ») */
+export const ABSENCES_NON_GEREES =
+  'Congé maternité, congé paternité ou de naissance, accident du travail : l’app ne les calcule pas encore. Ne les note pas comme « Je suis malade » : les congés et le salaire seraient faux. Fais ces mois-là sans l’app.';
+export const ALSACE_MOSELLE_NON_GEREE =
+  'Bas-Rhin, Haut-Rhin, Moselle : la paie d’Alsace-Moselle (jours fériés et cotisations propres) n’est pas encore gérée. Les montants de l’app seraient faux.';
+
 export const AVERTISSEMENT_CALCUL =
   'Arvela est un outil d’aide au calcul, indépendant de l’Urssaf et de Pajemploi. Vérifie les montants avant de les déclarer : la déclaration Pajemploi et le bulletin de salaire font foi.';
 
