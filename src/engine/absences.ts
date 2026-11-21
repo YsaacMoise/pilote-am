@@ -93,11 +93,26 @@ export function texteQuestionSuite(q: QuestionSuite): string {
 }
 
 /**
- * Absences à enregistrer selon la réponse. « Oui » pose `suiteDe` (sur la nouvelle absence, ou sur l'autre quand elle est
- * après) ; « non » ne pose aucun lien. Seul un identifiant interne est enregistré, jamais la raison.
+ * Absences à enregistrer selon la réponse. « Oui » pose `suiteDe` sur la nouvelle absence (elle rejoint le groupe de
+ * l'autre) ; « non » ne pose aucun lien. Seul un identifiant interne est enregistré, jamais la raison.
  */
 export function appliquerReponseSuite(nouvelle: AmLeave, q: QuestionSuite | undefined, oui: boolean): AmLeave[] {
-  if (!q || !oui) return [nouvelle];
-  if (q.sens === 'avant') return [{ ...nouvelle, suiteDe: q.autre.id }];
-  return [nouvelle, { ...q.autre, suiteDe: nouvelle.id }];
+  // Le lien se lit dans les deux sens (groupe) : la nouvelle absence désigne l'autre, l'autre n'est pas modifiée.
+  return q && oui ? [{ ...nouvelle, suiteDe: q.autre.id }] : [nouvelle];
+}
+
+/**
+ * Suppression de l'absence `id` : les absences qui la désignaient sont rattachées à celle qu'elle désignait, pour que le
+ * groupe reste entier. Si elle était la première (aucun lien valable), la plus ancienne de celles qui la désignaient
+ * devient la première et les autres la désignent. Rend les absences à réécrire.
+ */
+export function liensApresSuppression(id: string, leaves: AmLeave[]): AmLeave[] {
+  const x = leaves.find((l) => l.id === id);
+  const suivantes = leaves.filter((l) => l.id !== id && l.suiteDe === id).sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
+  if (!x || !suivantes.length) return [];
+  const cible = x.suiteDe && leaves.some((l) => l.id === x.suiteDe && l.id !== id) ? x.suiteDe : undefined;
+  if (cible) return suivantes.map((l) => ({ ...l, suiteDe: cible }));
+  const [premiere, ...autres] = suivantes;
+  const { suiteDe: _s, ...sansLien } = premiere;
+  return [sansLien, ...autres.map((l) => ({ ...l, suiteDe: premiere.id }))];
 }

@@ -90,24 +90,35 @@ const lundiSamedi = (d: ISODate) => weekday(d) <= 6;
  * naissance : « dans les 15 jours entourant l'événement »). L'app ne sait pas seule si deux absences sont le même
  * événement. Décision du DG du 21/11/2026 (« Demander à l'AM ») : à la saisie, si une autre absence « événement
  * familial » est à 15 jours calendaires au plus, l'app demande si c'est la suite ; « oui » enregistre `suiteDe`. Le calcul
- * relie les absences seulement par ce lien ; leurs jours se cumulent et la durée est celle de la première saisie. Ce qui
+ * relie les absences seulement par ce lien, en groupe (groupeEvenement) ; leurs jours se cumulent et la durée est celle
+ * de la première absence du groupe. Ce qui
  * dépasse la durée est « à confirmer », jamais payé ni retenu en silence. Les saisies d'avant (avec nature) reçoivent le
  * lien au chargement, selon l'ancienne règle (même nature, 15 jours au plus : absences.ts).
  */
 export const LIEN_EVENEMENT_JOURS = 15;
 
-/** Absences reliées à `l` par `suiteDe` (elle comprise), de la plus ancienne à `l` */
-export function chaineEvenement(l: AmLeave, leaves: AmLeave[]): AmLeave[] {
-  const chaine = [l];
-  let cur = l;
-  while (cur.suiteDe) {
-    const id = cur.suiteDe;
-    const prev = leaves.find((p) => p.id === id && p.type === 'evenement');
-    if (!prev || prev.from >= cur.from || chaine.includes(prev)) return chaine;
-    chaine.unshift(prev);
-    cur = prev;
+/**
+ * Groupe d'un même événement : toutes les absences « événement familial » reliées à `l` par des liens `suiteDe`, dans
+ * les deux sens (un lien vers une absence qui n'existe plus est ignoré), triées par date. La première du groupe donne
+ * la durée de référence (relecture de la n° 52, cas N1 et N2 : une saisie au milieu ou une ressaisie rejoint le groupe).
+ */
+export function groupeEvenement(l: AmLeave, leaves: AmLeave[]): AmLeave[] {
+  const ev = leaves.filter((x) => x.type === 'evenement' && x !== l && x.id !== l.id);
+  const groupe = [l];
+  for (let k = 0; k < groupe.length; k++) {
+    const cur = groupe[k];
+    for (const x of ev) {
+      if (groupe.includes(x)) continue;
+      if (x.id === cur.suiteDe || x.suiteDe === cur.id) groupe.push(x);
+    }
   }
-  return chaine;
+  return groupe.sort((a, b) => (a.from !== b.from ? (a.from < b.from ? -1 : 1) : a.to !== b.to ? (a.to < b.to ? -1 : 1) : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+/** Absences du groupe de `l` jusqu'à `l` comprise, de la plus ancienne à `l` (ordre de date) */
+export function chaineEvenement(l: AmLeave, leaves: AmLeave[]): AmLeave[] {
+  const g = groupeEvenement(l, leaves);
+  return g.slice(0, g.indexOf(l) + 1);
 }
 
 /**
@@ -124,13 +135,13 @@ export function evenementPrecedentProche(from: ISODate, leaves: AmLeave[]): AmLe
 }
 
 /**
- * Absence « événement familial » la plus proche après une saisie [from, to], à 15 jours au plus, qui n'a pas encore de
- * lien : à la saisie, l'app demande si elle est la suite de la nouvelle absence (saisie dans le désordre).
+ * Absence « événement familial » la plus proche après une saisie [from, to], à 15 jours au plus, même si elle fait déjà
+ * partie d'un groupe : à la saisie, l'app demande si elle est la suite de la nouvelle absence (saisie dans le désordre).
  */
 export function evenementSuivantProche(from: ISODate, to: ISODate, leaves: AmLeave[]): AmLeave | undefined {
   let suiv: AmLeave | undefined;
   for (const q of leaves) {
-    if (q.type !== 'evenement' || q.suiteDe || q.from <= from || daysBetween(to, q.from) > LIEN_EVENEMENT_JOURS) continue;
+    if (q.type !== 'evenement' || q.from <= from || daysBetween(to, q.from) > LIEN_EVENEMENT_JOURS) continue;
     if (!suiv || q.from < suiv.from) suiv = q;
   }
   return suiv;
@@ -139,18 +150,20 @@ export function evenementSuivantProche(from: ISODate, to: ISODate, leaves: AmLea
 /**
  * Jours comptés pour la durée, jusqu'à `d` compris : les jours des absences reliées, plus les jours entre deux absences
  * qui se suivent sans jour ouvré entre elles (un week-end ou un férié : même compte que si une seule absence avait été
- * saisie). Le jour `d` doit être dans la dernière absence de la chaîne.
+ * saisie). Le jour `d` doit être dans la dernière absence de la chaîne (triée par date).
  */
 function joursCouverts(chaine: AmLeave[], d: ISODate): ISODate[] {
   const set = new Set<ISODate>();
-  chaine.forEach((x, i) => {
-    for (const j of eachDay(x.from, x.to < d ? x.to : d)) set.add(j);
-    const suiv = chaine[i + 1];
-    if (suiv && x.to < suiv.from) {
-      const entre = eachDay(addDays(x.to, 1), addDays(suiv.from, -1));
+  // `fin` : dernier jour déjà couvert par les absences précédentes (elles peuvent se chevaucher dans un groupe).
+  let fin: ISODate | undefined;
+  for (const x of chaine) {
+    if (fin && fin < x.from) {
+      const entre = eachDay(addDays(fin, 1), addDays(x.from, -1));
       if (entre.every((j) => weekday(j) === 7 || weekday(j) === 6 || holidayName(j))) for (const j of entre) set.add(j);
     }
-  });
+    for (const j of eachDay(x.from, x.to < d ? x.to : d)) set.add(j);
+    if (!fin || x.to > fin) fin = x.to;
+  }
   return [...set].filter((j) => j <= d).sort();
 }
 

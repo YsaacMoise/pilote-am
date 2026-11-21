@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import type { AmLeave, Contract, NatureEvenement } from '../src/engine/model';
-import { absenceSaisie, appliquerReponseSuite, normaliserAbsences, questionSuite, texteQuestionSuite, type AbsenceLue } from '../src/engine/absences';
+import { absenceSaisie, appliquerReponseSuite, liensApresSuppression, normaliserAbsences, questionSuite, texteQuestionSuite, type AbsenceLue } from '../src/engine/absences';
 import { makeCtx } from '../src/engine/payroll';
 import { computeMonth } from '../src/engine/month';
 
@@ -58,14 +58,15 @@ describe('question à la saisie', () => {
     const cp: AmLeave = { id: 'cp', type: 'cp', from: '2026-06-10', to: '2026-06-12' };
     expect(questionSuite('2026-06-15', '2026-06-15', [a, cp])).toBeUndefined();
   });
-  it('saisie dans le désordre : l’app demande si l’absence d’après est la suite ; « oui » pose le lien sur elle', () => {
+  it('saisie dans le désordre : l’app demande si l’absence d’après est la suite ; « oui » relie la nouvelle à elle', () => {
     const apres = absenceSaisie('evenement', 'naissance', 'x', '2026-10-12', '2026-10-14')!;
     const nouvelle = absenceSaisie('evenement', 'naissance', 'y', '2026-10-05', '2026-10-07')!;
     const q = questionSuite(nouvelle.from, nouvelle.to, [apres])!;
     expect(q.sens).toBe('apres');
     expect(texteQuestionSuite(q)).toBe('L’absence du 12/10 est-elle la suite de celle-ci ?');
     const ls = appliquerReponseSuite(nouvelle, q, true);
-    expect(ls).toEqual([nouvelle, { ...apres, suiteDe: 'y' }]);
+    expect(ls).toEqual([{ ...nouvelle, suiteDe: 'x' }]);
+    ls.push(apres);
     expect(calc('2026-10', ls)).toEqual(avant.D); // comme saisi dans l'ordre
     expect(appliquerReponseSuite(nouvelle, q, false)).toEqual([nouvelle]);
   });
@@ -119,5 +120,76 @@ describe('migration : saisies d’avant (avec nature) reliées comme à 9a078a7,
     expect(normaliserAbsences(lues).map((l) => l.suiteDe)).toEqual([undefined, 'e0', 'e1']);
     const b: AbsenceLue[] = CAS.B[1].map(([n, from, to], i) => ({ id: `e${i}`, type: 'evenement', from, to, nature: n }));
     expect(normaliserAbsences(b).map((l) => l.suiteDe)).toEqual([undefined, undefined]);
+  });
+});
+
+// Relecture ciblée de la n° 52 (N1, N2) : un groupe se lit dans les deux sens et reste entier après une suppression.
+describe('groupes : ressaisie, saisie au milieu, suppression', () => {
+  const sans = (m: string) => calc(m, []);
+  /** Saisie à l'écran d'une absence, avec la réponse donnée (la question doit être posée si `oui` est donné) */
+  const ajouter = (ls: AmLeave[], id: string, n: NatureEvenement, from: string, to: string, oui?: boolean): AmLeave[] => {
+    const q = questionSuite(from, to, ls);
+    if (oui !== undefined) expect(q).toBeDefined();
+    return [...ls, ...appliquerReponseSuite(absenceSaisie('evenement', n, id, from, to)!, q, !!oui)];
+  };
+  const supprimer = (ls: AmLeave[], id: string): AmLeave[] => {
+    const r = liensApresSuppression(id, ls);
+    return ls.filter((x) => x.id !== id).map((x) => r.find((y) => y.id === x.id) ?? x);
+  };
+  /** Ce que donnait 9a078a7 pour les mêmes absences saisies avec leur nature (relié par l'ancienne règle) */
+  const avecNature = (m: string, ls: [NatureEvenement, string, string][]) =>
+    calc(m, normaliserAbsences(ls.map(([n, from, to], i) => ({ id: `n${i}`, type: 'evenement', from, to, nature: n }))));
+
+  it('N1 : naissance 05-06/10, 12-13/10 « oui », suppression du 05/10 puis ressaisie 06-07/10 : question posée, 1 jour à confirmer', () => {
+    let ls = ajouter([], 'a', 'naissance', '2026-10-05', '2026-10-06');
+    ls = ajouter(ls, 'b', 'naissance', '2026-10-12', '2026-10-13', true);
+    ls = supprimer(ls, 'a');
+    expect(ls.find((x) => x.id === 'b')?.suiteDe).toBeUndefined(); // plus de lien vers une absence supprimée
+    expect(questionSuite('2026-10-06', '2026-10-07', ls)?.autre.id).toBe('b');
+    const oui = ajouter(ls, 'c', 'naissance', '2026-10-06', '2026-10-07', true);
+    const r = calc('2026-10', oui);
+    expect(r.joursEvt).toBe(1);
+    expect(r.retenue).toBe(0);
+    expect(r.net + r.aConfirmer).toBe(sans('2026-10').net);
+    expect(r).toEqual(avecNature('2026-10', [['naissance', '2026-10-06', '2026-10-07'], ['naissance', '2026-10-12', '2026-10-13']]));
+  });
+
+  it('N2 : 05/10, 12/10 « suite du 05/10 », puis 08-09/10 « oui » : un seul groupe, comme 9a078a7', () => {
+    let ls = ajouter([], 'x', 'naissance', '2026-10-05', '2026-10-05');
+    ls = ajouter(ls, 'y', 'naissance', '2026-10-12', '2026-10-12', true);
+    ls = ajouter(ls, 'z', 'naissance', '2026-10-08', '2026-10-09', true);
+    const r = calc('2026-10', ls);
+    expect(r.joursEvt).toBeGreaterThan(0);
+    expect(r.retenue).toBe(0);
+    expect(r.net + r.aConfirmer).toBe(sans('2026-10').net);
+    expect(r).toEqual(avecNature('2026-10', [['naissance', '2026-10-05', '2026-10-05'], ['naissance', '2026-10-12', '2026-10-12'], ['naissance', '2026-10-08', '2026-10-09']]));
+  });
+
+  it('suppression au milieu d’une suite : les deux autres restent reliées', () => {
+    let ls = ajouter([], 'p', 'naissance', '2026-10-05', '2026-10-06');
+    ls = ajouter(ls, 'q', 'naissance', '2026-10-08', '2026-10-08', true);
+    ls = ajouter(ls, 'r', 'naissance', '2026-10-12', '2026-10-13', true);
+    ls = supprimer(ls, 'q');
+    expect(ls.find((x) => x.id === 'r')?.suiteDe).toBe('p');
+    const r = calc('2026-10', ls);
+    expect(r).toEqual(avecNature('2026-10', [['naissance', '2026-10-05', '2026-10-06'], ['naissance', '2026-10-12', '2026-10-13']]));
+    expect(r.joursEvt).toBe(1);
+    expect(r.net + r.aConfirmer).toBe(sans('2026-10').net);
+  });
+
+  it('suppression de la première : la suivante devient la première, les autres la désignent', () => {
+    let ls = ajouter([], 'p', 'mariage', '2026-10-05', '2026-10-05');
+    ls = ajouter(ls, 'q', 'mariage', '2026-10-08', '2026-10-09', true);
+    ls = [...ls, { ...absenceSaisie('evenement', 'mariage', 's', '2026-10-12', '2026-10-14')!, suiteDe: 'p' }];
+    ls = supprimer(ls, 'p');
+    expect(ls.find((x) => x.id === 'q')?.suiteDe).toBeUndefined();
+    expect(ls.find((x) => x.id === 's')?.suiteDe).toBe('q');
+    const r = calc('2026-10', ls);
+    expect(r).toEqual(avecNature('2026-10', [['mariage', '2026-10-08', '2026-10-09'], ['mariage', '2026-10-12', '2026-10-14']]));
+  });
+
+  it('lien vers une absence qui n’existe plus : ignoré, l’absence compte seule', () => {
+    const l = { ...absenceSaisie('evenement', 'naissance', 'w', '2026-10-05', '2026-10-09')!, suiteDe: 'disparue' };
+    expect(calc('2026-10', [l])).toEqual(calc('2026-10', [absenceSaisie('evenement', 'naissance', 'w', '2026-10-05', '2026-10-09')!]));
   });
 });

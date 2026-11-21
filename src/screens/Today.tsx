@@ -366,11 +366,14 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
   const [nature, setNature] = useState<NatureEvenement | undefined>(undefined);
   const [from, setFrom] = useState(start);
   const [to, setTo] = useState(start);
-  const [suite, setSuite] = useState<'oui' | 'non' | undefined>(undefined);
+  // Réponse liée à l'absence visée : remise à zéro quand la question change d'absence (dates changées).
+  const [reponse, setReponse] = useState<{ id: string; rep: 'oui' | 'non' } | undefined>(undefined);
   const err = to < from ? 'La date de fin doit être après le début.' : '';
   useErreurAffichee('dates_absence', !!err);
   // Décision du DG du 21/11/2026 : une autre absence « événement familial » à 15 jours au plus : l'app demande à l'AM.
   const question = type === 'evenement' && !err ? questionSuite(from, to, state.leaves) : undefined;
+  const suite = question && reponse?.id === question.autre.id ? reponse.rep : undefined;
+  const setSuite = (rep: 'oui' | 'non') => { if (question) setReponse({ id: question.autre.id, rep }); };
   return (
     <Sheet title="Je serai absente" onClose={onClose}>
       <p class="muted">Pour tous les enfants. Les parents ne te paient pas les jours non payés : l’app fait la retenue toute seule.</p>
