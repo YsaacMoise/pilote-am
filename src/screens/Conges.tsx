@@ -4,6 +4,7 @@ import { ctxFor, deleteLeave, toast, useStore, state } from '../store';
 import { cpPeriodStartYear, dayLabel, today, shortDate } from '../engine/dates';
 import { compteur, decompteConge, indemnite } from '../engine/conges';
 import { euros } from '../engine/money';
+import { EVENEMENTS_GERES_DEPUIS } from '../engine/evenements';
 import { AM_ABS_LABEL, type AmLeave, type Contract } from '../engine/model';
 import { Banner, Gommette, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
@@ -69,7 +70,7 @@ export function Conges() {
                 <div class="li">
                   <span class="li-main">
                     <span class="li-title">{AM_ABS_LABEL[l.type]}</span>
-                    <span class="li-sub">{l.from === l.to ? dayLabel(l.from, true) : `Du ${shortDate(l.from)} au ${shortDate(l.to)}`}{l.type === 'cp' ? decompteTexte(l, list) : ''}{l.type === 'evenement' ? (l.joursEvenement === undefined ? ' · durée à indiquer : supprime et saisis à nouveau' : l.joursEvenement ? ` · ${l.joursEvenement} jour${l.joursEvenement > 1 ? 's' : ''} payé${l.joursEvenement > 1 ? 's' : ''} prévu${l.joursEvenement > 1 ? 's' : ''}` : ' · durée non gérée par l’app') : ''}</span>
+                    <span class="li-sub">{l.from === l.to ? dayLabel(l.from, true) : `Du ${shortDate(l.from)} au ${shortDate(l.to)}`}{l.type === 'cp' ? decompteTexte(l, list) : ''}{l.type === 'evenement' ? (l.joursEvenement === undefined ? ' · durée à indiquer : supprime et saisis à nouveau' : l.from < EVENEMENTS_GERES_DEPUIS ? ' · période non gérée (avant le 01/05/2024) : durée à confirmer avec les parents' : l.joursEvenement ? ` · ${l.joursEvenement} jour${l.joursEvenement > 1 ? 's' : ''} payé${l.joursEvenement > 1 ? 's' : ''} prévu${l.joursEvenement > 1 ? 's' : ''}` : ' · durée non gérée par l’app') : ''}{l.type === 'evenement' && l.suiteDe ? (() => { const p = s.leaves.find((x) => x.id === l.suiteDe); return p ? ` · suite de l’absence du ${shortDate(p.from).slice(0, 5)}` : ''; })() : ''}</span>
                   </span>
                   <button class="icon-btn" aria-label={`Supprimer : ${AM_ABS_LABEL[l.type]} du ${shortDate(l.from)}`} onClick={async () => { const u = await deleteLeave(l.id); toast('Absence supprimée', u); }}>
                     <Icon name="trash" size={20} />

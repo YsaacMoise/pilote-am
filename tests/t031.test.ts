@@ -119,7 +119,7 @@ describe('T-031 : absences non gérées (congé maternité, paternité, de naiss
   for (const type of ['maternite', 'paternite', 'naissance_supp', 'accident_travail'] as AbsenceLue['type'][]) {
     it(`${type} : seuls les mois touchés sont refusés`, () => {
       const ctx = makeCtx(ok(), [], [leave(type, '2026-03-02', '2026-04-10')], '2026-10-31');
-      expect(computeMonth(ctx, '2026-03').nonGere.join(' ')).toMatch(/du 02\/03.* au 10\/04.*: non géré/);
+      expect(computeMonth(ctx, '2026-03').nonGere.join(' ')).toMatch(/Absence non gérée par l’app du 02\/03.* au 10\/04.*: le salaire de ces jours/);
       expect(computeMonth(ctx, '2026-04').nonGere.length).toBe(1);
       expect(computeMonth(ctx, '2026-05').nonGere).toEqual([]);
       expect(computeMonth(ctx, '2026-02').nonGere).toEqual([]);

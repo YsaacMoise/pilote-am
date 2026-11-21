@@ -5,7 +5,7 @@ import { addDays, dayLabel, minutes, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NO
 import { dayInfo, type Ctx, type DayInfo } from '../engine/payroll';
 import { AM_ABS_LABEL, AM_ABS_NON_GEREE_LABEL, AM_ABS_NON_GEREES, CHILD_ABS_LABEL, type ChildAbs, type Contract, type DayRec, type NatureEvenement, type Plage, type Presence } from '../engine/model';
 import { libelleDureeSaisie, NATURE_EVENEMENT_LABEL } from '../engine/evenements';
-import { absenceSaisie, estNonGere, type ChoixAbsence } from '../engine/absences';
+import { absenceSaisie, appliquerReponses, estNonGere, questionsSuite, questionsVisibles, reponsesCompletes, texteQuestionSuite, type ChoixAbsence, type Reponse } from '../engine/absences';
 import { hoursLabel } from '../engine/money';
 import { Banner, CHILD_COLORS, Choices, DateInput, Gommette, Sheet, Stepper, Switch, Topbar, useErreurAffichee } from '../ui/kit';
 import { evAnnulation, evCorrections, evPointage, type GestePointage } from '../usage-events';
@@ -681,8 +681,14 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
   const [nature, setNature] = useState<NatureEvenement | undefined>(undefined);
   const [from, setFrom] = useState(start);
   const [to, setTo] = useState(start);
+  // Réponses liées à l'absence visée : remises à zéro quand une question change d'absence (dates changées).
+  const [reponses, setReponses] = useState<Record<string, 'oui' | 'non'>>({});
   const err = to < from ? 'La date de fin doit être après le début.' : '';
   useErreurAffichee('dates_absence', !!err);
+  // Décision du DG du 21/11/2026 : une autre absence « événement familial » à 15 jours au plus : l'app demande à l'AM.
+  const questions = type === 'evenement' && !err ? questionsSuite(from, to, state.leaves) : [];
+  const reps: Reponse[] = questions.map((q) => reponses[`${q.sens}|${q.autre.id}`]);
+  const visibles = questionsVisibles(questions, reps);
   return (
     <Sheet title="Je serai absente" onClose={onClose}>
       <p class="muted">Pour tous les enfants. Les parents ne te paient pas les jours non payés : l’app fait la retenue toute seule.</p>
@@ -699,18 +705,25 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
         <DateInput label="Du" value={from} onChange={(v) => { setFrom(v); if (to < v) setTo(v); }} />
         <DateInput label="Au (inclus)" value={to} min={from} onChange={setTo} />
       </div>
+      {visibles.map((q, i) => (
+        <Choices key={`${q.sens}|${q.autre.id}`} label={texteQuestionSuite(q)} value={reps[i]}
+          onChange={(rep) => setReponses({ ...Object.fromEntries(questions.slice(0, i).map((x, k) => [`${x.sens}|${x.autre.id}`, reps[k]!]).filter((e) => e[1])), [`${q.sens}|${q.autre.id}`]: rep })}
+          options={[{ v: 'oui', l: 'Oui, c’est le même événement', sub: 'Les jours se cumulent pour la durée prévue' }, { v: 'non', l: 'Non, c’est un autre événement', sub: 'Chaque événement a sa propre durée' }]} />
+      ))}
       {type === 'cp' && <p class="hint">Mets ton dernier jour de congé. L’app compte les jours du lundi au samedi jusqu’à la veille de ta reprise : le samedi avant un retour le lundi compte aussi.</p>}
       {err && <p class="err" role="alert">{err}</p>}
       <button
         class="btn btn-primary btn-block btn-lg"
-        disabled={!!err || !from || !to || (type === 'evenement' && !nature)}
+        disabled={!!err || !from || !to || (type === 'evenement' && !nature) || !reponsesCompletes(questions, reps)}
         onClick={async () => {
           const l = absenceSaisie(type, nature, uid(), from, to);
           if (!l) return;
-          const undo = await putLeave(l);
+          const undos: (() => Promise<void>)[] = [];
+          for (const x of appliquerReponses(l, questions, reps)) undos.push(await putLeave(x));
+          const undo = async () => { for (const u of undos.reverse()) await u(); };
           logUsage('absence_am', 'aujourdhui');
           onClose();
-          toast(`${AM_ABS_LABEL[l.type]} enregistré${l.type === 'cp' ? 's' : ''}`, undo);
+          toast(`${AM_ABS_LABEL[l.type]} enregistré${l.type === 'cp' ? 's' : l.type === 'non_gere' ? 'e' : ''}`, undo);
         }}
       >
         Enregistrer

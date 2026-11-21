@@ -4,7 +4,7 @@ import * as db from './db';
 import type { AmLeave, Bulletin, Contract, DayRec, Journal, Settings } from './engine/model';
 import { makeCtx, type Ctx } from './engine/payroll';
 import { today } from './engine/dates';
-import { normaliserAbsence, type AbsenceLue } from './engine/absences';
+import { liensApresSuppression, normaliserAbsences, type AbsenceLue } from './engine/absences';
 import { ecranDe, evErreur, type ErreurCode } from './usage-events';
 
 export interface Feedback { id: string; ts: number; screen: string; text: string }
@@ -71,12 +71,10 @@ export async function load(): Promise<void> {
   state.days = new Map(days.map((d) => [d.key, d]));
   // Décision du DG du 21/11/2026 (« sans la raison ») : une absence enregistrée avec sa nature ou son cas non géré est
   // ramenée à la forme sans raison, puis réécrite (téléphone et compte en ligne). Jours et dates gardés.
-  const ramenees: AmLeave[] = [];
-  state.leaves = leaves.map((l) => {
-    const n = normaliserAbsence(l);
-    if (n !== l) ramenees.push(n);
-    return n;
-  }).sort((a, b) => a.from.localeCompare(b.from));
+  // Le lien « suite de » est posé avant, selon l'ancienne règle (normaliserAbsences), pour garder la même paie.
+  const normalisees = normaliserAbsences(leaves);
+  const ramenees = normalisees.filter((n, i) => n !== leaves[i]);
+  state.leaves = normalisees.sort((a, b) => a.from.localeCompare(b.from));
   for (const l of ramenees) {
     try { await db.put('leaves', l); } catch { /* réécrite au prochain chargement ; la forme lue est déjà sans raison */ }
   }
@@ -180,10 +178,20 @@ export async function putLeave(l: AmLeave): Promise<Undo> {
 
 export async function deleteLeave(id: string): Promise<Undo> {
   const prev = state.leaves.find((x) => x.id === id);
+  // Relecture n° 52 (N1) : le groupe d'un événement familial reste entier quand une de ses absences est supprimée.
+  const relies = liensApresSuppression(id, state.leaves);
+  const avant = relies.map((r) => state.leaves.find((x) => x.id === r.id)!);
+  for (const r of relies) {
+    state.leaves = state.leaves.map((x) => (x.id === r.id ? r : x));
+    await db.put('leaves', r);
+  }
   state.leaves = state.leaves.filter((x) => x.id !== id);
   await db.del('leaves', id);
   emit();
-  return async () => { if (prev) await putLeave(prev); };
+  return async () => {
+    if (prev) await putLeave(prev);
+    for (const a of avant) await putLeave(a);
+  };
 }
 
 export async function putBulletin(b: Bulletin) {
