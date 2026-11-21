@@ -4,6 +4,7 @@ import * as db from './db';
 import type { AmLeave, Bulletin, Contract, DayRec, Journal, Settings } from './engine/model';
 import { makeCtx, type Ctx } from './engine/payroll';
 import { today } from './engine/dates';
+import { normaliserAbsence, type AbsenceLue } from './engine/absences';
 import { ecranDe, evErreur, type ErreurCode } from './usage-events';
 
 export interface Feedback { id: string; ts: number; screen: string; text: string }
@@ -61,14 +62,24 @@ export function uid(): string {
 export async function load(): Promise<void> {
   const [kv, contracts, days, leaves, bulletins, journal, feedback, usage] = await Promise.all([
     db.getAll<{ k: string; v: unknown }>('kv'), db.getAll<Contract>('contracts'), db.getAll<DayRec>('days'),
-    db.getAll<AmLeave>('leaves'), db.getAll<Bulletin>('bulletins'), db.getAll<Journal>('journal'),
+    db.getAll<AbsenceLue>('leaves'), db.getAll<Bulletin>('bulletins'), db.getAll<Journal>('journal'),
     db.getAll<Feedback>('feedback'), db.getAll<Usage>('usage'),
   ]);
   const s = kv.find((x) => x.k === 'settings');
   state.settings = { ...DEFAULT_SETTINGS, ...((s?.v as Settings) ?? {}) };
   state.contracts = contracts.sort((a, b) => a.createdAt - b.createdAt);
   state.days = new Map(days.map((d) => [d.key, d]));
-  state.leaves = leaves.sort((a, b) => a.from.localeCompare(b.from));
+  // Décision du DG du 21/11/2026 (« sans la raison ») : une absence enregistrée avec sa nature ou son cas non géré est
+  // ramenée à la forme sans raison, puis réécrite (téléphone et compte en ligne). Jours et dates gardés.
+  const ramenees: AmLeave[] = [];
+  state.leaves = leaves.map((l) => {
+    const n = normaliserAbsence(l);
+    if (n !== l) ramenees.push(n);
+    return n;
+  }).sort((a, b) => a.from.localeCompare(b.from));
+  for (const l of ramenees) {
+    try { await db.put('leaves', l); } catch { /* réécrite au prochain chargement ; la forme lue est déjà sans raison */ }
+  }
   state.bulletins = bulletins;
   state.journal = journal;
   state.feedback = feedback;

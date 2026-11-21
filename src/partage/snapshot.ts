@@ -41,7 +41,7 @@ export interface MoisParent {
   repas: number;
   km: number;
   lignes: LigneDecl[];
-  /** T-025 C-5 : parts sorties du total, à confirmer (« l’événement familial », « les kilomètres »…). Absent : aucune. */
+  /** T-025 C-5 : parts sorties du total, à confirmer (« une part du salaire », « les kilomètres »…). Absent : aucune. */
   aConfirmer?: string[];
   /** T-031 : mois que l'app ne calcule pas (cas non géré) : aucun montant ni aucune case n'est envoyé */
   nonGere?: boolean;
@@ -100,8 +100,9 @@ function moisParent(ctx: Ctx, m: Month, enfants: number): MoisParent | null {
     entretien: r.entretien,
     repas: r.repas,
     km: r.km,
-    lignes: declarationLines(ctx, r).map((l) => (l.hint ? { label: l.label, value: l.value, hint: l.hint } : { label: l.label, value: l.value })),
-    ...(partsAConfirmer(r).length ? { aConfirmer: partsAConfirmer(r) } : {}),
+    // Décision du DG du 21/11/2026 : aucun motif d'absence de l'AM sur le lien (« pourParents »).
+    lignes: declarationLines(ctx, r, true).map((l) => (l.hint ? { label: l.label, value: l.value, hint: l.hint } : { label: l.label, value: l.value })),
+    ...(partsAConfirmer(r, true).length ? { aConfirmer: partsAConfirmer(r, true) } : {}),
     joursAccueil: r.presenceDays,
     absences,
   };

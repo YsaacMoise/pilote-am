@@ -6,6 +6,7 @@ import type { AmLeave, Bulletin, Contract, NatureEvenement, Planning } from '../
 import { makeCtx } from '../src/engine/payroll';
 import { computeMonth, declarationLines, declarationText } from '../src/engine/month';
 import { dureeEvenement } from '../src/engine/evenements';
+import { normaliserAbsence } from '../src/engine/absences';
 import { controleKm, SUIVI_ARRETES } from '../src/engine/km';
 import type { DayRec } from '../src/engine/model';
 import { controle } from '../src/engine/controle';
@@ -111,7 +112,8 @@ describe('T-023 (3) barèmes datés avant le 01/04/2025 (BAREME-ABSENT)', () => 
 describe('T-023 (2) événements familiaux, R-ABS-06', () => {
   // Contrat du lundi au vendredi, 8 h par jour, année complète. Octobre 2026 : aucun jour férié.
   const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01' });
-  const ev = (from: string, to: string, nature?: NatureEvenement): AmLeave => ({ id: 'e', type: 'evenement', from, to, ...(nature ? { nature } : {}) });
+  // Saisie ramenée à la forme enregistrée (décision du DG du 21/11/2026 : nombre de jours, pas de nature).
+  const ev = (from: string, to: string, nature?: NatureEvenement): AmLeave => normaliserAbsence({ id: 'e', type: 'evenement', from, to, ...(nature ? { nature } : {}) });
   const mois = (leaves: AmLeave[], m = '2026-10') => computeMonth(makeCtx(c, [], leaves, '2026-12-31'), m);
   const sansAbsence = mois([]);
 
@@ -185,7 +187,7 @@ describe('T-023 (2) événements familiaux, R-ABS-06', () => {
     const r = mois(leaves);
     expect(r.evenementAConfirmer).toBeGreaterThan(0);
     expect(r.retenue).toBe(0);
-    expect(r.alerts.join(' ')).toMatch(/nature de l’événement n’est pas renseignée/);
+    expect(r.alerts.join(' ')).toMatch(/durée payée n’est pas renseignée/);
     expect(declarationText(makeCtx(c, [], leaves, '2026-12-31'), r, 'Ana')).toMatch(/sans l’événement familial à confirmer/);
   });
 
@@ -285,7 +287,7 @@ describe('T-025 C-1 : durée d’un événement familial comptée par événemen
   // particulier employeur, dans les jours qui entourent l'événement. » Octobre 2026 : aucun jour férié.
   const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01' });
   let id = 0;
-  const ev = (from: string, to: string, nature: NatureEvenement): AmLeave => ({ id: `e${++id}`, type: 'evenement', from, to, nature });
+  const ev = (from: string, to: string, nature: NatureEvenement): AmLeave => normaliserAbsence({ id: `e${++id}`, type: 'evenement', from, to, nature });
   const mois = (leaves: AmLeave[], m = '2026-10') => computeMonth(makeCtx(c, [], leaves, '2026-12-31'), m);
   const sansAbsence = mois([]);
 
@@ -297,7 +299,7 @@ describe('T-025 C-1 : durée d’un événement familial comptée par événemen
     expect(deux.evenementAConfirmer).toBe(une.evenementAConfirmer);
     expect(deux.net).toBe(une.net);
     expect(deux.joursActivite).toBe(sansAbsence.joursActivite - 1);
-    expect(deux.alerts.join(' ')).toMatch(/autre absence pour le même type d’événement/);
+    expect(deux.alerts.join(' ')).toMatch(/autre absence « événement familial » de même durée/);
   });
 
   it('mariage du jeudi 08/10 au vendredi 09/10 puis du lundi 12/10 au mardi 13/10 : le samedi compte comme en une saisie, le 13/10 à confirmer', () => {
@@ -334,7 +336,7 @@ describe('T-025 C-4 : férié chômé pendant un congé pour événement familia
   // autorisation d'absence préalablement accordée » (l'événement familial en est une). Lu le 18/11/2026.
   // Novembre 2026 : mercredi 11/11 férié.
   const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01' });
-  const ev = (from: string, to: string): AmLeave => ({ id: 'm', type: 'evenement', from, to, nature: 'mariage' });
+  const ev = (from: string, to: string): AmLeave => normaliserAbsence({ id: 'm', type: 'evenement', from, to, nature: 'mariage' });
   const mois = (leaves: AmLeave[]) => computeMonth(makeCtx(c, [], leaves, '2026-12-31'), '2026-11');
   const sansAbsence = mois([]);
 
@@ -486,7 +488,8 @@ describe('T-025 C-5 : le salaire d’événement à confirmer n’est retiré en
   });
   it('page des parents : le total du mois dit ce qui est sorti du total', () => {
     const snap = buildSnapshot({ ctx: makeCtx(c, [], [sansNature], '2026-04-10'), journal: [], amName: 'Ana', enfants: 0, now: 1 });
-    expect(snap.mois.find((x) => x.month === '2026-03')?.aConfirmer).toEqual(['l’événement familial']);
+    // Décision du DG du 21/11/2026 : le lien des parents ne nomme pas la raison de l'absence de l'AM.
+    expect(snap.mois.find((x) => x.month === '2026-03')?.aConfirmer).toEqual(['une part du salaire']);
   });
 });
 

@@ -5,7 +5,6 @@ import { cpPeriodStartYear, dayLabel, today, shortDate } from '../engine/dates';
 import { compteur, decompteConge, indemnite } from '../engine/conges';
 import { euros } from '../engine/money';
 import { AM_ABS_LABEL, type AmLeave, type Contract } from '../engine/model';
-import { NATURE_EVENEMENT_LABEL } from '../engine/evenements';
 import { Banner, Gommette, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { AmAbsenceSheet } from './Today';
@@ -70,7 +69,7 @@ export function Conges() {
                 <div class="li">
                   <span class="li-main">
                     <span class="li-title">{AM_ABS_LABEL[l.type]}</span>
-                    <span class="li-sub">{l.from === l.to ? dayLabel(l.from, true) : `Du ${shortDate(l.from)} au ${shortDate(l.to)}`}{l.type === 'cp' ? decompteTexte(l, list) : ''}{l.type === 'evenement' ? (l.nature ? ` · ${NATURE_EVENEMENT_LABEL[l.nature]}` : ' · nature à indiquer : supprime et saisis à nouveau') : ''}</span>
+                    <span class="li-sub">{l.from === l.to ? dayLabel(l.from, true) : `Du ${shortDate(l.from)} au ${shortDate(l.to)}`}{l.type === 'cp' ? decompteTexte(l, list) : ''}{l.type === 'evenement' ? (l.joursEvenement === undefined ? ' · durée à indiquer : supprime et saisis à nouveau' : l.joursEvenement ? ` · ${l.joursEvenement} jour${l.joursEvenement > 1 ? 's' : ''} payé${l.joursEvenement > 1 ? 's' : ''} prévu${l.joursEvenement > 1 ? 's' : ''}` : ' · durée non gérée par l’app') : ''}</span>
                   </span>
                   <button class="icon-btn" aria-label={`Supprimer : ${AM_ABS_LABEL[l.type]} du ${shortDate(l.from)}`} onClick={async () => { const u = await deleteLeave(l.id); toast('Absence supprimée', u); }}>
                     <Icon name="trash" size={20} />

@@ -5,6 +5,7 @@
 // Une suppression laisse une « pierre tombale » (v = null) pour que les autres appareils l'apprennent.
 
 import { SYNCED, type SyncedStore } from '../db';
+import { normaliserAbsence, type AbsenceLue } from '../engine/absences';
 
 export interface RemoteDoc {
   s: SyncedStore;
@@ -47,6 +48,8 @@ const DEVICE_SETTINGS = ['lastAutoCopy', 'persisted', 'lastBackup'];
  * pour qu'un téléphone ne réécrive jamais le prénom ou les autres réglages avec une version périmée.
  */
 export function forRemote(s: string, k: string, value: unknown): unknown {
+  // Décision du DG du 21/11/2026 : jamais de nature d'événement ni de cas non géré envoyé en ligne (absences.ts).
+  if (s === 'leaves' && value && typeof value === 'object') return normaliserAbsence(value as AbsenceLue);
   if (s !== 'kv' || k !== 'settings') return value;
   const v = { ...((value as { v?: Record<string, unknown> }).v ?? {}) };
   for (const f of DEVICE_SETTINGS) delete v[f];

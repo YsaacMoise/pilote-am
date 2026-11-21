@@ -7,7 +7,10 @@ import { addDays, daysBetween, eachDay, weekday, type ISODate } from './dates';
 import { holidayName } from './holidays';
 import type { AmLeave, NatureEvenement } from './model';
 
-/** Libellés proposés à l'AM, dans l'ordre de l'article 48.1.3.1.1 */
+// Décision du DG du 21/11/2026 (« sans la raison ») : la nature sert à l'écran pour proposer la durée (dureeEvenement,
+// libelleDureeSaisie) ; seule la durée est enregistrée (AmLeave.joursEvenement). Le calcul ci-dessous ne lit que la durée.
+
+/** Libellés proposés à l'AM, dans l'ordre de l'article 48.1.3.1.1 (écran de saisie seulement, jamais enregistrés) */
 export const NATURE_EVENEMENT_LABEL: Record<NatureEvenement, string> = {
   mariage: 'Mon mariage ou mon PACS',
   mariage_enfant: 'Mariage ou PACS de mon enfant',
@@ -88,6 +91,9 @@ const lundiSamedi = (d: ISODate) => weekday(d) <= 6;
  * même événement. Choix sans texte (signalé) : deux absences « événement » de même nature séparées de 15 jours
  * calendaires au plus sont reliées ; leurs jours se cumulent. Ce qui dépasse la durée est « à confirmer », jamais payé
  * ni retenu en silence.
+ * Depuis le 21/11/2026, la nature n'est plus enregistrée : « même nature » se lit « même durée prévue ». Deux natures
+ * différentes de même durée (par exemple naissance et décès d'un parent, 3 jours) peuvent donc être reliées : les jours
+ * en plus passent « à confirmer », avec le message « si c'est un autre événement, il est dû » ; rien n'est retenu.
  */
 export const LIEN_EVENEMENT_JOURS = 15;
 
@@ -98,7 +104,7 @@ export function chaineEvenement(l: AmLeave, leaves: AmLeave[]): AmLeave[] {
   for (;;) {
     let prev: AmLeave | undefined;
     for (const p of leaves) {
-      if (p === cur || p.id === cur.id || p.type !== 'evenement' || p.nature !== l.nature || p.from >= cur.from) continue;
+      if (p === cur || p.id === cur.id || p.type !== 'evenement' || p.joursEvenement !== l.joursEvenement || p.from >= cur.from) continue;
       if (daysBetween(p.to, cur.from) > LIEN_EVENEMENT_JOURS) continue;
       if (!prev || p.to > prev.to) prev = p;
     }
@@ -132,17 +138,18 @@ function joursCouverts(chaine: AmLeave[], d: ISODate): ISODate[] {
  */
 export function statutJourEvenement(l: AmLeave, d: ISODate, leaves: AmLeave[] = [l]): { paye: true } | { paye: false; raison: string } {
   const qui = `Événement familial du ${jjmm(l.from)} au ${jjmm(l.to)}`;
-  if (!l.nature) {
-    return { paye: false, raison: `${qui} : la nature de l’événement n’est pas renseignée : la durée payée en dépend. Dans Congés, supprime cette absence et saisis-la à nouveau avec sa nature (mariage, naissance, décès…).` };
+  if (l.joursEvenement === undefined) {
+    return { paye: false, raison: `${qui} : la durée payée n’est pas renseignée (absence saisie avant la mise à jour). Dans Congés, supprime cette absence et saisis-la à nouveau en choisissant l’événement : l’app propose la durée.` };
   }
   const chaine = chaineEvenement(l, leaves);
   const debut = chaine[0];
   if (debut.from < EVENEMENTS_GERES_DEPUIS) {
     return { paye: false, raison: `${qui} : période non gérée (avant le 01/05/2024, la version applicable de l’article 48.1.3.1.1 n’est pas tranchée). Vérifie la durée avec les parents.` };
   }
-  const duree = dureeEvenement(l.nature, debut.from);
-  if (duree === undefined) {
-    return { paye: false, raison: `${qui} : congé de deuil non géré par l’app. La sécurité sociale verse des indemnités journalières ; l’employeur maintient le salaire en les déduisant (article 48.1.3.1.3). Calcule-le avec les parents.` };
+  // Durée prévue à la date du début de la chaîne : celle de sa première absence (calculée à la saisie à cette date).
+  const duree = debut.joursEvenement ?? 0;
+  if (duree === 0) {
+    return { paye: false, raison: `${qui} : durée non gérée par l’app pour cet événement (par exemple le congé de deuil, payé avec les indemnités de la Sécurité sociale, article 48.1.3.1.3). Calcule ces jours avec les parents.` };
   }
   // T-025 C-4 : le texte ne dit pas si un férié tombant du lundi au samedi compte dans les jours ouvrables du congé.
   // Lecture 1 (férié compté) : `nAvec` ; lecture 2 (férié non compté, payé comme férié chômé : art. 47.2 « sauf
@@ -165,13 +172,13 @@ export function statutJourEvenement(l: AmLeave, d: ISODate, leaves: AmLeave[] = 
   const autres = chaine.slice(0, -1);
   if (autres.length) {
     // Lecture « autre événement » : la durée se compte depuis cette seule absence.
-    const dureeSeule = dureeEvenement(l.nature, l.from) ?? 0;
+    const dureeSeule = l.joursEvenement ?? 0;
     const nSeule = eachDay(l.from, d).filter(ouvrable).length;
     const dates = autres.map((x) => `du ${jjmm(x.from)} au ${jjmm(x.to)}`).join(', ');
     if (ouvrable(d) && nSeule <= dureeSeule) {
       return {
         paye: false,
-        raison: `${qui} : une autre absence pour le même type d’événement est saisie ${dates}. Si c’est le même événement, ce jour dépasse les ${dureeLabel(duree)} prévus (convention, article 48.1.3.1.1) ; si c’est un autre événement, il est dû. Vérifie avec les parents. Si c’est le même, saisis ce jour en congé payé ou sans solde, selon votre accord.`,
+        raison: `${qui} : une autre absence « événement familial » de même durée est saisie ${dates}. Si c’est le même événement, ce jour dépasse les ${dureeLabel(duree)} prévus (convention, article 48.1.3.1.1) ; si c’est un autre événement, il est dû. Vérifie avec les parents. Si c’est le même, saisis ce jour en congé payé ou sans solde, selon votre accord.`,
       };
     }
     return {
