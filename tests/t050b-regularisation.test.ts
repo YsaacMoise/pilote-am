@@ -38,7 +38,7 @@ function contract(over: Partial<Contract> = {}): Contract {
     balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 0, ...over,
   };
 }
-const EVENEMENT: AmLeave = { id: 'e', type: 'evenement', from: '2026-03-10', to: '2026-03-11' };
+const EVENEMENT: AmLeave = { id: 'e', type: 'evenement', from: '2026-03-10', to: '2026-03-11', joursEvenement: 0 }; // durée non gérée : jours « à confirmer »
 
 
 describe('T-050b, A-50 : régularisation à confirmer et congés non pris', () => {
