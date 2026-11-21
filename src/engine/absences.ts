@@ -86,6 +86,34 @@ export function questionSuite(from: string, to: string, leaves: AmLeave[]): Ques
   return apres ? { sens: 'apres', autre: apres } : undefined;
 }
 
+/**
+ * Relecture 3 de la n° 52 (R1) : questions à poser, dans l'ordre. D'abord l'absence la plus proche avant ; après un
+ * « non », l'absence la plus proche après (une absence voisine des deux côtés peut être le même événement).
+ */
+export type Reponse = 'oui' | 'non' | undefined;
+export function questionsSuite(from: string, to: string, leaves: AmLeave[]): QuestionSuite[] {
+  const avant = evenementPrecedentProche(from, leaves);
+  const apres = evenementSuivantProche(from, to, leaves);
+  return [...(avant ? [{ sens: 'avant' as const, autre: avant }] : []), ...(apres ? [{ sens: 'apres' as const, autre: apres }] : [])];
+}
+
+/** Questions visibles selon les réponses : la seconde seulement après « non » à la première */
+export function questionsVisibles(qs: QuestionSuite[], reps: Reponse[]): QuestionSuite[] {
+  return qs.filter((_, i) => i === 0 || reps[0] === 'non');
+}
+
+/** Toutes les questions visibles ont une réponse (sinon Enregistrer reste grisé) */
+export function reponsesCompletes(qs: QuestionSuite[], reps: Reponse[]): boolean {
+  return questionsVisibles(qs, reps).every((_, i) => reps[i] !== undefined);
+}
+
+/** Absences à enregistrer : la nouvelle désigne l'absence voisine pour laquelle l'AM a répondu « oui » (au plus une) */
+export function appliquerReponses(nouvelle: AmLeave, qs: QuestionSuite[], reps: Reponse[]): AmLeave[] {
+  const vis = questionsVisibles(qs, reps);
+  const k = vis.findIndex((_, i) => reps[i] === 'oui');
+  return k >= 0 ? appliquerReponseSuite(nouvelle, vis[k], true) : [nouvelle];
+}
+
 /** Texte de la question, avec la date de l'autre absence (JJ/MM) */
 export function texteQuestionSuite(q: QuestionSuite): string {
   const jjmm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;

@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import type { AmLeave, Contract, NatureEvenement } from '../src/engine/model';
-import { absenceSaisie, appliquerReponseSuite, liensApresSuppression, normaliserAbsences, questionSuite, texteQuestionSuite, type AbsenceLue } from '../src/engine/absences';
+import { absenceSaisie, appliquerReponses, appliquerReponseSuite, liensApresSuppression, questionsSuite, questionsVisibles, reponsesCompletes, type Reponse, normaliserAbsences, questionSuite, texteQuestionSuite, type AbsenceLue } from '../src/engine/absences';
 import { makeCtx } from '../src/engine/payroll';
 import { computeMonth } from '../src/engine/month';
 
@@ -191,5 +191,55 @@ describe('groupes : ressaisie, saisie au milieu, suppression', () => {
   it('lien vers une absence qui n’existe plus : ignoré, l’absence compte seule', () => {
     const l = { ...absenceSaisie('evenement', 'naissance', 'w', '2026-10-05', '2026-10-09')!, suiteDe: 'disparue' };
     expect(calc('2026-10', [l])).toEqual(calc('2026-10', [absenceSaisie('evenement', 'naissance', 'w', '2026-10-05', '2026-10-09')!]));
+  });
+});
+
+// Relecture 3 de la n° 52 (R1) : une absence voisine avant ET une après. Après « non » pour celle d'avant, l'app demande
+// aussi pour celle d'après.
+describe('deux absences voisines, avant et après', () => {
+  const X = absenceSaisie('evenement', 'naissance', 'X', '2026-10-01', '2026-10-01')!;
+  const Z = absenceSaisie('evenement', 'mariage', 'Z', '2026-10-20', '2026-10-21')!;
+  const Y = absenceSaisie('evenement', 'mariage', 'Y', '2026-10-14', '2026-10-16')!;
+  const qs = questionsSuite(Y.from, Y.to, [X, Z]);
+  const sans = calc('2026-10', []);
+
+  it('deux questions : X d’abord ; celle de Z seulement après « non »', () => {
+    expect(qs.map((q) => `${q.sens}|${q.autre.id}`)).toEqual(['avant|X', 'apres|Z']);
+    expect(questionsVisibles(qs, [undefined, undefined])).toHaveLength(1);
+    expect(questionsVisibles(qs, ['oui', undefined])).toHaveLength(1);
+    expect(questionsVisibles(qs, ['non', undefined])).toHaveLength(2);
+    expect(reponsesCompletes(qs, ['non', undefined])).toBe(false); // Enregistrer grisé
+    expect(reponsesCompletes(qs, ['non', 'oui'])).toBe(true);
+    expect(reponsesCompletes(qs, ['oui', undefined])).toBe(true);
+  });
+
+  it('« non » pour X, « oui » pour Z : Y rejoint Z, 1 jour à confirmer (5 jours pour 4), comme 9a078a7', () => {
+    const ls = [X, Z, ...appliquerReponses(Y, qs, ['non', 'oui'] as Reponse[])];
+    expect(ls.find((l) => l.id === 'Y')?.suiteDe).toBe('Z');
+    expect(ls.find((l) => l.id === 'Z')?.suiteDe).toBeUndefined(); // le lien est posé sur la nouvelle absence
+    const r = calc('2026-10', ls);
+    expect(r.joursEvt).toBe(1);
+    expect(r.retenue).toBe(0);
+    expect(r.net + r.aConfirmer).toBe(sans.net);
+    const avecNature = normaliserAbsences([
+      { id: 'X', type: 'evenement', from: X.from, to: X.to, nature: 'naissance' },
+      { id: 'Z', type: 'evenement', from: Z.from, to: Z.to, nature: 'mariage' },
+      { id: 'Y', type: 'evenement', from: Y.from, to: Y.to, nature: 'mariage' },
+    ]);
+    expect(r).toEqual(calc('2026-10', avecNature));
+  });
+
+  it('« non » pour les deux : trois événements, chacun selon sa durée, rien en silence', () => {
+    const ls = [X, Z, ...appliquerReponses(Y, qs, ['non', 'non'] as Reponse[])];
+    expect(ls.some((l) => l.suiteDe)).toBe(false);
+    const r = calc('2026-10', ls);
+    expect(r.retenue).toBe(0);
+    expect(r.aConfirmer).toBe(0); // 1, 3 et 2 jours, chacun dans sa durée
+    expect(r.net).toBe(sans.net);
+  });
+
+  it('« oui » pour X : Y rejoint X, pas de seconde question', () => {
+    const ls = appliquerReponses(Y, qs, ['oui', 'oui'] as Reponse[]);
+    expect(ls).toEqual([{ ...Y, suiteDe: 'X' }]);
   });
 });
