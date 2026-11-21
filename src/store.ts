@@ -233,10 +233,11 @@ export function logErreur(code: ErreurCode) {
 const ctxCache = new Map<string, Ctx>();
 export function ctxFor(c: Contract, at = today()): Ctx {
   const enfants = state.settings?.enfantsACharge ?? 0;
-  const k = c.id + at + '|' + enfants;
+  const moins21 = state.settings?.amMoins21Jusqu;
+  const k = c.id + at + '|' + enfants + '|' + (moins21 ?? '');
   let x = ctxCache.get(k);
   if (!x) {
-    x = makeCtx(c, [...state.days.values()].filter((d) => d.cid === c.id), state.leaves, at, enfants);
+    x = makeCtx(c, [...state.days.values()].filter((d) => d.cid === c.id), state.leaves, at, enfants, moins21);
     ctxCache.set(k, x);
   }
   return x;

@@ -5,7 +5,8 @@ import { addDays, weekday, type ISODate } from './dates';
 import { holidaysOf } from './holidays';
 import type { Contract, Plage, Planning } from './model';
 import { daysPerWeek, plageMin, salaireMensualise, weeklyMinutes } from './payroll';
-import { entretienPlancher, ratesAt } from './rates';
+import { entretienPlancher, ratesConnus } from './rates';
+import { bornesKm } from './km';
 
 /** Paramètres du CMG « emploi direct » d'une assistante maternelle (CSS D531-18, décret 2025-515), datés. */
 interface CmgParams {
@@ -262,18 +263,8 @@ export function repasDuJour(plages: Plage[], type: TypeRepas): boolean {
   }
 }
 
-/** Indemnités kilométriques (CCN art. 113 ; service-public F12812, vérifié le 17 juin 2026) */
-/** Barème administratif, limite basse (€ par km × 1 000) : ≤ 5 CV, 6-7 CV, ≥ 8 CV ; jusqu'à 2 000 km, 2 001 à 10 000 km, au-delà */
-const KM_ADMIN: number[][] = [[320, 400, 230], [410, 510, 300], [450, 550, 320]];
-/** Barème fiscal, limite haute jusqu'à 5 000 km par an (€ par km × 1 000) : 3, 4, 5, 6, 7 CV et plus (arrêté du 27 mars 2023, reconduit en 2026) */
-const KM_FISCAL: Record<number, number> = { 3: 529, 4: 606, 5: 636, 6: 665, 7: 697 };
-
-/** Fourchette légale du tarif kilométrique (millièmes d'euro par km) pour une puissance et un kilométrage annuel. */
-export function bornesKm(cv: number, kmAn: number): { min: number; max: number } {
-  const g = cv <= 5 ? 0 : cv <= 7 ? 1 : 2;
-  const t = kmAn <= 2000 ? 0 : kmAn <= 10000 ? 1 : 2;
-  return { min: KM_ADMIN[g][t], max: KM_FISCAL[Math.max(3, Math.min(7, Math.round(cv)))] };
-}
+/** Indemnités kilométriques : barèmes datés dans km.ts (T-017) */
+export { bornesKm } from './km';
 
 /** Jours fériés des 12 mois qui suivent `d`, par jour de la semaine (1 = lundi … 7 = dimanche). */
 export function feriesParJour(d: ISODate, alsaceMoselle: boolean): number[] {
@@ -341,6 +332,9 @@ export interface SimInput {
   /** Premier mois : adaptation payée aux heures réelles (0 = pas d'adaptation), et jours d'accueil de ce mois */
   adaptationHeures: number;
   adaptationJours: number;
+  /** T-038 (G-2) : adaptation qui continue le mois suivant (CCN art. 94 : 30 jours calendaires au plus) ; 0 ou absent = non */
+  adaptationHeures2?: number;
+  adaptationJours2?: number;
 }
 
 export interface EnfantResult {
@@ -392,7 +386,8 @@ export interface SimResult {
   repas: number;
   /** Indemnités kilométriques du mois, et la fourchette légale du tarif (millièmes d'euro par km) */
   km: number;
-  kmBornes: { min: number; max: number };
+  /** `null` : barème non connu à la date de la simulation, à vérifier */
+  kmBornes: { min: number | null; max: number | null };
   /** À verser à l'assistante maternelle, en moyenne par mois : salaire, congés, réduction, entretien, repas */
   verse: number;
   /** Cotisations sociales du mois (salariales et patronales) */
@@ -434,7 +429,7 @@ export interface SimResult {
   /** Plus de 48 h par semaine : accord écrit de l'assistante maternelle nécessaire */
   accordNecessaire: boolean;
   sousMinimum: boolean;
-  minimumNet: number;
+  minimumNet?: number;
   minimumBrut: number;
 }
 
@@ -497,7 +492,8 @@ export function planningDepuisTexte(t: string): Planning | null {
 }
 
 export function simuler(i: SimInput, d: ISODate): SimResult {
-  const rates = ratesAt(d);
+  // Simulation d'un accueil à venir : la date ne peut pas être antérieure aux barèmes vérifiés (sinon erreur, T-023).
+  const rates = ratesConnus(d);
   const cp = cotisParams(d);
   const planning = i.planning ?? {};
   const semaines = semainesAccueil(i);
@@ -535,7 +531,7 @@ export function simuler(i: SimInput, d: ISODate): SimResult {
     const plages = (planning[w] ?? []).filter((p) => plageMin(p) > 0);
     if (!plages.length) continue;
     const minutes = plages.reduce((t, p) => t + plageMin(p), 0);
-    const entretienMinimum = entretienPlancher(d, minutes);
+    const entretienMinimum = entretienPlancher(d, minutes)!; // défini : `ratesConnus(d)` a réussi plus haut
     const prevu = i.entretienMode === 'heure' ? Math.round((i.entretien * minutes) / 60) : i.entretien;
     const ent = Math.max(prevu, entretienMinimum);
     const repasJour = TYPES_REPAS.filter((t) => (i.repas?.[t] ?? 0) > 0 && repasDuJour(plages, t));
@@ -553,7 +549,7 @@ export function simuler(i: SimInput, d: ISODate): SimResult {
   const repas = Math.round(repasMontantAn / 12);
   const kmMois = Math.max(0, i.kmMois || 0);
   const km = Math.round(kmMois * Math.max(0, i.kmTaux || 0));
-  const kmBornes = bornesKm(i.cv || 5, kmMois * 12);
+  const kmBornes = bornesKm(i.cv || 5, kmMois * 12, d);
   // Année incomplète : congés payés en plus du salaire mensualisé (≈ 10 % du salaire de l'année), répartis ici sur 12 mois.
   const congesAnnuels = i.yearType === 'incomplete' ? Math.round(salaire * 12 * 0.1) : 0;
   const congesMois = Math.round(congesAnnuels / 12);
@@ -635,7 +631,7 @@ export function naissanceIlYA(d: ISODate, mois: number): string {
 
 /** Valeurs de départ : accueil type au minimum conventionnel. */
 export function simulationParDefaut(d: ISODate): SimInput {
-  const r = ratesAt(d);
+  const r = ratesConnus(d);
   return {
     planning: planningRegulier(5, 45), yearType: 'complete', semainesAbsence: 1, majoration: 10,
     tauxBrut: r.minConvBrut, alsaceMoselle: false, entretien: 0, entretienMode: 'jour',
@@ -643,6 +639,15 @@ export function simulationParDefaut(d: ISODate): SimInput {
     foyer: 'couple', statutVous: 'travail', statutConjoint: 'travail', residenceAlternee: false,
     enfants: [naissanceIlYA(d, 18)], enfantsACharge: 1, enfantsAeeh: 0,
     revenusAn: 42000, situationRevenus: 'aucune', revenusConcernes: 0, autresAides: 0,
-    debut: naissanceIlYA(d, -1), cpMode: 'juin', moisCongePrincipal: 8, adaptationHeures: 0, adaptationJours: 0,
+    debut: naissanceIlYA(d, -1), cpMode: 'juin', moisCongePrincipal: 8, adaptationHeures: 0, adaptationJours: 0, adaptationHeures2: 0, adaptationJours2: 0,
   };
 }
+
+/**
+ * T-038 suite 2 (décision du DG) : zone couverte par le simulateur. Urssaf, « Rémunérer un salarié à domicile ou un
+ * assistant maternel » (mise à jour du 01/06/2026, relue le 18/11/2026), tableau « Au 1er juin 2026 » : salaire horaire
+ * net minimum 3,28 € en « Métropole et Drom », 3,70 € à Mayotte ; majoration de 4 % « Non concerné » à Mayotte.
+ * https://www.urssaf.fr/accueil/particulier/particulier-employeur/embaucher-un-salarie/remunerer-salarie-domicile.html
+ */
+export const MESSAGE_ZONE_SIMULATEUR =
+  'Ces montants valent pour la métropole et les départements d’outre-mer, hors Mayotte. À Mayotte, le simulateur ne s’applique pas : le salaire minimum y est différent.';

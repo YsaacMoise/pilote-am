@@ -21,6 +21,8 @@ function contract(over: Partial<Contract> = {}): Contract {
     id: 'c1', child: 'Léa', family: 'Martin', color: 0, start: '2026-01-05', yearType: 'complete', weeks: 52, weeksOff: [],
     planning: week('08:00', '17:00'), rateNet: 350, majoration: 10, entretienJour: 0, repasPrix: 0, repasParJour: 0,
     kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: '2026-01-05',
+    // T-050 : réponses aux questions obligatoires du contrat (T-031, T-033, direction) ; sans elles, chaque mois est « à compléter ».
+    alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false,
     balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 0, ...over,
   };
 }
@@ -54,7 +56,8 @@ describe('C-018 : indemnités kilométriques dans les sommes reçues (BOI-RSA-CH
   // Octobre 2026, 45 h par semaine à 6,00 € net : 1 170,00 € de salaire ; abattement 22 × 3 × 12,31 = 812,46 €.
   const base = contract({ start: '2026-10-01', trackedFrom: '2026-10-01', rateNet: 600, kmTaux: 50 });
   // 12 km le 06/10 et 8 km le 20/10, à 0,50 € : 10,00 €.
-  const days = [rec('2026-10-06', { km: 12 }), rec('2026-10-20', { km: 8 })];
+  // T-050 : trajet demandé par cette seule famille (kmPartage: false, CCN art. 113, T-025 C-2, direction) ; sans réponse, les km sont « à confirmer ».
+  const days = [rec('2026-10-06', { km: 12, kmPartage: false }), rec('2026-10-20', { km: 8, kmPartage: false })];
   it('10,00 € de kilomètres ajoutés aux sommes reçues et au revenu imposable', () => {
     const sans = fiscalYear(makeCtx(base, [], [], '2026-10-31'), 2026);
     const avec = fiscalYear(makeCtx(base, days, [], '2026-10-31'), 2026);
@@ -189,10 +192,15 @@ describe('C-008 : brut estimé affiché comme une estimation, brut réel demand�
     expect(novembre).toBeGreaterThan(0);
     expect(f.totalBrut).toBe(865935 + novembre);
     // 8 659,35 € est l'estimation de janvier à octobre : le total retombe sur l'estimation complète (9 117,10 € de
-    // salaires), plus l'indemnité compensatrice de congés payés de la rupture, comprise dans l'assiette depuis le lot 3
-    // (fiches DDETS 31 du 30/03/2023, voir tests/exemples-officiels.test.ts) : 10 125,42 €.
+    // salaires). T-050b (A-45 tranché pour main, regles/t050-trois-regles.md, point 2) : l'indemnité compensatrice de
+    // congés payés de la rupture entre dans l'assiette ; le lot 3 donnait 10 125,42 € avec elle. Ici, elle est « à
+    // confirmer » (A-23, T-030 : 16 ou 15 jours en cours) : elle n'est pas encore ajoutée, le total reste 9 117,10 € et
+    // l'indemnité de rupture est « à confirmer », avec cette raison. Le cas des congés non pris sûrs : tests/t050b.test.ts.
     expect(f.totalBrut).toBe(f0.totalBrut);
-    expect(f.totalBrut).toBe(1012542);
+    expect(f.cpAConfirmer).toBeDefined();
+    expect(f.ruptureAConfirmer).toBe(true);
+    expect(f.alertes.join(' ')).toMatch(/l’indemnité de congés non pris à confirmer/);
+    expect(f.totalBrut).toBe(911710);
   });
   it('arrondi à l’euro : 1 234,50 € → « 1 235 € », 154,31 € → « 154 € »', () => {
     expect(eurosArrondis(123450)).toBe('1\u00a0235\u00a0€');

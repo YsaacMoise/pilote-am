@@ -24,7 +24,8 @@ export function Controle({ cid, month }: { cid?: string; month?: string }) {
   if (!c) return <><Topbar title="Contrôle" back="#/plus" screen="controle" /><main><div class="card empty"><p>Ajoute d’abord un contrat.</p></div></main></>;
   const r = computeMonth(ctxFor(c), m, state.settings.enfantsACharge);
   const filled = b.net != null || b.brut != null || b.heures != null;
-  const checks = filled ? controle({ id: '', cid: c.id, month: m, source: 'manuel', ...b } as Bulletin, r, c.rateNet) : [];
+  // T-031 : mois non calculé (cas non géré) : pas de comparaison avec un calcul que l'app ne sait pas faire.
+  const checks = filled && !r.nonGere.length ? controle({ id: '', cid: c.id, month: m, source: 'manuel', ...b } as Bulletin, r, c.rateNet) : [];
 
   async function onPdf(f: File | undefined) {
     if (!f) return;
@@ -61,7 +62,12 @@ export function Controle({ cid, month }: { cid?: string; month?: string }) {
           <h2 aria-live="polite">{monthLabel(m).replace(/^./, (x) => x.toUpperCase())}</h2>
           <button class="icon-btn" aria-label="Mois suivant" disabled={m >= monthOf(today())} onClick={() => { setM(addMonths(m, 1)); setB({}); setKey(key + 1); }}><Icon name="right" /></button>
         </div>
-        <p class="muted">Recopie les chiffres du bulletin Pajemploi {de(c.child)}, ou importe le PDF. L’app compare avec son calcul : {euros(r.netTotal)} net, {r.heuresNormales} h, {r.joursActivite} jours.</p>
+        {r.nonGere.length ? (
+          <>
+            {r.nonGere.map((t) => <Banner tone="warn">{t}</Banner>)}
+            <p class="muted">L’app ne calcule pas ce mois : elle ne peut pas contrôler le bulletin. Tu peux quand même le garder.</p>
+          </>
+        ) : <p class="muted">Recopie les chiffres du bulletin Pajemploi {de(c.child)}, ou importe le PDF. L’app compare avec son calcul : {euros(r.netTotal)} net, {r.heuresNormales} h, {r.joursActivite} jours.</p>}
         <label class="btn btn-outline btn-block">
           <Icon name="upload" />Importer le bulletin PDF
           <input type="file" accept="application/pdf,.pdf" class="sr-only" onChange={(e) => onPdf((e.target as HTMLInputElement).files?.[0])} />

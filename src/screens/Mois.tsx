@@ -124,6 +124,18 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
     );
   }
 
+  // T-031 : cas non géré : aucun montant, aucune case, pas d'envoi au parent.
+  if (r.nonGere.length) {
+    return (
+      <section class="card stack" aria-labelledby="ng-t">
+        <h2 id="ng-t">Ce mois n’est pas calculé</h2>
+        {r.nonGere.map((t) => <Banner tone="warn">{t}</Banner>)}
+        <p class="hint">L’app ne donne aucun montant pour ce mois. Déclare-le avec les parents, sans l’app.</p>
+        <a class="btn btn-outline" href={`#/contrat/${c.id}`}>Ouvrir le contrat</a>
+      </section>
+    );
+  }
+
   const exceptions = eachDay(firstDay(month), lastDay(month))
     .map((d) => dayInfo(ctx, d))
     .filter((di) => di.rec || di.kind === 'am' || di.kind === 'ferie' || di.departOublie);
@@ -193,7 +205,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
             {r.cpIndemnite > 0 && (<><dt>Congés payés</dt><dd>{euros(r.cpIndemnite)}</dd></>)}
             {r.cpComplement > 0 && (<><dt>Complément congés</dt><dd>{euros(r.cpComplement)}</dd></>)}
             <dt>Salaire net</dt><dd>{euros(r.netTotal)}</dd>
-            <dt>Entretien ({r.presenceDays} j)</dt><dd>{euros(r.entretien)}</dd>
+            <dt>Entretien ({r.presenceDays} j)</dt><dd>{euros(r.entretien)}{r.entretienAConfirmer ? ` + ${euros(r.entretienAConfirmer)} à confirmer` : ''}</dd>
             {r.repas > 0 && (<><dt>Repas</dt><dd>{euros(r.repas)}</dd></>)}
             {r.km > 0 && (<><dt>Kilomètres</dt><dd>{euros(r.km)}</dd></>)}
           </dl>

@@ -41,7 +41,7 @@ vi.mock('../src/engine/rates', async (importOriginal) => ({
 import type { AmLeave, Contract, DayRec, Planning } from '../src/engine/model';
 import { makeCtx, monthBase, salaireMensualise } from '../src/engine/payroll';
 import { acquisition, baseDixieme, cpForMonth, indemnite, joursOuvrables, maintien } from '../src/engine/conges';
-import { finDeContrat } from '../src/engine/fin';
+import { congesNonPris, finDeContrat } from '../src/engine/fin';
 import { entretienPlancher, ratesAt } from '../src/engine/rates';
 
 function semaine(start: string, end: string, jours = [1, 2, 3, 4, 5]): Planning {
@@ -55,6 +55,8 @@ function contrat(o: Partial<Contract>): Contract {
     id: 'c1', child: 'Pierre', family: 'Exemple', color: 0, start: '2021-09-01', yearType: 'complete', weeks: 52, weeksOff: [],
     planning: semaine('08:00', '16:00'), rateNet: 500, majoration: 15, entretienJour: 0, repasPrix: 0, repasParJour: 0,
     kmTaux: 0, cpMode: 'fur', majoreFiscal: false, trackedFrom: o.start ?? '2021-09-01',
+    // T-050 : réponses aux questions obligatoires du contrat (T-031, T-033, direction) ; sans elles, chaque mois est « à compléter ».
+    alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false,
     balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 0, ...o,
   };
 }
@@ -126,7 +128,10 @@ describe('[OCC52] DDETS 31, accueil sur 52 semaines (version du 30/03/2023)', ()
 
   it('p. 7 : 27 jours : dixième 767,61 × 27 ÷ 25 = 829,01 € ; maintien (4 semaines + 3 jours de 8 h) = 920 €', () => {
     const ind = indemnite(ctx(), 2021, 1);
-    ecart(ind.dixieme, 82901, -2); // arrondi propagé (866,67)
+    // T-050 : le lot 3 portait le dixième au prorata des jours pour enfants (écart −2) ; la direction garde base ÷ 10
+    // (767,62 €). Point « à trancher par la direction » (rapports/T-050-resolution.md, conges.ts) : si elle retient le
+    // prorata, remettre −2.
+    ecart(ind.dixieme, 82901, 6139);
     // Divergence de méthode M-1 : la fiche compte les 3 jours restants comme 3 jours de travail de 8 h ; l'app (comme
     // le guide BFC d'août 2026, 1/26 du salaire mensualisé par jour ouvrable) compte 27 ÷ 6 semaines = 900 €.
     ecart(ind.maintien, 92000, 2000);
@@ -147,15 +152,26 @@ describe('[OCC52] DDETS 31, accueil sur 52 semaines (version du 30/03/2023)', ()
     const f = finDeContrat(ctx(), '2022-09-01', 'retrait', 1);
     // Divergence M-1 : 3 jours = 3 × 8 h = 120 € et 11 jours = 1 semaine + 5 jours de 8 h = 400 € pour la fiche ;
     // l'app : 3 ÷ 6 × 200 = 100 € et 11 ÷ 6 × 200 = 366,67 € (méthode 1/26 du guide BFC, Cass. soc. 4 sept. 2024).
-    ecart(f.cpIndemnite, 52000, 5333);
+    // T-050 : congés « à confirmer » par la direction (A-23, T-030 : 11 ou 10 jours en cours, 27 ou 25 jours de la période close selon la lecture) :
+    // aucun montant n'est donné ni compté. Écart du lot 3 avant la fusion : 5333.
+    expect(f.cpAConfirmer).toBeDefined();
+    ecart(f.cpIndemnite, 52000, 52000);
   });
 
   it('p. 10 : indemnité de rupture 11 662,78 ÷ 80 = 145,78 € (assiette : salaires et indemnité compensatrice)', () => {
     const f = finDeContrat(ctx(), '2022-09-01', 'retrait', 1);
     // Assiette app : 742,86 + 12 × 866,67 + 466,67 = 11 609,57 €. Écart = 53,33 € d'indemnité compensatrice (M-1)
     // et 12 centimes d'arrondi.
-    ecart(f.totalBrut, 1166278, 5321);
-    ecart(f.indemniteRupture, 14578, 66);
+    // T-050b (A-45 tranché pour main, regles/t050-trois-regles.md, point 2 ; CCN art. 121.1) : l'assiette comprend
+    // l'indemnité compensatrice des deux périodes. Ici, elle est « à confirmer » (A-23, T-030 : jours de la période close et
+    // de la période en cours selon la lecture) : elle n'est pas encore ajoutée et l'indemnité de rupture est « à confirmer »,
+    // avec cette raison. Écart = 120 + 400 € d'indemnité compensatrice non encore comptée, moins 12 centimes d'arrondi
+    // (51 988). Écarts du lot 3 avant la fusion, congés sûrs : 5321 et 66 (M-1 seule).
+    expect(f.cpAConfirmer).toBeDefined();
+    expect(f.ruptureAConfirmer).toBe(true);
+    expect(f.alertes.join(' ')).toMatch(/Indemnité de rupture à confirmer : elle ne compte pas encore .*l’indemnité de congés non pris/);
+    ecart(f.totalBrut, 1166278, 51988);
+    ecart(f.indemniteRupture, 14578, 649);
   });
 });
 
@@ -204,14 +220,19 @@ describe('[OCC46] DDETS 31, accueil sur 46 semaines ou moins (version du 30/03/2
   it('p. 7 : 24 jours : maintien 800 €, dixième 531,42 × 24 ÷ 20 = 637,70 €', () => {
     const ind = indemnite(ctx(), 2021, 2);
     ecart(ind.maintien, 80000, 0);
-    ecart(ind.dixieme, 63770, -1); // arrondi (531,429 coupé à 531,42 par la fiche)
+    // T-050 : prorata des jours pour enfants non appliqué par la direction (point « à trancher », voir p. 7 de [OCC52]).
+    // Écart du lot 3 avant la fusion : −1.
+    ecart(ind.dixieme, 63770, 10627);
     ecart(ind.montant, 80000, 0);
   });
 
   it('p. 8 : versement au fur et à mesure : 400 € pour les 12 jours pris en août 2022', () => {
     const cp = cpForMonth(ctx(), '2022-08', 2);
-    ecart(cp.jours, 12, 0);
-    ecart(cp.indemnite, 40000, 0);
+    // T-050 : congés « à confirmer » par la direction (T-019, année incomplète ; ici une absence pour maladie empêche le calcul des
+    // deux lectures) : ni jours ni montant. Écarts du lot 3 avant la fusion : 0 et 0.
+    expect(cp.aConfirmer).toBeDefined();
+    ecart(cp.jours, 12, 12);
+    ecart(cp.indemnite, 40000, 40000);
   });
 
   it('p. 9 : retrait au 01/09/2022 : régularisation définitive 5,71 + 280 = 285,71 € (4 fériés chômés payés comptés)', () => {
@@ -223,21 +244,54 @@ describe('[OCC46] DDETS 31, accueil sur 46 semaines ou moins (version du 30/03/2
   it('p. 10 : congés acquis du 01/06 au 30/09/2022 : 11 semaines (dont 2 de congés) et 3 jours → 8 jours', () => {
     const f = finDeContrat(ctx(), '2022-09-01', 'retrait', 2);
     // 12 jours restant de la période précédente + 8 en cours.
-    ecart(f.cpJoursRestants, 20, 0);
+    // T-050 : période en cours « à confirmer » (T-019 : 8 jours en semaines, 10 en mois) ; la borne interne retient
+    // la plus haute (10). Écart du lot 3 avant la fusion : 0.
+    ecart(f.cpJoursRestants, 20, -2);
   });
 
   it('p. 11 : indemnité compensatrice 400 € (12 jours restants) + 348,57 € (dixième, régularisation comprise)', () => {
     const f = finDeContrat(ctx(), '2022-09-01', 'retrait', 2);
     // Divergence M-5 : la fiche met aussi dans la base du dixième les 400 € d'indemnité compensatrice de la période
     // précédente ; le guide BFC (p. 40-41) ne le fait pas, l'app non plus : (2 400 + 400 + 285,71) × 10 % = 308,57 €.
-    ecart(f.cpIndemnite, 74857, 4000);
+    // T-050 : congés « à confirmer » par la direction (T-019) : aucun montant. Écart du lot 3 avant la fusion : 4000.
+    expect(f.cpAConfirmer).toBeDefined();
+    ecart(f.cpIndemnite, 74857, 74857);
+  });
+
+  it('p. 11 (T-050b, A-50) : dixième de la 2e période 348,57 €, régularisation de 285,71 € comprise', () => {
+    const f = finDeContrat(ctx(), '2022-09-01', 'retrait', 2);
+    // CCN art. 123.2, 48.1.1.5, 48.1.1.1 et 124 (regles/t050-trois-regles.md, point 3) : la régularisation entre dans la
+    // base du dixième de la dernière période. Fiche : (salaires 2 400 + CP d'août 400 + ICCP de la 1re période 400
+    // + régularisation 285,71) × 10 % = 348,57 €. Écart attendu = 80 € : 40 € de M-5 (ICCP de la période précédente, non
+    // ajoutée, sources contraires) et 40 € des 400 € de CP d'août, « à confirmer » (T-019), absents de la base.
+    ecart(f.cpDixiemeEnCours, 34857, 8000);
+  });
+
+  it('p. 11 (T-050b, A-50) : avec et sans régularisation, le dixième de fin change de 28,57 € (285,71 × 10 %)', () => {
+    const fin = '2022-09-30';
+    const endCtx = { ...ctx(), c: { ...c, end: fin }, cache: new Map(), finControlee: true };
+    const sans = congesNonPris(endCtx, endCtx.c, fin, 2, 0);
+    const avec = congesNonPris(endCtx, endCtx.c, fin, 2, 28571);
+    expect(avec.dixiemeEnCours - sans.dixiemeEnCours).toBe(2857);
+    // Un solde en faveur de l'employeur ne se retire pas de la base (art. 124 : versement « au profit de l'assistant maternel »).
+    expect(congesNonPris(endCtx, endCtx.c, fin, 2, -28571).dixiemeEnCours).toBe(sans.dixiemeEnCours);
+    // Le dixième régularisation comprise est celui que rend la fin de contrat.
+    expect(finDeContrat(ctx(), '2022-09-01', 'retrait', 2).cpDixiemeEnCours).toBe(avec.dixiemeEnCours);
   });
 
   it('p. 11 : indemnité de rupture 9 148,57 ÷ 80 = 114,35 € (assiette : salaires, régularisation, congés)', () => {
     const f = finDeContrat(ctx(), '2022-09-01', 'retrait', 2);
     // Assiette : régularisation et indemnité compensatrice comprises, comme la fiche ; écart = les 40 € de M-5.
-    ecart(f.totalBrut, 914857, 4000);
-    ecart(f.indemniteRupture, 11435, 49);
+    // T-050b (A-45 tranché pour main, regles/t050-trois-regles.md, point 2 ; CCN art. 121.1 et 124) : la régularisation
+    // (285,71 €, sûre) entre dans l'assiette : 7 714,29 + 285,71 = 8 000,00 €. Restent hors du total, « à confirmer »
+    // (T-019) : 400 € d'ICCP de la 1re période, 348,57 € d'ICCP de la 2e et 400 € de CP d'août, soit 1 148,57 € (114 857).
+    // Rupture « à confirmer », avec la raison. Écarts du lot 3 avant la fusion, congés sûrs : 4000 et 49 (M-5 seule) ;
+    // écart de la fusion T-050, règle de la direction : 143428 (la régularisation en plus).
+    expect(f.regularisation).toBe(28571);
+    expect(f.ruptureAConfirmer).toBe(true);
+    expect(f.alertes.join(' ')).toMatch(/Indemnité de rupture à confirmer : elle ne compte pas encore .*l’indemnité de congés non pris/);
+    ecart(f.totalBrut, 914857, 114857);
+    ecart(f.indemniteRupture, 11435, 1435);
   });
 });
 
@@ -311,7 +365,10 @@ describe('[OCCCP] DDETS 31, fiches congés payés 3/5 à 5/5 (version du 05/11/2
     // (maintien 300 € contre dixième 3 × 866,67 ÷ 10 = 260 €) = 733,33 €. La fiche compare aussi dixième et maintien
     // sur le total des deux périodes, l'app période par période (M-6).
     ecart(f.cpJoursRestants, 20, -2);
-    ecart(f.cpIndemnite, 68000, -5333);
+    // T-050 : congés « à confirmer » par la direction (A-23, T-030 : 9 ou 8 jours en cours, 25 ou 23 jours de la période close) : aucun
+    // montant. Écart du lot 3 avant la fusion : −5333.
+    expect(f.cpAConfirmer).toBeDefined();
+    ecart(f.cpIndemnite, 68000, 68000);
   });
 
   it('3/5 et 4/5 : 46 semaines (36), maintien de 18 jours = 3 semaines = 600 €, de 12 jours = 400 €', () => {
@@ -417,13 +474,16 @@ describe('[BFC] guide DREETS Bourgogne-Franche-Comté (août 2026)', () => {
     // Période en cours, du 01/06 au 31/08 : 3 mois → 8 jours (guide) ; 13,1 semaines → 9 jours (app, M-2) :
     // maintien 9/26 × 780 = 270 €, dixième 3 × 780 ÷ 10 = 234 € (le guide non plus n'ajoute pas l'indemnité
     // compensatrice de la période précédente à la base : M-5).
-    ecart(f.cpIndemnite, 16200 + 24000, 40200 - 48000);
+    // T-050 : congés « à confirmer » par la direction (A-23, T-030 : 9 ou 8 jours en cours, 25 ou 23 jours de la période close) : aucun
+    // montant. Écart du lot 3 avant la fusion : 40200 − 48000.
+    expect(f.cpAConfirmer).toBeDefined();
+    ecart(f.cpIndemnite, 16200 + 24000, 40200);
   });
 
   it('p. 51 et [PDL] p. 1 : minimum conventionnel 4,20 € brut (3,28 € net) au 1er juin 2026, SMIC 12,31 €', () => {
-    const r = ratesAt('2026-06-01');
+    const r = ratesAt('2026-06-01')!; // T-050 : ratesAt peut rendre undefined avant 2022 (T-023, direction)
     ecart(r.minConvBrut, 420, 0);
-    ecart(r.minConvNet, 328, 0);
+    ecart(r.minConvNet!, 328, 0);
     ecart(r.smic, 1231, 0);
     // Minimum légal 0,281 × 12,31 = 3,46 € : sous le minimum conventionnel, qui s'applique.
     expect(Math.round(0.281 * r.smic)).toBe(346);
@@ -431,12 +491,12 @@ describe('[BFC] guide DREETS Bourgogne-Franche-Comté (août 2026)', () => {
 
   it('p. 52 et [PDL] p. 1 : entretien 4,35 × 0,9 ÷ 9 = 0,435 €/h : 8 h 3,48 €, 9 h 3,92 €, 10 h 4,35 €, 11 h 4,79 €, minimum 2,65 €', () => {
     const d = '2026-07-01';
-    ecart(entretienPlancher(d, 8 * 60), 348, 0);
-    ecart(entretienPlancher(d, 9 * 60), 392, 0); // BFC écrit 3,915 (non arrondi), PDL 3,92
-    ecart(entretienPlancher(d, 10 * 60), 435, 0);
-    ecart(entretienPlancher(d, 11 * 60), 479, 0); // PDL : 3,92 + 2 × 0,435 = 4,79
-    ecart(entretienPlancher(d, 7 * 60), 305, 0); // BFC : 3,045
-    ecart(entretienPlancher(d, 6 * 60), 265, 0);
+    ecart(entretienPlancher(d, 8 * 60)!, 348, 0);
+    ecart(entretienPlancher(d, 9 * 60)!, 392, 0); // BFC écrit 3,915 (non arrondi), PDL 3,92
+    ecart(entretienPlancher(d, 10 * 60)!, 435, 0);
+    ecart(entretienPlancher(d, 11 * 60)!, 479, 0); // PDL : 3,92 + 2 × 0,435 = 4,79
+    ecart(entretienPlancher(d, 7 * 60)!, 305, 0); // BFC : 3,045
+    ecart(entretienPlancher(d, 6 * 60)!, 265, 0);
   });
 });
 

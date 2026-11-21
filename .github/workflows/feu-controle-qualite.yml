@@ -1,0 +1,37 @@
+# Feu du contrôle qualité (décision du DG du 21/11/2026).
+# Le contrôleur indépendant écrit son verdict en commentaire sur la demande de fusion :
+# ligne 1 « Verdict : VERT|ORANGE|ROUGE », ligne 2 « Commit : <sha complet> ».
+# Ce workflow pose le feu « controle-qualite » sur ce commit, s'il est bien le dernier de la
+# demande et si le commentaire vient du compte du propriétaire. Vert pour VERT et ORANGE.
+name: Feu du contrôle qualité
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  statuses: write
+  pull-requests: read
+jobs:
+  feu:
+    if: "${{ github.event.issue.pull_request && github.event.comment.user.login == 'YsaacMoise' && startsWith(github.event.comment.body, 'Verdict : ') }}"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Poser le feu
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CORPS: ${{ github.event.comment.body }}
+          NUMERO: ${{ github.event.issue.number }}
+          DEPOT: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          dernier=$(gh api "repos/$DEPOT/pulls/$NUMERO" --jq .head.sha)
+          l1=$(printf '%s\n' "$CORPS" | sed -n 1p | tr -d '\r')
+          l2=$(printf '%s\n' "$CORPS" | sed -n 2p | tr -d '\r')
+          case "$l1" in
+            "Verdict : VERT"|"Verdict : ORANGE") etat=success ;;
+            "Verdict : ROUGE") etat=failure ;;
+            *) echo "::error::Première ligne illisible : $l1"; exit 1 ;;
+          esac
+          vise=$(printf '%s' "$l2" | grep -oE '[0-9a-f]{40}' || true)
+          if [ "$vise" != "$dernier" ]; then echo "::error::Le verdict vise $vise, le dernier commit est $dernier : feu non posé."; exit 1; fi
+          gh api -X POST "repos/$DEPOT/statuses/$dernier" -f state="$etat" -f context=controle-qualite -f description="$l1"
+          echo "Feu $etat posé sur $dernier"

@@ -15,6 +15,8 @@ const c: Contract = {
   planning: week('08:15', '17:30'), rateNet: 400, majoration: 10, entretienJour: 0, repasPrix: 0, repasParJour: 0,
   kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: '2026-09-01',
   balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 0,
+    // Décision du DG du 18/11/2026 : sans réponse aux 3 questions T-031, le mois n'est pas calculé.
+    alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false,
 };
 const rec = (date: string, r: Partial<DayRec>): DayRec => ({ key: `c1|${date}`, cid: 'c1', date, ...r });
 const days = [
