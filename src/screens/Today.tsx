@@ -5,7 +5,7 @@ import { addDays, dayLabel, minutes, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NO
 import { dayInfo, type DayInfo } from '../engine/payroll';
 import { AM_ABS_LABEL, AM_ABS_NON_GEREE_LABEL, AM_ABS_NON_GEREES, CHILD_ABS_LABEL, type ChildAbs, type Contract, type DayRec, type NatureEvenement, type Presence } from '../engine/model';
 import { libelleDureeSaisie, NATURE_EVENEMENT_LABEL } from '../engine/evenements';
-import { absenceSaisie, estNonGere, type ChoixAbsence } from '../engine/absences';
+import { absenceSaisie, appliquerReponseSuite, estNonGere, questionSuite, texteQuestionSuite, type ChoixAbsence } from '../engine/absences';
 import { hoursLabel } from '../engine/money';
 import { Banner, CHILD_COLORS, Choices, DateInput, Gommette, Sheet, Stepper, Switch, Topbar, useErreurAffichee } from '../ui/kit';
 import { evAnnulation, evCorrection, heureCorrigee } from '../usage-events';
@@ -366,8 +366,11 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
   const [nature, setNature] = useState<NatureEvenement | undefined>(undefined);
   const [from, setFrom] = useState(start);
   const [to, setTo] = useState(start);
+  const [suite, setSuite] = useState<'oui' | 'non' | undefined>(undefined);
   const err = to < from ? 'La date de fin doit être après le début.' : '';
   useErreurAffichee('dates_absence', !!err);
+  // Décision du DG du 21/11/2026 : une autre absence « événement familial » à 15 jours au plus : l'app demande à l'AM.
+  const question = type === 'evenement' && !err ? questionSuite(from, to, state.leaves) : undefined;
   return (
     <Sheet title="Je serai absente" onClose={onClose}>
       <p class="muted">Pour tous les enfants. Les parents ne te paient pas les jours non payés : l’app fait la retenue toute seule.</p>
@@ -384,18 +387,24 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
         <DateInput label="Du" value={from} onChange={(v) => { setFrom(v); if (to < v) setTo(v); }} />
         <DateInput label="Au (inclus)" value={to} min={from} onChange={setTo} />
       </div>
+      {question && (
+        <Choices label={texteQuestionSuite(question)} value={suite} onChange={setSuite}
+          options={[{ v: 'oui', l: 'Oui, c’est le même événement', sub: 'Les jours se cumulent pour la durée prévue' }, { v: 'non', l: 'Non, c’est un autre événement', sub: 'Chaque événement a sa propre durée' }]} />
+      )}
       {type === 'cp' && <p class="hint">Mets ton dernier jour de congé. L’app compte les jours du lundi au samedi jusqu’à la veille de ta reprise : le samedi avant un retour le lundi compte aussi.</p>}
       {err && <p class="err" role="alert">{err}</p>}
       <button
         class="btn btn-primary btn-block btn-lg"
-        disabled={!!err || !from || !to || (type === 'evenement' && !nature)}
+        disabled={!!err || !from || !to || (type === 'evenement' && !nature) || (!!question && !suite)}
         onClick={async () => {
           const l = absenceSaisie(type, nature, uid(), from, to);
           if (!l) return;
-          const undo = await putLeave(l);
+          const undos: (() => Promise<void>)[] = [];
+          for (const x of appliquerReponseSuite(l, question, suite === 'oui')) undos.push(await putLeave(x));
+          const undo = async () => { for (const u of undos.reverse()) await u(); };
           logUsage('absence_am', 'aujourdhui');
           onClose();
-          toast(`${AM_ABS_LABEL[l.type]} enregistré${l.type === 'cp' ? 's' : ''}`, undo);
+          toast(`${AM_ABS_LABEL[l.type]} enregistré${l.type === 'cp' ? 's' : l.type === 'non_gere' ? 'e' : ''}`, undo);
         }}
       >
         Enregistrer

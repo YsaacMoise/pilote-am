@@ -6,7 +6,7 @@ import type { AmLeave, Bulletin, Contract, NatureEvenement, Planning } from '../
 import { makeCtx } from '../src/engine/payroll';
 import { computeMonth, declarationLines, declarationText } from '../src/engine/month';
 import { dureeEvenement } from '../src/engine/evenements';
-import { normaliserAbsence } from '../src/engine/absences';
+import { normaliserAbsence, normaliserAbsences, type AbsenceLue } from '../src/engine/absences';
 import { controleKm, SUIVI_ARRETES } from '../src/engine/km';
 import type { DayRec } from '../src/engine/model';
 import { controle } from '../src/engine/controle';
@@ -287,8 +287,10 @@ describe('T-025 C-1 : durée d’un événement familial comptée par événemen
   // particulier employeur, dans les jours qui entourent l'événement. » Octobre 2026 : aucun jour férié.
   const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01' });
   let id = 0;
-  const ev = (from: string, to: string, nature: NatureEvenement): AmLeave => normaliserAbsence({ id: `e${++id}`, type: 'evenement', from, to, nature });
-  const mois = (leaves: AmLeave[], m = '2026-10') => computeMonth(makeCtx(c, [], leaves, '2026-12-31'), m);
+  // Saisies d'avant (avec nature) : le chargement pose le lien « suite de » selon l'ancienne règle, puis retire la nature
+  // (décision du DG du 21/11/2026). Les résultats sont ceux d'avant.
+  const ev = (from: string, to: string, nature: NatureEvenement): AbsenceLue => ({ id: `e${++id}`, type: 'evenement', from, to, nature });
+  const mois = (leaves: AbsenceLue[], m = '2026-10') => computeMonth(makeCtx(c, [], normaliserAbsences(leaves), '2026-12-31'), m);
   const sansAbsence = mois([]);
 
   it('mariage saisi en deux absences (05-06/10 puis 07-09/10) : 4 jours payés, le 5e à confirmer, comme en une seule saisie', () => {
@@ -299,7 +301,7 @@ describe('T-025 C-1 : durée d’un événement familial comptée par événemen
     expect(deux.evenementAConfirmer).toBe(une.evenementAConfirmer);
     expect(deux.net).toBe(une.net);
     expect(deux.joursActivite).toBe(sansAbsence.joursActivite - 1);
-    expect(deux.alerts.join(' ')).toMatch(/autre absence « événement familial » de même durée/);
+    expect(deux.alerts.join(' ')).toMatch(/notée comme la suite de l’absence saisie/);
   });
 
   it('mariage du jeudi 08/10 au vendredi 09/10 puis du lundi 12/10 au mardi 13/10 : le samedi compte comme en une saisie, le 13/10 à confirmer', () => {

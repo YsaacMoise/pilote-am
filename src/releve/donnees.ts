@@ -131,7 +131,8 @@ export function releveDonnees(
     lignes,
     totaux,
     montants,
-    declaration: declarationLines(ctx, r),
+    // Décision du DG du 21/11/2026 : document envoyé au parent, la ligne de salaire ne nomme pas la raison (comme le lien).
+    declaration: declarationLines(ctx, r, true),
     fabrique: `Fabriqué le ${shortDate(isoLocal(o.now))} à ${heureFr(o.now)}`,
     version: o.version,
     mention: MENTION_RELEVE,

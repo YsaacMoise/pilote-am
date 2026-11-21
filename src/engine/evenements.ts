@@ -87,31 +87,53 @@ const lundiSamedi = (d: ISODate) => weekday(d) <= 6;
 /**
  * T-025 C-1 : la durée se compte par événement, pas par absence saisie (CCN 48.1.3.1.1 : « 4 jours ouvrables pour son
  * mariage » ; « Ces congés sont pris au moment de l'événement ou […] dans les jours qui entourent l'événement » ;
- * naissance : « dans les 15 jours entourant l'événement »). L'app ne sait pas si deux absences de même nature sont le
- * même événement. Choix sans texte (signalé) : deux absences « événement » de même nature séparées de 15 jours
- * calendaires au plus sont reliées ; leurs jours se cumulent. Ce qui dépasse la durée est « à confirmer », jamais payé
- * ni retenu en silence.
- * Depuis le 21/11/2026, la nature n'est plus enregistrée : « même nature » se lit « même durée prévue ». Deux natures
- * différentes de même durée (par exemple naissance et décès d'un parent, 3 jours) peuvent donc être reliées : les jours
- * en plus passent « à confirmer », avec le message « si c'est un autre événement, il est dû » ; rien n'est retenu.
+ * naissance : « dans les 15 jours entourant l'événement »). L'app ne sait pas seule si deux absences sont le même
+ * événement. Décision du DG du 21/11/2026 (« Demander à l'AM ») : à la saisie, si une autre absence « événement
+ * familial » est à 15 jours calendaires au plus, l'app demande si c'est la suite ; « oui » enregistre `suiteDe`. Le calcul
+ * relie les absences seulement par ce lien ; leurs jours se cumulent et la durée est celle de la première saisie. Ce qui
+ * dépasse la durée est « à confirmer », jamais payé ni retenu en silence. Les saisies d'avant (avec nature) reçoivent le
+ * lien au chargement, selon l'ancienne règle (même nature, 15 jours au plus : absences.ts).
  */
 export const LIEN_EVENEMENT_JOURS = 15;
 
-/** Absences de même nature reliées à `l` (elle comprise), de la plus ancienne à `l` */
+/** Absences reliées à `l` par `suiteDe` (elle comprise), de la plus ancienne à `l` */
 export function chaineEvenement(l: AmLeave, leaves: AmLeave[]): AmLeave[] {
   const chaine = [l];
   let cur = l;
-  for (;;) {
-    let prev: AmLeave | undefined;
-    for (const p of leaves) {
-      if (p === cur || p.id === cur.id || p.type !== 'evenement' || p.joursEvenement !== l.joursEvenement || p.from >= cur.from) continue;
-      if (daysBetween(p.to, cur.from) > LIEN_EVENEMENT_JOURS) continue;
-      if (!prev || p.to > prev.to) prev = p;
-    }
-    if (!prev || chaine.includes(prev)) return chaine;
+  while (cur.suiteDe) {
+    const id = cur.suiteDe;
+    const prev = leaves.find((p) => p.id === id && p.type === 'evenement');
+    if (!prev || prev.from >= cur.from || chaine.includes(prev)) return chaine;
     chaine.unshift(prev);
     cur = prev;
   }
+  return chaine;
+}
+
+/**
+ * Absence « événement familial » la plus proche avant [from], à 15 jours au plus (même règle d'écart que l'ancien lien),
+ * à proposer comme « suite de » à la saisie. `undefined` : aucune.
+ */
+export function evenementPrecedentProche(from: ISODate, leaves: AmLeave[]): AmLeave | undefined {
+  let prev: AmLeave | undefined;
+  for (const p of leaves) {
+    if (p.type !== 'evenement' || p.from >= from || daysBetween(p.to, from) > LIEN_EVENEMENT_JOURS) continue;
+    if (!prev || p.to > prev.to) prev = p;
+  }
+  return prev;
+}
+
+/**
+ * Absence « événement familial » la plus proche après une saisie [from, to], à 15 jours au plus, qui n'a pas encore de
+ * lien : à la saisie, l'app demande si elle est la suite de la nouvelle absence (saisie dans le désordre).
+ */
+export function evenementSuivantProche(from: ISODate, to: ISODate, leaves: AmLeave[]): AmLeave | undefined {
+  let suiv: AmLeave | undefined;
+  for (const q of leaves) {
+    if (q.type !== 'evenement' || q.suiteDe || q.from <= from || daysBetween(to, q.from) > LIEN_EVENEMENT_JOURS) continue;
+    if (!suiv || q.from < suiv.from) suiv = q;
+  }
+  return suiv;
 }
 
 /**
@@ -178,7 +200,7 @@ export function statutJourEvenement(l: AmLeave, d: ISODate, leaves: AmLeave[] = 
     if (ouvrable(d) && nSeule <= dureeSeule) {
       return {
         paye: false,
-        raison: `${qui} : une autre absence « événement familial » de même durée est saisie ${dates}. Si c’est le même événement, ce jour dépasse les ${dureeLabel(duree)} prévus (convention, article 48.1.3.1.1) ; si c’est un autre événement, il est dû. Vérifie avec les parents. Si c’est le même, saisis ce jour en congé payé ou sans solde, selon votre accord.`,
+        raison: `${qui} : elle est notée comme la suite de l’absence saisie ${dates}. Si c’est bien le même événement, ce jour dépasse les ${dureeLabel(duree)} prévus (convention, article 48.1.3.1.1) ; si c’est un autre événement, il est dû. Vérifie avec les parents. Si c’est le même, saisis ce jour en congé payé ou sans solde, selon votre accord.`,
       };
     }
     return {

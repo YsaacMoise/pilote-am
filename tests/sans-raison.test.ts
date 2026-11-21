@@ -61,7 +61,7 @@ describe('saisie : le cas d’une absence non gérée n’est pas enregistré', 
       sansRaison(l);
       // Les mois touchés restent bloqués, comme avant.
       const ctx = makeCtx(c, [], [l], '2026-10-31');
-      expect(computeMonth(ctx, '2026-03').nonGere.join(' ')).toMatch(/Absence non gérée par l’app du 02\/03.* au 10\/04.*: non géré/);
+      expect(computeMonth(ctx, '2026-03').nonGere.join(' ')).toMatch(/Absence non gérée par l’app du 02\/03.* au 10\/04.*: le salaire de ces jours/);
       expect(computeMonth(ctx, '2026-04').nonGere.length).toBe(1);
       expect(computeMonth(ctx, '2026-05').nonGere).toEqual([]);
     });
@@ -119,7 +119,8 @@ describe('paie identique : mêmes jours payés et mêmes montants qu’avant, po
     it(n, () => {
       for (const [m, from, to] of cas) {
         expect(lire(computeMonth(makeCtx(c, [], [saisie('e1', n, from, to)], '2026-12-31'), m))).toEqual(avant[`${n}|${from}`]);
-        const deux = [saisie('e1', n, from, from), saisie('e2', n, plus3(from), plus3(from))];
+        // Même événement saisi en deux fois : l'AM répond « oui » à « C'est la suite de l'absence du … ? ».
+        const deux = [saisie('e1', n, from, from), { ...saisie('e2', n, plus3(from), plus3(from)), suiteDe: 'e1' }];
         expect(lire(computeMonth(makeCtx(c, [], deux, '2026-12-31'), m))).toEqual(avant[`${n}|${from}|deux`]);
       }
     });

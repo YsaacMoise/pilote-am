@@ -217,6 +217,12 @@ export interface AmLeave {
    * Décision du DG du 21/11/2026 (« sans la raison ») : la nature n'est ni enregistrée, ni envoyée, ni affichée.
    */
   joursEvenement?: number;
+  /**
+   * Événement familial seulement : identifiant interne de l'absence dont celle-ci est la suite (même événement saisi en
+   * plusieurs fois), quand l'AM a répondu « oui » à la question de la saisie (décision du DG du 21/11/2026). Ne dit rien
+   * de la raison. Absent : événement à part.
+   */
+  suiteDe?: string;
 }
 
 export interface Settings {

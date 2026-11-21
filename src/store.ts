@@ -4,7 +4,7 @@ import * as db from './db';
 import type { AmLeave, Bulletin, Contract, DayRec, Journal, Settings } from './engine/model';
 import { makeCtx, type Ctx } from './engine/payroll';
 import { today } from './engine/dates';
-import { normaliserAbsence, type AbsenceLue } from './engine/absences';
+import { normaliserAbsences, type AbsenceLue } from './engine/absences';
 import { ecranDe, evErreur, type ErreurCode } from './usage-events';
 
 export interface Feedback { id: string; ts: number; screen: string; text: string }
@@ -71,12 +71,10 @@ export async function load(): Promise<void> {
   state.days = new Map(days.map((d) => [d.key, d]));
   // Décision du DG du 21/11/2026 (« sans la raison ») : une absence enregistrée avec sa nature ou son cas non géré est
   // ramenée à la forme sans raison, puis réécrite (téléphone et compte en ligne). Jours et dates gardés.
-  const ramenees: AmLeave[] = [];
-  state.leaves = leaves.map((l) => {
-    const n = normaliserAbsence(l);
-    if (n !== l) ramenees.push(n);
-    return n;
-  }).sort((a, b) => a.from.localeCompare(b.from));
+  // Le lien « suite de » est posé avant, selon l'ancienne règle (normaliserAbsences), pour garder la même paie.
+  const normalisees = normaliserAbsences(leaves);
+  const ramenees = normalisees.filter((n, i) => n !== leaves[i]);
+  state.leaves = normalisees.sort((a, b) => a.from.localeCompare(b.from));
   for (const l of ramenees) {
     try { await db.put('leaves', l); } catch { /* réécrite au prochain chargement ; la forme lue est déjà sans raison */ }
   }
