@@ -38,6 +38,8 @@ Le service est gratuit, en phase de test jusqu’au 31 janvier 2027, édité par
 | Anti-robots | Signaux techniques du navigateur | reCAPTCHA Enterprise (Google) |
 | Bulletins PDF | Lus sur le téléphone, jamais envoyés | Téléphone |
 
+**Mise à jour du 21/11/2026 (T-048, pointage).** La mesure d’usage reçoit huit nouveaux noms d’événements : `arrivee_heure_prevue`, `arrivee_maintenant_tardive`, `arrivee_autre_heure`, `depart_heure_prevue`, `depart_maintenant_tardif`, `depart_autre_heure`, `heure_corrigee_arrivee` et `heure_corrigee_depart`. Aucune nouvelle donnée n’est collectée : ce sont des noms fixes, sans heure, sans nom, sans identifiant. L’analyse des risques ne change pas.
+
 Le détail des données, des destinataires et des durées est dans le registre.
 
 ---
