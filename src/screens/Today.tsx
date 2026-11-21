@@ -2,7 +2,7 @@ import { ABSENCE_NON_GEREE_CHOISIE, ABSENCES_NON_GEREES } from '../legal';
 import { useEffect, useState } from 'preact/hooks';
 import { activeContracts, ctxFor, logUsage, putLeave, saveSettings, state, toast, uid, updateDay, useStore } from '../store';
 import { addDays, dayLabel, minutes, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NOMS, daysBetween } from '../engine/dates';
-import { dayInfo, type DayInfo } from '../engine/payroll';
+import { dayInfo, type Ctx, type DayInfo } from '../engine/payroll';
 import { AM_ABS_LABEL, AM_ABS_NON_GEREES, CHILD_ABS_LABEL, type AmAbs, type ChildAbs, type Contract, type DayRec, type NatureEvenement, type Plage, type Presence } from '../engine/model';
 import { libelleDureeSaisie, NATURE_EVENEMENT_LABEL } from '../engine/evenements';
 import { hoursLabel } from '../engine/money';
@@ -41,13 +41,16 @@ export function Today() {
   const [, setMinute] = useState(0);
   useEffect(() => {
     const tic = () => setMinute((m) => m + 1);
-    const id = setInterval(tic, 60_000);
+    // Calée sur le début de chaque minute : la minuterie se relance jusqu'à la minute suivante (toutes les 60 s),
+    // sans dériver même si le téléphone a ralenti les minuteries pendant que l'app était en arrière-plan.
+    let id: ReturnType<typeof setTimeout>;
+    const planifier = () => { id = setTimeout(() => { tic(); planifier(); }, msAvantMinuteSuivante(Date.now())); };
+    planifier();
     const retour = () => { if (document.visibilityState === 'visible') tic(); };
     document.addEventListener('visibilitychange', retour);
     window.addEventListener('focus', tic);
-    return () => { clearInterval(id); document.removeEventListener('visibilitychange', retour); window.removeEventListener('focus', tic); };
+    return () => { clearTimeout(id); document.removeEventListener('visibilitychange', retour); window.removeEventListener('focus', tic); };
   }, []);
-  const maintenant = nowHHMM();
   const kids = s.contracts.filter((c) => c.start <= day && (!c.end || c.end >= day));
   const base = day < addDays(t, -5) ? addDays(day, 5) : t;
   const days = Array.from({ length: 7 }, (_, i) => addDays(base, i - 5));
@@ -107,10 +110,10 @@ export function Today() {
         )}
         {s.settings.compact && kids.length > 1 ? (
           <div class="kid-list">
-            {kids.map((c) => <KidCard key={c.id} c={c} day={day} maintenant={maintenant} compact onEdit={() => setEdit(c)} />)}
+            {kids.map((c) => <KidCard key={c.id} c={c} day={day} compact onEdit={() => setEdit(c)} />)}
           </div>
         ) : (
-          kids.map((c) => <KidCard key={c.id} c={c} day={day} maintenant={maintenant} onEdit={() => setEdit(c)} />)
+          kids.map((c) => <KidCard key={c.id} c={c} day={day} onEdit={() => setEdit(c)} />)
         )}
         {day === t && forgotten.length > 0 && (
           <Banner tone="warn">
@@ -168,6 +171,42 @@ export interface ChoixPointage {
   maintenant: string;
   /** Minutes entre l'heure prévue et maintenant */
   ecartMin: number;
+  /**
+   * Départ : minutes que le moteur paiera en plus avec un départ « maintenant » plutôt qu'à la fin prévue
+   * (voir minutesPayeesEnPlus). Absent ou ≤ 0 : pas de parenthèse « (+N min payées) ».
+   */
+  payeesMin?: number;
+}
+
+/** Délai jusqu'au début de la minute suivante (petite marge de 50 ms pour tomber après le changement de minute). */
+export function msAvantMinuteSuivante(nowMs: number): number {
+  return 60_000 - (nowMs % 60_000) + 50;
+}
+
+/**
+ * Appui sur le bouton simple « Arrivée » / « Départ » : le choix est recalculé avec l'heure du geste.
+ * « choix » : le seuil est passé entre deux réévaluations de l'écran ; rien n'est enregistré, les trois choix s'ouvrent.
+ * « direct » : l'heure de l'appui est notée, comme avant T-048.
+ */
+export function decisionAppui(planned: Plage[], na: { idx: number; kind: 'a' | 'd' } | null, heureGeste: string): 'choix' | 'direct' {
+  return choixPointage(planned, na, heureGeste) ? 'choix' : 'direct';
+}
+
+/**
+ * Minutes payées en plus par un départ à `heureDepart` plutôt qu'à la fin prévue de la plage `idx`, selon le moteur :
+ * différence d'extraMin de dayInfo entre les deux journées simulées. Le contexte est copié (journées dans une Map neuve,
+ * cache neuf) : ni le contexte de l'écran ni son cache ne sont touchés.
+ */
+export function minutesPayeesEnPlus(ctx: Ctx, day: string, idx: number, heureDepart: string): number {
+  const rec = ctx.days.get(day);
+  const plage = dayInfo(ctx, day).planned[idx];
+  if (!rec || !plage) return 0;
+  const simule = (heure: string) => {
+    const days = new Map(ctx.days);
+    days.set(day, pointerJour(rec, idx, 'd', heure, true));
+    return dayInfo({ ...ctx, days, cache: new Map() }, day).extraMin;
+  };
+  return simule(heureDepart) - simule(plage.end);
 }
 
 /**
@@ -191,7 +230,7 @@ export function textesChoix(ch: ChoixPointage): { titre: string; prevue: string;
   return {
     titre: `${arr ? 'Arrivée' : 'Départ'} prévu${arr ? 'e' : ''} à ${heureLisible(ch.prevue)}`,
     prevue: `À ${heureLisible(ch.prevue)}`,
-    maintenant: `Maintenant, ${heureLisible(ch.maintenant)}${arr ? '' : ` (+${ch.ecartMin} min payées)`}`,
+    maintenant: `Maintenant, ${heureLisible(ch.maintenant)}${!arr && (ch.payeesMin ?? 0) > 0 ? ` (+${ch.payeesMin} min payées)` : ''}`,
     autre: 'Autre heure',
   };
 }
@@ -243,14 +282,17 @@ export function nextAction(di: Pick<DayInfo, 'planned'>, rec: DayRec | undefined
   return null;
 }
 
-function KidCard({ c, day, onEdit, compact, maintenant }: { c: Contract; day: string; onEdit: () => void; compact?: boolean; maintenant: string }) {
+function KidCard({ c, day, onEdit, compact }: { c: Contract; day: string; onEdit: () => void; compact?: boolean }) {
+  // Heure lue à chaque rendu (l'écran se réévalue chaque minute, et après un appui).
+  const maintenant = nowHHMM();
   const t = today();
   // T-048 : fiche ouverte : « choix » (vue en liste) ou « autre » (saisie de l'heure)
   const [fiche, setFiche] = useState<'choix' | 'autre' | null>(null);
   let choix: ChoixPointage | null = null;
   let pointer: ((heure: string, geste: GestePointage | null) => Promise<void>) | null = null;
   let arriveePlage: string | undefined;
-  const di = dayInfo(ctxFor(c), day);
+  const ctx = ctxFor(c);
+  const di = dayInfo(ctx, day);
   const rec = di.rec;
   const color = CHILD_COLORS[c.color % CHILD_COLORS.length];
   const tags: { tone: string; text: string }[] = [];
@@ -293,12 +335,18 @@ function KidCard({ c, day, onEdit, compact, maintenant }: { c: Contract; day: st
       };
       // T-048 : seuil passé pour une plage qui a une heure prévue : trois choix au lieu de l'heure de l'appui.
       choix = choixPointage(di.planned, na, maintenant);
+      if (choix?.kind === 'd') choix = { ...choix, payeesMin: minutesPayeesEnPlus(ctx, day, choix.idx, choix.maintenant) };
       const enregistrer = pointer;
       action = {
         label: isArr ? (di.planned.length || pres.length ? 'Arrivée' : 'Imprévu') : 'Départ',
         quiet: !di.planned.length && !pres.length,
         icon: isArr ? 'in' : 'out',
-        run: () => enregistrer(nowHHMM(), null),
+        run: () => {
+          // R1 : seuil passé depuis le dernier rendu : rien n'est noté, les trois choix s'ouvrent.
+          const heure = nowHHMM();
+          if (decisionAppui(di.planned, na, heure) === 'choix') { setFiche('choix'); return; }
+          void enregistrer(heure, null);
+        },
       };
     }
   }
