@@ -348,6 +348,10 @@ main {
 .tag.ok::before, .tag.warn::before, .tag.danger::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
 .tag.info { background: var(--surface-2); color: var(--ink); }
 .kid-actions { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+/* T-048 : trois choix quand le pointage arrive loin de l'heure prévue */
+.pointage-choix { display: grid; gap: 8px; margin-bottom: 8px; }
+.pointage-choix-titre { margin: 0; font-weight: 650; }
+.pointage-choix .err { margin: 0; }
 .view-switch { margin-bottom: 2px; }
 .kid-list { background: var(--surface); border-radius: var(--r-lg); border: 1px solid var(--line); box-shadow: var(--shadow); overflow: hidden; }
 .kid-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px 8px 0; border-left: 6px solid var(--g, var(--primary)); min-height: 64px; }
