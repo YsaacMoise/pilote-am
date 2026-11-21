@@ -441,10 +441,25 @@ describe('T-025 C-5 : le salaire d’événement à confirmer n’est retiré en
   const ctx = (leaves: AmLeave[], t = '2026-10-31') => makeCtx(c, [], leaves, t);
 
   it('indemnité de rupture (1/80e des salaires) : à confirmer, avec la raison', () => {
-    expect(finDeContrat(ctx([]), '2026-10-28', 'retrait').ruptureAConfirmer).toBe(false);
+    // T-050b (A-45) : l'assiette comprend l'indemnité de congés non pris, ici « à confirmer » (A-23 : 17 ou 15 jours en
+    // cours) ; sans événement, la rupture est donc à confirmer pour cette seule raison, sans parler d'événement familial.
+    const sans = finDeContrat(ctx([]), '2026-10-28', 'retrait');
+    expect(sans.ruptureAConfirmer).toBe(true);
+    expect(sans.alertes.join(' ')).toMatch(/l’indemnité de congés non pris à confirmer/);
+    expect(sans.alertes.join(' ')).not.toMatch(/salaire d’événement familial/);
     const f = finDeContrat(ctx([sansNature]), '2026-10-28', 'retrait');
     expect(f.ruptureAConfirmer).toBe(true);
     expect(f.alertes.join(' ')).toMatch(/salaire d’événement familial/);
+  });
+  it('indemnité de rupture : à confirmer par le seul salaire d’événement quand les congés non pris sont sûrs (fin le 15/05/2026)', () => {
+    const sans = finDeContrat(ctx([], '2027-03-31'), '2026-05-01', 'retrait');
+    expect(sans.dernierJour).toBe('2026-05-15');
+    expect(sans.cpAConfirmer).toBeUndefined();
+    expect(sans.ruptureAConfirmer).toBe(false);
+    const f = finDeContrat(ctx([sansNature], '2027-03-31'), '2026-05-01', 'retrait');
+    expect(f.cpAConfirmer).toBeUndefined();
+    expect(f.ruptureAConfirmer).toBe(true);
+    expect(f.alertes.join(' ')).toMatch(/Indemnité de rupture à confirmer : elle ne compte pas encore le salaire d’événement familial à confirmer\./);
   });
   it('compteur fiscal : le montant non compté est dit', () => {
     expect(fiscalYear(ctx([sansNature]), 2026).nonGere).toMatch(/Événement familial à confirmer/);

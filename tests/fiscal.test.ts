@@ -192,10 +192,14 @@ describe('C-008 : brut estimé affiché comme une estimation, brut réel demand�
     expect(novembre).toBeGreaterThan(0);
     expect(f.totalBrut).toBe(865935 + novembre);
     // 8 659,35 € est l'estimation de janvier à octobre : le total retombe sur l'estimation complète (9 117,10 € de
-    // salaires). T-050 : l'assiette du lot 3 ajoutait l'indemnité compensatrice de congés payés de la rupture
-    // (10 125,42 €) ; la direction l'exclut (décision A-45, moteur B : non tranché). Point « à trancher par la
-    // direction » (rapports/T-050-resolution.md) : si elle retient l'assiette du lot 3, remettre 1012542.
+    // salaires). T-050b (A-45 tranché pour main, regles/t050-trois-regles.md, point 2) : l'indemnité compensatrice de
+    // congés payés de la rupture entre dans l'assiette ; le lot 3 donnait 10 125,42 € avec elle. Ici, elle est « à
+    // confirmer » (A-23, T-030 : 16 ou 15 jours en cours) : elle n'est pas encore ajoutée, le total reste 9 117,10 € et
+    // l'indemnité de rupture est « à confirmer », avec cette raison. Le cas des congés non pris sûrs : tests/t050b.test.ts.
     expect(f.totalBrut).toBe(f0.totalBrut);
+    expect(f.cpAConfirmer).toBeDefined();
+    expect(f.ruptureAConfirmer).toBe(true);
+    expect(f.alertes.join(' ')).toMatch(/l’indemnité de congés non pris à confirmer/);
     expect(f.totalBrut).toBe(911710);
   });
   it('arrondi à l’euro : 1 234,50 € → « 1 235 € », 154,31 € → « 154 € »', () => {

@@ -41,7 +41,7 @@ vi.mock('../src/engine/rates', async (importOriginal) => ({
 import type { AmLeave, Contract, DayRec, Planning } from '../src/engine/model';
 import { makeCtx, monthBase, salaireMensualise } from '../src/engine/payroll';
 import { acquisition, baseDixieme, cpForMonth, indemnite, joursOuvrables, maintien } from '../src/engine/conges';
-import { finDeContrat } from '../src/engine/fin';
+import { congesNonPris, finDeContrat } from '../src/engine/fin';
 import { entretienPlancher, ratesAt } from '../src/engine/rates';
 
 function semaine(start: string, end: string, jours = [1, 2, 3, 4, 5]): Planning {
@@ -162,9 +162,14 @@ describe('[OCC52] DDETS 31, accueil sur 52 semaines (version du 30/03/2023)', ()
     const f = finDeContrat(ctx(), '2022-09-01', 'retrait', 1);
     // Assiette app : 742,86 + 12 × 866,67 + 466,67 = 11 609,57 €. Écart = 53,33 € d'indemnité compensatrice (M-1)
     // et 12 centimes d'arrondi.
-    // T-050 : la direction exclut l'indemnité compensatrice de l'assiette (A-45) et la rupture est « à confirmer » tant
-    // que les congés le sont. Point « à trancher par la direction » (assiette). Écarts du lot 3 avant la fusion : 5321 et 66.
+    // T-050b (A-45 tranché pour main, regles/t050-trois-regles.md, point 2 ; CCN art. 121.1) : l'assiette comprend
+    // l'indemnité compensatrice des deux périodes. Ici, elle est « à confirmer » (A-23, T-030 : jours de la période close et
+    // de la période en cours selon la lecture) : elle n'est pas encore ajoutée et l'indemnité de rupture est « à confirmer »,
+    // avec cette raison. Écart = 120 + 400 € d'indemnité compensatrice non encore comptée, moins 12 centimes d'arrondi
+    // (51 988). Écarts du lot 3 avant la fusion, congés sûrs : 5321 et 66 (M-1 seule).
+    expect(f.cpAConfirmer).toBeDefined();
     expect(f.ruptureAConfirmer).toBe(true);
+    expect(f.alertes.join(' ')).toMatch(/Indemnité de rupture à confirmer : elle ne compte pas encore .*l’indemnité de congés non pris/);
     ecart(f.totalBrut, 1166278, 51988);
     ecart(f.indemniteRupture, 14578, 649);
   });
@@ -253,14 +258,40 @@ describe('[OCC46] DDETS 31, accueil sur 46 semaines ou moins (version du 30/03/2
     ecart(f.cpIndemnite, 74857, 74857);
   });
 
+  it('p. 11 (T-050b, A-50) : dixième de la 2e période 348,57 €, régularisation de 285,71 € comprise', () => {
+    const f = finDeContrat(ctx(), '2022-09-01', 'retrait', 2);
+    // CCN art. 123.2, 48.1.1.5, 48.1.1.1 et 124 (regles/t050-trois-regles.md, point 3) : la régularisation entre dans la
+    // base du dixième de la dernière période. Fiche : (salaires 2 400 + CP d'août 400 + ICCP de la 1re période 400
+    // + régularisation 285,71) × 10 % = 348,57 €. Écart attendu = 80 € : 40 € de M-5 (ICCP de la période précédente, non
+    // ajoutée, sources contraires) et 40 € des 400 € de CP d'août, « à confirmer » (T-019), absents de la base.
+    ecart(f.cpDixiemeEnCours, 34857, 8000);
+  });
+
+  it('p. 11 (T-050b, A-50) : avec et sans régularisation, le dixième de fin change de 28,57 € (285,71 × 10 %)', () => {
+    const fin = '2022-09-30';
+    const endCtx = { ...ctx(), c: { ...c, end: fin }, cache: new Map(), finControlee: true };
+    const sans = congesNonPris(endCtx, endCtx.c, fin, 2, 0);
+    const avec = congesNonPris(endCtx, endCtx.c, fin, 2, 28571);
+    expect(avec.dixiemeEnCours - sans.dixiemeEnCours).toBe(2857);
+    // Un solde en faveur de l'employeur ne se retire pas de la base (art. 124 : versement « au profit de l'assistant maternel »).
+    expect(congesNonPris(endCtx, endCtx.c, fin, 2, -28571).dixiemeEnCours).toBe(sans.dixiemeEnCours);
+    // Le dixième régularisation comprise est celui que rend la fin de contrat.
+    expect(finDeContrat(ctx(), '2022-09-01', 'retrait', 2).cpDixiemeEnCours).toBe(avec.dixiemeEnCours);
+  });
+
   it('p. 11 : indemnité de rupture 9 148,57 ÷ 80 = 114,35 € (assiette : salaires, régularisation, congés)', () => {
     const f = finDeContrat(ctx(), '2022-09-01', 'retrait', 2);
     // Assiette : régularisation et indemnité compensatrice comprises, comme la fiche ; écart = les 40 € de M-5.
-    // T-050 : assiette de la direction sans régularisation ni indemnité compensatrice (A-45, point « à trancher ») ;
-    // rupture « à confirmer » tant que les congés le sont. Écarts du lot 3 avant la fusion : 4000 et 49.
+    // T-050b (A-45 tranché pour main, regles/t050-trois-regles.md, point 2 ; CCN art. 121.1 et 124) : la régularisation
+    // (285,71 €, sûre) entre dans l'assiette : 7 714,29 + 285,71 = 8 000,00 €. Restent hors du total, « à confirmer »
+    // (T-019) : 400 € d'ICCP de la 1re période, 348,57 € d'ICCP de la 2e et 400 € de CP d'août, soit 1 148,57 € (114 857).
+    // Rupture « à confirmer », avec la raison. Écarts du lot 3 avant la fusion, congés sûrs : 4000 et 49 (M-5 seule) ;
+    // écart de la fusion T-050, règle de la direction : 143428 (la régularisation en plus).
+    expect(f.regularisation).toBe(28571);
     expect(f.ruptureAConfirmer).toBe(true);
-    ecart(f.totalBrut, 914857, 143428);
-    ecart(f.indemniteRupture, 11435, 1792);
+    expect(f.alertes.join(' ')).toMatch(/Indemnité de rupture à confirmer : elle ne compte pas encore .*l’indemnité de congés non pris/);
+    ecart(f.totalBrut, 914857, 114857);
+    ecart(f.indemniteRupture, 11435, 1435);
   });
 });
 

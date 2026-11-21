@@ -8,7 +8,7 @@ import {
   addDays, addMonthsToDate, cpPeriod, cpPeriodStartYear, fullMonthsBetween, lastDay, monthOf, monthsBetween, shortDate,
   type ISODate, type Month,
 } from './dates';
-import { acquisition, compteur, cpForMonth, indemnite, maintien } from './conges';
+import { acquisition, baseDixieme, compteur, cpForMonth, indemnite, maintien } from './conges';
 import { libelleRegulJoursAConfirmer, makeCtx, monthBase, naturesAConfirmer, monthBrut, regularisationLectures, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx } from './payroll';
 import { netToBrut } from './rates';
 
@@ -67,6 +67,11 @@ export interface FinResult {
   regulMinutes: number;
   cpJoursRestants: number;
   cpIndemnite: number;
+  /**
+   * T-050b (A-50) : dixième de la période en cours (base ÷ 10, régularisation de fin comprise), avant comparaison au
+   * maintien. Information pour le contrôle : ce n'est jamais un montant à payer seul (voir `cpIndemnite`, `cpAConfirmer`).
+   */
+  cpDixiemeEnCours: number;
   cpExplication: string;
   /** Congés non pris à confirmer : `cpIndemnite` vaut 0 et n'est pas compté (T-019) */
   cpAConfirmer?: string;
@@ -124,18 +129,31 @@ function brutJusqua(endCtx: Ctx, c: Ctx['c'], fin: ISODate, enfants: number): nu
 
 /**
  * Indemnité de congés non pris à la fin `dernierJour` (T-038 : sortie de `finDeContrat` pour être recalculée à une autre
- * date de fin). `endCtx` : contexte dont le contrat finit le `dernierJour`.
+ * date de fin). `endCtx` : contexte dont le contrat finit le `dernierJour`. `regul` : régularisation de fin de contrat due
+ * à l'AM (T-050b, A-50), ajoutée à la base du dixième de la période en cours. Exportée pour les tests (T-050b).
  */
-function congesNonPris(endCtx: Ctx, c: Ctx['c'], dernierJour: ISODate, enfants: number): { cpIndemnite: number; jours: number; cpExplication: string; cpAConfirmer?: string } {
+export function congesNonPris(endCtx: Ctx, c: Ctx['c'], dernierJour: ISODate, enfants: number, regul = 0): { cpIndemnite: number; jours: number; cpExplication: string; cpAConfirmer?: string; dixiemeEnCours: number } {
   const finTerms = termsAt(c, dernierJour);
   const cpt = compteur(endCtx, dernierJour, enfants);
   const y = cpPeriodStartYear(dernierJour);
   const acq = acquisition(endCtx, y, enfants);
   const restantsPrec = Math.max(0, cpt.reste);
-  // Période en cours : dixième de la base à date, ou maintien, le plus favorable
+  // Période en cours : dixième de la base à date, ou maintien, le plus favorable.
+  // T-050b (A-50, regles/t050-trois-regles.md, point 3) : la base comprend la régularisation de fin de contrat due à l'AM.
+  // CCN art. 123.1 et 123.2 : l'ICCP suit l'article 48.1.1.5 ; 48.1.1.5 : dixième de la rémunération totale brute « perçue
+  // au cours de la période de référence », seule exclusion les indemnités du chapitre VIII (art. 57 à 59) ; 48.1.1.1 : la
+  // dernière période va jusqu'à la date de fin comprise ; 124 : « régularisation définitive du salaire », « effectuée à la
+  // date de fin du contrat de travail », soumise à cotisations. CASF L423-6 et L423-19 : même résultat. Fiches DDETS 31 5/5
+  // et « Régularisation » du 05/11/2024 : « la somme due est à intégrer dans la base de calcul de l'ICCP selon la méthode du
+  // dixième » ; fiche « Accueil sur 46 semaines ou moins » : 285,71 € dans la base. Un solde en faveur de l'employeur ne
+  // se retire pas de la base (art. 124 : versement « au profit de l'assistant maternel »).
+  // L'ICCP de la période précédente n'y est PAS ajoutée : les sources se contredisent (M-5, SUS-04, question à la DDETS n° 5).
+  // Point 1 de T-050 (direction) : dixième = base ÷ 10, sans prorata des jours pour enfants.
   const indCur = indemnite(endCtx, y, enfants);
   const joursCur = acq.joursADate;
-  const curMontant = Math.max(Math.round(indCur.dixieme), maintien(endCtx, joursCur, dernierJour));
+  const regulDue = Math.max(0, regul);
+  const dixiemeEnCours = regulDue > 0 ? Math.round((baseDixieme(endCtx, y, enfants).base + regulDue) / 10) : Math.round(indCur.dixieme);
+  const curMontant = Math.max(dixiemeEnCours, maintien(endCtx, joursCur, dernierJour));
   // Période précédente : jours restants, moins ce qui a déjà été versé.
   let precMontant = 0;
   if (restantsPrec > 0) {
@@ -161,8 +179,15 @@ function congesNonPris(endCtx: Ctx, c: Ctx['c'], dernierJour: ISODate, enfants: 
   let cpAConfirmer: string | undefined;
   const indPrecAC = restantsPrec > 0 && finTerms.yearType !== 'complete' && y - 1 >= cpPeriodStartYear(c.trackedFrom)
     ? indemnite(endCtx, y - 1, enfants).aConfirmer : undefined;
+  // T-050b : les montants par lecture d'`indemnite` ne comptent pas la régularisation ; avec elle, chacun vaut au moins le
+  // dixième régularisation comprise (montant = plus favorable entre dixième et maintien).
+  let msgCur = acq.aConfirmer?.message ?? indCur.aConfirmer?.message;
+  if (!acq.aConfirmer && indCur.aConfirmer && regulDue > 0) {
+    const avec = indCur.aConfirmer.montants.map((x) => `${euros(Math.max(dixiemeEnCours, x.montant))} (${x.libelle})`);
+    msgCur = `${indCur.aConfirmer.message} Ces montants ne comptent pas la régularisation de fin de contrat (${euros(regulDue)}), qui entre dans la base du dixième (convention, articles 48.1.1.5 et 124) : ${avec.length ? `avec elle, ${avec.join(', ou ')}` : `avec elle, le dixième vaut ${euros(dixiemeEnCours)}`}.`;
+  }
   const motifsAC = [
-    acq.aConfirmer?.message ?? indCur.aConfirmer?.message,
+    msgCur,
     cpt.aPrendreAConfirmer?.message ?? indPrecAC?.message,
     ...cpt.decompteAConfirmer,
   ].filter((x): x is string => !!x);
@@ -171,7 +196,7 @@ function congesNonPris(endCtx: Ctx, c: Ctx['c'], dernierJour: ISODate, enfants: 
     cpIndemnite = 0;
     cpExplication = 'À confirmer : le nombre de jours de congés n’est pas tranché. L’app ne donne pas de montant.';
   }
-  return { cpIndemnite, jours: joursCur + restantsPrec, cpExplication, cpAConfirmer };
+  return { cpIndemnite, jours: joursCur + restantsPrec, cpExplication, cpAConfirmer, dixiemeEnCours };
 }
 
 /**
@@ -328,56 +353,6 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     alertes.push('Inaptitude notifiée avant le 1er mai 2026 : les règles de l’avenant n° 10 appliquées ici n’étaient pas encore en vigueur. Fais vérifier le calcul (relais petite enfance, DREETS).');
   }
 
-  // Indemnité de rupture. Ancienneté appréciée à la date d'envoi de la lettre (ou au décès), comme pour le préavis.
-  let indemniteRupture = 0;
-  let ruptureExplication = '';
-  if (motif === 'deces') {
-    // T-034 (A-47) : due quelle que soit l'ancienneté. CCN art. 119.4.2 : « une indemnité dont le montant est calculé de
-    // la même manière que l'indemnité de rupture en cas de retrait d'enfant prévue à l'article 121-1 » (renvoi au seul
-    // calcul du montant, aucune condition d'ancienneté) ; service-public.fr F16842 (vérifiée le 13/06/2025) : « En cas de
-    // décès de l'enfant du particulier employeur, cette condition d'ancienneté est supprimée et l'indemnité est due ».
-    indemniteRupture = Math.round(totalBrut / 80);
-    ruptureExplication = 'Décès de l’enfant : 1/80e des salaires bruts perçus depuis le début du contrat, due quelle que soit l’ancienneté (article 119.4.2 de la convention).';
-  } else if (motif === 'inaptitude_pro') {
-    // Avenant n° 10 du 9 septembre 2025 (étendu, JO du 4 avril 2026, en vigueur le 1er mai 2026), art. 119-5 :
-    // indemnité spécifique de 2/80e, « selon les conditions d'ancienneté définies à l'article 121-1 » (9 mois).
-    if (anc >= 9) {
-      indemniteRupture = Math.round((totalBrut * 2) / 80);
-      ruptureExplication = 'Inaptitude après un accident du travail ou une maladie professionnelle : indemnité spécifique de 2/80e des salaires bruts (avenant n° 10, 9 mois d’ancienneté atteints).';
-    } else {
-      ruptureExplication = `Inaptitude d’origine professionnelle : pas d’indemnité, moins de 9 mois d’ancienneté (${anc} mois).`;
-    }
-  } else if (motif === 'inaptitude') {
-    if (anc >= 9) {
-      indemniteRupture = Math.round(totalBrut / 80);
-      ruptureExplication = 'Inaptitude sans lien avec le travail : 1/80e des salaires bruts (avenant n° 10, 9 mois d’ancienneté atteints).';
-    } else {
-      ruptureExplication = `Inaptitude : pas d’indemnité, moins de 9 mois d’ancienneté (${anc} mois).`;
-    }
-  } else if (motif === 'retrait') {
-    if (anc >= 9) {
-      indemniteRupture = Math.round(totalBrut / 80);
-      ruptureExplication = '1/80e des salaires bruts perçus depuis le début du contrat (9 mois d’ancienneté atteints à l’envoi de la lettre).';
-    } else {
-      ruptureExplication = `Pas d’indemnité : moins de 9 mois d’ancienneté à l’envoi de la lettre (${anc} mois).`;
-    }
-  } else if (motif === 'demission') {
-    ruptureExplication = 'Pas d’indemnité de rupture en cas de démission.';
-  } else if (motif === 'faute_grave') {
-    ruptureExplication = 'Pas d’indemnité de rupture en cas de faute grave (à contester si elle est injustifiée).';
-  } else {
-    ruptureExplication = 'Pas d’indemnité pendant la période d’essai.';
-  }
-
-  let ruptureAConfirmer = (cpManquants || evenementManquant) && indemniteRupture > 0;
-  if (ruptureAConfirmer) {
-    const natures = (['evenement', 'cp', 'maladie'] as const).filter((n) => naturesManquantes.has(n))
-      .map((n) => ({ evenement: 'd’événement familial', cp: 'de congés pris au-delà des droits', maladie: 'd’enfant malade' })[n]);
-    const evenement = evenementManquant ? `le salaire ${natures.length > 1 ? `${natures.slice(0, -1).join(', ')} ou ${natures.at(-1)}` : natures[0] ?? 'd’événement familial'}` : '';
-    const manque = [cpManquants ? 'les congés payés' : '', evenement].filter(Boolean).join(' ni ');
-    alertes.push(`Indemnité de rupture à confirmer : elle ne compte pas encore ${manque} à confirmer.`);
-  }
-
   // Régularisation : heures réellement dues (planning, hors absences retenues) contre heures payées,
   // depuis l'embauche, le début du suivi ou le dernier passage d'une année à l'autre (C-001 : les autres avenants ne coupent pas).
   const finTerms = termsAt(c, dernierJour);
@@ -434,20 +409,110 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     alertes.push('Année complète : la régularisation ne s’applique pas en principe, vérifie le planning du contrat.');
   }
 
-  // Congés non pris
-  const cpPour = (fin: ISODate) => congesNonPris(ctxFin(fin), c, fin, enfants);
-  const cp = cpPour(dernierJour);
+  // Congés non pris. T-050b (A-50) : la régularisation due entre dans la base du dixième de la période en cours. Chaque date
+  // de fin possible (variantes) et, si la régularisation est « à confirmer », chacune de ses valeurs possibles donne son
+  // indemnité ; si elle change, l'indemnité est « à confirmer » avec ses valeurs.
+  const regulCalculee = finTerms.yearType === 'incomplete' && manque === 0;
+  const regulsPour = (fin: ISODate): number[] => {
+    if (!regulCalculee) return [0];
+    const r = fin === dernierJour ? reg : regPour(fin);
+    return [...new Set([r.dus.montant, r.retenus.montant])];
+  };
+  const regulFin = regulCalculee ? reg.dus.montant : 0;
+  const cpPour = (fin: ISODate, r: number) => congesNonPris(ctxFin(fin), c, fin, enfants, r);
+  const cp = cpPour(dernierJour, regulFin);
   let { cpIndemnite, cpExplication, cpAConfirmer } = cp;
   const cpJoursRestants = cp.jours;
-  if (!cpAConfirmer && variantes.length > 1) {
+  const cpDixiemeEnCours = cp.dixiemeEnCours;
+  const candidatsCp = variantes.flatMap((v) => regulsPour(v.fin).map((r) => ({
+    fin: v.fin, r,
+    libelle: regularisationAConfirmer ? `${v.libelle}, régularisation de ${euros(r)}` : v.libelle,
+    x: v.fin === dernierJour && r === regulFin ? cp : cpPour(v.fin, r),
+  })));
+  if (!cpAConfirmer && candidatsCp.length > 1) {
     // T-038 (AC-1, AC-2) : l'indemnité de congés non pris dépend aussi de la date de fin (acquisition, base du dixième).
-    const autres = variantes.map((v) => ({ ...v, x: v.fin === dernierJour ? cp : cpPour(v.fin) }));
-    if (autres.some((v) => v.x.cpAConfirmer || v.x.cpIndemnite !== cp.cpIndemnite)) {
-      cpAConfirmer = `Indemnité de congés non pris à confirmer : elle dépend ${demission312 ? 'de la durée du préavis et de sa date de fin' : 'de la date de fin du préavis'}, à confirmer. `
-        + `${autres.map((v) => `${v.libelle.replace(/^./, (x) => x.toUpperCase())} : ${v.x.cpAConfirmer ? 'nombre de jours à confirmer' : euros(v.x.cpIndemnite)}`).join(' ; ')}. Elle n'est pas comptée dans le total.`;
+    if (candidatsCp.some((v) => v.x.cpAConfirmer || v.x.cpIndemnite !== cp.cpIndemnite)) {
+      // La date de fin change-t-elle le montant à régularisation égale ? Sinon, seule la régularisation le change.
+      const parFin = variantes.some((v) => v.fin !== dernierJour && ((x) => !!x.cpAConfirmer || x.cpIndemnite !== cp.cpIndemnite)(candidatsCp.find((k) => k.fin === v.fin && k.r === regulFin)?.x ?? cpPour(v.fin, regulFin)));
+      const causes = [
+        parFin ? (demission312 ? 'de la durée du préavis et de sa date de fin' : 'de la date de fin du préavis') : '',
+        regularisationAConfirmer ? 'de la régularisation de fin de contrat, qui entre dans la base du dixième (convention, articles 48.1.1.5 et 124)' : '',
+      ].filter(Boolean).join(' et ');
+      cpAConfirmer = `Indemnité de congés non pris à confirmer : elle dépend ${causes}, à confirmer. `
+        + `${candidatsCp.map((v) => `${v.libelle.replace(/^./, (x) => x.toUpperCase())} : ${v.x.cpAConfirmer ? 'nombre de jours à confirmer' : euros(v.x.cpIndemnite)}`).join(' ; ')}. Elle n'est pas comptée dans le total.`;
       cpIndemnite = 0;
-      cpExplication = 'À confirmer : le montant dépend de la date de fin du contrat. L’app ne donne pas de montant.';
+      cpExplication = parFin
+        ? (regularisationAConfirmer ? 'À confirmer : le montant dépend de la date de fin du contrat et de la régularisation. L’app ne donne pas de montant.' : 'À confirmer : le montant dépend de la date de fin du contrat. L’app ne donne pas de montant.')
+        : 'À confirmer : le montant dépend de la régularisation, elle-même à confirmer. L’app ne donne pas de montant.';
     }
+  }
+
+  // T-050b (A-45, regles/t050-trois-regles.md, point 2) : assiette de l'indemnité de rupture. CCN art. 121.1 : 1/80 « du
+  // total des salaires bruts perçus pendant la durée du contrat », « hors indemnités non soumises à contributions et
+  // cotisations sociales » (seule exclusion écrite). L'ICCP des deux périodes (art. 123.1, 123.2 et 48.1.1.5 : « revêt le
+  // caractère de salaire », soumise à cotisations) et la régularisation de fin de contrat (art. 124 : « régularisation
+  // définitive du salaire », à la date de fin, soumise à cotisations) en font partie. Fiches DDETS 31 de 2023 : 11 662,78 €
+  // (Durand) et 9 148,57 € (Bertrand) ; fiche « Régularisation » du 05/11/2024, p. 4 ; guide DREETS BFC d'août 2026, fiche
+  // 11-I. Elles sont payées sur le dernier bulletin : déjà comprises si ce bulletin est couvert par le total saisi ou lu
+  // (C-008, garde contre le double compte). Une part « à confirmer » n'est pas ajoutée et rend l'indemnité « à confirmer ».
+  // Hors périmètre (point à rouvrir par la direction) : l'indemnité compensatrice de préavis n'est pas ajoutée.
+  const finCouverte = (m: Month) => couvert(m) || (bruts.parMois?.[m] != null && bruts.parMois[m]! > 0);
+  const dernierMois = monthOf(dernierJour);
+  const assietteFinNet = cpIndemnite + regularisation_;
+  const ajoutFin = (fin: ISODate) => (finCouverte(monthOf(fin)) ? 0 : netToBrut(assietteFinNet, lastDay(monthOf(fin))));
+  totalBrut += ajoutFin(dernierJour);
+  const iccpManquante = !finCouverte(dernierMois) && !!cpAConfirmer;
+  const regulManquante = !finCouverte(dernierMois) && !!regularisationAConfirmer;
+
+  // Indemnité de rupture. Ancienneté appréciée à la date d'envoi de la lettre (ou au décès), comme pour le préavis.
+  let indemniteRupture = 0;
+  let ruptureExplication = '';
+  if (motif === 'deces') {
+    // T-034 (A-47) : due quelle que soit l'ancienneté. CCN art. 119.4.2 : « une indemnité dont le montant est calculé de
+    // la même manière que l'indemnité de rupture en cas de retrait d'enfant prévue à l'article 121-1 » (renvoi au seul
+    // calcul du montant, aucune condition d'ancienneté) ; service-public.fr F16842 (vérifiée le 13/06/2025) : « En cas de
+    // décès de l'enfant du particulier employeur, cette condition d'ancienneté est supprimée et l'indemnité est due ».
+    indemniteRupture = Math.round(totalBrut / 80);
+    ruptureExplication = 'Décès de l’enfant : 1/80e des salaires bruts perçus depuis le début du contrat, due quelle que soit l’ancienneté (article 119.4.2 de la convention).';
+  } else if (motif === 'inaptitude_pro') {
+    // Avenant n° 10 du 9 septembre 2025 (étendu, JO du 4 avril 2026, en vigueur le 1er mai 2026), art. 119-5 :
+    // indemnité spécifique de 2/80e, « selon les conditions d'ancienneté définies à l'article 121-1 » (9 mois).
+    if (anc >= 9) {
+      indemniteRupture = Math.round((totalBrut * 2) / 80);
+      ruptureExplication = 'Inaptitude après un accident du travail ou une maladie professionnelle : indemnité spécifique de 2/80e des salaires bruts (avenant n° 10, 9 mois d’ancienneté atteints).';
+    } else {
+      ruptureExplication = `Inaptitude d’origine professionnelle : pas d’indemnité, moins de 9 mois d’ancienneté (${anc} mois).`;
+    }
+  } else if (motif === 'inaptitude') {
+    if (anc >= 9) {
+      indemniteRupture = Math.round(totalBrut / 80);
+      ruptureExplication = 'Inaptitude sans lien avec le travail : 1/80e des salaires bruts (avenant n° 10, 9 mois d’ancienneté atteints).';
+    } else {
+      ruptureExplication = `Inaptitude : pas d’indemnité, moins de 9 mois d’ancienneté (${anc} mois).`;
+    }
+  } else if (motif === 'retrait') {
+    if (anc >= 9) {
+      indemniteRupture = Math.round(totalBrut / 80);
+      ruptureExplication = '1/80e des salaires bruts perçus depuis le début du contrat (9 mois d’ancienneté atteints à l’envoi de la lettre).';
+    } else {
+      ruptureExplication = `Pas d’indemnité : moins de 9 mois d’ancienneté à l’envoi de la lettre (${anc} mois).`;
+    }
+  } else if (motif === 'demission') {
+    ruptureExplication = 'Pas d’indemnité de rupture en cas de démission.';
+  } else if (motif === 'faute_grave') {
+    ruptureExplication = 'Pas d’indemnité de rupture en cas de faute grave (à contester si elle est injustifiée).';
+  } else {
+    ruptureExplication = 'Pas d’indemnité pendant la période d’essai.';
+  }
+
+  let ruptureAConfirmer = (cpManquants || evenementManquant || iccpManquante || regulManquante) && indemniteRupture > 0;
+  if (ruptureAConfirmer) {
+    const natures = (['evenement', 'cp', 'maladie'] as const).filter((n) => naturesManquantes.has(n))
+      .map((n) => ({ evenement: 'd’événement familial', cp: 'de congés pris au-delà des droits', maladie: 'd’enfant malade' })[n]);
+    const evenement = evenementManquant ? `le salaire ${natures.length > 1 ? `${natures.slice(0, -1).join(', ')} ou ${natures.at(-1)}` : natures[0] ?? 'd’événement familial'}` : '';
+    // T-050b : l'indemnité de congés non pris et la régularisation de la fin entrent dans l'assiette (A-45).
+    const manque = [cpManquants ? 'les congés payés' : '', evenement, iccpManquante ? 'l’indemnité de congés non pris' : '', regulManquante ? 'la régularisation de fin de contrat' : ''].filter(Boolean).join(' ni ');
+    alertes.push(`Indemnité de rupture à confirmer : elle ne compte pas encore ${manque} à confirmer.`);
   }
 
   // T-038 suite (point 3 remonté au DG) : l'indemnité de rupture (1/80 ou 2/80 des salaires bruts jusqu'à la fin) change si la
@@ -456,8 +521,9 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   if (indemniteRupture > 0 && !ruptureAConfirmer && variantes.length > 1) {
     const facteur = motif === 'inaptitude_pro' ? 2 : 1;
     // T-050 : écart de bruts entre la variante et la fin calculée, ajouté au total retenu (qui peut venir des bulletins saisis, C-008).
+    // T-050b : même assiette pour chaque variante (ICCP et régularisation de la fin, sauf mois de fin couvert par les bulletins).
     const brutFin = brutJusqua(endCtx, c, dernierJour, enfants);
-    const autres = variantes.map((v) => ({ ...v, montant: v.fin === dernierJour ? indemniteRupture : Math.round(((totalBrut + brutJusqua(ctxFin(v.fin), c, v.fin, enfants) - brutFin) * facteur) / 80) }));
+    const autres = variantes.map((v) => ({ ...v, montant: v.fin === dernierJour ? indemniteRupture : Math.round(((totalBrut + brutJusqua(ctxFin(v.fin), c, v.fin, enfants) - brutFin + ajoutFin(v.fin) - ajoutFin(dernierJour)) * facteur) / 80) }));
     if (autres.some((v) => v.montant !== indemniteRupture)) {
       ruptureVariantes = `Indemnité de rupture à confirmer : elle dépend de la date de fin du préavis, à confirmer. ${autres.map((v) => `${v.libelle.replace(/^./, (x) => x.toUpperCase())} : ${euros(v.montant)}`).join(' ; ')}. Elle n'est pas comptée dans le total.`;
       ruptureAConfirmer = true;
@@ -470,13 +536,13 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   if (nonGere.length) {
     return {
       ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture: 0, ruptureExplication: 'Non calculée : cas non géré.',
-      totalBrut: 0, indemnitePreavis: 0, regularisation: 0, regulMinutes: 0, cpJoursRestants: 0, cpIndemnite: 0,
+      totalBrut: 0, indemnitePreavis: 0, regularisation: 0, regulMinutes: 0, cpJoursRestants: 0, cpIndemnite: 0, cpDixiemeEnCours: 0,
       cpExplication: 'Non calculés : cas non géré.', manquants, brutsEstimes, alertes, nonGere,
     };
   }
   return {
     ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, ruptureVariantes, totalBrut, brutsEstimes,
     indemnitePreavis, indemnitePreavisExplication, indemnitePreavisAConfirmer,
-    regularisation: regularisation_, regulMinutes, cpJoursRestants, cpIndemnite, cpExplication, cpAConfirmer, regularisationAConfirmer, manquants, alertes,
+    regularisation: regularisation_, regulMinutes, cpJoursRestants, cpIndemnite, cpDixiemeEnCours, cpExplication, cpAConfirmer, regularisationAConfirmer, manquants, alertes,
   };
 }

@@ -227,18 +227,45 @@ describe('T-038 G-1 : mois terminé avec un jour noté « sans solde » (retenu 
 describe('T-038 suite, point 1 : indemnité de rupture d’un retrait quand la fin du préavis bouge d’un jour', () => {
   // Début le 03/06/2024 (début de période de référence) : les congés de la période sont sûrs, l'assiette est complète.
   const c = complete({ start: '2024-06-03', trackedFrom: '2024-06-03' });
+  // T-050b (A-45, regles/t050-trois-regles.md, point 2) : l'assiette comprend l'indemnité de congés non pris. Fin en
+  // novembre : ses jours de la période en cours sont « à confirmer » (A-23, T-030 : 15 ou 13 jours), donc l'indemnité de
+  // rupture l'est aussi, avant même la question de la date de fin. Les deux tests de novembre gardent leurs dates et
+  // vérifient cette raison ; le mécanisme des variantes est vérifié en mai, où les congés non pris sont sûrs.
   it('fin le jeudi 12/11/2026 ou le vendredi 13/11/2026 : deux montants, « à confirmer », non comptée', () => {
     const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-13', 'retrait');
     const lendemain = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-13', 'retrait', 0, '2026-10-14');
     expect(f.dernierJour).toBe('2026-11-12');
     expect(lendemain.dernierJour).toBe('2026-11-13');
     expect(f.ruptureAConfirmer).toBe(true);
-    expect(f.ruptureVariantes).toContain(`Fin le 12/11/2026 : ${euros(f.indemniteRupture)}`);
-    expect(f.ruptureVariantes).toContain(`Fin le 13/11/2026 : ${euros(lendemain.indemniteRupture)}`);
+    expect(f.cpAConfirmer).toBeDefined();
+    expect(f.alertes.join(' ')).toMatch(/Indemnité de rupture à confirmer : elle ne compte pas encore l’indemnité de congés non pris à confirmer/);
+    expect(lendemain.indemniteRupture).not.toBe(f.indemniteRupture);
+  });
+  it('fin le lundi 04/05/2026 ou le mardi 05/05/2026 : deux montants, « à confirmer », non comptée (congés non pris sûrs)', () => {
+    const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-04-05', 'retrait');
+    const lendemain = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-04-05', 'retrait', 0, '2026-04-06');
+    expect(f.dernierJour).toBe('2026-05-04');
+    expect(lendemain.dernierJour).toBe('2026-05-05');
+    expect(f.cpAConfirmer).toBeUndefined();
+    expect(lendemain.cpAConfirmer).toBeUndefined();
+    expect(f.ruptureAConfirmer).toBe(true);
+    expect(f.ruptureVariantes).toContain(`Fin le 04/05/2026 : ${euros(f.indemniteRupture)}`);
+    // T-050b : la variante compte la même assiette que le calcul de la fin au 05/05 (indemnité de congés non pris comprise).
+    expect(f.ruptureVariantes).toContain(`Fin le 05/05/2026 : ${euros(lendemain.indemniteRupture)}`);
     expect(lendemain.indemniteRupture).not.toBe(f.indemniteRupture);
   });
   it('fin le vendredi 13/11/2026 : le samedi n’est pas un jour d’accueil, même montant, comptée', () => {
     const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-14', 'retrait');
+    expect(f.ruptureVariantes).toBeUndefined();
+    // T-050b : « à confirmer » ici pour une autre raison, l'indemnité de congés non pris à confirmer (voir plus haut).
+    expect(f.ruptureAConfirmer).toBe(true);
+    expect(f.alertes.join(' ')).toMatch(/elle ne compte pas encore l’indemnité de congés non pris à confirmer/);
+    expect(f.indemniteRupture).toBeGreaterThan(0);
+  });
+  it('fin le vendredi 15/05/2026 : le samedi n’est pas un jour d’accueil, même montant, comptée (congés non pris sûrs)', () => {
+    const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-04-16', 'retrait');
+    expect(f.dernierJour).toBe('2026-05-15');
+    expect(f.cpAConfirmer).toBeUndefined();
     expect(f.ruptureVariantes).toBeUndefined();
     expect(f.ruptureAConfirmer).toBeFalsy();
     expect(f.indemniteRupture).toBeGreaterThan(0);
