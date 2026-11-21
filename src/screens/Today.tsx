@@ -573,14 +573,34 @@ const CHILD_ABS_OPTIONS: { v: ChildAbs | 'none'; l: string; sub?: string }[] = [
 // affichée seulement sur un jour déjà noté ainsi, pour pouvoir le corriger.
 const OPTION_SANS_SOLDE_ENFANT = { v: 'sans_solde_enfant' as const, l: CHILD_ABS_LABEL.sans_solde_enfant, sub: 'Payé : la convention ne permet pas de le retenir (article 105)' };
 
+/**
+ * Heures de départ de la fiche de la journée, plage par plage : celles pointées, sinon celles du planning.
+ * T-048 (contrôle de la n° 53) : une plage sans arrivée alors qu'une plage plus loin a déjà une arrivée reste vide
+ * (l'AM a répondu « Non » ou n'a pas pointé ce matin-là) : le planning ne la remplit pas, pour ne pas la noter présente.
+ */
+export function heuresInitiales(planned: Plage[], pres: Presence[] | undefined, slots: number): Presence[] {
+  return Array.from({ length: slots }, (_, i) => {
+    const vide = !pres?.[i]?.a && (pres ?? []).slice(i + 1).some((x) => !!x?.a);
+    if (vide) return { a: '', d: '' };
+    return { a: pres?.[i]?.a ?? planned[i]?.start ?? '', d: pres?.[i]?.d ?? planned[i]?.end ?? '' };
+  });
+}
+
+/**
+ * Présences enregistrées par la fiche : chaque plage garde son rang (une plage vide devient {}), pour que la plage du
+ * soir reste la deuxième ; les plages vides en fin de liste sont retirées. Le moteur ne lit que les plages avec arrivée.
+ */
+export function presencesAGarder(pres: Presence[]): Presence[] {
+  const r: Presence[] = pres.map((p) => (p.a ? { a: p.a, d: p.d || undefined } : {}));
+  while (r.length && !r[r.length - 1].a) r.pop();
+  return r;
+}
+
 export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClose: () => void }) {
   const di = dayInfo(ctxFor(c), day);
   const rec = di.rec;
   const slots = Math.max(di.planned.length, rec?.pres?.length ?? 0, 1);
-  const init: Presence[] = Array.from({ length: slots }, (_, i) => ({
-    a: rec?.pres?.[i]?.a ?? di.planned[i]?.start ?? '',
-    d: rec?.pres?.[i]?.d ?? di.planned[i]?.end ?? '',
-  }));
+  const init = heuresInitiales(di.planned, rec?.pres, slots);
   const [pres, setPres] = useState<Presence[]>(init);
   const [abs, setAbs] = useState<ChildAbs | 'none'>(rec?.abs ?? 'none');
   const [repas, setRepas] = useState<number>(rec?.repas ?? c.repasParJour);
@@ -604,7 +624,7 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
       else {
         delete next.abs;
         if (samePlan || future) delete next.pres;
-        else next.pres = pres.filter((p) => p.a).map((p) => ({ a: p.a, d: p.d || undefined }));
+        else next.pres = presencesAGarder(pres);
         if (!di.planned.length && next.pres?.length) next.extra = true;
       }
       if (repas !== c.repasParJour) next.repas = repas; else delete next.repas;

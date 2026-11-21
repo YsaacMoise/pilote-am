@@ -8,7 +8,7 @@ import { dayInfo, makeCtx } from '../src/engine/payroll';
 type DayRec = Jour;
 const J = (x: Partial<Jour>): Jour => x as Jour;
 import {
-  choixPointage, decisionAppui, memeQuestion, pointerPlagePrevue, questionPlage, texteQuestion, enregistrerChoix, heureLisible, minutesPayeesEnPlus, msAvantMinuteSuivante, MSG_DEPART_AVANT_ARRIVEE, MSG_HEURE_FUTURE, nextAction, pointerJour,
+  choixPointage, decisionAppui, heuresInitiales, presencesAGarder, memeQuestion, pointerPlagePrevue, questionPlage, texteQuestion, enregistrerChoix, heureLisible, minutesPayeesEnPlus, msAvantMinuteSuivante, MSG_DEPART_AVANT_ARRIVEE, MSG_HEURE_FUTURE, nextAction, pointerJour,
   SEUIL_ARRIVEE_MIN, SEUIL_DEPART_MIN, textesChoix, verifierHeure,
 } from '../src/screens/Today';
 import { evChoixPointage, evCorrection, evCorrections, evPointage, heureCorrigee, heureCorrigeeDetail, type GestePointage } from '../src/usage-events';
@@ -424,5 +424,43 @@ describe('T-048 : cas du contrôle qualité (Rose, deux plages, matin non point�
     expect(verifierHeure('d', '18:35', '18:35', soir.pres![1].a)).toBe('');
     const ctx = makeCtx(c, [soir], [], LUNDI);
     expect(minutesPayeesEnPlus(ctx, LUNDI, 1, '18:35')).toBe(5);
+  });
+});
+
+// ---------- Contrôle de la n° 53 : fiche de la journée après « Non » pour le matin ----------
+
+describe('T-048 : fiche de la journée, plage du matin restée vide', () => {
+  const ROSE: Plage[] = [{ start: '07:30', end: '08:30' }, { start: '16:30', end: '18:30' }];
+  it('matin sans arrivée, soir pointé : le matin s’affiche vide', () => {
+    expect(heuresInitiales(ROSE, [{}, { a: '17:10' }], 2)).toEqual([{ a: '', d: '' }, { a: '17:10', d: '18:30' }]);
+    expect(heuresInitiales(ROSE, [{}, { a: '17:10', d: '18:35' }], 2)).toEqual([{ a: '', d: '' }, { a: '17:10', d: '18:35' }]);
+  });
+  it('les autres cas ne changent pas : aucun pointage, plage pointée, une seule plage, imprévu', () => {
+    expect(heuresInitiales(ROSE, undefined, 2)).toEqual([{ a: '07:30', d: '08:30' }, { a: '16:30', d: '18:30' }]);
+    expect(heuresInitiales(ROSE, [{ a: '07:40' }], 2)).toEqual([{ a: '07:40', d: '08:30' }, { a: '16:30', d: '18:30' }]);
+    expect(heuresInitiales(ROSE, [{ a: '07:40', d: '08:35' }, { a: '16:30' }], 2)).toEqual([{ a: '07:40', d: '08:35' }, { a: '16:30', d: '18:30' }]);
+    expect(heuresInitiales([{ start: '08:15', end: '17:00' }], undefined, 1)).toEqual([{ a: '08:15', d: '17:00' }]);
+    expect(heuresInitiales([], [{ a: '10:00' }], 1)).toEqual([{ a: '10:00', d: '' }]);
+    expect(heuresInitiales([], undefined, 1)).toEqual([{ a: '', d: '' }]);
+  });
+  it('« Enregistrer » sans rien toucher : ni correction, ni présence le matin, et le soir garde son rang', () => {
+    const avant = [{}, { a: '17:10' }];
+    const form = heuresInitiales(ROSE, avant, 2);
+    expect(heureCorrigee(avant, form)).toBe(false);
+    const gardees = presencesAGarder(form);
+    expect(gardees).toEqual([{}, { a: '17:10', d: '18:30' }]);
+    expect(gardees[0].a).toBeUndefined();
+    // La carte ne revient pas au matin
+    expect(nextAction({ planned: ROSE }, J({ pres: gardees }))).toBeNull();
+    expect(nextAction({ planned: ROSE }, J({ pres: [{}, { a: '17:10' }] }))).toEqual({ idx: 1, kind: 'd' });
+  });
+  it('plages vides en fin de liste retirées ; journée vidée : aucune présence', () => {
+    expect(presencesAGarder([{ a: '08:00', d: '12:00' }, { a: '', d: '' }])).toEqual([{ a: '08:00', d: '12:00' }]);
+    expect(presencesAGarder([{ a: '', d: '' }, { a: '', d: '' }])).toEqual([]);
+    expect(presencesAGarder([{ a: '08:00', d: '' }])).toEqual([{ a: '08:00', d: undefined }]);
+  });
+  it('« Revenir au planning » remet encore les heures prévues', () => {
+    const src = readFileSync('src/screens/Today.tsx', 'utf8');
+    expect(src).toContain('onClick={() => setPres(di.planned.map((p) => ({ a: p.start, d: p.end })))}><Icon name="undo" />Revenir au planning');
   });
 });
