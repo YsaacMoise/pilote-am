@@ -153,10 +153,16 @@ export interface Contract {
 }
 
 export type ChildAbs = 'malade_certif' | 'malade' | 'parents' | 'sans_solde_enfant';
-export type AmAbs = 'cp' | 'am_malade' | 'am_enfant_malade' | 'evenement' | 'sans_solde' | AmAbsNonGeree;
 /**
- * Absences de l'AM que l'app ne calcule pas (T-031, charte verrou 6) : elles se saisissent pour que l'app refuse les mois,
- * les congés et la fin de contrat concernés, au lieu de payer les jours comme travaillés.
+ * Type d'absence de l'AM enregistré. `non_gere` : absence que l'app ne calcule pas (T-031, charte verrou 6), saisie pour que
+ * l'app refuse les mois, les congés et la fin de contrat concernés. Décision du DG du 21/11/2026 (« sans la raison ») : le
+ * cas précis (maternité, accident du travail…) n'est pas enregistré, seulement « non gérée » et les dates.
+ */
+export type AmAbs = 'cp' | 'am_malade' | 'am_enfant_malade' | 'evenement' | 'sans_solde' | 'non_gere';
+/**
+ * Cas non gérés proposés dans la liste de choix de l'écran (T-031). Ils servent seulement à l'écran : l'app enregistre
+ * `non_gere`, jamais le cas choisi (décision du DG du 21/11/2026). Les saisies d'avant portent encore ces valeurs dans
+ * `type` : la lecture les ramène à `non_gere` (absences.ts).
  */
 export type AmAbsNonGeree = 'maternite' | 'paternite' | 'naissance_supp' | 'accident_travail';
 export const AM_ABS_NON_GEREES: AmAbsNonGeree[] = ['maternite', 'paternite', 'naissance_supp', 'accident_travail'];
@@ -191,7 +197,11 @@ export interface DayRec {
   kmEnfants?: number;
 }
 
-/** Nature d'un événement familial (CCN art. 48.1.3.1.1 et 48.1.3.1.2 ; C. trav. L3142-4) : la durée payée en dépend (T-023) */
+/**
+ * Nature d'un événement familial (CCN art. 48.1.3.1.1 et 48.1.3.1.2 ; C. trav. L3142-4) : la durée prévue en dépend (T-023).
+ * Décision du DG du 21/11/2026 : la nature sert seulement à l'écran de saisie, pour proposer la durée. Elle n'est jamais
+ * enregistrée : seule la durée l'est (`AmLeave.joursEvenement`).
+ */
 export type NatureEvenement = 'mariage' | 'mariage_enfant' | 'naissance' | 'deces_enfant' | 'deces_enfant_14' | 'deces_proche'
   | 'handicap_enfant' | 'deces_descendant' | 'deces_ascendant' | 'deuil';
 
@@ -200,8 +210,13 @@ export interface AmLeave {
   type: AmAbs;
   from: ISODate;
   to: ISODate;
-  /** Événement familial seulement. Absente (saisies d'avant T-023) : jours « à confirmer », ni payés ni retenus. */
-  nature?: NatureEvenement;
+  /**
+   * Événement familial seulement : nombre de jours ouvrables payés prévus pour cet événement, calculé à la saisie à partir
+   * de la nature choisie et de la date de début (evenements.ts, dureeEvenement). 0 : durée non gérée par l'app (jours « à
+   * confirmer »). Absent (saisies d'avant T-023, sans nature) : jours « à confirmer », ni payés ni retenus.
+   * Décision du DG du 21/11/2026 (« sans la raison ») : la nature n'est ni enregistrée, ni envoyée, ni affichée.
+   */
+  joursEvenement?: number;
 }
 
 export interface Settings {
@@ -271,6 +286,11 @@ export const AM_ABS_LABEL: Record<AmAbs, string> = {
   am_enfant_malade: 'Mon enfant est malade',
   evenement: 'Événement familial',
   sans_solde: 'Congé sans solde',
+  non_gere: 'Absence non gérée par l’app',
+};
+
+/** Libellés des cas non gérés, pour la liste de choix seulement (jamais enregistrés) */
+export const AM_ABS_NON_GEREE_LABEL: Record<AmAbsNonGeree, string> = {
   maternite: 'Congé maternité',
   paternite: 'Congé paternité et d’accueil de l’enfant',
   naissance_supp: 'Congé supplémentaire de naissance',

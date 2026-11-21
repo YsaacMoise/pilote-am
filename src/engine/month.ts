@@ -56,8 +56,11 @@ export function totalAVerser(r: MonthResult): number {
 
 export interface DeclLine { label: string; value: string; hint?: string }
 
-/** Les cases de la déclaration Pajemploi, dans l'ordre */
-export function declarationLines(ctx: Ctx, r: MonthResult): DeclLine[] {
+/**
+ * Les cases de la déclaration Pajemploi, dans l'ordre. `pourParents` (lien des parents) : le salaire à confirmer ne nomme
+ * pas sa raison (décision du DG du 21/11/2026 : aucun motif d'absence de l'AM sur le lien des parents).
+ */
+export function declarationLines(ctx: Ctx, r: MonthResult, pourParents = false): DeclLine[] {
   // T-031 : mois refusé (cas non géré) : aucune case à déclarer n'est proposée.
   if (r.nonGere.length) return [];
   const t = termsAt(ctx.c, `${r.month}-01`);
@@ -81,7 +84,7 @@ export function declarationLines(ctx: Ctx, r: MonthResult): DeclLine[] {
       value: hoursLabel(r.majContratMin + r.majMin),
       hint: `Au-delà de 45 h dans la semaine, prévues au contrat ou en plus, +${termsAt(ctx.c, `${r.month}-01`).majoration}\u00a0%`,
     },
-    { label: 'Salaire net', value: `${euros(r.netTotal)}${r.cpAConfirmer ? ' + congés à confirmer' : ''}${r.evenementAConfirmer ? ` + ${euros(r.evenementAConfirmer)} ${libelleSalaireAConfirmer(r)} à confirmer` : ''}` },
+    { label: 'Salaire net', value: `${euros(r.netTotal)}${r.cpAConfirmer ? ' + congés à confirmer' : ''}${r.evenementAConfirmer ? ` + ${euros(r.evenementAConfirmer)} ${pourParents ? 'de salaire' : libelleSalaireAConfirmer(r)} à confirmer` : ''}` },
     { label: 'Indemnités d’entretien', value: r.entretienAConfirmer ? `${euros(r.entretien)} + ${euros(r.entretienAConfirmer)} à confirmer` : euros(r.entretien), hint: `${r.presenceDays} jour${r.presenceDays > 1 ? 's' : ''} d’accueil` },
     { label: 'Frais de repas', value: euros(r.repas) },
     { label: 'Frais kilométriques', value: r.kmAConfirmer ? `${euros(r.km)} + ${r.kmAConfirmer} km à confirmer` : euros(r.km) },
@@ -100,7 +103,7 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
       `Merci ! ${amName}`.trim(),
     ].join('\n');
   }
-  const lines = declarationLines(ctx, r);
+  const lines = declarationLines(ctx, r, true);
   const out: string[] = [];
   out.push(`Bonjour, voici les éléments à déclarer sur Pajemploi pour ${c.child}, ${monthLabel(r.month)} :`);
   out.push('');
@@ -116,11 +119,12 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   if (r.cpIndemnite) out.push(`• Indemnité de congés payés : ${euros(r.cpIndemnite)}`);
   if (r.cpComplement) out.push(`• Complément de congés payés : ${euros(r.cpComplement)}`);
   if (r.cpAConfirmer) out.push('• Indemnité de congés payés : à confirmer ensemble');
-  if (r.evenementAConfirmer) out.push(`• Salaire ${libelleSalaireAConfirmer(r)} : ${euros(r.evenementAConfirmer)} à confirmer ensemble`);
+  // Décision du DG du 21/11/2026 : comme le lien des parents, le texte envoyé aux parents ne nomme pas la raison.
+  if (r.evenementAConfirmer) out.push(`• Salaire : + ${euros(r.evenementAConfirmer)} de salaire à confirmer ensemble`);
   out.push('');
   if (r.entretienAConfirmer) out.push(`• Indemnité d’entretien : ${euros(r.entretienAConfirmer)} à confirmer ensemble (${raisonsEntretienAConfirmer(r)})`);
   if (r.kmAConfirmer) out.push(`• Frais kilométriques : ${r.kmAConfirmer} km à confirmer ensemble (familles qui ont demandé le trajet, enfants dans la voiture)`);
-  const aConfirmer = partsAConfirmer(r);
+  const aConfirmer = partsAConfirmer(r, true);
   out.push(`Total à me verser : ${euros(totalAVerser(r))}${aConfirmer.length ? `, sans ${aConfirmer.join(' ni ')} à confirmer` : ''}`);
   out.push('');
   out.push('Calcul fait avec l’application Arvela, outil d’aide indépendant de l’Urssaf : la déclaration Pajemploi fait foi.');
@@ -138,11 +142,15 @@ export function raisonsEntretienAConfirmer(r: Pick<MonthResult, 'entretienJoursD
   return out.join(' ; ');
 }
 
-/** Parts du mois sorties du total parce qu'elles sont à confirmer (T-025 C-5 : à dire partout où le total s'affiche) */
-export function partsAConfirmer(r: Pick<MonthResult, 'cpAConfirmer' | 'evenementAConfirmer' | 'kmAConfirmer'> & Partial<Pick<MonthResult, 'joursCpAConfirmer' | 'joursEvenementAConfirmer' | 'joursMaladieAConfirmer' | 'entretienAConfirmer'>>): string[] {
+/**
+ * Parts du mois sorties du total parce qu'elles sont à confirmer (T-025 C-5 : à dire partout où le total s'affiche).
+ * `pourParents` : l'événement familial devient « une part du salaire » (DG, 21/11/2026 : aucun motif d'absence de l'AM
+ * sur le lien des parents).
+ */
+export function partsAConfirmer(r: Pick<MonthResult, 'cpAConfirmer' | 'evenementAConfirmer' | 'kmAConfirmer'> & Partial<Pick<MonthResult, 'joursCpAConfirmer' | 'joursEvenementAConfirmer' | 'joursMaladieAConfirmer' | 'entretienAConfirmer'>>, pourParents = false): string[] {
   // T-030 : un salaire à confirmer peut venir de congés pris peut-être au-delà des droits (année complète, A-23).
   // T-033 : ou de jours d'enfant malade (art. 105, lectures divergentes).
   const salaire = !r.evenementAConfirmer ? [] : naturesAConfirmer(r).map((n) => ({
-    evenement: 'l’événement familial', cp: 'les congés pris au-delà des droits', maladie: 'les jours d’enfant malade' })[n]);
+    evenement: pourParents ? 'une part du salaire' : 'l’événement familial', cp: 'les congés pris au-delà des droits', maladie: 'les jours d’enfant malade' })[n]);
   return [r.cpAConfirmer ? 'les congés payés' : '', ...salaire, r.entretienAConfirmer ? 'une part de l’entretien' : '', r.kmAConfirmer ? 'les kilomètres' : ''].filter(Boolean);
 }

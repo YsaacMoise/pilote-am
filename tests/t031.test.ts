@@ -3,6 +3,7 @@
 // ce sont des choix de l'app (refus, signal), pas des montants tirés d'un texte. Aucun montant attendu n'est calculé ici.
 import { describe, expect, it } from 'vitest';
 import type { AmLeave, Contract, Planning } from '../src/engine/model';
+import { normaliserAbsence, type AbsenceLue } from '../src/engine/absences';
 import { makeCtx, monthBase } from '../src/engine/payroll';
 import { fiscalYear } from '../src/engine/fiscal';
 import { computeMonth, declarationLines, declarationText } from '../src/engine/month';
@@ -45,7 +46,7 @@ describe('T-028 : congés payés à confirmer dans le compteur fiscal', () => {
 
 // Contrat qui a répondu aux questions T-031 : aucun cas non géré
 const ok = (over: Partial<Contract> = {}) => contract({ alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false, ...over });
-const leave = (type: AmLeave['type'], from: string, to: string): AmLeave => ({ id: type, type, from, to });
+const leave = (type: AbsenceLue['type'], from: string, to: string): AmLeave => normaliserAbsence({ id: type, type, from, to });
 
 describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
   for (const [nom, over, motif] of [
@@ -115,7 +116,7 @@ describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
 });
 
 describe('T-031 : absences non gérées (congé maternité, paternité, de naissance, accident du travail)', () => {
-  for (const type of ['maternite', 'paternite', 'naissance_supp', 'accident_travail'] as AmLeave['type'][]) {
+  for (const type of ['maternite', 'paternite', 'naissance_supp', 'accident_travail'] as AbsenceLue['type'][]) {
     it(`${type} : seuls les mois touchés sont refusés`, () => {
       const ctx = makeCtx(ok(), [], [leave(type, '2026-03-02', '2026-04-10')], '2026-10-31');
       expect(computeMonth(ctx, '2026-03').nonGere.join(' ')).toMatch(/du 02\/03.* au 10\/04.*: non géré/);
@@ -126,12 +127,12 @@ describe('T-031 : absences non gérées (congé maternité, paternité, de naiss
   }
   it('la période de congés qui contient l’absence passe à confirmer, la suivante non', () => {
     const ctx = makeCtx(ok(), [], [leave('maternite', '2026-03-02', '2026-04-10')], '2027-10-31');
-    expect(acquisition(ctx, 2025).aConfirmer?.message).toMatch(/Congé maternité/);
+    expect(acquisition(ctx, 2025).aConfirmer?.message).toMatch(/Absence non gérée par l’app/);
     expect(acquisition(ctx, 2026).aConfirmer).toBeUndefined();
   });
   it('fin de contrat après une absence non gérée : aucun montant', () => {
     const f = finDeContrat(makeCtx(ok(), [], [leave('accident_travail', '2026-03-02', '2026-03-20')], '2026-10-31'), '2026-10-15', 'retrait');
-    expect(f.nonGere?.join(' ')).toMatch(/Accident du travail/);
+    expect(f.nonGere?.join(' ')).toMatch(/Absence non gérée par l’app du 02\/03/);
     expect(f.cpIndemnite).toBe(0);
   });
 });

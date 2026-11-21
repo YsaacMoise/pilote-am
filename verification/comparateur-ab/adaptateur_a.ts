@@ -25,6 +25,7 @@ import { entretienPlancher, netToBrut, ratesAt } from '__A_RACINE__/src/engine/r
 // T-027 : fonctions publiques du moteur A pour les kilomètres et les événements familiaux (signatures seulement).
 import { controleKm } from '__A_RACINE__/src/engine/km';
 import { dureeEvenement } from '__A_RACINE__/src/engine/evenements';
+import { normaliserAbsence } from '__A_RACINE__/src/engine/absences';
 
 type Sortie = { statut: 'ok' | 'absent' | 'refus'; valeur?: unknown; note?: string; non_comparable?: boolean; lectures?: unknown[] };
 type Sorties = Record<string, Sortie>;
@@ -66,8 +67,10 @@ function contexte(s: any): Ctx {
     abs: j.abs, extra: j.extra, ferieTravaille: j.ferie_travaille, repas: j.repas, km: j.km,
     kmPartage: j.km_partage === undefined ? undefined : j.km_partage, kmEnfants: j.km_enfants ?? undefined,
   }));
-  const leaves: AmLeave[] = (s.evenements?.absences_am ?? []).map((l: any, i: number) => ({
-    id: `l${i}`, type: l.type, from: l.du, to: l.au, nature: l.nature ?? undefined,
+  // Décision du DG du 21/11/2026 (« sans la raison ») : l'app enregistre la durée de l'événement, pas sa nature ; la
+  // situation donne la nature, ramenée ici à la forme enregistrée comme le fait l'écran de saisie (absences.ts).
+  const leaves: AmLeave[] = (s.evenements?.absences_am ?? []).map((l: any, i: number) => normaliserAbsence({
+    id: `l${i}`, type: l.type, from: l.du, to: l.au, ...(l.nature ? { nature: l.nature } : {}),
   }));
   // T-033 (M6) : âge de l'AM (R-CP-03) passé comme dans l'app : dernière année y où elle a moins de 21 ans au 30 avril y.
   // La situation donne l'âge au début du contrat ; on le rapporte à l'année de début.

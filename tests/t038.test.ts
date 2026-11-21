@@ -14,6 +14,7 @@ import { RULES } from '../src/screens/Regles';
 import { NON_GERE_MAYOTTE, nonGeresContrat } from '../src/engine/nonGeres';
 import { acquisition } from '../src/engine/conges';
 import { libelleDureeSaisie, statutJourEvenement } from '../src/engine/evenements';
+import { normaliserAbsence } from '../src/engine/absences';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
   const p: Planning = {};
@@ -146,7 +147,7 @@ describe('T-038 R-1 : décès de l’enfant, indemnité égale au préavis, prem
 describe('T-038 M-5 : pas de régularisation d’avenant si une absence non gérée tombe dans sa période', () => {
   it('accident du travail les 10 et 11/03/2026, avenant vers l’année complète au 01/09/2026 : rien versé, refus clair', () => {
     const av = { avenants: [{ id: 'a1', from: '2026-09-01', changes: { yearType: 'complete' as const, weeks: 52 } }] };
-    const at: AmLeave = { id: 'at', type: 'accident_travail', from: '2026-03-10', to: '2026-03-11' };
+    const at: AmLeave = { id: 'at', type: 'non_gere', from: '2026-03-10', to: '2026-03-11' };
     const b = monthBase(makeCtx(contract(av), [], [at], '2026-11-18'), '2026-09');
     expect(b.regulAvenant).toBeUndefined();
     expect(b.alerts.some((a) => a.startsWith('Régularisation à l’avenant du 01/09 non calculée : un cas non géré'))).toBe(true);
@@ -165,7 +166,7 @@ describe('T-038 point 10 (G-6) : un jour de l’enfant noté « sans solde » ne
 
 describe('T-038 AC-3 : écran de saisie d’un événement familial, le texte suit le moteur', () => {
   const statut = (nature: Parameters<typeof libelleDureeSaisie>[0], from: string) =>
-    statutJourEvenement({ id: 'e', type: 'evenement', from, to: from, nature }, from);
+    statutJourEvenement(normaliserAbsence({ id: 'e', type: 'evenement', from, to: from, nature }), from);
   it('décès d’un enfant en 2022 : le moteur met « à confirmer », l’écran n’annonce plus « 5 jours ouvrables payés »', () => {
     expect(statut('deces_enfant', '2022-06-01').paye).toBe(false);
     expect(libelleDureeSaisie('deces_enfant', '2022-06-01')).toBe('Période non gérée (avant le 01/05/2024) : durée à vérifier avec les parents');
