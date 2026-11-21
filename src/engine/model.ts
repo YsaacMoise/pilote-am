@@ -213,7 +213,8 @@ export interface AmLeave {
   /**
    * Événement familial seulement : nombre de jours ouvrables payés prévus pour cet événement, calculé à la saisie à partir
    * de la nature choisie et de la date de début (evenements.ts, dureeEvenement). 0 : durée non gérée par l'app (jours « à
-   * confirmer »). Absent (saisies d'avant T-023, sans nature) : jours « à confirmer », ni payés ni retenus.
+   * confirmer »). Absent (absence saisie avec l'app en ligne avant la n° 52, sans nature) : jours payés comme avant
+   * (décision du DG du 21/11/2026, « Payer comme avant »), hors de tout groupe « suite de ».
    * Décision du DG du 21/11/2026 (« sans la raison ») : la nature n'est ni enregistrée, ni envoyée, ni affichée.
    */
   joursEvenement?: number;

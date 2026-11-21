@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AmLeave, Bulletin, Contract, NatureEvenement, Planning } from '../src/engine/model';
 import { makeCtx } from '../src/engine/payroll';
-import { computeMonth, declarationLines, declarationText } from '../src/engine/month';
+import { computeMonth, declarationLines } from '../src/engine/month';
 import { dureeEvenement } from '../src/engine/evenements';
 import { normaliserAbsence, normaliserAbsences, type AbsenceLue } from '../src/engine/absences';
 import { controleKm, SUIVI_ARRETES } from '../src/engine/km';
@@ -182,13 +182,13 @@ describe('T-023 (2) événements familiaux, R-ABS-06', () => {
     expect(r.retenue).toBeGreaterThan(0);
   });
 
-  it('événement déjà saisi sans nature : à confirmer, ni payé ni retenu en silence', () => {
+  it('événement saisi avec l’app en ligne (sans nature ni durée) : payé comme avant (décision du DG du 21/11/2026)', () => {
     const leaves = [ev('2026-10-05', '2026-10-05')];
     const r = mois(leaves);
-    expect(r.evenementAConfirmer).toBeGreaterThan(0);
+    expect(r.evenementAConfirmer).toBe(0);
     expect(r.retenue).toBe(0);
-    expect(r.alerts.join(' ')).toMatch(/durée payée n’est pas renseignée/);
-    expect(declarationText(makeCtx(c, [], leaves, '2026-12-31'), r, 'Ana')).toMatch(/sans une part du salaire à confirmer/);
+    expect(r.net).toBe(sansAbsence.net);
+    expect(r.alerts.join(' ')).not.toMatch(/durée|Événement familial/);
   });
 
   it('annonce d’un handicap le 02/03/2026 : 5 jours (avant la loi du 12 juin 2026) ; le 15/06/2026 : 10 jours', () => {
@@ -441,7 +441,8 @@ describe('T-025 C-5 : le salaire d’événement à confirmer n’est retiré en
   // T-030 : contrat au 1er juin 2025 (période de référence entière) ; une embauche au 1er septembre rend les jours acquis
   // à confirmer (A-23 : 23 jours en mois, 25 en semaines), ce qui masquerait l'effet testé ici.
   const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01' });
-  const sansNature: AmLeave = { id: 'x', type: 'evenement', from: '2026-03-02', to: '2026-03-02' };
+  // Décision du DG du 21/11/2026 : l'absence sans durée est payée comme avant ; durée non gérée (0) pour un jour à confirmer.
+  const sansNature: AmLeave = { id: 'x', type: 'evenement', from: '2026-03-02', to: '2026-03-02', joursEvenement: 0 };
   const ctx = (leaves: AmLeave[], t = '2026-10-31') => makeCtx(c, [], leaves, t);
 
   it('indemnité de rupture (1/80e des salaires) : à confirmer, avec la raison', () => {
@@ -511,7 +512,7 @@ describe('T-025 C-7 : mois terminé avec des montants à confirmer (anciennes sa
   // Pas de texte : consigne de l'app (constat C-7 de la relecture T-025). Vérifie seulement que la phrase apparaît
   // sur un mois terminé et pas sur le mois en cours.
   const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01', kmTaux: 41, kmCv: 5 });
-  const sansNature: AmLeave = { id: 'x', type: 'evenement', from: '2026-10-05', to: '2026-10-05' };
+  const sansNature: AmLeave = { id: 'x', type: 'evenement', from: '2026-10-05', to: '2026-10-05', joursEvenement: 0 };
   it('mois terminé : la phrase « déjà déclaré à Pajemploi » est ajoutée ; mois en cours : non', () => {
     expect(computeMonth(makeCtx(c, [], [sansNature], '2026-11-15'), '2026-10').alerts.join(' ')).toMatch(/déjà déclaré à Pajemploi/);
     expect(computeMonth(makeCtx(c, [], [sansNature], '2026-10-20'), '2026-10').alerts.join(' ')).not.toMatch(/déjà déclaré à Pajemploi/);

@@ -103,7 +103,8 @@ export const LIEN_EVENEMENT_JOURS = 15;
  * la durée de référence (relecture de la n° 52, cas N1 et N2 : une saisie au milieu ou une ressaisie rejoint le groupe).
  */
 export function groupeEvenement(l: AmLeave, leaves: AmLeave[]): AmLeave[] {
-  const ev = leaves.filter((x) => x.type === 'evenement' && x !== l && x.id !== l.id);
+  // Une absence sans durée (forme de main) n'entre dans aucun groupe : elle est payée comme sur main.
+  const ev = leaves.filter((x) => x.type === 'evenement' && x.joursEvenement !== undefined && x !== l && x.id !== l.id);
   const groupe = [l];
   for (let k = 0; k < groupe.length; k++) {
     const cur = groupe[k];
@@ -128,7 +129,7 @@ export function chaineEvenement(l: AmLeave, leaves: AmLeave[]): AmLeave[] {
 export function evenementPrecedentProche(from: ISODate, leaves: AmLeave[]): AmLeave | undefined {
   let prev: AmLeave | undefined;
   for (const p of leaves) {
-    if (p.type !== 'evenement' || p.from >= from || daysBetween(p.to, from) > LIEN_EVENEMENT_JOURS) continue;
+    if (p.type !== 'evenement' || p.joursEvenement === undefined || p.from >= from || daysBetween(p.to, from) > LIEN_EVENEMENT_JOURS) continue;
     if (!prev || p.to > prev.to) prev = p;
   }
   return prev;
@@ -141,7 +142,7 @@ export function evenementPrecedentProche(from: ISODate, leaves: AmLeave[]): AmLe
 export function evenementSuivantProche(from: ISODate, to: ISODate, leaves: AmLeave[]): AmLeave | undefined {
   let suiv: AmLeave | undefined;
   for (const q of leaves) {
-    if (q.type !== 'evenement' || q.from <= from || daysBetween(to, q.from) > LIEN_EVENEMENT_JOURS) continue;
+    if (q.type !== 'evenement' || q.joursEvenement === undefined || q.from <= from || daysBetween(to, q.from) > LIEN_EVENEMENT_JOURS) continue;
     if (!suiv || q.from < suiv.from) suiv = q;
   }
   return suiv;
@@ -173,9 +174,9 @@ function joursCouverts(chaine: AmLeave[], d: ISODate): ISODate[] {
  */
 export function statutJourEvenement(l: AmLeave, d: ISODate, leaves: AmLeave[] = [l]): { paye: true } | { paye: false; raison: string } {
   const qui = `Événement familial du ${jjmm(l.from)} au ${jjmm(l.to)}`;
-  if (l.joursEvenement === undefined) {
-    return { paye: false, raison: `${qui} : la durée payée n’est pas renseignée (absence saisie avant la mise à jour). Dans Congés, supprime cette absence et saisis-la à nouveau en choisissant l’événement : l’app propose la durée.` };
-  }
+  // Décision du DG du 21/11/2026 (« Payer comme avant ») : absence saisie avec l'app en ligne (main, 87c37f3), sans
+  // nature ni durée : payée comme main la paie (jour payé, dans le diviseur des retenues), sans « à confirmer ».
+  if (l.joursEvenement === undefined) return { paye: true };
   const chaine = chaineEvenement(l, leaves);
   const debut = chaine[0];
   if (debut.from < EVENEMENTS_GERES_DEPUIS) {

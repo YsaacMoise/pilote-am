@@ -37,8 +37,8 @@ function contract(over: Partial<Contract> = {}): Contract {
     balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 0, ...over,
   };
 }
-// Événement familial sans nature : jours « à confirmer » (statutJourEvenement). Congé sans solde : jours retenus (T-034).
-const EVENEMENT: AmLeave = { id: 'e', type: 'evenement', from: '2026-03-10', to: '2026-03-11' };
+// Événement familial de durée non gérée (0) : jours « à confirmer » (statutJourEvenement). Congé sans solde : jours retenus (T-034).
+const EVENEMENT: AmLeave = { id: 'e', type: 'evenement', from: '2026-03-10', to: '2026-03-11', joursEvenement: 0 };
 const SANS_SOLDE: AmLeave = { id: 's', type: 'sans_solde', from: '2026-03-10', to: '2026-03-11' };
 const fin = (leaves: AmLeave[], c = contract()) => finDeContrat(makeCtx(c, [], leaves, '2026-11-18'), '2026-10-28', 'retrait');
 
