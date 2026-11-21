@@ -155,8 +155,8 @@ Refus : M-06 (congé de deuil), EVT-OUVRES-2021, EVT-VERSION, EVT-FERIE, HORS-CC
 | `duree_preavis(auteur, debut_accueil, date_envoi, date_premiere_presentation, motif)` | auteur `employeur` / `am` | `preavis` : None, {jours: 8 ou 15} ou {mois: 1} ; démission de 3 mois à 1 an : refus PREAVIS-DEMISSION-3-12 ; ancienneté à la date d'envoi (CCN 120) | R-FIN-02 corrigée (T-027), R-FIN-03 |
 | `indemnite_compensatrice_preavis(type_annee, mois)` | liste de mois | `indemnite_centimes` | R-FIN-05 |
 | `jours_a_indemniser(jours_acquis, jours_deja_payes)` | | `jours` | R-FIN-10 |
-| `iccp(type_annee, motif, periodes, heures_hebdo_min, taux)` | périodes (plus ancienne d'abord) | `iccp_centimes`, détail | R-FIN-09, 10, R-CP-06 |
-| `indemnite_rupture(motif, auteur, debut_accueil, date_reference, salaires_bruts, iccp, icp, preavis, regularisation)` | | `indemnite_centimes` (1/80) | R-FIN-06, 07, 08 |
+| `iccp(type_annee, motif, periodes, heures_hebdo_min, taux)` | périodes (plus ancienne d'abord) ; dernière période : `regularisation_due_centimes`, `regularisation_a_confirmer` | `iccp_centimes`, détail | R-FIN-09, 10, R-CP-06 |
+| `indemnite_rupture(motif, auteur, debut_accueil, date_reference, salaires_bruts, iccp, icp, preavis, regularisation, sommes_a_confirmer)` | | `indemnite_centimes` (1/80), `assiette_centimes` | R-FIN-06, 07, 08 |
 | `regularisation_annuelle(type_annee, mensualises_verses, taux, heures_effectuees_min, composantes)` | | `ecart_centimes`, paiement 0 | R-MENS-06 |
 | `regularisation_finale(type_annee, ecarts_annuels_signes, mensualises_verses, taux, heures_effectuees_min, composantes)` | | `solde_centimes`, `versement_centimes` (au profit de l'AM seulement) | R-FIN-11 |
 | `indemnite_precarite_cdd(remuneration_totale, exclusion=None)` | | `indemnite_centimes` (10 %) | R-FIN-13 corrigée |
@@ -171,9 +171,14 @@ Choix signalés à la direction :
 - R-CP-03 « acquis au 31 mai » : aucun jour pour enfant à charge si la période s'arrête avant le 31 mai.
 - Régularisation finale « seulement au profit de l'AM » : consigne de la mission (A-07).
 
+T-050b (MB6, 21/11/2026), d'après regles/t050-trois-regles.md, points 2 et 3 :
+- Assiette du 1/80 (A-45). CCN art. 121.1 : « total des salaires bruts perçus pendant la durée du contrat », seule exclusion « les indemnités non soumises à contributions et cotisations sociales ». L'ICCP (ICCP : indemnité compensatrice de congés payés, les deux périodes), les CP (congés payés) payés pendant le contrat et la régularisation définitive (art. 124) sont des salaires bruts : ils entrent dans l'assiette. Contrôle : 11 662,78 € (Durand) et 9 148,57 € (Bertrand), fiches DDETS 31 du 19/01/2023. Bertrand donne 114,36 € au centime le plus proche ; la fiche écrit 114,35 € (troncature, SUS-01).
+- Dixième de la dernière période (A-50). La régularisation due à l'AM entre dans la base (CCN art. 123.2, 48.1.1.5, 48.1.1.1, 124 ; CASF L423-6). Elle n'est plus testée « avec et sans ». Un solde en faveur de l'employeur compte pour 0 : il ne se retire pas de la base. Contrôle : Bertrand, 2e période, 308,57 € (base sans ICCP précédente) ; la fiche retient 348,57 € avec l'ICCP précédente.
+- Refus gardés : indemnité de préavis dans l'assiette du 1/80 (A-45, art. 64.2 non relu, point rouvert par la direction) ; régularisation négative dans le 1/80 (A-45, aucun texte lu) ; ICCP de la période précédente dans le dixième (A-50, SUS-04 toujours ouvert) ; jours déjà payés sur une période (A-50) ; ICCP ou régularisation non calculée (ASSIETTE-A-CONFIRMER : jamais une assiette incomplète en silence).
+
 Décès de l'enfant (T-035a) : indemnité au 1/80 due quelle que soit l'ancienneté (CCN 119.4.2, service-public F16842) ; A-47 levée.
 
-Refus : A-02, A-06, A-19, A-21, PREAVIS-DEMISSION-3-12, A-45, A-48, A-49, A-50, A-26, A-28, LIMITE-ANCIENNETE, DATE-MOIS, EXCLU-INAPTITUDE, EXCLU-RETRAITE, EXCLU-DECES-PARTIE, EXCLU-CDD-ANTICIPE, EXCLU-SAISONNIER. La date de fin du préavis n'est pas calculée (méthode non écrite, R-FIN-03).
+Refus : A-02, A-06, A-19, A-21, PREAVIS-DEMISSION-3-12, A-45, ASSIETTE-A-CONFIRMER, A-48, A-49, A-50, A-26, A-28, LIMITE-ANCIENNETE, DATE-MOIS, EXCLU-INAPTITUDE, EXCLU-RETRAITE, EXCLU-DECES-PARTIE, EXCLU-CDD-ANTICIPE, EXCLU-SAISONNIER. La date de fin du préavis n'est pas calculée (méthode non écrite, R-FIN-03).
 
 ### Périmètre et net (`perimetre.py`)
 
@@ -190,7 +195,8 @@ Engagement réciproque rompu avant l'embauche (R-ESS-04), durée de la période 
 
 - `moteur_b/` : code (commun, baremes, calendrier, mensualisation, heures, absences, conges, indemnites, fin_contrat, perimetre).
 - `tests/test_cas_officiels.py` : 80 tests tirés des cas officiels.
-- `tests/test_refus.py` : 57 tests des refus (sans montant attendu).
+- `tests/test_refus.py` : 50 tests des refus (sans montant attendu).
+- `tests/test_t050b.py` : 14 tests (assiette du 1/80, régularisation dans le dixième de fin), attendus tirés des fiches DDETS 31 (T-050b).
 - `tests/test_t027.py` : 29 tests (kilomètres, événements familiaux, préavis), attendus tirés des textes.
 - `tests/test_t039.py` : 5 tests (absence de l'enfant « sans solde »), attendus tirés des textes (T-039-MB4.md).
 - `tests/test_t035.py` : 9 tests (embauche en cours de mois, décès de l'enfant, entretien sous le minimum), attendus tirés des textes (T-035-MB3.md).

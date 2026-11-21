@@ -143,11 +143,19 @@ def iccp(type_annee, motif, periodes, heures_hebdo_minutes, taux_horaire_centime
       {"jours_acquis", "jours_payes", "salaires_bruts_periode_centimes",
        "icp_versee_pendant_periode_centimes": 0, "icp_annee_precedente_centimes": 0,
        "jours_supplementaires": 0, "heures_conge_minutes": None,
+       "regularisation_due_centimes": 0, "regularisation_a_confirmer": False,
        "sommes_assiette_ambigues": {nom: centimes}}.
     Periode dont une partie des jours est deja payee : refus A-50 (repartition
-    non ecrite). L'ICCP calculee pour la periode precedente et les sommes
-    ambigues (regularisation, etc.) sont testees avec et sans inclusion dans
-    l'assiette du dixieme ; si cela change le resultat : refus A-50 (SUS-04).
+    non ecrite). L'ICCP calculee pour la periode precedente et les autres sommes
+    ambigues sont testees avec et sans inclusion dans l'assiette du dixieme ;
+    si cela change le resultat : refus A-50 (SUS-04, toujours ouvert).
+    T-050b (A-50, regularisation) : la regularisation definitive due a l'AM
+    (CCN art. 124, versee a la date de fin) entre dans la base du dixieme de la
+    derniere periode (CCN art. 123.2, 48.1.1.5, 48.1.1.1 ; CASF L423-6 ; fiche
+    DDETS 31 5/5 du 05/11/2024). Elle n'est plus testee « avec et sans ». Seule
+    la derniere periode peut la porter. Un solde negatif (en faveur de
+    l'employeur) ne se retire pas de la base : il compte pour 0. Montant « a
+    confirmer » : refus ASSIETTE-A-CONFIRMER (la base en depend).
     Sortie : iccp_centimes, detail par periode."""
     regles = ["R-FIN-09", "R-FIN-10"]
     type_annee_valide(type_annee)
@@ -160,6 +168,15 @@ def iccp(type_annee, motif, periodes, heures_hebdo_minutes, taux_horaire_centime
     detail = []
     precedente = 0
     for i, p in enumerate(periodes):
+        derniere = i == len(periodes) - 1
+        reg = p.get("regularisation_due_centimes", 0) or 0
+        if not isinstance(reg, int) or isinstance(reg, bool):
+            raise ErreurSaisie(f"periodes[{i}].regularisation_due_centimes : entier attendu.")
+        reg_conf = p.get("regularisation_a_confirmer", False)
+        if (reg or reg_conf) and not derniere:
+            raise ErreurSaisie(f"periodes[{i}] : la regularisation de fin ne porte que sur la derniere periode.")
+        if any("regularisation" in str(nom) for nom in (p.get("sommes_assiette_ambigues") or {})):
+            raise ErreurSaisie("Regularisation : utiliser regularisation_due_centimes (T-050b, plus ambigue).")
         a = entier(p.get("jours_acquis"), f"periodes[{i}].jours_acquis")
         pay = entier(p.get("jours_payes", 0), f"periodes[{i}].jours_payes")
         if pay > a:
@@ -170,13 +187,19 @@ def iccp(type_annee, motif, periodes, heures_hebdo_minutes, taux_horaire_centime
         elif pay > 0:
             raise NonGere("A-50", regles, precision=f"Periode {i + 1} : {pay} jours deja payes sur {a}.")
         else:
+            if reg_conf:
+                raise NonGere("ASSIETTE-A-CONFIRMER", regles + ["R-CP-06"], precision=(
+                    "Regularisation de fin a confirmer : la base du dixieme de la derniere periode en depend."),
+                    details={"sommes_a_confirmer": ["regularisation"]})
+            base_periode = entier(p.get("salaires_bruts_periode_centimes"),
+                                  f"periodes[{i}].salaires_bruts_periode_centimes") + max(0, reg)
             amb = {}
             for nom, montant in (p.get("sommes_assiette_ambigues") or {}).items():
                 amb[nom] = (montant, "A-50")
             if precedente:
                 amb["iccp_periode_precedente"] = (precedente, "A-50")
             val, methode, _, _ = _indemnite_cp(
-                a, heures_hebdo_minutes, taux_horaire_centimes, p.get("salaires_bruts_periode_centimes"),
+                a, heures_hebdo_minutes, taux_horaire_centimes, base_periode,
                 p.get("icp_versee_pendant_periode_centimes", 0), p.get("icp_annee_precedente_centimes", 0),
                 p.get("heures_conge_minutes"), p.get("jours_supplementaires", 0), amb, regles + ["R-CP-06"])
             v = vers_centimes(val, f"ICCP periode {i + 1}", regles)
@@ -188,14 +211,27 @@ def iccp(type_annee, motif, periodes, heures_hebdo_minutes, taux_horaire_centime
 
 @api("R-FIN-06", "R-FIN-07", "R-FIN-08", "R-ESS-03")
 def indemnite_rupture(motif, auteur, date_debut_accueil, date_reference, salaires_bruts_centimes,
-                      iccp_centimes=0, icp_centimes=0, indemnite_preavis_centimes=0, regularisation_centimes=0):
+                      iccp_centimes=0, icp_centimes=0, indemnite_preavis_centimes=0, regularisation_centimes=0,
+                      sommes_a_confirmer=()):
     """Indemnite de rupture (R-FIN-06, CCN art. 121.1) : due en cas de retrait
     de l'enfant (auteur « employeur ») apres au moins 9 mois d'accueil ; non due
     en cas de demission, d'essai, de faute grave ou lourde, d'agrement.
     Montant = 1/80 des salaires bruts du contrat, hors indemnites d'entretien,
-    de repas et kilometriques. L'inclusion de l'ICCP, des CP payes, du preavis et
-    de la regularisation n'est pas tranchee (A-45) : si l'une de ces sommes est
-    non nulle, refus A-45.
+    de repas et kilometriques.
+    T-050b (A-45) : CCN art. 121.1, « total des salaires bruts perçus pendant la
+    duree du contrat », « hors indemnites non soumises a contributions et
+    cotisations sociales ». L'ICCP (les deux periodes, art. 123 et 48.1.1.5 :
+    « caractere de salaire »), les CP payes pendant le contrat (48.1.1.5) et la
+    regularisation definitive (art. 124, soumise a cotisations) sont des
+    salaires bruts : ils entrent dans l'assiette. Fiches DDETS 31 du 19/01/2023 :
+    11 662,78 EUR (Durand) et 9 148,57 EUR (Bertrand).
+    Restent refuses :
+    - indemnite de preavis non nulle : A-45 (art. 64.2 non relu par T-050,
+      point rouvert par la direction) ;
+    - regularisation negative : A-45 (un solde en faveur de l'employeur n'est
+      pas un salaire percu ; aucun texte lu ne dit s'il se retire) ;
+    - sommes_a_confirmer non vide (ICCP ou regularisation non calculee) :
+      ASSIETTE-A-CONFIRMER (jamais une assiette incomplete en silence).
     Deces de l'enfant (R-FIN-07) : meme calcul, du quelle que soit l'anciennete
     (T-035a : CCN art. 119.4.2, l'indemnite est due et seul son « montant » suit
     l'art. 121-1 ; service-public F16842 : « cette condition d'anciennete est
@@ -218,14 +254,27 @@ def indemnite_rupture(motif, auteur, date_debut_accueil, date_reference, salaire
         neuf_mois = anciennete_atteinte(date_debut_accueil, date_reference, 9, regles)
     if not neuf_mois:
         return resultat_ok(indemnite_rupture.regles, {"indemnite_centimes": 0, "raison": "moins de 9 mois d'accueil"})
+    a_confirmer = sorted(str(x) for x in (sommes_a_confirmer or ()))
+    if a_confirmer:
+        raise NonGere("ASSIETTE-A-CONFIRMER", regles, precision=(
+            "Assiette du 1/80 incomplete : " + ", ".join(a_confirmer) + " non calcule(s)."),
+            details={"sommes_a_confirmer": a_confirmer})
     base = entier(salaires_bruts_centimes, "salaires_bruts_centimes")
-    autres = {n: entier(v, n) for n, v in (("iccp_centimes", iccp_centimes), ("icp_centimes", icp_centimes),
-                                            ("indemnite_preavis_centimes", indemnite_preavis_centimes),
-                                            ("regularisation_centimes", regularisation_centimes))}
-    if any(autres.values()):
-        raise NonGere("A-45", regles, details={"sommes_ambigues_centimes": {k: v for k, v in autres.items() if v}})
+    preavis = entier(indemnite_preavis_centimes, "indemnite_preavis_centimes")
+    if preavis:
+        raise NonGere("A-45", regles, precision=(
+            "Indemnite de preavis dans l'assiette du 1/80 : point rouvert (CCN art. 64.2 non relu, T-050)."),
+            details={"sommes_ambigues_centimes": {"indemnite_preavis_centimes": preavis}})
+    if isinstance(regularisation_centimes, int) and not isinstance(regularisation_centimes, bool) \
+            and regularisation_centimes < 0:
+        raise NonGere("A-45", regles, precision="Regularisation negative : effet sur l'assiette non ecrit.",
+                      details={"sommes_ambigues_centimes": {"regularisation_centimes": regularisation_centimes}})
+    incluses = {n: entier(v, n) for n, v in (("iccp_centimes", iccp_centimes), ("icp_centimes", icp_centimes),
+                                              ("regularisation_centimes", regularisation_centimes))}
+    assiette = base + sum(incluses.values())
     return resultat_ok(indemnite_rupture.regles,
-                       {"indemnite_centimes": vers_centimes(Fraction(base, 80), "indemnite de rupture", regles)})
+                       {"indemnite_centimes": vers_centimes(Fraction(assiette, 80), "indemnite de rupture", regles),
+                        "assiette_centimes": assiette})
 
 
 _COMPOSANTES = ("feries_chomes_payes", "absences_remunerees", "heures_complementaires")

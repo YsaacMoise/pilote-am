@@ -11,6 +11,7 @@ Deux modes :
   Si B refuse une etape, toutes les sorties qui en dependent portent le refus.
 
 Le moteur B n'est pas modifie. Montants en centimes entiers.
+T-050b : la regularisation de fin est calculee avant l'ICCP et l'indemnite de rupture (elle entre dans les deux bases).
 T-027 : kilometres (km_cv, km_partage, km_enfants), evenements nommes (nature), km_controle, evt_duree.
 """
 
@@ -766,76 +767,8 @@ def fin_b(ctx, k):
         for cle in ("indemnite_rupture", "iccp", "regularisation_fin"):
             out[cle] = e
         return out
-    # ICCP
-    try:
-        y = fin.year if fin.month >= 6 else fin.year - 1
-        periodes = []
-        for yy in (y - 1, y):
-            p0, p1 = periode(yy)
-            if ctx.debut > p1:
-                continue
-            acq = acquisition_b(ctx, yy)
-            ja = acq["jours_acquis"]
-            if isinstance(ja, Refus):
-                raise ja
-            a = max(p0, ctx.debut)
-            b = min(p1, fin)
-            payes = 0
-            if yy == y - 1:
-                if ctx.type == "complete":
-                    for l in ctx.conges:
-                        if l["type"] == "cp" and l["du"] >= date(y, 6, 1) and l["du"] <= fin:
-                            reprise = l["au"] + timedelta(days=1)
-                            while ctx.prevu(reprise) == 0 or est_ferie(reprise):
-                                reprise += timedelta(days=1)
-                                if reprise > fin + timedelta(days=60):
-                                    break
-                            payes += appel("decompte_jours_cp", l["du"], reprise, ctx.jours_travailles)["resultat"]["jours_decomptes"]
-                    payes = min(payes, ja)
-                else:
-                    if ctx.k.get("cp_mode", "juin") == "juin" and fin >= date(y, 6, 1):
-                        payes = ja
-                    else:
-                        raise Refus("HORS-COMPARATEUR", "iccp", {"motif": "modalite de paiement autre que juin"})
-            icp_pendant, icp_prec = icp_periode(ctx, yy, a, b)
-            periodes.append({"jours_acquis": ja, "jours_payes": payes,
-                             "salaires_bruts_periode_centimes": salaires_periode(ctx, a, b),
-                             "icp_versee_pendant_periode_centimes": icp_pendant,
-                             "icp_annee_precedente_centimes": icp_prec,
-                             "jours_supplementaires": acq["jours_enfants"]})
-        r = appel("iccp", ctx.type, motif_b, periodes, ctx.hebdo, ctx.taux)
-        out["iccp"] = r["resultat"]["iccp_centimes"]
-    except Refus as e:
-        out["iccp"] = e
-    # Indemnite de rupture. Appel d'essai sans montants : si B conclut ou refuse
-    # sans avoir besoin des salaires (non due, moins de 9 mois, A-47...), sa
-    # reponse vaut ; sinon on lui donne les salaires du contrat.
-    try:
-        essai = B.indemnite_rupture(motif_b, auteur, ctx.debut, env, 0)
-        if essai["statut"] == "non_gere":
-            raise Refus(essai["code"], "indemnite_rupture", essai.get("details"))
-        if essai["statut"] in ("ok", "provisoire") and essai["resultat"].get("raison"):
-            out["indemnite_rupture"] = essai["resultat"]["indemnite_centimes"]
-            raise StopIteration
-        sal = salaires_periode(ctx, ctx.debut, fin)
-        iccp_v = out["iccp"] if not isinstance(out["iccp"], Refus) else None
-        icp = 0
-        if ctx.type == "incomplete":
-            for m in mois_entre(ctx.debut, fin):
-                v = cp_mois_b(ctx, m)["cp_indemnite_mois"]
-                if isinstance(v, Refus):
-                    raise v
-                icp += v
-        if iccp_v is None:
-            # L'ICCP existe mais B ne la calcule pas : l'assiette du 1/80 est en jeu (A-45).
-            iccp_v = 1
-        r = appel("indemnite_rupture", motif_b, auteur, ctx.debut, env, sal, iccp_centimes=iccp_v, icp_centimes=icp)
-        out["indemnite_rupture"] = r["resultat"]["indemnite_centimes"]
-    except StopIteration:
-        pass
-    except Refus as e:
-        out["indemnite_rupture"] = e
-    # Regularisation (annee incomplete)
+    # Regularisation (annee incomplete) : calculee en premier, car elle entre dans la base du dixieme de
+    # l'ICCP et dans l'assiette du 1/80 (T-050b).
     try:
         if ctx.type == "complete":
             out["regularisation_fin"] = 0
@@ -878,6 +811,93 @@ def fin_b(ctx, k):
                 debut_annee = fin_annee + timedelta(days=1)
     except Refus as e:
         out["regularisation_fin"] = e
+    # ICCP
+    try:
+        y = fin.year if fin.month >= 6 else fin.year - 1
+        periodes = []
+        dernier_yy = None
+        for yy in (y - 1, y):
+            p0, p1 = periode(yy)
+            if ctx.debut > p1:
+                continue
+            acq = acquisition_b(ctx, yy)
+            ja = acq["jours_acquis"]
+            if isinstance(ja, Refus):
+                raise ja
+            a = max(p0, ctx.debut)
+            b = min(p1, fin)
+            payes = 0
+            if yy == y - 1:
+                if ctx.type == "complete":
+                    for l in ctx.conges:
+                        if l["type"] == "cp" and l["du"] >= date(y, 6, 1) and l["du"] <= fin:
+                            reprise = l["au"] + timedelta(days=1)
+                            while ctx.prevu(reprise) == 0 or est_ferie(reprise):
+                                reprise += timedelta(days=1)
+                                if reprise > fin + timedelta(days=60):
+                                    break
+                            payes += appel("decompte_jours_cp", l["du"], reprise, ctx.jours_travailles)["resultat"]["jours_decomptes"]
+                    payes = min(payes, ja)
+                else:
+                    if ctx.k.get("cp_mode", "juin") == "juin" and fin >= date(y, 6, 1):
+                        payes = ja
+                    else:
+                        raise Refus("HORS-COMPARATEUR", "iccp", {"motif": "modalite de paiement autre que juin"})
+            icp_pendant, icp_prec = icp_periode(ctx, yy, a, b)
+            periodes.append({"jours_acquis": ja, "jours_payes": payes,
+                             "salaires_bruts_periode_centimes": salaires_periode(ctx, a, b),
+                             "icp_versee_pendant_periode_centimes": icp_pendant,
+                             "icp_annee_precedente_centimes": icp_prec,
+                             "jours_supplementaires": acq["jours_enfants"]})
+            dernier_yy = yy
+        # T-050b (A-50) : la regularisation de fin due a l'AM entre dans la base du dixieme de la periode en
+        # cours (CCN art. 123.2, 48.1.1.5, 124). Calculee avant ; refusee par B -> « a confirmer ».
+        if periodes and dernier_yy == y:
+            rf = out["regularisation_fin"]
+            if isinstance(rf, Refus):
+                periodes[-1]["regularisation_a_confirmer"] = True
+            else:
+                periodes[-1]["regularisation_due_centimes"] = rf
+        r = appel("iccp", ctx.type, motif_b, periodes, ctx.hebdo, ctx.taux)
+        out["iccp"] = r["resultat"]["iccp_centimes"]
+    except Refus as e:
+        out["iccp"] = e
+    # Indemnite de rupture. Appel d'essai sans montants : si B conclut ou refuse
+    # sans avoir besoin des salaires (non due, moins de 9 mois, A-47...), sa
+    # reponse vaut ; sinon on lui donne les salaires du contrat.
+    try:
+        essai = B.indemnite_rupture(motif_b, auteur, ctx.debut, env, 0)
+        if essai["statut"] == "non_gere":
+            raise Refus(essai["code"], "indemnite_rupture", essai.get("details"))
+        if essai["statut"] in ("ok", "provisoire") and essai["resultat"].get("raison"):
+            out["indemnite_rupture"] = essai["resultat"]["indemnite_centimes"]
+            raise StopIteration
+        sal = salaires_periode(ctx, ctx.debut, fin)
+        iccp_v = out["iccp"] if not isinstance(out["iccp"], Refus) else None
+        icp = 0
+        if ctx.type == "incomplete":
+            for m in mois_entre(ctx.debut, fin):
+                v = cp_mois_b(ctx, m)["cp_indemnite_mois"]
+                if isinstance(v, Refus):
+                    raise v
+                icp += v
+        # T-050b (A-45) : ICCP, CP payes et regularisation de fin entrent dans l'assiette (CCN art. 121.1, 124).
+        # Une somme que B ne calcule pas est passee « a confirmer » : B refuse au lieu d'une assiette incomplete.
+        reg_v = out["regularisation_fin"]
+        a_confirmer = []
+        if iccp_v is None:
+            a_confirmer.append("iccp (" + out["iccp"].code + ")")
+            iccp_v = 0
+        if isinstance(reg_v, Refus):
+            a_confirmer.append("regularisation (" + reg_v.code + ")")
+            reg_v = 0
+        r = appel("indemnite_rupture", motif_b, auteur, ctx.debut, env, sal, iccp_centimes=iccp_v, icp_centimes=icp,
+                  regularisation_centimes=reg_v, sommes_a_confirmer=a_confirmer)
+        out["indemnite_rupture"] = r["resultat"]["indemnite_centimes"]
+    except StopIteration:
+        pass
+    except Refus as e:
+        out["indemnite_rupture"] = e
     return out
 
 
