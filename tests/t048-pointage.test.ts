@@ -8,7 +8,7 @@ import { dayInfo, makeCtx } from '../src/engine/payroll';
 type DayRec = Jour;
 const J = (x: Partial<Jour>): Jour => x as Jour;
 import {
-  choixPointage, decisionAppui, enregistrerChoix, heureLisible, minutesPayeesEnPlus, msAvantMinuteSuivante, MSG_DEPART_AVANT_ARRIVEE, MSG_HEURE_FUTURE, nextAction, pointerJour,
+  choixPointage, decisionAppui, memeQuestion, pointerPlagePrevue, questionPlage, texteQuestion, enregistrerChoix, heureLisible, minutesPayeesEnPlus, msAvantMinuteSuivante, MSG_DEPART_AVANT_ARRIVEE, MSG_HEURE_FUTURE, nextAction, pointerJour,
   SEUIL_ARRIVEE_MIN, SEUIL_DEPART_MIN, textesChoix, verifierHeure,
 } from '../src/screens/Today';
 import { evChoixPointage, evCorrection, evCorrections, evPointage, heureCorrigee, heureCorrigeeDetail, type GestePointage } from '../src/usage-events';
@@ -167,7 +167,7 @@ describe('T-048 : vue en liste et réévaluation', () => {
     // Un seul calcul du choix pour la carte et la ligne
     expect(k.match(/choixPointage\(/g)).toHaveLength(1);
     const compact = k.slice(k.indexOf('if (compact)'), k.indexOf('return (\n    <article class="kid"'));
-    expect(compact).toContain("onClick={choix ? () => setFiche('choix') : action.run}");
+    expect(compact).toContain("onClick={choix || question ? () => setFiche('choix') : action.run}");
     expect(compact).toContain('{fiches}');
     expect(k).toMatch(/fiche === 'choix'\s*\? <Sheet[^\n]*>\{choixVue\}<\/Sheet>/);
     // Le libellé du bouton de la ligne ne change pas
@@ -253,7 +253,7 @@ describe('T-048 R1 : le choix est recalculé à l’heure de l’appui', () => {
   });
   it('le bouton simple passe par decisionAppui avant d’enregistrer', () => {
     const src = readFileSync('src/screens/Today.tsx', 'utf8');
-    expect(src).toContain("if (decisionAppui(di.planned, na, heure) === 'choix') { setFiche('choix'); return; }");
+    expect(src).toContain("if (relireQuestion() || decisionAppui(di.planned, na, heure) === 'choix') { setFiche('choix'); return; }");
   });
   it('minuterie calée sur le début de la minute suivante', () => {
     const base = Date.UTC(2026, 10, 23, 8, 0, 0);
@@ -309,5 +309,120 @@ describe('T-048 R2 : « +N min payées » donné par le moteur', () => {
     const ctx = makeCtx(c, [r([{ a: '08:15' }])], [], LUNDI);
     expect(minutesPayeesEnPlus(ctx, LUNDI, 0, '17:00')).toBe(0);
     expect(minutesPayeesEnPlus(ctx, LUNDI, 1, '17:40')).toBe(0);
+  });
+});
+
+// ---------- Décision du DG du 21/11/2026 : question sur le matin ----------
+
+describe('T-048 : question sur une plage passée sans pointage', () => {
+  const ROSE: Plage[] = [{ start: '07:30', end: '08:30' }, { start: '16:30', end: '18:30' }];
+  const q = (planned: Plage[], rec: Jour | undefined, maintenant: string, sautees: number[] = []) =>
+    questionPlage(planned, nextAction({ planned }, rec, sautees), rec?.pres, maintenant);
+
+  it('posée seulement quand la fin prévue est passée et qu’une plage prévue suit', () => {
+    expect(q(ROSE, undefined, '17:10')).toEqual({ idx: 0, debut: '07:30', fin: '08:30' });
+    expect(texteQuestion(q(ROSE, undefined, '17:10')!)).toBe('Plage de 7 h 30 à 8 h 30 : accueil comme prévu ?');
+    expect(texteQuestion({ idx: 0, debut: '08:00', fin: '12:00' })).toBe('Plage de 8 h à 12 h : accueil comme prévu ?');
+    // Fin prévue pas encore passée (8 h 30 pile) : choix d'arrivée normaux, pas de question
+    expect(q(ROSE, undefined, '08:30')).toBeNull();
+    expect(q(ROSE, undefined, '08:31')).not.toBeNull();
+  });
+  it('pas de question avec une seule plage, ni pour un accueil imprévu, ni sur la dernière plage', () => {
+    expect(q([{ start: '08:15', end: '17:00' }], undefined, '20:00')).toBeNull();
+    expect(q([], undefined, '20:00')).toBeNull();
+    // Matin pointé, soir non pointé et passé : dernière plage, pas de question (choix d'arrivée)
+    expect(q(ROSE, J({ pres: [{ a: '07:30', d: '08:30' }] }), '19:00')).toBeNull();
+    // Arrivée déjà notée sur la plage : départ, pas de question
+    expect(q(ROSE, J({ pres: [{ a: '07:30' }] }), '17:10')).toBeNull();
+  });
+  it('« Oui » enregistre la plage aux heures prévues, au même index', () => {
+    expect(pointerPlagePrevue(J({}), 0, ROSE[0], true)).toEqual({ pres: [{ a: '07:30', d: '08:30' }], extra: undefined });
+    // Puis la carte passe à la plage du soir, avec ses choix normaux (17:10 : 40 min après 16 h 30)
+    const apres = pointerPlagePrevue(J({}), 0, ROSE[0], true);
+    expect(nextAction({ planned: ROSE }, apres)).toEqual({ idx: 1, kind: 'a' });
+    expect(q(ROSE, apres, '17:10')).toBeNull();
+    expect(choixPointage(ROSE, nextAction({ planned: ROSE }, apres), '17:10')).toMatchObject({ kind: 'a', idx: 1, prevue: '16:30' });
+    // Le chemin d'écriture : même updateDay, arrivee puis depart, message avec Annuler
+    const src = readFileSync('src/screens/Today.tsx', 'utf8');
+    expect(src).toContain('await updateDay(c.id, day, (r) => pointerPlagePrevue(r, q.idx, plage, di.planned.length > 0));');
+    expect(src).toMatch(/logUsage\('arrivee', 'aujourdhui'\);\s*logUsage\('depart', 'aujourdhui'\);/);
+  });
+  it('« Non » n’enregistre rien et passe à la plage suivante (seuils compris)', () => {
+    const src = readFileSync('src/screens/Today.tsx', 'utf8');
+    expect(src).toContain('if (!oui) { onNon?.(q.idx); return; }');
+    expect(nextAction({ planned: ROSE }, undefined, [0])).toEqual({ idx: 1, kind: 'a' });
+    expect(q(ROSE, undefined, '17:10', [0])).toBeNull();
+    // 16:55 : 25 min après 16 h 30, bouton simple ; 17:10 : trois choix
+    expect(choixPointage(ROSE, nextAction({ planned: ROSE }, undefined, [0]), '16:55')).toBeNull();
+    expect(choixPointage(ROSE, nextAction({ planned: ROSE }, undefined, [0]), '17:10')).toMatchObject({ idx: 1, prevue: '16:30' });
+  });
+  it('revérification à l’appui : question changée ou disparue, rien n’est enregistré', () => {
+    const a = { idx: 0, debut: '07:30', fin: '08:30' };
+    expect(memeQuestion(a, { ...a })).toBe(true);
+    expect(memeQuestion(a, null)).toBe(false);
+    expect(memeQuestion(a, { idx: 1, debut: '16:30', fin: '18:30' })).toBe(false);
+    const src = readFileSync('src/screens/Today.tsx', 'utf8');
+    expect(src).toContain('if (!memeQuestion(q, relireQuestion())) { setRelu((x) => x + 1); return; }');
+  });
+});
+
+describe('T-048 : nextAction saute une plage vide quand une plage plus loin est pointée', () => {
+  const ROSE: Plage[] = [{ start: '07:30', end: '08:30' }, { start: '16:30', end: '18:30' }];
+  it('matin vide, soir arrivé : départ du soir', () => {
+    expect(nextAction({ planned: ROSE }, J({ pres: [{}, { a: '17:10' }] }))).toEqual({ idx: 1, kind: 'd' });
+    expect(nextAction({ planned: ROSE }, J({ pres: [{}, { a: '17:10', d: '18:30' }] }))).toBeNull();
+  });
+  it('rien ne change sans plage passée, pour un imprévu, ni pour une seule plage', () => {
+    expect(nextAction({ planned: ROSE }, undefined)).toEqual({ idx: 0, kind: 'a' });
+    expect(nextAction({ planned: ROSE }, J({ pres: [{ a: '07:30' }] }))).toEqual({ idx: 0, kind: 'd' });
+    expect(nextAction({ planned: ROSE }, J({ pres: [{ a: '07:30', d: '08:30' }] }))).toEqual({ idx: 1, kind: 'a' });
+    expect(nextAction({ planned: [] }, undefined)).toEqual({ idx: 0, kind: 'a' });
+    expect(nextAction({ planned: [] }, J({ pres: [{ a: '10:00' }] }))).toEqual({ idx: 0, kind: 'd' });
+    expect(nextAction({ planned: [] }, J({ pres: [{ a: '10:00', d: '11:00' }] }))).toBeNull();
+    const UNE: Plage[] = [{ start: '08:15', end: '17:00' }];
+    expect(nextAction({ planned: UNE }, undefined)).toEqual({ idx: 0, kind: 'a' });
+    expect(nextAction({ planned: UNE }, J({ pres: [{ a: '08:15' }] }))).toEqual({ idx: 0, kind: 'd' });
+    expect(nextAction({ planned: UNE }, J({ pres: [{ a: '08:15', d: '17:00' }] }))).toBeNull();
+  });
+});
+
+describe('T-048 : cas du contrôle qualité (Rose, deux plages, matin non pointé, le soir)', () => {
+  const ROSE: Plage[] = [{ start: '07:30', end: '08:30' }, { start: '16:30', end: '18:30' }];
+  const LUNDI = '2026-11-23';
+  const c: Contract = {
+    id: 'c1', child: 'Rose', family: 'Diallo', color: 1, start: '2026-09-01', yearType: 'complete', weeks: 52, weeksOff: [],
+    planning: { 1: ROSE }, rateNet: 400, majoration: 10, entretienJour: 0, repasPrix: 0, repasParJour: 0,
+    kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: '2026-09-01',
+    balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 0,
+    alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false,
+  };
+  const r = (pres: Jour['pres']): Jour => ({ key: `c1|${LUNDI}`, cid: 'c1', date: LUNDI, pres });
+  it('à 17:10, la carte pose la question au lieu de « Arrivée prévue à 7 h 30 »', () => {
+    expect(questionPlage(ROSE, nextAction({ planned: ROSE }, undefined), undefined, '17:10')).not.toBeNull();
+  });
+  it('« Oui » : plus de +480 ; le départ du soir paie seulement ce qui dépasse 18 h 30', () => {
+    const apres = pointerPlagePrevue(r(undefined), 0, ROSE[0], true);
+    // Arrivée du soir « Maintenant » 17:10, puis départ à 18:35
+    const soir = pointerJour(apres, 1, 'a', '17:10', true);
+    const ctx = makeCtx(c, [soir], [], LUNDI);
+    const na = nextAction(dayInfo(ctx, LUNDI), soir);
+    expect(na).toEqual({ idx: 1, kind: 'd' });
+    const ch = choixPointage(ROSE, na, '18:46')!;
+    expect(ch.prevue).toBe('18:30');
+    expect(minutesPayeesEnPlus(ctx, LUNDI, 1, '18:46')).toBe(16);
+  });
+  it('« Non » : l’arrivée du soir « Maintenant » se note sans fausse erreur, puis le départ du soir', () => {
+    const na = nextAction({ planned: ROSE }, undefined, [0])!;
+    expect(na).toEqual({ idx: 1, kind: 'a' });
+    const ch = choixPointage(ROSE, na, '17:10')!;
+    // « Maintenant » pour une arrivée : jamais le message départ/arrivée
+    expect(verifierHeure(ch.kind, '17:10', '17:10', undefined)).toBe('');
+    const soir = pointerJour(r(undefined), 1, 'a', '17:10', true);
+    expect(soir.pres).toEqual([{}, { a: '17:10' }]);
+    // Sans le « Non » en mémoire (écran rechargé), la carte ne revient pas au matin : départ du soir
+    expect(nextAction({ planned: ROSE }, soir)).toEqual({ idx: 1, kind: 'd' });
+    expect(verifierHeure('d', '18:35', '18:35', soir.pres![1].a)).toBe('');
+    const ctx = makeCtx(c, [soir], [], LUNDI);
+    expect(minutesPayeesEnPlus(ctx, LUNDI, 1, '18:35')).toBe(5);
   });
 });
