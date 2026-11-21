@@ -1,13 +1,13 @@
 import { ABSENCE_NON_GEREE_CHOISIE, ABSENCES_NON_GEREES } from '../legal';
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { activeContracts, ctxFor, logUsage, putLeave, saveSettings, state, toast, uid, updateDay, useStore } from '../store';
 import { addDays, dayLabel, minutes, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NOMS, daysBetween } from '../engine/dates';
 import { dayInfo, type DayInfo } from '../engine/payroll';
-import { AM_ABS_LABEL, AM_ABS_NON_GEREES, CHILD_ABS_LABEL, type AmAbs, type ChildAbs, type Contract, type DayRec, type NatureEvenement, type Presence } from '../engine/model';
+import { AM_ABS_LABEL, AM_ABS_NON_GEREES, CHILD_ABS_LABEL, type AmAbs, type ChildAbs, type Contract, type DayRec, type NatureEvenement, type Plage, type Presence } from '../engine/model';
 import { libelleDureeSaisie, NATURE_EVENEMENT_LABEL } from '../engine/evenements';
 import { hoursLabel } from '../engine/money';
 import { Banner, CHILD_COLORS, Choices, DateInput, Gommette, Sheet, Stepper, Switch, Topbar, useErreurAffichee } from '../ui/kit';
-import { evAnnulation, evCorrection, heureCorrigee } from '../usage-events';
+import { evAnnulation, evCorrections, evPointage, type GestePointage } from '../usage-events';
 import { AideVideo, BienvenueDemo } from '../ui/VideoGuide';
 import { isDemo } from '../db';
 import { Icon } from '../ui/icons';
@@ -37,6 +37,17 @@ export function Today() {
   const [day, setDay] = useState(t);
   const [edit, setEdit] = useState<Contract | null>(null);
   const [amSheet, setAmSheet] = useState(false);
+  // T-048 : l'écran se réévalue chaque minute et au retour sur l'app, pour que le bouton change sans recharger.
+  const [, setMinute] = useState(0);
+  useEffect(() => {
+    const tic = () => setMinute((m) => m + 1);
+    const id = setInterval(tic, 60_000);
+    const retour = () => { if (document.visibilityState === 'visible') tic(); };
+    document.addEventListener('visibilitychange', retour);
+    window.addEventListener('focus', tic);
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', retour); window.removeEventListener('focus', tic); };
+  }, []);
+  const maintenant = nowHHMM();
   const kids = s.contracts.filter((c) => c.start <= day && (!c.end || c.end >= day));
   const base = day < addDays(t, -5) ? addDays(day, 5) : t;
   const days = Array.from({ length: 7 }, (_, i) => addDays(base, i - 5));
@@ -96,10 +107,10 @@ export function Today() {
         )}
         {s.settings.compact && kids.length > 1 ? (
           <div class="kid-list">
-            {kids.map((c) => <KidCard c={c} day={day} compact onEdit={() => setEdit(c)} />)}
+            {kids.map((c) => <KidCard key={c.id} c={c} day={day} maintenant={maintenant} compact onEdit={() => setEdit(c)} />)}
           </div>
         ) : (
-          kids.map((c) => <KidCard c={c} day={day} onEdit={() => setEdit(c)} />)
+          kids.map((c) => <KidCard key={c.id} c={c} day={day} maintenant={maintenant} onEdit={() => setEdit(c)} />)
         )}
         {day === t && forgotten.length > 0 && (
           <Banner tone="warn">
@@ -134,7 +145,94 @@ export function Today() {
   );
 }
 
-function nextAction(di: DayInfo, rec: DayRec | undefined): { idx: number; kind: 'a' | 'd' } | null {
+// ---------- T-048 : heure vraie quand l'appui arrive loin de l'heure prévue ----------
+// Seuils stricts, en minutes : au-delà, l'app demande quelle heure est vraie au lieu de noter l'heure de l'appui.
+/** Arrivée : plus de 30 minutes après le début prévu (seuil fixé par le DG). */
+export const SEUIL_ARRIVEE_MIN = 30;
+/** Départ : plus de 15 minutes après la fin prévue (chaque minute après la fin prévue est payée en plus). */
+export const SEUIL_DEPART_MIN = 15;
+
+/** Heure lisible des textes T-048 : « 8 h 15 », « 17 h » (sans « 00 », sans zéro devant l'heure). */
+export function heureLisible(t: string): string {
+  const [h, m] = t.split(':').map(Number);
+  return m === 0 ? `${h} h` : `${h} h ${String(m).padStart(2, '0')}`;
+}
+
+/** Les trois choix à proposer, quand le seuil est passé. */
+export interface ChoixPointage {
+  kind: 'a' | 'd';
+  idx: number;
+  /** Heure prévue : début de la plage pour l'arrivée, fin pour le départ */
+  prevue: string;
+  /** Heure de l'appui, au rendu */
+  maintenant: string;
+  /** Minutes entre l'heure prévue et maintenant */
+  ecartMin: number;
+}
+
+/**
+ * Choix à proposer pour la plage à pointer (celle de nextAction), ou null : rien ne change (avant le seuil,
+ * plage sans heure prévue, accueil imprévu, rien à pointer).
+ */
+export function choixPointage(planned: Plage[], na: { idx: number; kind: 'a' | 'd' } | null, maintenant: string): ChoixPointage | null {
+  if (!na) return null;
+  const plage = planned[na.idx];
+  if (!plage) return null;
+  const prevue = na.kind === 'a' ? plage.start : plage.end;
+  const ecartMin = minutes(maintenant) - minutes(prevue);
+  const seuil = na.kind === 'a' ? SEUIL_ARRIVEE_MIN : SEUIL_DEPART_MIN;
+  if (ecartMin <= seuil) return null;
+  return { kind: na.kind, idx: na.idx, prevue, maintenant, ecartMin };
+}
+
+/** Textes de la carte et de la fiche : ligne d'en-tête et libellés des trois boutons. */
+export function textesChoix(ch: ChoixPointage): { titre: string; prevue: string; maintenant: string; autre: string } {
+  const arr = ch.kind === 'a';
+  return {
+    titre: `${arr ? 'Arrivée' : 'Départ'} prévu${arr ? 'e' : ''} à ${heureLisible(ch.prevue)}`,
+    prevue: `À ${heureLisible(ch.prevue)}`,
+    maintenant: `Maintenant, ${heureLisible(ch.maintenant)}${arr ? '' : ` (+${ch.ecartMin} min payées)`}`,
+    autre: 'Autre heure',
+  };
+}
+
+export const MSG_DEPART_AVANT_ARRIVEE = 'L’heure de départ doit être après l’arrivée.';
+export const MSG_HEURE_FUTURE = 'Cette heure n’est pas encore passée.';
+export const MSG_HEURE_VIDE = 'Choisis une heure.';
+
+/**
+ * Vérifie l'heure à enregistrer : pas d'heure future ; un départ après l'arrivée de la plage.
+ * Rend le message à afficher, ou '' si l'heure est acceptée.
+ */
+export function verifierHeure(kind: 'a' | 'd', heure: string, maintenant: string, arrivee?: string): string {
+  if (!/^\d{2}:\d{2}$/.test(heure)) return MSG_HEURE_VIDE;
+  if (minutes(heure) > minutes(maintenant)) return MSG_HEURE_FUTURE;
+  if (kind === 'd' && arrivee && minutes(heure) <= minutes(arrivee)) return MSG_DEPART_AVANT_ARRIVEE;
+  return '';
+}
+
+/**
+ * Enregistre un choix seulement si l'heure est acceptée : appelle pointer une fois, ou jamais.
+ * Rend le message de refus, ou '' quand le pointage est parti. Seul chemin d'écriture des trois choix.
+ */
+export function enregistrerChoix(
+  ch: Pick<ChoixPointage, 'kind'>, heure: string, geste: GestePointage, maintenant: string, arrivee: string | undefined,
+  pointer: (heure: string, geste: GestePointage) => unknown,
+): string {
+  const e = verifierHeure(ch.kind, heure, maintenant, arrivee);
+  if (!e) void pointer(heure, geste);
+  return e;
+}
+
+/** Journée après le pointage : la même mise à jour que le bouton d'avant T-048, avec l'heure choisie. */
+export function pointerJour(r: DayRec, idx: number, kind: 'a' | 'd', heure: string, avecPlanning: boolean): DayRec {
+  const p: Presence[] = [...(r.pres ?? [])];
+  while (p.length <= idx) p.push({});
+  p[idx] = kind === 'a' ? { a: heure } : { ...p[idx], d: heure };
+  return { ...r, pres: p, extra: avecPlanning ? r.extra : true };
+}
+
+export function nextAction(di: Pick<DayInfo, 'planned'>, rec: DayRec | undefined): { idx: number; kind: 'a' | 'd' } | null {
   const pres = rec?.pres ?? [];
   const n = Math.max(di.planned.length, 1);
   for (let i = 0; i < n; i++) {
@@ -145,8 +243,13 @@ function nextAction(di: DayInfo, rec: DayRec | undefined): { idx: number; kind: 
   return null;
 }
 
-function KidCard({ c, day, onEdit, compact }: { c: Contract; day: string; onEdit: () => void; compact?: boolean }) {
+function KidCard({ c, day, onEdit, compact, maintenant }: { c: Contract; day: string; onEdit: () => void; compact?: boolean; maintenant: string }) {
   const t = today();
+  // T-048 : fiche ouverte : « choix » (vue en liste) ou « autre » (saisie de l'heure)
+  const [fiche, setFiche] = useState<'choix' | 'autre' | null>(null);
+  let choix: ChoixPointage | null = null;
+  let pointer: ((heure: string, geste: GestePointage | null) => Promise<void>) | null = null;
+  let arriveePlage: string | undefined;
   const di = dayInfo(ctxFor(c), day);
   const rec = di.rec;
   const color = CHILD_COLORS[c.color % CHILD_COLORS.length];
@@ -173,31 +276,42 @@ function KidCard({ c, day, onEdit, compact }: { c: Contract; day: string; onEdit
     const na = nextAction(di, rec);
     if (na) {
       const isArr = na.kind === 'a';
+      arriveePlage = isArr ? undefined : rec?.pres?.[na.idx]?.a;
+      // Enregistre l'heure choisie : même mise à jour, même message avec « Annuler ».
+      pointer = async (heure: string, geste: GestePointage | null) => {
+        const undo = await updateDay(c.id, day, (r) => pointerJour(r, na.idx, na.kind, heure, di.planned.length > 0));
+        // « arrivee » ou « depart » toujours ; le choix fait en plus quand les trois choix étaient proposés (T-048).
+        for (const ev of evPointage(isArr, geste)) logUsage(ev, 'aujourdhui');
+        // C-101 : une annulation juste après le pointage dit que le bouton a été touché par erreur.
+        const annuler = async () => { await undo(); logUsage(evAnnulation(isArr), 'aujourdhui'); };
+        let extra = '';
+        if (!isArr) {
+          const plage = di.planned[na.idx];
+          if (plage && minutes(heure) > minutes(plage.end)) extra = ` (+${hoursLabel(minutes(heure) - minutes(plage.end))})`;
+        }
+        toast(`${isArr ? 'Arrivée' : 'Départ'} ${de(c.child)} à ${fmtH(heure)}${extra}`, annuler);
+      };
+      // T-048 : seuil passé pour une plage qui a une heure prévue : trois choix au lieu de l'heure de l'appui.
+      choix = choixPointage(di.planned, na, maintenant);
+      const enregistrer = pointer;
       action = {
         label: isArr ? (di.planned.length || pres.length ? 'Arrivée' : 'Imprévu') : 'Départ',
         quiet: !di.planned.length && !pres.length,
         icon: isArr ? 'in' : 'out',
-        run: async () => {
-          const now = nowHHMM();
-          const undo = await updateDay(c.id, day, (r) => {
-            const p: Presence[] = [...(r.pres ?? [])];
-            while (p.length <= na.idx) p.push({});
-            p[na.idx] = isArr ? { a: now } : { ...p[na.idx], d: now };
-            return { ...r, pres: p, extra: di.planned.length ? r.extra : true };
-          });
-          logUsage(isArr ? 'arrivee' : 'depart', 'aujourdhui');
-          // C-101 : une annulation juste après le pointage dit que le bouton a été touché par erreur.
-          const annuler = async () => { await undo(); logUsage(evAnnulation(isArr), 'aujourdhui'); };
-          let extra = '';
-          if (!isArr) {
-            const plage = di.planned[na.idx];
-            if (plage && minutes(now) > minutes(plage.end)) extra = ` (+${hoursLabel(minutes(now) - minutes(plage.end))})`;
-          }
-          toast(`${isArr ? 'Arrivée' : 'Départ'} ${de(c.child)} à ${fmtH(now)}${extra}`, annuler);
-        },
+        run: () => enregistrer(nowHHMM(), null),
       };
     }
   }
+
+  // T-048 : les trois choix (carte, ou fiche de la vue en liste) et la fiche « Autre heure ».
+  const choixVue = choix && pointer && (
+    <ChoixHeure ch={choix} child={c.child} arrivee={arriveePlage} pointer={pointer} onAutre={() => setFiche('autre')} onFait={() => setFiche(null)} />
+  );
+  const fiches = choix && pointer && fiche && (
+    fiche === 'choix'
+      ? <Sheet title={`${choix.kind === 'a' ? 'Arrivée' : 'Départ'} ${de(c.child)}`} onClose={() => setFiche(null)}>{choixVue}</Sheet>
+      : <AutreHeureSheet ch={choix} child={c.child} arrivee={arriveePlage} pointer={pointer} onClose={() => setFiche(null)} />
+  );
 
   if (compact) {
     // Une ligne par enfant : pastille, prénom, l'état le plus utile, et le bouton du moment
@@ -212,10 +326,11 @@ function KidCard({ c, day, onEdit, compact }: { c: Contract; day: string; onEdit
           </span>
         </button>
         {action && (
-          <button class={action.quiet ? 'btn btn-outline' : 'btn btn-primary'} onClick={action.run} aria-label={`${action.label} ${de(c.child)}`}>
+          <button class={action.quiet ? 'btn btn-outline' : 'btn btn-primary'} onClick={choix ? () => setFiche('choix') : action.run} aria-label={`${action.label} ${de(c.child)}`} aria-haspopup={choix ? 'dialog' : undefined}>
             <Icon name={action.icon} />{action.label}
           </button>
         )}
+        {fiches}
       </article>
     );
   }
@@ -234,17 +349,78 @@ function KidCard({ c, day, onEdit, compact }: { c: Contract; day: string; onEdit
           {tags.map((x) => <span class={`tag ${x.tone}`}>{x.text}</span>)}
         </div>
       )}
-      <div class="kid-actions" style={!action ? { gridTemplateColumns: '1fr' } : undefined}>
-        {action && (
+      {choixVue}
+      <div class="kid-actions" style={!action || choix ? { gridTemplateColumns: '1fr' } : undefined}>
+        {action && !choix && (
           <button class={action.quiet ? 'btn btn-outline' : 'btn btn-primary btn-lg'} onClick={action.run} aria-label={action.quiet ? `Accueil imprévu : arrivée ${de(c.child)}` : undefined}>
             <Icon name={action.icon} />{action.label}
           </button>
         )}
-        <button class={`btn btn-edit ${action && !action.quiet ? 'btn-secondary btn-lg' : 'btn-secondary'}`} onClick={onEdit} aria-label={`${action ? 'Modifier' : day > t ? 'Prévoir une absence' : 'Modifier la journée'} (${c.child})`}>
+        <button class={`btn btn-edit ${action && !action.quiet && !choix ? 'btn-secondary btn-lg' : 'btn-secondary'}`} onClick={onEdit} aria-label={`${action ? 'Modifier' : day > t ? 'Prévoir une absence' : 'Modifier la journée'} (${c.child})`}>
           <Icon name="edit" />{action ? 'Modifier' : day > t ? 'Prévoir une absence' : 'Modifier la journée'}
         </button>
       </div>
+      {fiches}
     </article>
+  );
+}
+
+type Pointer = (heure: string, geste: GestePointage | null) => Promise<void>;
+
+/** T-048 : « Arrivée prévue à 8 h 15 », puis « À 8 h 15 » (principal), « Maintenant, 9 h 05 », « Autre heure ». */
+function ChoixHeure({ ch, child, arrivee, pointer, onAutre, onFait }: { ch: ChoixPointage; child: string; arrivee?: string; pointer: Pointer; onAutre: () => void; onFait: () => void }) {
+  const tx = textesChoix(ch);
+  const quoi = `${ch.kind === 'a' ? 'Arrivée' : 'Départ'} ${de(child)}`;
+  // « À <heure de fin prévue> » ne doit pas donner un départ avant (ou à) l'arrivée enregistrée.
+  const refusPrevue = verifierHeure(ch.kind, ch.prevue, ch.maintenant, arrivee);
+  const [err, setErr] = useState('');
+  useErreurAffichee('depart_avant_arrivee', err === MSG_DEPART_AVANT_ARRIVEE);
+  const choisir = (heure: string, geste: GestePointage) => {
+    // L'heure de l'appui est relue au moment du geste.
+    const e = enregistrerChoix(ch, heure, geste, nowHHMM(), arrivee, pointer);
+    if (e) setErr(e); else onFait();
+  };
+  return (
+    <div class="pointage-choix" role="group" aria-label={`${quoi} : quelle heure est vraie ?`}>
+      <p class="pointage-choix-titre">{tx.titre}</p>
+      <button class="btn btn-primary btn-lg btn-block" disabled={!!refusPrevue} onClick={() => choisir(ch.prevue, 'prevue')} aria-label={`${quoi} ${tx.prevue.replace(/^À/, 'à')}`}>
+        <Icon name={ch.kind === 'a' ? 'in' : 'out'} />{tx.prevue}
+      </button>
+      {refusPrevue && <p class="err">{refusPrevue}</p>}
+      <button class="btn btn-secondary btn-lg btn-block" onClick={() => choisir(nowHHMM(), 'maintenant')} aria-label={`${quoi} : ${tx.maintenant}`}>
+        {tx.maintenant}
+      </button>
+      <button class="btn btn-outline btn-block" onClick={onAutre} aria-haspopup="dialog" aria-label={`${quoi} : ${tx.autre}`}>
+        <Icon name="clock" />{tx.autre}
+      </button>
+      {err && <p class="err" role="alert">{err}</p>}
+    </div>
+  );
+}
+
+/** T-048 : la seule heure à choisir, réglée d'avance sur l'heure prévue. Rien n'est enregistré avant « Enregistrer ». */
+function AutreHeureSheet({ ch, child, arrivee, pointer, onClose }: { ch: ChoixPointage; child: string; arrivee?: string; pointer: Pointer; onClose: () => void }) {
+  const arr = ch.kind === 'a';
+  const [heure, setHeure] = useState(ch.prevue);
+  const [err, setErr] = useState('');
+  useErreurAffichee('depart_avant_arrivee', err === MSG_DEPART_AVANT_ARRIVEE);
+  useErreurAffichee('saisie', !!err && err !== MSG_DEPART_AVANT_ARRIVEE);
+  function save() {
+    // Rien n'est écrit avant ce geste ; fermer la fiche n'écrit rien.
+    const e = enregistrerChoix(ch, heure, 'autre', nowHHMM(), arrivee, pointer);
+    if (e) setErr(e); else onClose();
+  }
+  return (
+    <Sheet title={`${arr ? 'Arrivée' : 'Départ'} ${de(child)}`} onClose={onClose}>
+      <p class="muted">{textesChoix(ch).titre}</p>
+      <div class="field">
+        <label for="autre-heure">Heure {arr ? 'd’arrivée' : 'de départ'}</label>
+        <input id="autre-heure" class="input num" type="time" value={heure} max={nowHHMM()} min={!arr && arrivee ? arrivee : undefined}
+          onInput={(e) => { setHeure((e.target as HTMLInputElement).value); setErr(''); }} />
+      </div>
+      {err && <p class="err" role="alert">{err}</p>}
+      <button class="btn btn-primary btn-block btn-lg" onClick={save}>Enregistrer</button>
+    </Sheet>
   );
 }
 
@@ -304,7 +480,8 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
     // Heures effectives, plage par plage (sans filtrer, pour garder les index) : celles du formulaire, qui valent
     // le planning quand rien n'a changé (relecture contradictoire : faux « heure corrigée » quand samePlan).
     const apres = abs !== 'none' ? [] : pres;
-    if (heureCorrigee(rec?.pres, apres)) logUsage(evCorrection(day, today()), 'aujourdhui');
+    // T-048 : le jour même, heure_corrigee part avec heure_corrigee_arrivee et/ou heure_corrigee_depart.
+    for (const ev of evCorrections(day, today(), rec?.pres, apres)) logUsage(ev, 'aujourdhui');
     onClose();
     toast(`Journée ${de(c.child)} enregistrée`, undo);
   }
