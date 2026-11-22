@@ -438,6 +438,39 @@ describe('T-076 : revue 2, B4 (refus D2 partout où l’absence compte)', () => 
   });
 });
 
+describe('T-076 : relecture indépendante (R2, D16)', () => {
+  const B15 = week('08:00', '11:00');
+  const leaves: AmLeave[] = [{ id: 'cp', type: 'cp', from: '2026-07-06', to: '2026-08-01' }];
+  const pv = (hm: number) => s1({ start: '2025-06-02', trackedFrom: '2025-06-02', rateNet: 500, cycle: [A45, B15], cycleAncre: '2025-06-02', heuresMensualisees: hm });
+  it('R2 : fin d’un CDI à planning variable, jours non pris de la période précédente sur la base du complément de juin (L2 et L1)', () => {
+    // Période 2025-2026 : 30 jours ; congés du 06/07 au 01/08/2026 : 23 jours décomptés, 7 non pris. Lettre le 30/04/2027.
+    // L2 (65 h, B = 15 h) : part sûre = dixième 757,50 € ; complément de juin 2026 = 757,50 − 30/6 × 15 h × 5 € = 382,50 € ;
+    // versé dans le salaire pour les 23 jours pris : 23/6 × 15 h × 5 € = 287,50 €. Reste dû : 757,50 − 382,50 − 287,50 = 87,50 €.
+    const f2 = finDeContrat(makeCtx(pv(65), [], leaves, '2027-12-31'), '2027-04-30', 'retrait');
+    expect(cpForMonth(makeCtx(pv(65), [], leaves, '2027-12-31'), '2026-06').complement).toBe(38250);
+    expect(f2.cpIndemnite - f2.cpDixiemeEnCours).toBe(8750);
+    // L1 (130 h, 30 h par semaine) : 780,00 − 30,00 (complément) − 23/6 × 30 h × 5 € (575,00) = 175,00 € ; même montant
+    // qu'un contrat fixe de 30 h (7/6 × 30 h × 5 €).
+    const f1 = finDeContrat(makeCtx(pv(130), [], leaves, '2027-12-31'), '2027-04-30', 'retrait');
+    expect(f1.cpIndemnite - f1.cpDixiemeEnCours).toBe(17500);
+  });
+  it('D16 : planning remis au-dessus de la durée du contrat : HC en deux lectures, part sûre et écart à confirmer', () => {
+    // 130 h par mois, 52 semaines : B = 30 h. Plannings remis de 40 h (5 × 8 h) du 23/02 au 05/04/2026.
+    // Lecture 1 (planning remis) : 0 HC. Lecture 2 (durée du contrat) : 10 HC par semaine. Part sûre 0 ; écart rattaché au
+    // dernier jour de la semaine (mois où elle finit) : semaines finies en mars (01/03, 08/03, 15/03, 22/03, 29/03) = 50 h,
+    // soit 250,00 € à confirmer ; la semaine du 30/03 finit en avril.
+    const ps: Record<string, Planning> = {};
+    for (const l of ['2026-02-23', '2026-03-02', '2026-03-09', '2026-03-16', '2026-03-23', '2026-03-30']) ps[l] = week('08:00', '16:00');
+    const c = contract({ start: '2026-02-23', trackedFrom: '2026-02-23', rateNet: 500, planningVariable: true, planningsSemaines: ps, heuresMensualisees: 130 });
+    const b = monthBase(makeCtx(c, [], [], T), '2026-03');
+    expect(b.complMin).toBe(0);
+    expect(b.complAConfirmerMin).toBe(50 * 60);
+    expect(b.complAConfirmerAmount).toBe(25000);
+    expect(b.net).toBe(65000);
+    expect(b.alerts.join(' ')).toMatch(/au-delà du planning remis \(article 98.1.2\) ou au-delà de la durée prévue au contrat \(article 96.4\)/);
+  });
+});
+
 describe('T-076 : non-régression du contrat fixe', () => {
   it('un contrat fixe donne les mêmes sorties avec ou sans champs de planning variable (non lus quand planningVariable est faux)', () => {
     const recs = [rec('2026-03-10', { pres: [{ a: '08:00', d: '19:00' }] }), rec('2026-03-12', { abs: 'malade_certif' })];
