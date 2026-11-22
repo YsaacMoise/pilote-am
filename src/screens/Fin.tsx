@@ -174,23 +174,17 @@ function FinCddEcran({ c }: { c: Contract }) {
   const r0 = c.rupture?.motif === 'fin_cdd' ? c.rupture : undefined;
   const [dernier, setDernier] = useState<string>(r0?.notif ?? c.end ?? c.cddTerme ?? today());
   const [finCdd, setFinCdd] = useState<FinCdd | FinCddNonGere | undefined>(r0?.finCdd);
-  const [brutTotal, setBrutTotal] = useState<number | undefined>(undefined);
-  const [brutJusqua, setBrutJusqua] = useState<Month>(addMonths(monthOf(today()), -1));
   const jour = dernier < c.start ? c.start : dernier;
-  const parMois: Partial<Record<Month, number>> = {};
-  for (const b of s.bulletins) if (b.cid === c.id && b.brut) parMois[b.month] = b.brut;
-  const f = finDeCdd(ctxFor({ ...c, end: undefined }), jour, finCdd, s.settings.enfantsACharge, { parMois, total: brutTotal, jusqua: brutJusqua });
+  const f = finDeCdd(ctxFor({ ...c, end: undefined }), jour, finCdd, s.settings.enfantsACharge);
   const rupture: Rupture = { motif: 'fin_cdd', notif: jour, preavis: 'execute', ...(finCdd ? { finCdd } : {}) };
   const enregistre = c.end === jour && JSON.stringify(c.rupture) === JSON.stringify(rupture);
   const enregistrer = async () => {
     const prev = await putContract({ ...c, end: jour, rupture });
     toast(`Fin du CDD enregistrée : dernier jour le ${shortDate(jour)}`, prev ? async () => { await putContract(prev); } : undefined);
   };
-  const estime = f.brutsEstimes.length > 0 && (f.ifc ?? 0) > 0;
   const ifcNet = f.ifcAConfirmer ? 0 : f.ifcNet ?? 0;
   const total = ifcNet + (f.regularisationAConfirmer ? 0 : f.regularisation) + (f.cpAConfirmer ? 0 : f.cpIndemnite);
   const aConfirmer = !!(f.ifcAConfirmer || f.ifcPartAConfirmer || f.cpAConfirmer || f.cpPartAConfirmer || f.regularisationAConfirmer || f.regularisationPartAConfirmer);
-  const periode = f.brutsEstimes.length === 1 ? monthLabel(f.brutsEstimes[0]) : `${f.brutsEstimes.length} mois, ${deMois(monthLabel(f.brutsEstimes[0] ?? '2026-01'))} à ${monthLabel(f.brutsEstimes[f.brutsEstimes.length - 1] ?? '2026-01')}`;
   const choix = [...FINS_CDD, ...FINS_CDD_NON_GEREES];
   return (
     <>
@@ -210,15 +204,6 @@ function FinCddEcran({ c }: { c: Contract }) {
           <p class="hint">L’app ne donne aucun montant.</p>
         </section>
       ) : <>
-        {(f.ifc ?? 0) > 0 && (f.brutsEstimes.length > 0 || brutTotal != null) && (
-          <section class="card stack-sm" aria-labelledby="fincdd-brut">
-            <h2 id="fincdd-brut">Salaires bruts de tes bulletins</h2>
-            <p>L’indemnité de fin de contrat se calcule sur les salaires bruts. {brutTotal == null && f.brutsEstimes.length > 0 ? <>Le brut n’est pas connu pour {periode} : l’app l’estime à partir du net, ce qui peut être faux de quelques euros.</> : 'Le total saisi est utilisé.'}</p>
-            <EuroInput label="Total des salaires bruts de tes bulletins" hint="Additionne la ligne « salaire brut » de chaque bulletin Pajemploi de ce CDD, du premier jusqu’au mois indiqué ci-dessous, congés payés compris." cents={brutTotal} allowEmpty onChange={setBrutTotal} />
-            <label class="label" for="fincdd-jusqua">Dernier bulletin compris dans ce total</label>
-            <input id="fincdd-jusqua" class="input" type="month" value={brutJusqua} min={c.start.slice(0, 7)} max={monthOf(f.dernierJour)} onChange={(e) => { const v = (e.target as HTMLInputElement).value; if (v) setBrutJusqua(v as Month); }} />
-          </section>
-        )}
         {f.alertes.map((a) => <Banner tone="warn">{a}</Banner>)}
         {[f.ifcAConfirmer, f.ifcPartAConfirmer?.message, f.regularisationAConfirmer, f.regularisationPartAConfirmer?.message, f.cpAConfirmer, f.cpPartAConfirmer?.message].filter(Boolean).map((t) => <Banner tone="warn">{t}</Banner>)}
         <section class="card stack" aria-labelledby="fincdd-res" aria-live="polite">
@@ -228,18 +213,18 @@ function FinCddEcran({ c }: { c: Contract }) {
             <dt>Dernier jour</dt><dd>{shortDate(f.dernierJour)}</dd>
           </dl>
           <div class="decl">
-            <div class="decl-line"><span class="decl-label"><span>Indemnité de fin de contrat</span><span class="decl-hint">{f.ifcExplication}</span></span><span class="decl-value">{f.ifcAConfirmer ? 'à confirmer' : `${estime ? 'environ ' : ''}${euros(f.ifc ?? 0)} brut${(f.ifc ?? 0) > 0 ? `, ${euros(ifcNet)} net` : ''}${partAConfirmer(f.ifcPartAConfirmer)}`}</span></div>
-            <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint">{f.regularisationAConfirmer ? 'Montant à confirmer : voir l’encadré plus haut' : termsAt(c, f.dernierJour).yearType === 'incomplete' ? (f.regulMinutes ? `${hoursLabel(f.regulMinutes)} accueillies mais non payées par la mensualisation` : 'Pas d’heures accueillies au-delà de ce qui a été payé') : 'Accueil toute l’année : pas de régularisation'}</span></span><span class="decl-value">{f.regularisationAConfirmer ? 'à confirmer' : `${euros(f.regularisation)}${partAConfirmer(f.regularisationPartAConfirmer)}`}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>Indemnité de fin de contrat</span><span class="decl-hint">{f.ifcExplication}</span></span><span class="decl-value">{f.ifcAConfirmer ? 'à confirmer' : `${euros(ifcNet)} net${partAConfirmer(f.ifcPartAConfirmer)}${ifcNet > 0 ? ` (environ ${eurosArrondis(f.ifc ?? 0)} brut)` : ''}`}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>{f.regularisationPartAConfirmer && /complément/.test(f.regularisationPartAConfirmer.message) ? 'Régularisation et complément de salaire' : 'Régularisation'}</span><span class="decl-hint">{f.regularisationAConfirmer ? 'Montant à confirmer : voir l’encadré plus haut' : termsAt(c, f.dernierJour).yearType === 'incomplete' ? (f.regulMinutes ? `${hoursLabel(f.regulMinutes)} accueillies mais non payées par la mensualisation` : 'Pas d’heures accueillies au-delà de ce qui a été payé') : 'Accueil toute l’année : pas de régularisation'}</span></span><span class="decl-value">{f.regularisationAConfirmer ? 'à confirmer' : `${euros(f.regularisation)}${partAConfirmer(f.regularisationPartAConfirmer)}`}</span></div>
             <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{f.cpAConfirmer ? 'à confirmer' : `${euros(f.cpIndemnite)}${partAConfirmer(f.cpPartAConfirmer)}`}</span></div>
           </div>
-          <div class="spread"><b>{aConfirmer ? 'Total net estimé, hors salaire du dernier mois et sommes à confirmer' : 'Total net estimé, hors salaire du dernier mois'}</b><span class="decl-value">{estime ? `environ ${eurosArrondis(total)}` : euros(total)}</span></div>
-          {(f.ifc ?? 0) > 0 && <p class="hint">{MESSAGE_CDD_IFC} Elle est calculée sur {estime ? 'environ ' : ''}{euros(f.brutCdd ?? 0)} de salaires bruts. Elle est soumise aux cotisations : l’app donne son net avec le même rapport que pour tes salaires.</p>}
+          <div class="spread"><b>{aConfirmer ? 'Total net estimé, hors salaire du dernier mois et sommes à confirmer' : 'Total net estimé, hors salaire du dernier mois'}</b><span class="decl-value">{euros(total)}</span></div>
+          {ifcNet > 0 && <p class="hint">{MESSAGE_CDD_IFC} Elle est calculée sur {euros(f.assietteNetteCdd ?? 0)} de salaires nets : l’Urssaf la fait déclarer et payer en net. Le brut est une estimation.</p>}
         </section>
         {!!f.declaration?.length && (
           <section class="card stack-sm" aria-labelledby="fincdd-decl">
             <h2 id="fincdd-decl">À déclarer à Pajemploi avec le dernier salaire</h2>
             <div class="decl">
-              {f.declaration.map((d) => <div class="decl-line"><span class="decl-label"><span>{d.libelle}</span><span class="decl-hint">{d.hint}</span></span><span class="decl-value">{estime ? 'environ ' : ''}{euros(d.net)}</span></div>)}
+              {f.declaration.map((d) => <div class="decl-line"><span class="decl-label"><span>{d.libelle}</span><span class="decl-hint">{d.hint}</span></span><span class="decl-value">{euros(d.net)}</span></div>)}
             </div>
           </section>
         )}
