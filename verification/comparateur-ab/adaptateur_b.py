@@ -13,6 +13,9 @@ Deux modes :
 Le moteur B n'est pas modifie. Montants en centimes entiers.
 T-050b : la regularisation de fin est calculee avant l'ICCP et l'indemnite de rupture (elle entre dans les deux bases).
 T-027 : kilometres (km_cv, km_partage, km_enfants), evenements nommes (nature), km_controle, evt_duree.
+T-076 : planning variable (planning_variable, cycle, cycle_ancre ou plannings_semaines, heures_mensualisees) et CDD
+(cdd, cdd_terme, cdd_motif ; fin motif « fin_cdd » avec fin_cdd). Point a confirmer : `valeur` = part sure,
+`lectures` = [lecture 1, lecture 2] (regles/t076-decisions-direction.md).
 """
 
 import os
@@ -36,6 +39,16 @@ class Refus(Exception):
         self.code = code
         self.etape = etape
         self.details = details or {}
+
+
+class Lect(int):
+    """T-076 : montant (part sure, la plus petite lecture) qui porte ses lectures (decisions T-076, preambule :
+    `valeur` = part sure, `lectures` = [lecture 1, lecture 2]). Se comporte comme un entier dans les sommes."""
+
+    def __new__(cls, valeur, lectures):
+        o = int.__new__(cls, valeur)
+        o.lectures = None if lectures is None else list(lectures)
+        return o
 
 
 def d_(s):
@@ -104,6 +117,7 @@ def est_ferie(d):
 class Ctx:
     def __init__(self, s):
         k = s["contrat"]
+        self.s = s
         self.k = k
         self.debut = d_(k["debut"])
         self.fin = d_(k["fin"]) if k.get("fin") else None
@@ -122,6 +136,58 @@ class Ctx:
         self.jours = {d_(j["date"]): j for j in ev.get("jours", [])}
         self.conges = [dict(l, du=d_(l["du"]), au=d_(l["au"])) for l in ev.get("absences_am", [])]
         self.cache = {}
+        # T-076 : planning variable (regles/t076-decisions-direction.md, 1) et CDD (idem, 2).
+        self.pv = bool(k.get("planning_variable"))
+        self.cdd = bool(k.get("cdd"))
+        self.p2_52 = False  # CDD, point P2, lecture « 52 semaines avec deduction de l'art. 111 »
+        if self.pv:
+            def conv(p):
+                return {int(j) - 1: [(minutes(a), minutes(b)) for a, b in pl] for j, pl in p.items()}
+            self.pv_cycle = [conv(p) for p in k["cycle"]] if k.get("cycle") else None
+            self.pv_ancre = d_(k["cycle_ancre"]) if k.get("cycle_ancre") else None
+            self.pv_semaines = None if self.pv_cycle else {d_(l): conv(p) for l, p in k.get("plannings_semaines", {}).items()}
+
+    def semaine_pv(self, lu):
+        """Plages prevues de la semaine du lundi lu (planning variable). Le choix de la semaine type (cycle ancre,
+        P-PV-4 lecture Q1) et le refus d'une semaine sans planning sont demandes a B (semaine_prevue)."""
+        key = ("pvsem", lu)
+        if key not in self.cache:
+            def mins(pl):
+                return {j: sum(b - a for a, b in p) for j, p in pl.items()}
+            try:
+                if self.pv_cycle is not None:
+                    r = appel("semaine_prevue", lu, cycle=[mins(p) for p in self.pv_cycle], cycle_ancre=self.pv_ancre)
+                    self.cache[key] = self.pv_cycle[r["resultat"]["index"]]
+                else:
+                    appel("semaine_prevue", lu, plannings_semaines={l: mins(p) for l, p in self.pv_semaines.items()})
+                    self.cache[key] = self.pv_semaines[lu]
+            except Refus as e:
+                self.cache[key] = e
+        v = self.cache[key]
+        if isinstance(v, Refus):
+            raise v
+        return v
+
+    def plages_jour(self, d):
+        if self.pv:
+            return self.semaine_pv(lundi(d)).get(d.weekday(), [])
+        return self.plages.get(d.weekday(), [])
+
+    def plan_jour(self, d):
+        """Minutes du planning ce jour (planning de la semaine), sans tenir compte des dates du contrat."""
+        if self.pv:
+            return sum(b - a for a, b in self.plages_jour(d))
+        return self.plan_min.get(d.weekday(), 0)
+
+    def prevu_hors_dates(self, d):
+        """Minutes prevues selon le planning (0 en semaine de non-accueil), meme hors des dates du contrat."""
+        if self.type == "incomplete" and lundi(d) in self.sans_accueil:
+            return 0
+        return self.plan_jour(d)
+
+    def jours_prevus(self, a, b):
+        """Dates prevues (minutes > 0) entre a et b inclus : fait du calendrier et du planning."""
+        return {x for x in jours_entre(a, b) if self.prevu(x) > 0}
 
     def dans_contrat(self, d):
         return d >= self.debut and (self.fin is None or d <= self.fin)
@@ -132,7 +198,7 @@ class Ctx:
             return 0
         if self.type == "incomplete" and lundi(d) in self.sans_accueil:
             return 0
-        return self.plan_min.get(d.weekday(), 0)
+        return self.plan_jour(d)
 
     def conge(self, d):
         for l in self.conges:
@@ -143,7 +209,7 @@ class Ctx:
     def travail_jour(self, d):
         """Minutes de travail du jour (R-HC-04 via B) pour un jour travaille."""
         j = self.jours.get(d)
-        p = self.plages.get(d.weekday(), [])
+        p = self.plages_jour(d)
         prevu = self.prevu(d)
         if j and j.get("pres"):
             pres = j["pres"]
@@ -224,11 +290,19 @@ def droits_cp_suffisants(ctx, d):
         reprise = l["au"] + timedelta(days=1)
         while ctx.prevu(reprise) == 0 or est_ferie(reprise):
             reprise += timedelta(days=1)
-        r = appel("decompte_jours_cp", l["du"], reprise, ctx.jours_travailles)
-        total += r["resultat"]["jours_decomptes"]
+        total += decompte_b(ctx, l["du"], reprise)
         if l["du"] <= d <= l["au"]:
             return total <= droits
     return True
+
+
+def decompte_b(ctx, du, reprise):
+    """Jours de CP decomptes par B (R-CP-09 ; planning variable : R-PV-09, CCN 48.1.1.3, sur le planning de
+    chaque semaine)."""
+    if ctx.pv:
+        prevus = ctx.jours_prevus(du, reprise)
+        return appel("decompte_jours_cp_planning_variable", du, reprise, prevus)["resultat"]["jours_decomptes"]
+    return appel("decompte_jours_cp", du, reprise, ctx.jours_travailles)["resultat"]["jours_decomptes"]
 
 
 def episodes_maladie(ctx):
@@ -296,6 +370,22 @@ def qualifier_jour(ctx, d):
     if c:
         r = appel("qualifier_absence", _TYPE_AM[c], ctx.type)
         return "absence", r["resultat"]["deductible"], 0
+    if ctx.p2_52 and lundi(d) in ctx.sans_accueil:
+        # T-076, CDD point P2, lecture « 52 » : semaine sans accueil deduite (art. 111) ; qualification par B.
+        r = appel("qualifier_semaine_sans_accueil_cdd", "52")
+        return "absence", r["resultat"]["deductible"], 0
+    if ctx.pv and est_ferie(d) and not (j.get("ferie_travaille") or j.get("pres")):
+        # T-076 : ferie avec un planning variable, lecture F1 (R-PV-12) ; jours de travail lus sur le planning.
+        jna = [x + timedelta(days=i) for x in ctx.sans_accueil for i in range(7)] if ctx.type == "incomplete" else []
+        prevus = ctx.jours_prevus(d - timedelta(days=21), d + timedelta(days=21))
+        r = appel("ferie_chome_planning_variable", d, prevus, jours_non_accueil=jna)
+        res = r["resultat"]
+        if res.get("jours_condition"):
+            av, ap = (d_(x) for x in res["jours_condition"])
+            r = appel("ferie_chome_planning_variable", d, prevus, presence_veille=statut_presence(ctx, av),
+                      presence_lendemain=statut_presence(ctx, ap), jours_non_accueil=jna)
+            res = r["resultat"]
+        return "ferie_chome", not res["remuneration_maintenue"], 0
     if est_ferie(d) and not (j.get("ferie_travaille") or j.get("pres")):
         jna = [x + timedelta(days=i) for x in ctx.sans_accueil for i in range(7)] if ctx.type == "incomplete" else []
         r = appel("ferie_chome", d, ctx.jours_travailles, jours_non_accueil=jna)
@@ -332,7 +422,23 @@ def qualifier_jour(ctx, d):
 def mensualise(ctx):
     if "mens" not in ctx.cache:
         try:
-            r = appel("mensualisation", ctx.semaines, ctx.hebdo, ctx.taux)
+            if ctx.pv:
+                # T-076 (R-PV-03, P-PV-1) : heures mensualisees du contrat ; lecture L1 ou L2 donnee par B.
+                def mins(pl):
+                    return {j: sum(b - a for a, b in p) for j, p in pl.items()}
+                cyc = sem = None
+                if ctx.pv_cycle is not None:
+                    cyc = [mins(pl) for pl in ctx.pv_cycle]
+                else:
+                    sem = {l: mins(pl) for l, pl in ctx.pv_semaines.items()}
+                r = appel("mensualisation_planning_variable", ctx.semaines, str(ctx.k["heures_mensualisees"]),
+                          ctx.taux, cycle=cyc, plannings_semaines=sem)
+                ctx.pv_lecture = r["resultat"]["lecture"]
+                ctx.pv_base = r["resultat"]["base_hebdo_minutes"]
+            elif ctx.cdd and ctx.type == "complete":
+                r = appel("mensualisation_cdd", ctx.hebdo, ctx.taux)  # T-076, R-CDD-04
+            else:
+                r = appel("mensualisation", ctx.semaines, ctx.hebdo, ctx.taux)
             ctx.cache["mens"] = r["resultat"]["salaire_mensualise_centimes"]
         except Refus as e:
             ctx.cache["mens"] = e
@@ -381,9 +487,7 @@ def mois_b(ctx, m):
             if r["resultat"]["deductible"]:
                 for d in jours:
                     if d < ctx.debut:
-                        x = ctx.plan_min.get(d.weekday(), 0)
-                        if ctx.type == "incomplete" and lundi(d) in ctx.sans_accueil:
-                            x = 0
+                        x = ctx.prevu_hors_dates(d)
                         if x:
                             unites += x if ctx.type == "complete" else 1
         for d in jours:
@@ -400,16 +504,20 @@ def mois_b(ctx, m):
             if r["resultat"]["deductible"]:
                 for d in jours:
                     if d > ctx.fin:
-                        x = ctx.plan_min.get(d.weekday(), 0)
-                        if ctx.type == "incomplete" and lundi(d) in ctx.sans_accueil:
-                            x = 0
+                        x = ctx.prevu_hors_dates(d)
                         if x:
                             unites += x if ctx.type == "complete" else 1
         if unites == 0:
             return 0
-        plan0 = {j: v for j, v in ctx.plan_min.items()}
-        contient = ctx.type == "incomplete" and any(lundi(d) in ctx.sans_accueil for d in jours)
-        p = appel("prevu_du_mois", a.year, a.month, plan0, ctx.type, contient_semaine_non_accueil=contient)
+        if ctx.pv:
+            # T-076 (R-PV-08) : denominateur sur le planning de chaque semaine du mois.
+            lundis = sorted({lundi(d) for d in jours})
+            plans = {lu: {j: sum(y - x for x, y in p) for j, p in ctx.semaine_pv(lu).items()} for lu in lundis}
+            p = appel("prevu_du_mois_planning_variable", a.year, a.month, plans, ctx.type)
+        else:
+            plan0 = {j: v for j, v in ctx.plan_min.items()}
+            contient = ctx.type == "incomplete" and any(lundi(d) in ctx.sans_accueil for d in jours)
+            p = appel("prevu_du_mois", a.year, a.month, plan0, ctx.type, contient_semaine_non_accueil=contient)
         prevu = p["resultat"]["prevu_minutes"] if ctx.type == "complete" else p["resultat"]["prevu_jours"]
         r = appel("deduction_absence", ctx.type, mens, unites, prevu)
         return r["resultat"]["deduction_centimes"]
@@ -452,6 +560,20 @@ def mois_b(ctx, m):
                     extra += max(0, mt - pv)
                 elif pv > 0:
                     absence = True
+            if ctx.pv:
+                # T-076 (R-PV-04, R-PV-05) : HC sur le prevu de la semaine (L1) ou sur la base du contrat (L2).
+                mensualise(ctx)
+                ref = contrat_min if ctx.pv_lecture == "L1" else Fraction(ctx.pv_base)
+                if min(reelles, 2700) <= ref and reelles <= 2700:
+                    continue
+                if lu < a or lu + timedelta(days=6) > b:
+                    raise Refus("HORS-COMPARATEUR", "heures", {"motif": "semaine a cheval sur deux mois"})
+                r = appel("heures_en_plus_semaine_planning_variable", ctx.pv_lecture, contrat_min, ctx.pv_base,
+                          reelles, ctx.taux, ctx.maj_hm, majoration_hc_pourcent=ctx.maj_hc,
+                          absence_dans_semaine=absence)
+                hc += r["resultat"]["montant_complementaires_centimes"]
+                hm += r["resultat"]["montant_majorees_centimes"]
+                continue
             if extra == 0:
                 continue
             if lu < a or lu + timedelta(days=6) > b:
@@ -492,6 +614,20 @@ def mois_b(ctx, m):
         return r["resultat"]["salaire_brut_mois_centimes"]
 
     garde("salaire_mois_hors_cp", total)
+
+    def reel_contrat():
+        # T-076, CDD point P1 : heures reellement effectuees dans la limite du prevu de chaque jour (les heures en
+        # plus sont payees a part). Fait du calendrier.
+        n = 0
+        for d in jours:
+            q = qual[d]
+            if isinstance(q, Refus):
+                raise q
+            if q[0] in ("travaille", "ferie_travaille"):
+                n += min(q[2], ctx.prevu(d))
+        return n
+
+    garde("_reel_contrat", reel_contrat)
 
     # Indemnites
     def jours_effectifs():
@@ -621,8 +757,12 @@ def acquisition_b(ctx, y):
                 mm = sum(1 for m in mois_entre(a, b) if all(ctx.conge(d) == "am_malade" for d in jours_entre(premier(m), dernier(m))))
                 kw = dict(mois_arret_maladie=mm, semaines_arret_maladie=str(Fraction(len(malade), 7)),
                           date_fin_periode=b)
-            r = appel("acquisition_cp", ctx.type, mois=mois_n, semaines=str(sem), jours=jours_trav,
-                      jours_par_semaine=len(ctx.jours_travailles), **kw)
+            if ctx.pv:
+                # T-076 (R-PV-09, CCN 48.1.1.2) : nombre de jours par semaine variable ; B recoit mois et semaines.
+                r = appel("acquisition_cp", ctx.type, mois=mois_n, semaines=str(sem), **kw)
+            else:
+                r = appel("acquisition_cp", ctx.type, mois=mois_n, semaines=str(sem), jours=jours_trav,
+                          jours_par_semaine=len(ctx.jours_travailles), **kw)
         ja = r["resultat"]["jours_acquis"]
         e = appel("jours_enfants_a_charge", ja, ctx.k.get("age_am", 35), ctx.k.get("enfants_a_charge", 0),
                   periode_atteint_31_mai=(b == p1))
@@ -682,6 +822,31 @@ def indemnite_b(ctx, y):
             raise j
         if j == 0:
             res = {"indemnite_cp": 0, "maintien_cp": 0, "ind": None}
+        elif ctx.pv:
+            # T-076 (R-PV-10, P-PV-5) : maintien en deux lectures C1 / C2, compare au dixieme par B.
+            sal = salaires_periode(ctx, a, b)
+            icp_pendant, icp_prec = icp_periode(ctx, y, a, b)
+            hp = n = 0
+            lu = lundi(a) if lundi(a) >= a else lundi(a) + timedelta(days=7)
+            while lu <= b:
+                h = sum(ctx.prevu(lu + timedelta(days=i)) for i in range(7))
+                hp += h
+                n += 1 if h > 0 else 0
+                lu += timedelta(days=7)
+            # Lecture C2 : heures prevues des jours de conge pris pour ce droit (periode de prise y+1), seulement si
+            # le droit est pris en entier (jours decomptes par B).
+            q0, q1 = periode(y + 1)
+            pris = jours_c = 0
+            for l in sorted([x for x in ctx.conges if x["type"] == "cp" and q0 <= x["du"] <= q1], key=lambda x: x["du"]):
+                reprise = l["au"] + timedelta(days=1)
+                while ctx.prevu(reprise) == 0 or est_ferie(reprise):
+                    reprise += timedelta(days=1)
+                pris += decompte_b(ctx, l["du"], reprise)
+                jours_c += sum(ctx.prevu(x) for x in jours_entre(l["du"], l["au"]) if not est_ferie(x))
+            hc = jours_c if pris == j else None
+            r = appel("indemnite_cp_planning_variable", j, ctx.taux, hp, max(n, 1), hc, sal, icp_pendant, icp_prec)
+            res = {"indemnite_cp": Lect(r["resultat"]["indemnite_centimes"], r["resultat"]["lectures"]),
+                   "maintien_cp": Refus("P-PV-5", "maintien"), "ind": r}
         else:
             sal = salaires_periode(ctx, a, b)
             icp_pendant, icp_prec = icp_periode(ctx, y, a, b)
@@ -713,7 +878,8 @@ def cp_mois_b(ctx, m):
                 if ind["ind"] is None:
                     out["cp_complement_mois"] = 0
                 else:
-                    r = appel("complement_cp_annee_complete", ind["ind"])
+                    r = appel("complement_cp_planning_variable" if ctx.pv else "complement_cp_annee_complete",
+                              ind["ind"])
                     out["cp_complement_mois"] = r["resultat"]["complement_centimes"]
         except Refus as ex:
             out["cp_complement_mois"] = ex
@@ -737,6 +903,9 @@ def cp_mois_b(ctx, m):
         mens = mensualise(ctx)
         r = appel("paiement_cp_annee_incomplete", mode, ind["indemnite_cp"], mens, d.month, **kw)
         out["cp_indemnite_mois"] = r["resultat"]["montant_cp_du_mois_centimes"]
+        lect = getattr(ind["indemnite_cp"], "lectures", None)
+        if lect and out["cp_indemnite_mois"]:
+            out["cp_indemnite_mois"] = Lect(out["cp_indemnite_mois"], lect)  # T-076 : lectures C1 / C2
     except Refus as ex:
         out["cp_indemnite_mois"] = ex
     return out
@@ -752,6 +921,48 @@ NET_SUR_BRUT_A = 7810
 def _brut_comme_a(net):
     x = Fraction(net * 10000, NET_SUR_BRUT_A) + Fraction(1, 2)
     return x.numerator // x.denominator
+
+
+def regularisation_b(ctx, fin):
+    """Regularisation definitive (annee incomplete, R-FIN-11 ; CCN 124), demandee a B. Leve Refus."""
+    if ctx.type == "complete":
+        return 0
+    else:
+        ecarts = []
+        debut_annee = ctx.debut
+        while True:
+            fin_annee = date(debut_annee.year + 1, debut_annee.month, debut_annee.day) - timedelta(days=1)
+            derniere = fin_annee >= fin
+            b = fin if derniere else fin_annee
+            verse = 0
+            eff = fer = absr = hcm = 0
+            for m in mois_entre(debut_annee, b):
+                v = mois_b(ctx, m)["salaire_base_mois"]
+                if isinstance(v, Refus):
+                    raise v
+                verse += v
+            for d in jours_entre(debut_annee, b):
+                q = qualifier_jour(ctx, d)
+                nature, ded, mt = q
+                pv = ctx.prevu(d)
+                if nature == "travaille":
+                    eff += min(mt, pv) if pv else 0
+                    hcm += max(0, mt - pv)
+                elif nature == "ferie_chome" and not ded:
+                    fer += pv
+                elif nature == "absence" and not ded:
+                    absr += pv
+                elif nature == "ferie_travaille":
+                    eff += pv
+            comp = {"feries_chomes_payes": {"minutes": fer, "incluses": False},
+                    "absences_remunerees": {"minutes": absr, "incluses": False},
+                    "heures_complementaires": {"minutes": hcm, "incluses": False}}
+            if derniere:
+                r = appel("regularisation_finale", "incomplete", ecarts, verse, ctx.taux, eff, comp)
+                return r["resultat"]["versement_centimes"]
+            r = appel("regularisation_annuelle", "incomplete", verse, ctx.taux, eff, comp)
+            ecarts.append(r["resultat"]["ecart_centimes"])
+            debut_annee = fin_annee + timedelta(days=1)
 
 
 def fin_b(ctx, k):
@@ -780,45 +991,7 @@ def fin_b(ctx, k):
     # Regularisation (annee incomplete) : calculee en premier, car elle entre dans la base du dixieme de
     # l'ICCP et dans l'assiette du 1/80 (T-050b).
     try:
-        if ctx.type == "complete":
-            out["regularisation_fin"] = 0
-        else:
-            ecarts = []
-            debut_annee = ctx.debut
-            while True:
-                fin_annee = date(debut_annee.year + 1, debut_annee.month, debut_annee.day) - timedelta(days=1)
-                derniere = fin_annee >= fin
-                b = fin if derniere else fin_annee
-                verse = 0
-                eff = fer = absr = hcm = 0
-                for m in mois_entre(debut_annee, b):
-                    v = mois_b(ctx, m)["salaire_base_mois"]
-                    if isinstance(v, Refus):
-                        raise v
-                    verse += v
-                for d in jours_entre(debut_annee, b):
-                    q = qualifier_jour(ctx, d)
-                    nature, ded, mt = q
-                    pv = ctx.prevu(d)
-                    if nature == "travaille":
-                        eff += min(mt, pv) if pv else 0
-                        hcm += max(0, mt - pv)
-                    elif nature == "ferie_chome" and not ded:
-                        fer += pv
-                    elif nature == "absence" and not ded:
-                        absr += pv
-                    elif nature == "ferie_travaille":
-                        eff += pv
-                comp = {"feries_chomes_payes": {"minutes": fer, "incluses": False},
-                        "absences_remunerees": {"minutes": absr, "incluses": False},
-                        "heures_complementaires": {"minutes": hcm, "incluses": False}}
-                if derniere:
-                    r = appel("regularisation_finale", "incomplete", ecarts, verse, ctx.taux, eff, comp)
-                    out["regularisation_fin"] = r["resultat"]["versement_centimes"]
-                    break
-                r = appel("regularisation_annuelle", "incomplete", verse, ctx.taux, eff, comp)
-                ecarts.append(r["resultat"]["ecart_centimes"])
-                debut_annee = fin_annee + timedelta(days=1)
+        out["regularisation_fin"] = regularisation_b(ctx, fin)
     except Refus as e:
         out["regularisation_fin"] = e
     # ICCP
@@ -929,6 +1102,216 @@ def fin_b(ctx, k):
     return out
 
 
+# ------------------------------------------------------------------ CDD (T-076, decisions section 2)
+
+def cdd_p1(ctx):
+    """Point P1 : CDD a terme precis de moins d'un mois (B decide, R-CDD-05)."""
+    if "p1" not in ctx.cache:
+        try:
+            if ctx.k.get("cdd_terme_imprecis"):
+                ctx.cache["p1"] = False
+            else:
+                ctx.cache["p1"] = appel("cdd_moins_d_un_mois", ctx.debut,
+                                        d_(ctx.k["cdd_terme"]))["resultat"]["moins_d_un_mois"]
+        except Refus as e:
+            ctx.cache["p1"] = e
+    v = ctx.cache["p1"]
+    if isinstance(v, Refus):
+        raise v
+    return v
+
+
+def cdd_p2(ctx):
+    """Point P2 : CDD dont le contrat prevoit des semaines sans accueil (contrat saisi en 46 semaines ou moins)."""
+    return ctx.type == "incomplete"
+
+
+def ctx_52(ctx):
+    """P2, lecture 2 : meme situation, formule 52 semaines (R-CDD-04), semaines sans accueil deduites (art. 111)."""
+    if "ctx52" not in ctx.cache:
+        c = Ctx(ctx.s)
+        c.type, c.semaines, c.p2_52 = "complete", 52, True
+        ctx.cache["ctx52"] = c
+    return ctx.cache["ctx52"]
+
+
+def _lect(v1, v2):
+    for v in (v1, v2):
+        if isinstance(v, Refus):
+            raise v
+    return Lect(min(v1, v2), [int(v1), int(v2)])
+
+
+def mois_cdd(ctx, m):
+    """Sorties d'un mois de CDD : comme un CDI (R-CDD-02, R-CDD-04), avec les lectures de P1 ou de P2."""
+    key = ("mois_cdd", m)
+    if key in ctx.cache:
+        return ctx.cache[key]
+    out = dict(mois_b(ctx, m))
+    noms = ("salaire_base_mois", "salaire_mois_hors_cp")
+    try:
+        p1 = cdd_p1(ctx)
+        if p1 and cdd_p2(ctx):
+            raise Refus("HORS-COMPARATEUR", "cdd", {"motif": "P1 et P2 ensemble"})
+    except Refus as e:
+        for n in noms:
+            out[n] = e
+        ctx.cache[key] = out
+        return out
+    if p1:
+        try:
+            for n in ("salaire_base_mois", "deduction", "_reel_contrat"):
+                if isinstance(out[n], Refus):
+                    raise out[n]
+            r = appel("salaire_mois_cdd_moins_d_un_mois", mensualise(ctx), out["deduction"], ctx.taux,
+                      out["_reel_contrat"])
+            l1, l2 = r["resultat"]["lectures"]
+            out["salaire_base_mois"] = _lect(l1, l2)
+            tot = out["salaire_mois_hors_cp"]
+            if not isinstance(tot, Refus):
+                plus = tot - l1  # heures en plus, payees dans les deux lectures
+                out["salaire_mois_hors_cp"] = _lect(l1 + plus, l2 + plus)
+        except Refus as e:
+            for n in noms:
+                out[n] = e
+    elif cdd_p2(ctx):
+        o52 = mois_b(ctx_52(ctx), m)
+        for n in ("salaire_mensualise",) + noms:
+            try:
+                out[n] = _lect(out[n], o52[n])
+            except Refus as e:
+                out[n] = e
+    ctx.cache[key] = out
+    return out
+
+
+def fin_cdd_b(ctx, k):
+    """Fin de CDD (R-CDD-06 a R-CDD-10, ordre R-CDD-09) : dernier mois, regularisation, BrutCDD, IFC, ICCP.
+    Chaque lecture de P1 ou P2 est calculee jusqu'au bout ; P3 et P4 sont donnes par B. Sortie : part sure
+    (`valeur`) et [plus petite, plus grande] des lectures (`lectures`)."""
+    out = {}
+    fc = k["fin_cdd"]
+    fin = ctx.fin
+    try:
+        r = appel("preavis_et_rupture_cdd", fc)
+        out["preavis"] = r["resultat"]["preavis_centimes"]
+        out["indemnite_rupture"] = r["resultat"]["indemnite_rupture_centimes"]
+    except Refus as e:
+        out["preavis"] = out["indemnite_rupture"] = e
+    try:
+        p1 = cdd_p1(ctx)
+        p2 = cdd_p2(ctx)
+        if p1 and p2:
+            raise Refus("HORS-COMPARATEUR", "cdd", {"motif": "P1 et P2 ensemble"})
+    except Refus as e:
+        for cle in ("ifc", "iccp", "regularisation_fin", "assiette_ifc", "salaire_dernier_mois"):
+            out[cle] = e
+        return out
+    mois_contrat = [m for m in mois_entre(ctx.debut, fin)]
+    if p1:
+        variantes = [(ctx, lambda m: mois_cdd(ctx, m)["salaire_mois_hors_cp"].lectures[0]),
+                     (ctx, lambda m: mois_cdd(ctx, m)["salaire_mois_hors_cp"].lectures[1])]
+    elif p2:
+        c52 = ctx_52(ctx)
+        variantes = [(ctx, lambda m: mois_b(ctx, m)["salaire_mois_hors_cp"]),
+                     (c52, lambda m: mois_b(c52, m)["salaire_mois_hors_cp"])]
+    else:
+        variantes = [(ctx, lambda m: mois_b(ctx, m)["salaire_mois_hors_cp"])]
+    res = []
+    for cv, sal_mois in variantes:
+        v = {}
+        try:
+            sal = {}
+            for m in mois_contrat:
+                x = mois_cdd(ctx, m)["salaire_mois_hors_cp"]  # refus du mois : propage
+                if isinstance(x, Refus):
+                    raise x
+                x = sal_mois(m)
+                if isinstance(x, Refus):
+                    raise x
+                sal[m] = int(x)
+            cp = 0
+            # CP verses pendant le contrat : 46 semaines ou moins (CCN 102.1.2.2), ou conges pris en 52 semaines.
+            cp_verses = cv.type == "incomplete" or any(l["type"] == "cp" for l in cv.conges)
+            for m in (mois_contrat if cp_verses else []):
+                cm = cp_mois_b(cv, m)
+                for cle in ("cp_indemnite_mois", "cp_complement_mois"):
+                    if isinstance(cm[cle], Refus):
+                        raise cm[cle]
+                    cp += cm[cle]
+            reg = regularisation_b(cv, fin) if cv.type == "incomplete" else 0
+            v["reg"] = reg
+            brut = appel("assiette_ifc", list(sal.values()), cp, reg)["resultat"]["brut_cdd_centimes"]
+            v["brut"] = brut
+            ifc = appel("indemnite_fin_cdd", brut, fc)["resultat"]["indemnite_centimes"]
+            v["ifc_sure"] = ifc
+            # ICCP (R-CDD-10) : periodes de reference touchees par le contrat.
+            y = fin.year if fin.month >= 6 else fin.year - 1
+            periodes = []
+            for yy in (y - 1, y):
+                p0, p1_ = periode(yy)
+                if ctx.debut > p1_:
+                    continue
+                a, b = max(p0, ctx.debut), min(p1_, fin)
+                acq = acquisition_b(cv, yy)
+                ja = acq["jours_acquis"]
+                pj = {"salaires_bruts_periode_centimes": sum(s_ for m, s_ in sal.items()
+                                                            if a <= premier(m) <= b or a <= dernier(m) <= b)}
+                pend = sum(int(cp_mois_b(cv, m)[c_]) for m in (mois_entre(a, b) if cp_verses else [])
+                           for c_ in ("cp_indemnite_mois", "cp_complement_mois"))
+                pj["icp_versee_pendant_periode_centimes"] = pend
+                if isinstance(ja, Refus):
+                    pj["jours_acquis"], pj["code_jours"] = None, ja.code
+                    payes = 0
+                else:
+                    pj["jours_acquis"] = ja
+                    q0 = date(yy + 1, 6, 1)
+                    if cv.type == "complete":
+                        payes = sum(decompte_b(cv, l["du"], l["au"] + timedelta(days=1)) for l in cv.conges
+                                    if l["type"] == "cp" and q0 <= l["du"] <= fin)
+                    else:
+                        payes = ja if fin >= q0 and cv.k.get("cp_mode", "juin") == "juin" else 0
+                pj["jours_payes"] = payes
+                periodes.append(pj)
+            if periodes:
+                periodes[-1]["regularisation_due_centimes"] = reg
+            try:
+                r = appel("iccp_cdd", fc, periodes, ifc, brut, cv.hebdo, cv.taux)
+                v["iccp"] = (r["resultat"]["iccp_centimes"], r["resultat"]["lectures"])
+                r = appel("indemnite_fin_cdd", brut, fc, iccp_centimes=r["resultat"]["iccp_centimes"])
+                v["ifc"] = (ifc, r["resultat"]["lectures"])
+            except Refus as e:
+                v["iccp"] = e
+                v["ifc"] = (ifc, None)
+        except Refus as e:
+            v = {"refus": e}
+        res.append(v)
+
+    def combine(nom):
+        for v in res:
+            if "refus" in v:
+                return v["refus"]
+            if isinstance(v[nom], Refus):
+                return v[nom]
+        sures = [v[nom][0] for v in res]
+        if any(v[nom][1] is None for v in res):
+            return Lect(min(sures), None)
+        tout = [x for v in res for x in v[nom][1]]
+        return Lect(min(tout), [min(tout), max(tout)])
+
+    out["ifc"] = combine("ifc")
+    out["iccp"] = combine("iccp")
+    for nom, cle in (("regularisation_fin", "reg"), ("assiette_ifc", "brut")):
+        if any("refus" in v for v in res):
+            out[nom] = next(v["refus"] for v in res if "refus" in v)
+        elif len(res) == 1:
+            out[nom] = res[0][cle]
+        else:
+            out[nom] = _lect(res[0][cle], res[1][cle])
+    out["salaire_dernier_mois"] = mois_cdd(ctx, mois_de(fin))["salaire_mois_hors_cp"]
+    return out
+
+
 # ------------------------------------------------------------------ execution
 
 def _resoudre(v, valeurs):
@@ -988,6 +1371,13 @@ def _sortie(v, etape=None):
         if v.code == "ERREUR-SAISIE":
             return {"statut": "erreur", "note": f"{v.etape} : {v.details}"}
         return {"statut": "non_gere", "code": v.code, "etape": v.etape, "details": v.details}
+    if isinstance(v, Lect):
+        s = {"statut": "ok", "valeur": int(v)}
+        if v.lectures is not None:
+            s["lectures"] = v.lectures
+        else:
+            s["note"] = "lecture 2 non calculee (voir le refus de B dans le detail)"
+        return s
     return {"statut": "ok", "valeur": v}
 
 
@@ -1014,7 +1404,8 @@ def composition(s):
         pre = f"{k['id']}." if k.get("id") else ""
         t = k["type"]
         if t == "mois":
-            res = {n: v for n, v in mois_b(ctx, k["mois"]).items() if not n.startswith("_") and n != "deduction"}
+            src = mois_cdd(ctx, k["mois"]) if ctx.cdd else mois_b(ctx, k["mois"])  # T-076 : lectures P1 / P2
+            res = {n: v for n, v in src.items() if not n.startswith("_") and n != "deduction"}
         elif t == "cp_acquisition":
             res = acquisition_b(ctx, k["periode"])
         elif t == "cp_indemnite":
@@ -1022,6 +1413,8 @@ def composition(s):
             res = {"indemnite_cp": r["indemnite_cp"], "maintien_cp": r["maintien_cp"]}
         elif t == "cp_mois":
             res = cp_mois_b(ctx, k["mois"])
+        elif t == "fin" and k.get("motif") == "fin_cdd":
+            res = fin_cdd_b(ctx, k)  # T-076, R-CDD-06 a R-CDD-10
         elif t == "fin":
             res = fin_b(ctx, k)
         elif t == "cp_decompte":
