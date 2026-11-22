@@ -4,6 +4,7 @@ import { computeMonth } from './month';
 import { dayInfo, joindre, naturesAConfirmer, termsAt, type Ctx } from './payroll';
 import { MESSAGE_PERIODE_NON_GEREE, plafondHS, ratesAt } from './rates';
 import { euros } from './money';
+import { partNonDeductibleRegion, regionDe, smicMayotte } from './regions';
 
 export interface FiscalChild {
   cid: string;
@@ -37,6 +38,12 @@ export interface FiscalChild {
   smics: number[];
   facteur: number;
   partiel: boolean;
+  /**
+   * T-077 (R6) : Mayotte. L'abattement retenu est celui du SMIC de Mayotte (le plus bas) ; `abattementSmicNational` donne
+   * l'autre lecture (SMIC national) et `aConfirmer` le message, avec l'écart.
+   */
+  abattementSmicNational?: number;
+  aConfirmer?: string;
   /** T-023 : barème absent pour une partie de l'année (SMIC ou avantage repas) : estimation incomplète, à confirmer */
   nonGere?: string;
   /** Mois repris d'un bulletin : heures exonérées et kilomètres inconnus, comptés comme imposables ou absents */
@@ -52,8 +59,14 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
   const smics: number[] = [];
   const nonGere = new Set<string>();
   // T-023 : jamais le SMIC d'une autre période. Avant les barèmes vérifiés, pas d'abattement calculé pour ce jour.
+  const region = regionDe(c);
+  const PND = partNonDeductibleRegion(region, PART_NON_DEDUCTIBLE);
+  let abatNational = 0;
   const smicAt = (d: string): number => {
-    const v = ratesAt(d)?.smic;
+    const national = ratesAt(d)?.smic;
+    if (national !== undefined) abatNationalJour = national;
+    // T-077 (R6) : à Mayotte, lecture A (retenue) : SMIC de Mayotte ; lecture B : SMIC national (question au service des impôts).
+    const v = region === 'mayotte' && national !== undefined ? smicMayotte(d) ?? national : national;
     if (v === undefined) { nonGere.add(`${MESSAGE_PERIODE_NON_GEREE} L’abattement de ces jours n’est pas calculé.`); return 0; }
     if (smics[smics.length - 1] !== v) smics.push(v);
     return v;
@@ -63,6 +76,7 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
     if (v === undefined) { nonGere.add('Repas fournis par les parents : la valeur officielle du repas pour cette année n’est pas dans l’app. Ils ne sont pas comptés ; ajoute-les toi-même.'); return 0; }
     return v;
   };
+  let abatNationalJour = 0;
   const facteur = c.majoreFiscal ? 4 : 3;
   let net = 0, hs = 0, er = 0, km = 0, rp = 0, jours = 0, courts = 0, abat = 0;
   let partiel = false;
@@ -79,13 +93,13 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
     }
     // C-019 : les heures complémentaires et majorées sont exonérées d'impôt (CGI art. 81 quater) ; elles sortent du net
     // imposable et des sommes reçues du régime spécial, dans la limite du plafond annuel (fiscalYears).
-    const hsPart = r.hsNet + Math.round(r.hsBrut * PART_NON_DEDUCTIBLE);
-    net += r.netTotal + Math.round(r.brutEstime * PART_NON_DEDUCTIBLE) - hsPart;
+    const hsPart = r.hsNet + Math.round(r.hsBrut * PND);
+    net += r.netTotal + Math.round(r.brutEstime * PND) - hsPart;
     hs += hsPart + r.reductionHS;
     // T-025 C-5 : un salaire d'événement familial à confirmer n'est pas dans ce net : le dire, ne pas le compter en silence.
     // T-028 : des congés payés à confirmer ne sont pas dans ce net (comme l'événement familial) : le dire.
     if (r.cpAConfirmer) nonGere.add(`Congés payés à confirmer en ${monthLabel(m)} : ils ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
-    if (r.evenementAConfirmer) nonGere.add(`${joindre(naturesAConfirmer(r).map((n) => ({ evenement: 'événement familial', cp: 'congés au-delà des droits', maladie: 'jours d’enfant malade' })[n])).replace(/^./, (x) => x.toUpperCase())} à confirmer : ${euros(r.evenementAConfirmer)} de salaire en ${monthLabel(m)} ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
+    if (r.evenementAConfirmer) nonGere.add(`${joindre(naturesAConfirmer(r).map((n) => ({ evenement: 'événement familial', cp: 'congés au-delà des droits', maladie: 'jours d’enfant malade', ferieLocal: 'jours fériés locaux', maintien: 'jours d’absence pour maladie' })[n])).replace(/^./, (x) => x.toUpperCase())} à confirmer : ${euros(r.evenementAConfirmer)} de salaire en ${monthLabel(m)} ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
     er += r.entretien + r.repas;
     km += r.km;
     // T-044b (relecture V5, C2-2) : la part d'entretien à confirmer n'est pas dans ces sommes : le dire. Les km
@@ -98,6 +112,7 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
       // Sans détail des jours : jours d'activité du bulletin, journées supposées de 8 h ou plus.
       jours += r.joursActivite;
       abat += r.joursActivite * facteur * smicAt(lastDay(m));
+      abatNational += r.joursActivite * facteur * abatNationalJour;
       if (termsAt(c, `${m}-01`).repasParents) rp += r.joursActivite * repasAt(lastDay(m));
       continue;
     }
@@ -109,12 +124,23 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
       const ratio = Math.min(1, di.presentMin / 480);
       if (ratio < 1) courts++;
       abat += facteur * smicAt(d) * ratio;
+      abatNational += facteur * abatNationalJour * ratio;
     }
   }
   const recu = net + er + km + rp;
   const abattementBrut = Math.round(abat);
   const abattement = Math.min(abattementBrut, recu);
+  let lectureMayotte: Pick<FiscalChild, 'abattementSmicNational' | 'aConfirmer'> = {};
+  if (region === 'mayotte' && jours > 0) {
+    const national = Math.min(Math.round(abatNational), recu);
+    const repas = rp > 0 ? ' Repas fournis par les parents : l’app les compte au barème national de l’Urssaf ; aucun texte lu ne dit s’il vaut à Mayotte, sinon c’est leur valeur réelle.' : '';
+    lectureMayotte = {
+      abattementSmicNational: national,
+      aConfirmer: `Mayotte : abattement à confirmer. L’app le calcule avec le SMIC de Mayotte (${euros(abattement)}). Avec le SMIC national, il serait de ${euros(national)}, soit ${euros(national - abattement)} de plus. L’article 80 sexies dit « SMIC » sans préciser lequel : demande à ton centre des impôts.${repas}`,
+    };
+  }
   return {
+    ...lectureMayotte,
     cid: c.id, recu, netImposable: net, hsValeur: hs, hsExonere: hs, hsImposable: 0, entretienRepas: er, km, repasParents: rp, jours, joursCourts: courts, abattementBrut, abattement,
     imposable: recu - abattement, smic: smics[smics.length - 1] ?? ratesAt(`${year}-01-01`)?.smic ?? 0, smics, facteur, partiel, moisHistorique,
     nonGere: nonGere.size ? [...nonGere].join(' ') : undefined,

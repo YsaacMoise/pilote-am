@@ -187,7 +187,7 @@ export function Contrat({ id }: { id?: string }) {
             )}
             {/* T-031 : cas que l'app ne gère pas. Une réponse est demandée : sans elle, l'app ne sait pas si ses montants valent. */}
             <Choices label="Où travailles-tu ?" value={c.mayotte ? 'mayotte' : ouiNon(c.alsaceMoselle)} onChange={(v) => set({ alsaceMoselle: v === 'oui', mayotte: v === 'mayotte' })}
-              options={[{ v: 'non', l: 'Ailleurs en France (hors Mayotte)' }, { v: 'oui', l: 'Bas-Rhin, Haut-Rhin ou Moselle', sub: 'Alsace-Moselle : non géré par l’app' }, { v: 'mayotte', l: 'Mayotte', sub: 'Non géré par l’app' }]} />
+              options={[{ v: 'non', l: 'Ailleurs en France (hors Mayotte)' }, { v: 'oui', l: 'Bas-Rhin, Haut-Rhin ou Moselle', sub: 'Alsace-Moselle : cotisations et fériés locaux pris en compte' }, { v: 'mayotte', l: 'Mayotte', sub: 'SMIC, cotisations et 27 avril de Mayotte pris en compte' }]} />
             <Choices label="Les horaires sont-ils les mêmes chaque semaine ?" value={ouiNon(c.planningVariable === undefined ? undefined : !c.planningVariable)} onChange={(v) => set({ planningVariable: v === 'non' })}
               options={[{ v: 'oui', l: 'Oui, la même semaine type', sub: 'Sans compter les semaines sans accueil' }, { v: 'non', l: 'Non, ils changent', sub: 'Semaines A et B, planning remis chaque mois : non géré par l’app' }]} />
             <Choices label="L’accueil est-il régulier ?" value={ouiNon(c.accueilOccasionnel === undefined ? undefined : !c.accueilOccasionnel)} onChange={(v) => set({ accueilOccasionnel: v === 'non' })}

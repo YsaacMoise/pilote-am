@@ -650,4 +650,4 @@ export function simulationParDefaut(d: ISODate): SimInput {
  * https://www.urssaf.fr/accueil/particulier/particulier-employeur/embaucher-un-salarie/remunerer-salarie-domicile.html
  */
 export const MESSAGE_ZONE_SIMULATEUR =
-  'Ces montants valent pour la métropole et les départements d’outre-mer, hors Mayotte. À Mayotte, le simulateur ne s’applique pas : le salaire minimum y est différent.';
+  'Ces montants valent pour la métropole et les départements d’outre-mer, hors Mayotte. À Mayotte, le simulateur ne s’applique pas encore : les cotisations et l’aide de la CAF y sont différentes.';

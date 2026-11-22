@@ -232,7 +232,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
             {exceptions.map((di) => {
               let sub = '';
               if (di.kind === 'am' && di.amLeave) sub = AM_ABS_LABEL[di.amLeave];
-              else if (di.kind === 'ferie') sub = `Férié : ${di.ferie}`;
+              else if (di.kind === 'ferie') sub = di.ferie ? `Férié : ${di.ferie}` : `Férié local à confirmer : ${di.ferieLocal}`;
               else if (di.rec?.abs) sub = CHILD_ABS_LABEL[di.rec.abs] + (di.deducted ? ', retenu' : ', payé');
               else if (di.departOublie) sub = 'Départ non pointé';
               else if (di.extraMin) sub = `+${hoursLabel(di.extraMin)} en plus`;

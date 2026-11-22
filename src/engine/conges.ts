@@ -1,6 +1,7 @@
 // Congés payés (art. 48 et 102) : acquisition, compteur, indemnité.
 import { addDays, addMonths, addMonthsToDate, cpPeriod, cpPeriodStartYear, daysBetween, eachDay, mondayOf, monthOf, monthsBetween, weekday, type ISODate, type Month } from './dates';
 import { holidayName } from './holidays';
+import { ferieLocal, regionDe } from './regions';
 import { euros } from './money';
 import {
   H45, daysPerWeek, inContract, libelleSalaireAConfirmer, makeCtx, monthBase, plannedPlages, planningBrutMin, salaireMensualise, semainesSansAccueilAnnee, termsAt,
@@ -35,10 +36,11 @@ function jjmm(d: ISODate): string {
 // pris pendant des semaines sans accueil.
 
 /** Jour qui aurait dû être travaillé pour ce contrat : jour du planning type, dans le contrat, hors férié chômé */
-function jourTravaille(ctx: Ctx, d: ISODate): boolean {
+/** `local` (T-077, lecture A de R3) : les fériés locaux d'Alsace-Moselle ou de Mayotte comptent comme fériés. */
+function jourTravaille(ctx: Ctx, d: ISODate, local = false): boolean {
   const { c } = ctx;
   if (!inContract(c, d) || planningBrutMin(termsAt(c, d), d) <= 0) return false;
-  return !holidayName(d) || !!ctx.days.get(d)?.ferieTravaille;
+  return !(holidayName(d) || (local && ferieLocal(regionDe(c), d))) || !!ctx.days.get(d)?.ferieTravaille;
 }
 
 const ouvrable = (d: ISODate) => weekday(d) <= 6 && !holidayName(d);
@@ -91,7 +93,27 @@ export function decomptesCP(ctx: Ctx): DecompteCP[] {
       }
       const premier = eachDay(from, to).find((d) => jourTravaille(ctx, d) && weekday(d) <= 6);
       const veille = reprise ? addDays(reprise, -1) : to;
-      const jours = premier && premier <= veille ? eachDay(premier, veille).filter((d) => ouvrable(d) && inContract(c, d)) : [];
+      let jours = premier && premier <= veille ? eachDay(premier, veille).filter((d) => ouvrable(d) && inContract(c, d)) : [];
+      // T-077 (R3, point 4) : lecture A, les fériés locaux ne sont pas décomptés (premier jour, reprise et jours ouvrables).
+      let localAConfirmer: string | undefined;
+      const region = regionDe(c);
+      if (region !== 'metropole') {
+        const premierA = eachDay(from, to).find((d) => jourTravaille(ctx, d, true) && weekday(d) <= 6);
+        let repriseA: ISODate | undefined;
+        for (let y = addDays(to, 1), n = 0; n < 800; n++, y = addDays(y, 1)) {
+          if (c.end && y > c.end) break;
+          if (y < c.start) continue;
+          if (jourTravaille(ctx, y, true)) { repriseA = y; break; }
+        }
+        const veilleA = repriseA ? addDays(repriseA, -1) : to;
+        const joursA = premierA && premierA <= veilleA
+          ? eachDay(premierA, veilleA).filter((d) => ouvrable(d) && !ferieLocal(region, d) && inContract(c, d)) : [];
+        if (joursA.length !== jours.length || joursA.some((d) => !jours.includes(d))) {
+          const locaux = [...new Set([...jours, ...joursA].filter((d) => !(jours.includes(d) && joursA.includes(d))))];
+          localAConfirmer = `Le décompte dépend d’un jour férié local (${locaux.map(jjmm).join(', ')}) : ${joursA.length} jour${joursA.length > 1 ? 's' : ''} si c’est un férié pour toi, ${jours.length} sinon. Aucun texte ne le dit, la question est posée à la DDETS.`;
+          jours = jours.filter((d) => joursA.includes(d));
+        }
+      }
       const b: DecompteCP = { from, to, leaves, premier, reprise, jours, joursSaisis: jours.filter((d) => d <= to) };
       // Cas que la règle ne tranche pas : signalés, jamais choisis.
       const fin = reprise ?? to;
@@ -105,6 +127,7 @@ export function decomptesCP(ctx: Ctx): DecompteCP[] {
         if (finContrat && apres.length) raisons.push('Le contrat finit avant ta reprise.');
         else if (!finContrat) raisons.push('L’app ne trouve pas ton jour de reprise.');
       }
+      if (localAConfirmer) raisons.push(localAConfirmer);
       if (raisons.length) {
         b.aConfirmer = `Congé du ${jjmm(from)} au ${jjmm(to)} : nombre de jours décomptés à confirmer. ${raisons.join(' ')} Vérifie le décompte avec les parents.`;
       }

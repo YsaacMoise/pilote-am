@@ -22,6 +22,9 @@ import { dayInfo, makeCtx, mensuelMinutes, monthBase, regularisation, salaireMen
 import { acquisition, cpForMonth, decompteConge, indemnite, maintien } from '__A_RACINE__/src/engine/conges';
 import { finDeContrat, type Motif } from '__A_RACINE__/src/engine/fin';
 import { entretienPlancher, netToBrut, ratesAt } from '__A_RACINE__/src/engine/rates';
+// T-077 : fonctions régionales (absentes des versions de A d'avant T-077 : lues à l'exécution, sans import statique).
+import * as RATES_A from '__A_RACINE__/src/engine/rates';
+import * as REGIONS_A from '__A_RACINE__/src/engine/regions';
 // T-027 : fonctions publiques du moteur A pour les kilomètres et les événements familiaux (signatures seulement).
 import { controleKm } from '__A_RACINE__/src/engine/km';
 import { dureeEvenement } from '__A_RACINE__/src/engine/evenements';
@@ -43,7 +46,9 @@ function contrat(k: any): Contract {
     rateNet: k.taux, majoration: k.majoration_hm ?? 10, majorationCompl: k.majoration_hc, entretienJour: k.entretien_jour ?? 0,
     // T-034 (M7) : réponse à la question « CDI ou CDD ? » ajoutée par T-033 (cbbbd66). Toutes les situations sont des CDI
     // (FIN-11, seul CDD, est déclaré « absent » de A par generer_situations.py).
-    alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false,
+    // T-077 : région du contrat (champ « region » des situations ; absent = métropole).
+    alsaceMoselle: k.region === 'alsace_moselle', ...(k.region === 'mayotte' ? { mayotte: true } : {}),
+    planningVariable: false, accueilOccasionnel: false, cdd: false,
     repasPrix: k.repas_prix ?? 0, repasParJour: k.repas_par_jour ?? 0, kmTaux: k.km_taux ?? 0, kmCv: k.km_cv ?? undefined,
     cpMode: k.cp_mode ?? 'juin', majoreFiscal: false, trackedFrom: k.suivi_depuis ?? k.debut,
     balances: {
@@ -124,6 +129,13 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
         for (const cle of ['salaire_base_mois', 'deduction', 'salaire_mois_hors_cp']) out[cle] = refus(n);
       }
       if (b.kmAConfirmer) out.km = refus(`A : ${b.kmAConfirmer} km à confirmer`);
+      // T-077 (R3) : majoration de 10 % d'un férié local travaillé, à confirmer (hors du total) : deux lectures.
+      const flac = (b as any).ferieLocalAConfirmer;
+      if (flac) {
+        const n = `A : majoration d’un férié local à confirmer (${flac} centimes, hors du total)`;
+        out.ferie_travaille_montant = refus(n, [b.ferieAmount, b.ferieAmount + flac]);
+        out.salaire_mois_hors_cp = refus(n, [b.net, b.net + flac]);
+      }
       if (b.nonGere.length) for (const cle of Object.keys(out)) if (cle !== 'alertes') out[cle] = refus(`A : non géré (${b.nonGere.join(' ')})`);
       break;
     }
@@ -218,6 +230,7 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
     case 'ferie': {
       const di = dayInfo(ctx, k.date);
       if (di.kind !== 'ferie') out.ferie_paye = absent(`jour de type ${di.kind}`);
+      else if (di.aConfirmer) out.ferie_paye = refus(`A : à confirmer (${di.aConfirmer})`);
       else out.ferie_paye = ok(!di.ferieNonPaye);
       break;
     }
@@ -231,9 +244,12 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
     case 'minimum_conventionnel':
       out.minimum_brut = ok(ratesAt(k.date).minConvBrut);
       out.minimum_net = ok(ratesAt(k.date).minConvNet);
+      // T-077 (R2) : repère net de la région.
+      if ((RATES_A as any).ratesAtRegion) out.minimum_net = ok((RATES_A as any).ratesAtRegion(k.date, (REGIONS_A as any).regionDe(ctx.c)).minConvNet);
+      if (out.minimum_net.valeur === undefined) out.minimum_net = absent('A : aucun repère net à cette date');
       break;
     case 'brut_depuis_net':
-      out.brut_estime = ok(netToBrut(k.net, k.date));
+      out.brut_estime = ok((netToBrut as (...a: unknown[]) => number)(k.net, k.date, (REGIONS_A as any).regionDe?.(ctx.c) ?? 'metropole'));
       break;
     case 'denominateur': {
       const b = monthBase(ctx, k.mois);

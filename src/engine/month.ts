@@ -3,6 +3,9 @@ import { lastDay, monthLabel, type Month } from './dates';
 import { cpForMonth } from './conges';
 import { libelleSalaireAConfirmer, monthBase, naturesAConfirmer, termsAt, type Ctx, type MonthBase } from './payroll';
 import { netToBrut, REDUCTION_HS } from './rates';
+import { regionDe } from './regions';
+
+export const MESSAGE_REDUCTION_HS_MAYOTTE = 'Mayotte : la réduction de cotisations de tes heures complémentaires et majorées n’est pas estimée par l’app (les cotisations y sont différentes). Pajemploi la calcule : regarde ton relevé.';
 import { euros, hoursLabel } from './money';
 
 export interface MonthResult extends MonthBase {
@@ -31,8 +34,12 @@ export function computeMonth(ctx: Ctx, m: Month, enfants = 0): MonthResult {
   const cp = cpForMonth(ctx, m, enfants);
   const netTotal = b.net + cp.indemnite + cp.complement;
   const alerts = cp.aConfirmer ? [...b.alerts, cp.aConfirmer] : [...b.alerts];
+  // T-077 : à Mayotte, la réduction de cotisations des heures complémentaires et majorées (CSS L241-17) n'est pas estimée :
+  // en métropole, ses 11,31 % sont les cotisations vieillesse de l'AM, qui sont différentes à Mayotte (Urssaf : 5,54 %).
+  const mayotte = regionDe(ctx.c) === 'mayotte';
+  if (mayotte && b.complAmount + b.majAmount + b.majContratAmount > 0) alerts.push(MESSAGE_REDUCTION_HS_MAYOTTE);
   const hsNet = b.complAmount + b.majAmount + b.majContratAmount;
-  const hsBrut = netToBrut(hsNet, lastDay(m));
+  const hsBrut = netToBrut(hsNet, lastDay(m), regionDe(ctx.c));
   return {
     ...b,
     alerts,
@@ -42,10 +49,10 @@ export function computeMonth(ctx: Ctx, m: Month, enfants = 0): MonthResult {
     cpComplement: cp.complement,
     cpNote: cp.note,
     netTotal,
-    brutEstime: b.brut ?? netToBrut(netTotal, lastDay(m)),
+    brutEstime: b.brut ?? netToBrut(netTotal, lastDay(m), regionDe(ctx.c)),
     hsNet,
     hsBrut,
-    reductionHS: Math.round(hsBrut * REDUCTION_HS),
+    reductionHS: mayotte ? 0 : Math.round(hsBrut * REDUCTION_HS),
   };
 }
 
@@ -147,10 +154,10 @@ export function raisonsEntretienAConfirmer(r: Pick<MonthResult, 'entretienJoursD
  * `pourParents` : l'événement familial devient « une part du salaire » (DG, 21/11/2026 : aucun motif d'absence de l'AM
  * sur le lien des parents).
  */
-export function partsAConfirmer(r: Pick<MonthResult, 'cpAConfirmer' | 'evenementAConfirmer' | 'kmAConfirmer'> & Partial<Pick<MonthResult, 'joursCpAConfirmer' | 'joursEvenementAConfirmer' | 'joursMaladieAConfirmer' | 'entretienAConfirmer'>>, pourParents = false): string[] {
+export function partsAConfirmer(r: Pick<MonthResult, 'cpAConfirmer' | 'evenementAConfirmer' | 'kmAConfirmer'> & Partial<Pick<MonthResult, 'joursCpAConfirmer' | 'joursEvenementAConfirmer' | 'joursMaladieAConfirmer' | 'joursFerieLocalAConfirmer' | 'joursMaintienAConfirmer' | 'entretienAConfirmer' | 'ferieLocalAConfirmer'>>, pourParents = false): string[] {
   // T-030 : un salaire à confirmer peut venir de congés pris peut-être au-delà des droits (année complète, A-23).
   // T-033 : ou de jours d'enfant malade (art. 105, lectures divergentes).
   const salaire = !r.evenementAConfirmer ? [] : naturesAConfirmer(r).map((n) => ({
-    evenement: pourParents ? 'une part du salaire' : 'l’événement familial', cp: 'les congés pris au-delà des droits', maladie: 'les jours d’enfant malade' })[n]);
-  return [r.cpAConfirmer ? 'les congés payés' : '', ...salaire, r.entretienAConfirmer ? 'une part de l’entretien' : '', r.kmAConfirmer ? 'les kilomètres' : ''].filter(Boolean);
+    evenement: pourParents ? 'une part du salaire' : 'l’événement familial', cp: 'les congés pris au-delà des droits', maladie: 'les jours d’enfant malade', ferieLocal: 'les jours fériés locaux', maintien: 'les jours d’absence pour maladie' })[n]);
+  return [r.cpAConfirmer ? 'les congés payés' : '', ...salaire, r.entretienAConfirmer ? 'une part de l’entretien' : '', r.ferieLocalAConfirmer ? 'la majoration d’un férié local' : '', r.kmAConfirmer ? 'les kilomètres' : ''].filter(Boolean);
 }

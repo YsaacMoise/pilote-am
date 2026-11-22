@@ -24,7 +24,20 @@ export function finPreavis(depart: ISODate, p: { jours?: number }): ISODate {
  * moins d'un an, la fin d'un préavis d'un mois et son lendemain (CASF L423-26 contre CCN art. 120). Sans préavis (inaptitude,
  * faute grave, essai, décès) : la date d'envoi ou du décès (CCN art. 64.3, 64.4, 119.4.2).
  */
-export function finsAdmises(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'>): { preavisFin: ISODate; admises: ISODate[] } {
+/**
+ * T-077 (R5) : préavis du droit local d'Alsace-Moselle, lecture B (CT L1234-16 1° : six semaines pour les « personnes employées
+ * chez des particuliers », aussi pour la démission, L1234-17-1). Fin de ce préavis quand il est plus long que celui de la
+ * convention ; sinon `undefined`.
+ */
+export function finPreavisLocal(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'>): ISODate | undefined {
+  if (r.motif !== 'retrait' && r.motif !== 'demission') return undefined;
+  const depart = r.presentation && r.presentation > r.notif ? r.presentation : r.notif;
+  const ccn = finPreavis(depart, preavisEmployeur(fullMonthsBetween(start, r.notif)));
+  const local = finPreavis(depart, { jours: 42 });
+  return local > ccn ? local : undefined;
+}
+
+export function finsAdmises(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'>, alsaceMoselle = false): { preavisFin: ISODate; admises: ISODate[] } {
   if (r.motif !== 'retrait' && r.motif !== 'demission') return { preavisFin: r.notif, admises: [r.notif] };
   const anc = fullMonthsBetween(start, r.notif);
   const depart = r.presentation && r.presentation > r.notif ? r.presentation : r.notif;
@@ -34,6 +47,8 @@ export function finsAdmises(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' |
     const finMois = finPreavis(depart, {});
     admises.push(finMois, addDays(finMois, 1));
   }
+  const local = alsaceMoselle ? finPreavisLocal(start, r) : undefined;
+  if (local) admises.push(local, addDays(local, 1));
   return { preavisFin, admises };
 }
 
@@ -44,7 +59,7 @@ const REGLE_DISPENSE = 'si les parents t’ont dispensée de tout ou partie du p
  * touchée (`du`, `au`) et le message de refus. Jamais un total silencieux : chaque mois, régularisation ou période de
  * congés qui touche cette période est refusé (nonGeresPeriode).
  */
-export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'>): { du: ISODate; au: ISODate; message: string } | undefined {
+export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'> & Partial<Pick<Contract, 'alsaceMoselle' | 'mayotte'>>): { du: ISODate; au: ISODate; message: string } | undefined {
   const end = c.end;
   if (!end) return undefined;
   const r = c.rupture;
@@ -55,7 +70,7 @@ export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'
       message: `Fin du contrat le ${shortDate(end)} : l’app ne sait pas si le préavis a été fait. Or ${REGLE_DISPENSE}, et le dernier mois change selon la réponse. Réponds aux questions de l’écran « Fin de contrat » et enregistre-les : les derniers mois seront calculés ensuite.`,
     };
   }
-  const { preavisFin, admises } = finsAdmises(c.start, r);
+  const { preavisFin, admises } = finsAdmises(c.start, r, !!c.alsaceMoselle && !c.mayotte);
   const lo = (...d: ISODate[]) => d.reduce((a, b) => (a < b ? a : b));
   const hi = (...d: ISODate[]) => d.reduce((a, b) => (a > b ? a : b));
   const d = r.dernierJourTravaille;

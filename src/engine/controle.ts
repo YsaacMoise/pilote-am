@@ -2,16 +2,21 @@
 import { lastDay } from './dates';
 import type { Bulletin } from './model';
 import type { MonthResult } from './month';
-import { libelleMinimumBrut, MESSAGE_PERIODE_NON_GEREE, MINIMUM_SANS_TITRE, minimumBrut, ratesAt, valeurDepuis } from './rates';
+import { libelleMinimumBrut, MESSAGE_PERIODE_NON_GEREE, minimumBrut, minimumSansTitre, partNetBrut, ratesAtRegion, valeurDepuis } from './rates';
+import type { Region } from './regions';
 import { euros } from './money';
 
 export type Level = 'ok' | 'info' | 'warn';
 export interface Check { level: Level; title: string; detail: string }
 
-export function controle(b: Bulletin, r: MonthResult, rateNet: number): Check[] {
+export function controle(b: Bulletin, r: MonthResult, rateNet: number, region: Region = 'metropole'): Check[] {
   const out: Check[] = [];
-  const rates = ratesAt(lastDay(b.month));
-  const minB = minimumBrut(lastDay(b.month));
+  // T-077 (R1, R2) : repère net, part du net dans le brut et minimum légal de la région.
+  const rates = ratesAtRegion(lastDay(b.month), region);
+  const minB = minimumBrut(lastDay(b.month), region);
+  const MINIMUM_SANS_TITRE = minimumSansTitre(region);
+  const part = partNetBrut(lastDay(b.month), region);
+  const attendu = `${Math.round(part * 100)} %`;
   const tol = 100; // 1 € d'écart toléré (arrondis)
 
   // C-019 : Pajemploi garde le net déclaré et le brut, et ajoute la réduction de cotisations des heures complémentaires
@@ -46,15 +51,17 @@ export function controle(b: Bulletin, r: MonthResult, rateNet: number): Check[] 
     const ratio = b.net / b.brut;
     const pct = (ratio * 100).toFixed(1).replace('.', ',');
     // Avec la réduction de cotisations des heures complémentaires et majorées, le net versé peut dépasser 82 % du brut.
-    const haut = 0.82 + red / b.brut;
+    // Métropole : bornes d'avant T-077 (74 % et 82 %) ; ailleurs, 4 points autour de la part de la région.
+    const bas = region === 'metropole' ? 0.74 : part - 0.04;
+    const haut = (region === 'metropole' ? 0.82 : part + 0.04) + red / b.brut;
     const avecHS = red > 0 ? ` ; jusqu’à ${(haut * 100).toFixed(1).replace('.', ',')} % si le net comprend les ${euros(red)} de réduction de cotisations des heures complémentaires et majorées` : '';
-    if (ratio < 0.74 || ratio > haut) {
-      out.push({ level: 'warn', title: 'Net et brut incohérents', detail: `Le net représente ${pct} % du brut. Pour une assistante maternelle on attend environ 78 % (cotisations salariales d’environ 22 %)${avecHS}.` });
+    if (ratio < bas || ratio > haut) {
+      out.push({ level: 'warn', title: 'Net et brut incohérents', detail: `Le net représente ${pct} % du brut. Pour une assistante maternelle on attend environ ${attendu} (cotisations salariales d’environ ${100 - Math.round(part * 100)} %)${avecHS}.` });
     } else {
-      out.push({ level: 'ok', title: 'Net et brut cohérents', detail: `Le net représente ${pct} % du brut (attendu : environ 78 %${avecHS}).` });
+      out.push({ level: 'ok', title: 'Net et brut cohérents', detail: `Le net représente ${pct} % du brut (attendu : environ ${attendu}${avecHS}).` });
     }
     if (b.heures && b.heures > 0 && minB) {
-      const brutHoraire = Math.round((b.brut - r.cpIndemnite / 0.781 - r.cpComplement / 0.781) / (b.heures + r.complMin / 60 + (r.majContratMin + r.majMin) / 60));
+      const brutHoraire = Math.round((b.brut - r.cpIndemnite / part - r.cpComplement / part) / (b.heures + r.complMin / 60 + (r.majContratMin + r.majMin) / 60));
       // T-025 C-3 : minimum = le plus haut de la grille et de 0,281 × SMIC (CASF D423-9).
       if (brutHoraire + 1 < minB.certain) {
         out.push({ level: 'warn', title: 'Brut horaire sous le minimum', detail: `Environ ${euros(brutHoraire)} brut de l’heure, le minimum est ${libelleMinimumBrut(minB)}. ${MINIMUM_SANS_TITRE}` });

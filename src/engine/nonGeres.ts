@@ -40,8 +40,7 @@ export function nonGeresContrat(c: Pick<Contract, 'alsaceMoselle' | 'planningVar
   // A-01 : conditions de départ ou d'un avenant entre 47 et 51 semaines (saisies anciennes ou importées).
   const conditions = [c, ...(c.avenants ?? []).map((a) => ({ ...c, ...a.changes }))];
   if (conditions.some((t) => semaines4751(t.yearType, t.weeks))) out.push(NON_GERE_47_51);
-  if (c.alsaceMoselle) out.push(NON_GERE_ALSACE);
-  if (c.mayotte) out.push(NON_GERE_MAYOTTE);
+  // T-077 : l'Alsace-Moselle et Mayotte sont calculées (regions.ts ; regles/t077-decisions.md). Messages gardés pour les écrans.
   if (c.planningVariable) out.push(NON_GERE_PLANNING_VARIABLE);
   if (c.accueilOccasionnel) out.push(NON_GERE_OCCASIONNEL);
   if (c.cdd) out.push(NON_GERE_CDD);

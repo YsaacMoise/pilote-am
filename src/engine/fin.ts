@@ -1,7 +1,7 @@
 // Fin de contrat : préavis (art. 120), indemnité de rupture (art. 121), régularisation (art. 109.2),
 // indemnité de congés non pris. Aucun document officiel n'est produit.
 import { nonGeresPeriode } from './nonGeres';
-import { finPreavis, finsAdmises, preavisEmployeur } from './preavis';
+import { finPreavis, finPreavisLocal, finsAdmises, preavisEmployeur } from './preavis';
 import type { DemandeurInexecution, Motif } from './model';
 import { euros } from './money';
 import {
@@ -9,8 +9,9 @@ import {
   type ISODate, type Month,
 } from './dates';
 import { acquisition, baseDixieme, compteur, cpForMonth, indemnite, maintien } from './conges';
-import { libelleRegulJoursAConfirmer, makeCtx, monthBase, naturesAConfirmer, monthBrut, regularisationLectures, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx } from './payroll';
+import { libelleRegulJoursAConfirmer, makeCtx, monthBase, naturesAConfirmer, monthBrut, type NatureAConfirmer, regularisationLectures, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx } from './payroll';
 import { netToBrut } from './rates';
+import { regionDe } from './regions';
 
 /** Entrée en vigueur de l'avenant n° 10 du 9 septembre 2025 (inaptitude) */
 const AVENANT_10 = '2026-05-01';
@@ -57,6 +58,8 @@ export interface FinResult {
   indemnitePreavisExplication?: string;
   /** T-038 (R-1) : le montant change selon le premier jour retenu ; `indemnitePreavis` vaut 0 et n'est pas compté */
   indemnitePreavisAConfirmer?: string;
+  /** T-077 (R5) : Alsace-Moselle, préavis de six semaines du droit local (lecture B), avec l'écart en euros */
+  preavisLocalAConfirmer?: string;
   totalBrut: number;
   /**
    * C-008 : mois dont le brut est estimé à partir du net (rapport fixe), faute de brut lu sur un bulletin.
@@ -122,7 +125,7 @@ function brutJusqua(endCtx: Ctx, c: Ctx['c'], fin: ISODate, enfants: number): nu
     if (!b.active || b.missing) continue;
     total += monthBrut(endCtx, m);
     const cp = cpForMonth(endCtx, m, enfants);
-    total += netToBrut(cp.indemnite + cp.complement, lastDay(m));
+    total += netToBrut(cp.indemnite + cp.complement, lastDay(m), regionDe(c));
   }
   return total;
 }
@@ -277,6 +280,23 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
       alertes.push(`Décès de l’enfant : l’indemnité égale au préavis est calculée du ${shortDate(debut)} au ${shortDate(fin)}. Aucun texte ne fixe le premier jour ; à partir du jour du décès, le montant serait le même.`);
     }
   }
+  // T-077 (R5) : Alsace-Moselle, préavis du droit local (six semaines, CT L1234-16 1°) dans la lecture B. L'app garde celui de la
+  // convention (lecture A) et chiffre l'écart : salaire des jours en plus, ou indemnité en plus après un décès.
+  let preavisLocalAConfirmer: string | undefined;
+  if (regionDe(c) === 'alsaceMoselle') {
+    const QUESTION = 'En Alsace-Moselle, le code du travail (article L1234-16) prévoit six semaines de préavis pour les « personnes employées chez des particuliers », aussi en cas de démission. Aucun texte ne dit s’il vaut pour une assistante maternelle, qui travaille chez elle. La question est posée à la DDETS.';
+    const local = finPreavisLocal(c.start, { motif: motif === 'deces' ? 'retrait' : motif, notif: motif === 'deces' ? addDays(notif, 1) : notif, presentation: motif === 'deces' ? undefined : presentation });
+    if (local && (motif === 'retrait' || motif === 'demission')) {
+      const ecart = indemniteCompensatricePreavis(c, addDays(preavisFin, 1), local);
+      preavisLocalAConfirmer = `Préavis à confirmer. ${QUESTION} L’app applique celui de la convention (${preavisLabel}, fin le ${shortDate(preavisFin)}). Avec six semaines, il finirait le ${shortDate(local)} : ${euros(ecart)} de salaire en plus${motif === 'retrait' ? ', ou d’indemnité si les parents te dispensent de ces jours' : ''}.`;
+    } else if (local && motif === 'deces') {
+      const debut = addDays(notif, 1);
+      const ecart = indemniteCompensatricePreavis(c, debut, local) - indemniteCompensatricePreavis(c, debut, finPreavis(debut, preavisEmployeur(anc)));
+      if (ecart > 0) preavisLocalAConfirmer = `Indemnité égale au préavis à confirmer. ${QUESTION} L’app la calcule avec le préavis de la convention. Avec six semaines (jusqu’au ${shortDate(local)}), elle serait de ${euros(ecart)} de plus.`;
+    }
+    if (preavisLocalAConfirmer) alertes.push(preavisLocalAConfirmer);
+  }
+
   // T-045 : préavis non exécuté. Art. 64 : la date de fin est « la date prévue de fin du préavis » si l'inexécution est à
   // l'initiative de l'employeur, « le dernier jour travaillé » si elle est à l'initiative du salarié. Art. 64.2, al. 2 : avec
   // l'accord de l'employeur, « le contrat de travail prend fin au dernier jour travaillé » ; aucune indemnité n'est prévue
@@ -308,7 +328,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // T-045b (C3-1) : une date saisie après la fin calculée non plus. Admises : la fin calculée et les autres fins possibles du
   // préavis fait en entier (lendemain, préavis d'un mois de la démission de 3 mois à 1 an), dont les montants sont déjà
   // donnés « à confirmer » ; avec un préavis non fait à la demande de l'AM, seul le dernier jour travaillé.
-  const finAdmise = (e: ISODate) => e === dernierJour || (!finAuDernierJourTravaille && finsAdmises(c.start, { motif, notif, presentation }).admises.includes(e));
+  const finAdmise = (e: ISODate) => e === dernierJour || (!finAuDernierJourTravaille && finsAdmises(c.start, { motif, notif, presentation }, regionDe(c) === 'alsaceMoselle').admises.includes(e));
   if (!refusFin.length && c.end && c.end > dernierJour && !finAdmise(c.end)) {
     refusFin.push(`La date de fin du contrat (${shortDate(c.end)}) est après ${finAuDernierJourTravaille ? 'le dernier jour travaillé indiqué' : 'la fin du préavis'} (${shortDate(dernierJour)}). L’app ne calcule pas au-delà, ni en deçà : corrige la date de fin du contrat, ou vérifie les dates de la lettre et du préavis.`);
   }
@@ -322,7 +342,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   let totalBrut = 0;
   let cpManquants = false;
   let evenementManquant = false;
-  const naturesManquantes = new Set<'evenement' | 'cp' | 'maladie'>();
+  const naturesManquantes = new Set<NatureAConfirmer>();
   const manquants: Month[] = [];
   const brutsEstimes: Month[] = [];
   // C-008 : le total saisi depuis les bulletins Pajemploi remplace les mois qu'il couvre ; les mois suivants
@@ -341,7 +361,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     if (!b.brut) brutsEstimes.push(m);
     totalBrut += monthBrut(endCtx, m);
     const cp = cpForMonth(endCtx, m, enfants);
-    totalBrut += netToBrut(cp.indemnite + cp.complement, lastDay(m));
+    totalBrut += netToBrut(cp.indemnite + cp.complement, lastDay(m), regionDe(c));
     if (cp.aConfirmer) cpManquants = true;
     // T-025 C-5 : salaire d'un événement familial à confirmer, absent de ce total (CCN 48.1.3.1.1 : pas de réduction de la rémunération).
     if (b.evenementAConfirmer) evenementManquant = true;
@@ -472,7 +492,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   const finCouverte = (m: Month) => couvert(m) || (bruts.parMois?.[m] != null && bruts.parMois[m]! > 0);
   const dernierMois = monthOf(dernierJour);
   const assietteFinNet = cpIndemnite + regularisation_;
-  const ajoutFin = (fin: ISODate) => (finCouverte(monthOf(fin)) ? 0 : netToBrut(assietteFinNet, lastDay(monthOf(fin))));
+  const ajoutFin = (fin: ISODate) => (finCouverte(monthOf(fin)) ? 0 : netToBrut(assietteFinNet, lastDay(monthOf(fin)), regionDe(c)));
   totalBrut += ajoutFin(dernierJour);
   const iccpManquante = !finCouverte(dernierMois) && !!cpAConfirmer;
   const regulManquante = !finCouverte(dernierMois) && (!!regularisationAConfirmer || regulNonCalculee);
@@ -520,8 +540,8 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
 
   let ruptureAConfirmer = (cpManquants || evenementManquant || iccpManquante || regulManquante) && indemniteRupture > 0;
   if (ruptureAConfirmer) {
-    const natures = (['evenement', 'cp', 'maladie'] as const).filter((n) => naturesManquantes.has(n))
-      .map((n) => ({ evenement: 'd’événement familial', cp: 'de congés pris au-delà des droits', maladie: 'd’enfant malade' })[n]);
+    const natures = (['evenement', 'cp', 'maladie', 'ferieLocal', 'maintien'] as const).filter((n) => naturesManquantes.has(n))
+      .map((n) => ({ evenement: 'd’événement familial', cp: 'de congés pris au-delà des droits', maladie: 'd’enfant malade', ferieLocal: 'de jour férié local', maintien: 'd’absence pour maladie' })[n]);
     const evenement = evenementManquant ? `le salaire ${natures.length > 1 ? `${natures.slice(0, -1).join(', ')} ou ${natures.at(-1)}` : natures[0] ?? 'd’événement familial'}` : '';
     // T-050b : l'indemnité de congés non pris et la régularisation de la fin entrent dans l'assiette (A-45).
     // T-050d (C-1) : une régularisation non calculée (semaines sans accueil manquantes) est dite telle quelle.
@@ -542,7 +562,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     // les bulletins saisis ou lus quand ils couvrent ce mois. Dans une variante, elles quittent le dernier mois pour le mois de
     // la variante : seul l'écart de conversion en brut entre les deux mois s'ajoute, jamais une seconde fois la somme.
     const brutFin = brutJusqua(endCtx, c, dernierJour, enfants);
-    const conversionFin = (fin: ISODate) => netToBrut(assietteFinNet, lastDay(monthOf(fin)));
+    const conversionFin = (fin: ISODate) => netToBrut(assietteFinNet, lastDay(monthOf(fin)), regionDe(c));
     const autres = variantes.map((v) => ({ ...v, montant: v.fin === dernierJour ? indemniteRupture : Math.round(((totalBrut + brutJusqua(ctxFin(v.fin), c, v.fin, enfants) - brutFin + conversionFin(v.fin) - conversionFin(dernierJour)) * facteur) / 80) }));
     if (autres.some((v) => v.montant !== indemniteRupture)) {
       ruptureVariantes = `Indemnité de rupture à confirmer : elle dépend de la date de fin du préavis, à confirmer. ${autres.map((v) => `${v.libelle.replace(/^./, (x) => x.toUpperCase())} : ${euros(v.montant)}`).join(' ; ')}. Elle n'est pas comptée dans le total.`;
@@ -562,7 +582,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   }
   return {
     ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, ruptureVariantes, totalBrut, brutsEstimes,
-    indemnitePreavis, indemnitePreavisExplication, indemnitePreavisAConfirmer,
+    indemnitePreavis, indemnitePreavisExplication, indemnitePreavisAConfirmer, preavisLocalAConfirmer,
     regularisation: regularisation_, regulMinutes, cpJoursRestants, cpIndemnite, cpDixiemeEnCours, cpExplication, cpAConfirmer, regularisationAConfirmer, manquants, alertes,
   };
 }

@@ -10,6 +10,7 @@ import { controleKm, indemniteKmJour } from './km';
 import { euros } from './money';
 import { cpAConfirmerEntre, cpExces, cpExcesAConfirmer, MESSAGE_CP_AU_DELA_A_CONFIRMER } from './conges';
 import { nonGeresPeriode } from './nonGeres';
+import { ferieLocal, MESSAGE_MAINTIEN_LOCAL, pourquoiFerieLocal, regionDe } from './regions';
 import type { AmAbs, AmLeave, Contract, DayRec, Plage, Planning } from './model';
 
 export interface Ctx {
@@ -161,6 +162,12 @@ export interface DayInfo {
   aConfirmer?: string;
   /** T-035b : absence de l'enfant notée « sans solde » (ancienne option), désormais payée */
   sansSoldeEnfantPaye?: boolean;
+  /** T-077 (R3) : jour férié local (Alsace-Moselle, Mayotte), férié dans une lecture et jour ordinaire dans l'autre */
+  ferieLocal?: string;
+  /** T-077 (R3) : férié local non travaillé, ou férié national dont la condition de l'art. 47.2 dépend d'un férié local : à confirmer */
+  ferieLocalAConfirmer?: boolean;
+  /** T-077 (R4) : absence de l'AM pour sa maladie ou celle de son enfant, en Alsace-Moselle (L1226-23) : à confirmer */
+  maintienAConfirmer?: boolean;
 }
 
 /** T-030 : nature du salaire mis « à confirmer » dans le mois (événement familial, congés au-delà des droits, ou les deux) */
@@ -172,16 +179,20 @@ export const messageSansSoldeEnfant = (d: ISODate): string =>
 export const messageMoisSansSoldeChange = (n: number): string =>
   `Salaire de ce mois modifié par la mise à jour de l’app : ${dayCountLabel(n)} d’absence de l’enfant noté${n > 1 ? 's' : ''} « sans solde » ${n > 1 ? 'sont' : 'est'} maintenant payé${n > 1 ? 's' : ''}. Avant, l’app les retenait. La convention (article 105) ne permet de retenir une absence de l’enfant qu’en cas de maladie avec certificat. Si ce mois est déjà déclaré à Pajemploi avec la retenue, le salaire déclaré était trop bas : il faut une régularisation avec les parents.`;
 
-export function libelleSalaireAConfirmer(b: Pick<MonthBase, 'joursCpAConfirmer' | 'joursEvenementAConfirmer'> & Partial<Pick<MonthBase, 'joursMaladieAConfirmer'>>, et = 'et'): string {
-  return joindre(naturesAConfirmer(b).map((n) => ({ evenement: 'd’événement familial', cp: 'de congés', maladie: 'd’enfant malade' })[n]), et);
+export function libelleSalaireAConfirmer(b: Pick<MonthBase, 'joursCpAConfirmer' | 'joursEvenementAConfirmer'> & Partial<Pick<MonthBase, 'joursMaladieAConfirmer' | 'joursFerieLocalAConfirmer' | 'joursMaintienAConfirmer'>>, et = 'et'): string {
+  return joindre(naturesAConfirmer(b).map((n) => ({ evenement: 'd’événement familial', cp: 'de congés', maladie: 'd’enfant malade', ferieLocal: 'de jour férié local', maintien: 'd’absence pour maladie' })[n]), et);
 }
 
+export type NatureAConfirmer = 'evenement' | 'cp' | 'maladie' | 'ferieLocal' | 'maintien';
+
 /** T-033 : natures des jours mis « à confirmer » dans le mois, dans l'ordre d'affichage (événement par défaut) */
-export function naturesAConfirmer(b: Partial<Pick<MonthBase, 'joursCpAConfirmer' | 'joursEvenementAConfirmer' | 'joursMaladieAConfirmer'>>): ('evenement' | 'cp' | 'maladie')[] {
-  const out: ('evenement' | 'cp' | 'maladie')[] = [];
+export function naturesAConfirmer(b: Partial<Pick<MonthBase, 'joursCpAConfirmer' | 'joursEvenementAConfirmer' | 'joursMaladieAConfirmer' | 'joursFerieLocalAConfirmer' | 'joursMaintienAConfirmer'>>): NatureAConfirmer[] {
+  const out: NatureAConfirmer[] = [];
   if (b.joursEvenementAConfirmer) out.push('evenement');
   if (b.joursCpAConfirmer) out.push('cp');
   if (b.joursMaladieAConfirmer) out.push('maladie');
+  if (b.joursFerieLocalAConfirmer) out.push('ferieLocal');
+  if (b.joursMaintienAConfirmer) out.push('maintien');
   return out.length ? out : ['evenement'];
 }
 export const joindre = (l: string[], et = 'et') => (l.length <= 1 ? l.join('') : `${l.slice(0, -1).join(', ')} ${et} ${l.at(-1)}`);
@@ -196,12 +207,15 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
   const planned = plannedPlages(c, d);
   const plannedMin = planned.reduce((s, p) => s + plageMin(p), 0);
   const ferie = holidayName(d);
+  const region = regionDe(c);
+  const ferieLoc = ferieLocal(region, d);
   const amLeave = inContract(c, d) ? amLeaveOn(ctx.leaves, d) : undefined;
   const info: DayInfo = {
     date: d, kind: 'hors', planned, plannedMin, presentMin: 0, extraMin: 0, ferie,
     ferieTravaille: !!rec?.ferieTravaille, amLeave, rec, departOublie: false, enCours: false,
     deducted: false, inDivisor: false,
   };
+  if (ferieLoc) info.ferieLocal = ferieLoc;
   if (!inContract(c, d)) return info;
 
   if (amLeave) {
@@ -219,6 +233,11 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
         info.inDivisor = true;
         info.aConfirmer = MESSAGE_CP_AU_DELA_A_CONFIRMER;
         info.cpAConfirmer = true;
+      } else if (region === 'alsaceMoselle' && (amLeave === 'am_malade' || amLeave === 'am_enfant_malade')) {
+        // T-077 (R4) : maintien de salaire du droit local (CT L1226-23) dans une lecture, retenue dans l'autre : à confirmer.
+        info.inDivisor = true;
+        info.aConfirmer = MESSAGE_MAINTIEN_LOCAL;
+        info.maintienAConfirmer = true;
       } else if (amLeave === 'am_malade' || amLeave === 'am_enfant_malade' || amLeave === 'sans_solde') {
         // T-034 : congé sans solde = absence non rémunérée, retenue par la déduction d'absence de l'art. 111. Fiches DREETS
         // Occitanie du 19/01/2023, section 3 : « Absence du salarié pour congés sans solde » ; Urssaf « gérer les absences
@@ -235,6 +254,21 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
     return info;
   }
 
+  // T-077 (R3) : férié local d'un jour prévu. Non travaillé : payé si c'est un férié (lecture A, sauf absence la veille ou le
+  // lendemain) ; jour ordinaire sinon (lecture B), payé seulement si les parents n'ont pas confié l'enfant. L'app ne sait pas
+  // qui a décidé : le jour est à confirmer (ni payé ni retenu). Travaillé : la majoration de 10 % est à confirmer (mois).
+  // Absence de l'enfant saisie (hors maladie avec certificat) : payée dans la lecture B ; dans la lecture A aussi, sauf si la
+  // condition de l'art. 47.2 manque. Elle n'est alors à confirmer que dans ce cas.
+  const absPayeeB = !!rec?.abs && rec.abs !== 'malade_certif';
+  if (ferieLoc && !ferie && plannedMin > 0 && !rec?.ferieTravaille && !rec?.pres?.some((p) => p.a)
+    && (!absPayeeB || ferieNonPaye(ctx, d, true))) {
+    info.kind = 'ferie';
+    info.inDivisor = true;
+    info.aConfirmer = messageFerieLocal(region, ferieLoc, d);
+    info.ferieLocalAConfirmer = true;
+    return info;
+  }
+
   if (ferie && plannedMin > 0 && !rec?.ferieTravaille && !rec?.pres?.some((p) => p.a)) {
     info.kind = 'ferie';
     // Le férié chômé d'un jour habituellement travaillé compte dans le diviseur des retenues (C-006 ;
@@ -242,7 +276,14 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
     info.inDivisor = true;
     // Art. 47 : payé si l'AM a travaillé le dernier jour prévu avant et le premier jour prévu après,
     // sauf absence autorisée au préalable (congés, événement familial, absence voulue par les parents).
-    if (!d.endsWith('-05-01') && ferieNonPaye(ctx, d)) { info.deducted = true; info.ferieNonPaye = true; }
+    if (!d.endsWith('-05-01')) {
+      const nonPaye = ferieNonPaye(ctx, d);
+      // T-077 (R3, point 3) : un férié local voisin change la condition de l'art. 47.2 d'une lecture à l'autre.
+      if (region !== 'metropole' && ferieNonPaye(ctx, d, true) !== nonPaye) {
+        info.aConfirmer = messageFerieVoisin(region, d);
+        info.ferieLocalAConfirmer = true;
+      } else if (nonPaye) { info.deducted = true; info.ferieNonPaye = true; }
+    }
     return info;
   }
 
@@ -305,21 +346,37 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
 
 const ABSENCES_NON_AUTORISEES: AmAbs[] = ['am_malade', 'am_enfant_malade'];
 
-function jourPrevuVoisin(ctx: Ctx, d: ISODate, sens: 1 | -1): ISODate | undefined {
+const jjmmD = (d: ISODate) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+/** T-077 (R3) : messages des fériés locaux (regles/t077-decisions.md) */
+export function messageFerieLocal(region: ReturnType<typeof regionDe>, nom: string, d: ISODate): string {
+  return `${nom.replace(/^./, (x) => x.toUpperCase())} (${jjmmD(d)}), jour prévu non travaillé : ni payé ni retenu. ${pourquoiFerieLocal(region, nom)} Si c’est un férié, ce jour est payé (sauf absence de ta part le jour prévu juste avant ou juste après). Sinon, c’est un jour ordinaire : il est payé si ce sont les parents qui n’ont pas confié l’enfant, et retenu si c’est toi qui n’as pas travaillé. Mets-toi d’accord avec les parents, par écrit.`;
+}
+export function messageFerieLocalTravaille(region: ReturnType<typeof regionDe>, nom: string, d: ISODate, maj: number): string {
+  return `${nom.replace(/^./, (x) => x.toUpperCase())} (${jjmmD(d)}) travaillé : majoration de 10 % à confirmer, ${euros(maj)}, non comprise dans le total. ${pourquoiFerieLocal(region, nom)} Si c’est un férié, la convention (article 47.2) majore ces heures de 10 % ; sinon, rien. Mets-toi d’accord avec les parents, par écrit.`;
+}
+export function messageFerieVoisin(region: ReturnType<typeof regionDe>, d: ISODate): string {
+  return `Férié du ${jjmmD(d)} : ni payé ni retenu. La convention (article 47.2) le paie si tu as travaillé le jour prévu juste avant et le jour prévu juste après. ${region === 'alsaceMoselle' ? 'Le 26 décembre ou le Vendredi saint' : 'Le 27 avril'} compte, ou non, comme ce jour selon qu’il est férié pour toi : aucun texte ne le dit, la question est posée à la DDETS. Selon la lecture, ce férié est payé ou retenu. Mets-toi d’accord avec les parents, par écrit.`;
+}
+
+function jourPrevuVoisin(ctx: Ctx, d: ISODate, sens: 1 | -1, avecLocaux = false): ISODate | undefined {
   const { c } = ctx;
+  const region = regionDe(c);
   for (let i = 1, x = addDays(d, sens); i <= 14; i++, x = addDays(x, sens)) {
     if (!inContract(c, x)) return undefined;
     if (plannedPlages(c, x).length === 0) continue;
-    if (holidayName(x) && !ctx.days.get(x)?.ferieTravaille) continue;
+    if ((holidayName(x) || (avecLocaux && ferieLocal(region, x))) && !ctx.days.get(x)?.ferieTravaille) continue;
     return x;
   }
   return undefined;
 }
 
-/** Férié chômé non payé : absence non autorisée de l'AM le jour prévu juste avant ou juste après */
-export function ferieNonPaye(ctx: Ctx, d: ISODate): boolean {
+/**
+ * Férié chômé non payé : absence non autorisée de l'AM le jour prévu juste avant ou juste après. `avecLocaux` (T-077,
+ * lecture A de R3) : les fériés locaux chômés sont sautés comme les autres fériés.
+ */
+export function ferieNonPaye(ctx: Ctx, d: ISODate, avecLocaux = false): boolean {
   for (const sens of [-1, 1] as const) {
-    const x = jourPrevuVoisin(ctx, d, sens);
+    const x = jourPrevuVoisin(ctx, d, sens, avecLocaux);
     const abs = x ? amLeaveOn(ctx.leaves, x) : undefined;
     if (abs && ABSENCES_NON_AUTORISEES.includes(abs)) return true;
   }
@@ -601,6 +658,12 @@ export interface MonthBase {
   joursEvenementAConfirmer: number;
   /** T-033 : jours compris dans `evenementAConfirmer` qui sont des jours d'enfant malade (art. 105, lectures divergentes) */
   joursMaladieAConfirmer: number;
+  /** T-077 (R3) : jours compris dans `evenementAConfirmer` qui sont des fériés locaux (ou un férié national qui en dépend) */
+  joursFerieLocalAConfirmer: number;
+  /** T-077 (R4) : jours compris dans `evenementAConfirmer` d'absence de l'AM pour maladie, en Alsace-Moselle (L1226-23) */
+  joursMaintienAConfirmer: number;
+  /** T-077 (R3) : majoration de 10 % d'un férié local travaillé (lecture A), hors du total */
+  ferieLocalAConfirmer: number;
   /** Kilomètres saisis sans le nombre d'enfants transportés (CCN art. 113) : non payés, à confirmer (T-017) */
   kmAConfirmer: number;
   /** T-044 : part de l'indemnité d'entretien qui dépend d'une lecture non tranchée (tarif par jour, jour d'une autre durée) ; hors du total */
@@ -642,7 +705,7 @@ function emptyBase(m: Month): MonthBase {
     month: m, active: false, fromHistory: false, missing: false, salaireMens: 0, mensuelMin: 0, divisorDays: 0,
     divisorMin: 0, contractDays: 0, contractMin: 0, deductedDays: 0, deductedMin: 0, paidFraction: 0, base: 0,
     retenue: 0, heuresNormales: 0, joursActivite: 0, complMin: 0, majMin: 0, majContratMin: 0, majContratAmount: 0, complAmount: 0, majAmount: 0,
-    ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, evenementAConfirmer: 0, joursCpAConfirmer: 0, joursEvenementAConfirmer: 0, joursMaladieAConfirmer: 0, kmAConfirmer: 0, entretienAConfirmer: 0, entretienJoursDuree: 0, entretienJoursTarifJour: 0, entretienJoursHorsPlanning: 0, net: 0,
+    ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, evenementAConfirmer: 0, joursCpAConfirmer: 0, joursEvenementAConfirmer: 0, joursMaladieAConfirmer: 0, joursFerieLocalAConfirmer: 0, joursMaintienAConfirmer: 0, ferieLocalAConfirmer: 0, kmAConfirmer: 0, entretienAConfirmer: 0, entretienJoursDuree: 0, entretienJoursTarifJour: 0, entretienJoursHorsPlanning: 0, net: 0,
     alerts: [], forgotten: [], sickPaidNotice: false, nonGere: [],
   };
 }
@@ -819,7 +882,7 @@ function hoursMin(min: number): string {
 }
 
 const SUM_KEYS = ['base', 'retenue', 'majContratMin', 'majContratAmount', 'joursActivite', 'complMin', 'majMin', 'complAmount', 'majAmount', 'ferieAmount',
-  'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'evenementAConfirmer', 'joursCpAConfirmer', 'joursEvenementAConfirmer', 'joursMaladieAConfirmer', 'kmAConfirmer', 'entretienAConfirmer', 'entretienJoursDuree', 'entretienJoursTarifJour', 'entretienJoursHorsPlanning', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
+  'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'evenementAConfirmer', 'joursCpAConfirmer', 'joursEvenementAConfirmer', 'joursMaladieAConfirmer', 'joursFerieLocalAConfirmer', 'joursMaintienAConfirmer', 'ferieLocalAConfirmer', 'kmAConfirmer', 'entretienAConfirmer', 'entretienJoursDuree', 'entretienJoursTarifJour', 'entretienJoursHorsPlanning', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
 
 function mergeParts(m: Month, parts: MonthBase[], cuts: ISODate[]): MonthBase {
   const r = emptyBase(m);
@@ -910,7 +973,9 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     if (di.deducted) { dedDays++; dedMin += di.plannedMin; }
     if (di.aConfirmer && di.plannedMin > 0) {
       suspDays++; suspMin += di.plannedMin;
-      if (di.cpAConfirmer) r.joursCpAConfirmer++; else if (di.maladieAConfirmer) r.joursMaladieAConfirmer++; else r.joursEvenementAConfirmer++;
+      if (di.cpAConfirmer) r.joursCpAConfirmer++; else if (di.maladieAConfirmer) r.joursMaladieAConfirmer++;
+      else if (di.ferieLocalAConfirmer) r.joursFerieLocalAConfirmer++; else if (di.maintienAConfirmer) r.joursMaintienAConfirmer++;
+      else r.joursEvenementAConfirmer++;
       if (!suspRaisons.includes(di.aConfirmer)) suspRaisons.push(di.aConfirmer);
     }
     // Jours d'activité (Pajemploi) : jours prévus et payés, sans les fériés chômés ni les jours à confirmer.
@@ -978,6 +1043,11 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
         const pct = isMayDay(d) ? 100 : 10;
         r.ferieAmount += Math.round((di.presentMin * c.rateNet * pct) / 100 / 60);
         r.ferieDays.push(d);
+      } else if (di.ferieLocal && (di.ferieTravaille || di.kind === 'present') && di.presentMin > 0) {
+        // T-077 (R3, point 2) : majoration de 10 % (CCN 47.2) dans la lecture A seulement : à confirmer, hors du total.
+        const maj = Math.round((di.presentMin * c.rateNet * 10) / 100 / 60);
+        r.ferieLocalAConfirmer += maj;
+        r.alerts.push(messageFerieLocalTravaille(regionDe(c), di.ferieLocal, d, maj));
       }
     }
     // CCN art. 113 : partage au prorata des enfants transportés seulement si plusieurs employeurs demandent le trajet
@@ -1039,7 +1109,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   else r.joursActivite = Math.max(0, joursMensualises(c) - dedDays - suspDays) + r.extraDays;
   if (suspRaisons.length) {
     r.alerts.push(...suspRaisons);
-    const objet = joindre(naturesAConfirmer(r).map((n) => ({ evenement: 'événement familial', cp: 'congés', maladie: 'enfant malade' })[n])).replace(/^./, (x) => x.toUpperCase());
+    const objet = joindre(naturesAConfirmer(r).map((n) => ({ evenement: 'événement familial', cp: 'congés', maladie: 'enfant malade', ferieLocal: 'jour férié local', maintien: 'absence pour maladie' })[n])).replace(/^./, (x) => x.toUpperCase());
     r.alerts.push(`${objet} : ${dayCountLabel(suspDays)} ni payé${suspDays > 1 ? 's' : ''} ni retenu${suspDays > 1 ? 's' : ''}, ${euros(r.evenementAConfirmer)} de salaire à confirmer (non compris dans le total).`);
   }
   // ARR-01 (décision du DG du 18/11/2026, jusqu'à la réponse de la DDETS) : chaque montant du jour est arrondi au centime le
@@ -1050,7 +1120,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   if (auMois !== r.entretien) r.alerts.push(`Indemnité d’entretien : ${euros(r.entretien)} en arrondissant chaque jour au centime le plus proche. En arrondissant seulement le total du mois, elle serait de ${euros(auMois)}. Aucun texte ne dit à quel moment arrondir : l’app arrondit chaque jour en attendant une réponse officielle.`);
   if (r.kmAConfirmer) r.alerts.push(`${r.kmAConfirmer} km à confirmer, non comptés. Pour chaque jour, indique si une autre famille a aussi demandé le trajet. Si oui, indique aussi les enfants dans la voiture : l’indemnité est alors partagée entre eux (article 113 de la convention). Si non, elle est due en entier.`);
   // T-025 C-7 : mois terminé, peut-être déjà déclaré à Pajemploi avant la mise à jour qui a rendu ces montants « à confirmer ».
-  if ((r.evenementAConfirmer || r.kmAConfirmer || r.entretienAConfirmer) && to < ctx.today && !r.alerts.includes(MESSAGE_MOIS_DEJA_DECLARE)) r.alerts.push(MESSAGE_MOIS_DEJA_DECLARE);
+  if ((r.evenementAConfirmer || r.kmAConfirmer || r.entretienAConfirmer || r.ferieLocalAConfirmer) && to < ctx.today && !r.alerts.includes(MESSAGE_MOIS_DEJA_DECLARE)) r.alerts.push(MESSAGE_MOIS_DEJA_DECLARE);
   // T-038 (G-1, relecture V4 du diff m8) : mois terminé avec des jours notés « sans solde » avant la mise à jour T-035b. Il a
   // pu être déclaré à Pajemploi avec la retenue ; son salaire affiché est maintenant plus haut. Le dire, et quoi faire.
   if (sansSoldePayes && to < ctx.today) {
@@ -1101,7 +1171,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
 export function monthBrut(ctx: Ctx, m: Month): number {
   const b = monthBase(ctx, m);
   if (b.brut) return b.brut;
-  return netToBrut(b.net, lastDay(m));
+  return netToBrut(b.net, lastDay(m), regionDe(ctx.c));
 }
 
 export function dayCountLabel(n: number): string {
