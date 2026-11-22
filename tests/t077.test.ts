@@ -271,3 +271,13 @@ describe('T-077 : relecture (D1, D2)', () => {
     expect(bd.joursEvenementAConfirmer).toBe(0);
   });
 });
+
+describe('T-077 et T-074 : férié local pendant un préavis dispensé (vérificateur P5-1)', () => {
+  it('26/12/2025 dans la dispense : payé dans les deux lectures, rien à confirmer', () => {
+    const c = contract({ ...AM, end: '2025-12-31', rupture: { motif: 'retrait', notif: '2025-12-01', preavis: 'employeur', dernierJourTravaille: '2025-12-19' } as Contract['rupture'] });
+    const met = monthBase(makeCtx({ ...c, alsaceMoselle: false }, [], [], '2026-11-22'), '2025-12');
+    const als = monthBase(makeCtx(c, [], [], '2026-11-22'), '2025-12');
+    expect(als.joursFerieLocalAConfirmer).toBe(0);
+    expect(als.base).toBe(met.base);
+  });
+});

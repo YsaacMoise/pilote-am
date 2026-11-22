@@ -267,7 +267,8 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
   // Absence de l'enfant saisie (hors maladie avec certificat) : payée dans la lecture B ; dans la lecture A aussi, sauf si la
   // condition de l'art. 47.2 manque. Elle n'est alors à confirmer que dans ce cas.
   const absPayeeB = !!rec?.abs && rec.abs !== 'malade_certif';
-  if (ferieLoc && !ferie && plannedMin > 0 && !rec?.ferieTravaille && !rec?.pres?.some((p) => p.a)
+  // T-074 : un jour de préavis dispensé par les parents est payé dans les deux lectures : la branche de la dispense le traite.
+  if (ferieLoc && !ferie && plannedMin > 0 && !rec?.ferieTravaille && !rec?.pres?.some((p) => p.a) && !jourDispense(c, d)
     && (!absPayeeB || ferieNonPaye(ctx, d, true))) {
     info.kind = 'ferie';
     info.inDivisor = true;
