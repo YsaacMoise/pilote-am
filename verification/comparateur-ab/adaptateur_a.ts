@@ -21,6 +21,12 @@ const montant = (v: unknown): number => {
 import { dayInfo, makeCtx, mensuelMinutes, monthBase, regularisation, salaireMensualise, type Ctx } from '__A_RACINE__/src/engine/payroll';
 import { acquisition, cpForMonth, decompteConge, indemnite, maintien } from '__A_RACINE__/src/engine/conges';
 import { finDeContrat, type Motif } from '__A_RACINE__/src/engine/fin';
+// T-076 : fin de CDD et seconde lecture du salaire d'un CDD (P1, P2). Lues par espace de noms : une version de A qui ne les a
+// pas donne `undefined` (refus visible), sans casser la construction.
+import * as FinA from '__A_RACINE__/src/engine/fin';
+import * as PayrollA from '__A_RACINE__/src/engine/payroll';
+const A_CDD = typeof (FinA as Record<string, unknown>).finDeCdd === 'function';
+const ctxLectureCdd2 = (PayrollA as Record<string, unknown>).ctxLectureCdd2 as ((ctx: Ctx) => Ctx | undefined) | undefined;
 import { entretienPlancher, netToBrut, ratesAt } from '__A_RACINE__/src/engine/rates';
 // T-027 : fonctions publiques du moteur A pour les kilomètres et les événements familiaux (signatures seulement).
 import { controleKm } from '__A_RACINE__/src/engine/km';
@@ -61,9 +67,10 @@ function contrat(k: any): Contract {
     // T-033 (M6) : taux des heures complémentaires du contrat (T-030, HC-03 à HC-06) ; réponses aux 3 questions T-031
     // (situations de la grille et des cas officiels : métropole, semaine type fixe, accueil régulier).
     rateNet: k.taux, majoration: k.majoration_hm ?? 10, majorationCompl: k.majoration_hc, entretienJour: k.entretien_jour ?? 0,
-    // T-034 (M7) : réponse à la question « CDI ou CDD ? » ajoutée par T-033 (cbbbd66). Toutes les situations sont des CDI
-    // (FIN-11, seul CDD, est déclaré « absent » de A par generer_situations.py).
-    alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false,
+    // T-034 (M7) : réponse à la question « CDI ou CDD ? » ajoutée par T-033 (cbbbd66). T-076 : CDD lu dans la situation
+    // (`cdd`, `cdd_terme`, `cdd_motif` ; decisions-direction, section 2) ; absent : CDI, comme avant.
+    alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: k.cdd === true,
+    ...(k.cdd === true ? { cddTerme: k.cdd_terme ?? undefined, cddMotif: k.cdd_motif ?? undefined, cddTermeImprecis: k.cdd_terme_imprecis === true ? true : undefined } : {}),
     repasPrix: k.repas_prix ?? 0, repasParJour: k.repas_par_jour ?? 0, kmTaux: k.km_taux ?? 0, kmCv: k.km_cv ?? undefined,
     cpMode: k.cp_mode ?? 'juin', majoreFiscal: false, trackedFrom: k.suivi_depuis ?? k.debut,
     balances: {
@@ -147,6 +154,16 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       if (b.kmAConfirmer) out.km = refus(`A : ${b.kmAConfirmer} km à confirmer`);
       // T-076 (L2) : heures complémentaires des semaines de congé à confirmer : part sûre et les deux lectures.
       if (b.complAConfirmerAmount) out.heures_compl_montant = { statut: 'ok', valeur: b.complAmount, lectures: [b.complAmount, b.complAmount + b.complAConfirmerAmount] };
+      // T-076 (P1, P2) : CDD à deux lectures du salaire. Valeur = part sûre (la plus basse), `lectures` = [lecture 1, lecture 2].
+      const ctx2 = ctxLectureCdd2?.(ctx);
+      if (ctx2 && !b.nonGere.length) {
+        const b2 = monthBase(ctx2, k.mois);
+        if (!b2.nonGere.length) {
+          for (const [cle, v1, v2] of [['salaire_base_mois', b.base, b2.base], ['salaire_mois_hors_cp', b.net, b2.net]] as [string, number, number][]) {
+            if (v1 !== v2 && out[cle]?.statut === 'ok') out[cle] = { statut: 'ok', valeur: Math.min(v1, v2), lectures: [v1, v2], note: 'A : CDD, deux lectures (part sûre = la plus basse)' };
+          }
+        }
+      }
       if (b.nonGere.length) for (const cle of Object.keys(out)) if (cle !== 'alertes') out[cle] = refus(`A : non géré (${b.nonGere.join(' ')})`);
       break;
     }
@@ -210,6 +227,37 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       break;
     }
     case 'fin': {
+      // T-076 : fin de CDD. Format de la situation (decisions-direction, section 2) : `fin: {"date", "motif": "fin_cdd",
+      // "fin_cdd"}`, dans le calcul ou dans la situation ; à défaut, `notification` (ou `date`) et `fin_cdd` du calcul.
+      const finSit = k.fin ?? s.fin;
+      const estCdd = s.contrat.cdd === true || k.motif === 'fin_cdd' || finSit?.motif === 'fin_cdd';
+      if (estCdd) {
+        const cles = ['ifc', 'ifc_net', 'brut_cdd', 'iccp', 'preavis', 'indemnite_rupture', 'regularisation_fin'];
+        if (!A_CDD) {
+          for (const cle of cles) out[cle] = refus('A : CDD non géré par cette version de A (pas de finDeCdd)');
+          break;
+        }
+        const date = finSit?.date ?? k.notification ?? k.date ?? s.contrat.fin;
+        const fc = finSit?.fin_cdd ?? k.fin_cdd;
+        const f = (FinA as unknown as { finDeCdd: (...a: unknown[]) => ReturnType<typeof finDeContrat> }).finDeCdd(ctx, date, fc, enfants);
+        const part = (p: { montant: number; lectures: number[] } | undefined, v: number, ordre: 'p3' | 'p4'): Sortie =>
+          // P4 : [lecture 1 sans ICCP, lecture 2 avec] ; P3 : [lecture A comparaison, lecture B dixième seul] (rapport t076-cdd.md).
+          (p ? { statut: 'ok', valeur: v, lectures: ordre === 'p4' ? [v, v + p.montant] : [v + p.montant, v], note: 'A : part sûre, écart à confirmer' } : ok(v));
+        out.ifc = part(f.ifcPartAConfirmer, f.ifc ?? 0, 'p4');
+        out.ifc_net = ok(f.ifcNet ?? 0);
+        out.brut_cdd = ok(f.brutCdd ?? 0);
+        out.iccp = part(f.cpPartAConfirmer, f.cpIndemnite, 'p3');
+        out.preavis = ok(0);
+        out.indemnite_rupture = ok(f.indemniteRupture);
+        out.regularisation_fin = f.regularisationPartAConfirmer
+          ? { statut: 'ok', valeur: f.regularisation, lectures: [...f.regularisationPartAConfirmer.lectures], note: 'A : part sûre, écart à confirmer' }
+          : ok(f.regularisation);
+        if (f.ifcAConfirmer) out.ifc = refus(`A : à confirmer (${f.ifcAConfirmer})`);
+        if (f.cpAConfirmer) out.iccp = refus(`A : à confirmer (${f.cpAConfirmer})`);
+        if (f.regularisationAConfirmer) out.regularisation_fin = refus(`A : à confirmer (${f.regularisationAConfirmer})`);
+        if (f.nonGere?.length) for (const cle of Object.keys(out)) out[cle] = refus(`A : non géré (${f.nonGere.join(' ')})`);
+        break;
+      }
       // T-042c (M11, T-045) : préavis non exécuté, transmis à A sous la forme `Inexecution` (6e paramètre de
       // finDeContrat). Une version de A sans ce paramètre l'ignorerait en silence : refus visible dans ce cas.
       if (k.inexecution && !A_INEXECUTION) {

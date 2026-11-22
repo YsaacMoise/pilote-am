@@ -2,6 +2,7 @@
 // Le moteur ne calcule pas ces cas : il les nomme et dit quoi faire. Aucune règle de paie n'est écrite ici.
 import { shortDate, type ISODate } from './dates';
 import { controleFinContrat } from './preavis';
+import { nonGeresCdd } from './cdd';
 import type { AmLeave, Contract } from './model';
 import { messagePVACompleter, nonGeresContratPV, nonGeresPeriodePV } from './planningVariable';
 
@@ -19,9 +20,9 @@ export const NON_GERE_PLANNING_VARIABLE =
   'Horaires qui changent d’une semaine à l’autre (semaines A et B, planning remis chaque mois) : non géré. L’app ne sait calculer qu’une semaine type qui se répète. Fais la paie sans l’app.';
 export const NON_GERE_OCCASIONNEL =
   'Accueil occasionnel : non géré. L’app ne calcule que l’accueil régulier, sur 52 semaines ou sur 46 semaines ou moins (article 97.1 de la convention). Fais la paie sans l’app.';
-/** Décision du DG du 18/11/2026 (T-033, cas officiel C-FIN-11) : le CDD n'a passé aucun verrou */
-export const NON_GERE_CDD =
-  'Contrat à durée déterminée (CDD) : non géré. L’app ne calcule que les contrats à durée indéterminée (CDI). Un CDD a ses propres règles, dont l’indemnité de fin de contrat (dite « de précarité ») que l’Urssaf demande de verser. Fais la paie sans l’app.';
+// T-076 (22/11/2026) : le CDD est calculé (regles/t076-cdd.md). L'ancien refus NON_GERE_CDD (T-033) est retiré ; restent
+// refusés le CDD sans date de fin prévue et le CDD de moins d'un mois avec semaines sans accueil (cdd.ts), et, à la fin, les
+// cas de R-CDD-08 hors périmètre (fin.ts, MESSAGES_FIN_CDD_NON_GEREE).
 /** A-01 : CCN art. 97.1 ne connaît que 52 semaines ou 46 semaines et moins ; question 2 posée à la DDETS le 18/11/2026 */
 export const NON_GERE_47_51 =
   'Accueil de 47 à 51 semaines par an : non géré. La convention ne prévoit que 52 semaines, ou 46 semaines et moins (article 97.1). Ne choisis ni 46 semaines ni toute l’année à la place : la paie serait fausse. La question est posée à la DDETS. En attendant, fais la paie sans l’app.';
@@ -55,7 +56,7 @@ export function nonGeresContrat(c: Pick<Contract, 'alsaceMoselle' | 'planningVar
     else out.push(...nonGeresContratPV(c as Contract));
   }
   if (c.accueilOccasionnel) out.push(NON_GERE_OCCASIONNEL);
-  if (c.cdd) out.push(NON_GERE_CDD);
+  out.push(...nonGeresCdd(c));
   return out;
 }
 

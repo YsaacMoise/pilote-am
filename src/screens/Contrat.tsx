@@ -16,6 +16,7 @@ import { PAJEMPLOI_PLUS_AIDE } from '../legal';
 import { NON_GERE_47_51, nonGeresContrat, semaines4751 } from '../engine/nonGeres';
 import { manquesPV } from '../engine/planningVariable';
 import { PlanningVariableSaisie } from './PlanningVariableSaisie';
+import { CDD_A_COMPLETER, messagesCdd } from '../engine/cdd';
 
 const ouiNon = (b: boolean | undefined): 'oui' | 'non' | undefined => (b === undefined ? undefined : b ? 'oui' : 'non');
 
@@ -109,6 +110,10 @@ export function Contrat({ id }: { id?: string }) {
     if (c.planningVariable) for (const pl of [...(c.cycle ?? []), ...Object.values(c.planningsSemaines ?? {})]) for (let d = 1; d <= 7; d++) for (const p of pl[d] ?? []) if (p.end <= p.start) errs.push(`${JOUR_NOMS[d - 1]} : l’heure de fin doit être après le début.`);
     if (c.accueilOccasionnel === undefined) errs.push('Indique si l’accueil est régulier.');
     if (c.cdd === undefined) errs.push('Indique si le contrat est un CDI ou un CDD.');
+    // T-076 : le CDD est calculé ; sa date de fin prévue (ou de durée minimale) et son motif sont demandés.
+    if (c.cdd && !c.cddTerme) errs.push(c.cddTermeImprecis ? 'Indique la date de fin de la durée minimale du CDD.' : 'Indique la date de fin prévue du CDD.');
+    if (c.cdd && c.cddTerme && c.cddTerme < c.start) errs.push('La date de fin prévue du CDD est avant le début.');
+    if (c.cdd && !c.cddMotif) errs.push('Indique pourquoi le CDD a été signé.');
     // T-044b : choix explicite du mode de l'indemnité d'entretien sur un nouveau contrat.
     if (isNew && !c.entretienMode) errs.push('Indique si l’indemnité d’entretien est fixée par heure ou par jour.');
     setErrors(errs);
@@ -185,7 +190,7 @@ export function Contrat({ id }: { id?: string }) {
               options={[{ v: 'complete', l: 'Toute l’année (52 sem.)' }, { v: 'incomplete', l: 'Année incomplète' }]} />
             {c.yearType === 'incomplete' && (
               <>
-                <NumberInput label="Semaines d’accueil par an" hint="46 au plus, sans compter tes congés payés" value={c.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />
+                <NumberInput label="Semaines d’accueil par an" hint={c.cdd ? 'Pour un CDD : les semaines d’accueil prévues pendant le CDD, sur 12 mois au plus, sans compter tes congés payés' : '46 au plus, sans compter tes congés payés'} value={c.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />
                 {semaines4751(c.yearType, c.weeks) && <Banner tone="warn">{NON_GERE_47_51}</Banner>}
                 <WeeksOff c={c} onChange={(w) => set({ weeksOff: w })} />
               </>
@@ -198,8 +203,19 @@ export function Contrat({ id }: { id?: string }) {
             <Choices label="L’accueil est-il régulier ?" value={ouiNon(c.accueilOccasionnel === undefined ? undefined : !c.accueilOccasionnel)} onChange={(v) => set({ accueilOccasionnel: v === 'non' })}
               options={[{ v: 'oui', l: 'Oui, régulier' }, { v: 'non', l: 'Non, occasionnel', sub: 'Court et sans régularité (article 97.2 de la convention) : non géré par l’app' }]} />
             <Choices label="Quel type de contrat ?" value={ouiNon(c.cdd)} onChange={(v) => set({ cdd: v === 'oui' })}
-              options={[{ v: 'non', l: 'CDI', sub: 'Contrat à durée indéterminée, sans date de fin prévue' }, { v: 'oui', l: 'CDD', sub: 'Contrat à durée déterminée : non géré par l’app' }]} />
-            {nonGeresContrat(c).map((t) => <Banner tone="warn">{t}</Banner>)}
+              options={[{ v: 'non', l: 'CDI', sub: 'Contrat à durée indéterminée, sans date de fin prévue' }, { v: 'oui', l: 'CDD', sub: 'Contrat à durée déterminée, avec une date de fin' }]} />
+            {/* T-076 : le CDD est calculé (regles/t076-cdd.md, partie 5.1 : terme et motif). */}
+            {c.cdd && (
+              <>
+                <Choices label="Le CDD a-t-il une date de fin précise ?" value={c.cddTermeImprecis === undefined ? (c.cddTerme ? 'oui' : undefined) : c.cddTermeImprecis ? 'non' : 'oui'} onChange={(v) => set({ cddTermeImprecis: v === 'non' })}
+                  options={[{ v: 'oui', l: 'Oui, une date de fin prévue' }, { v: 'non', l: 'Non, jusqu’au retour de la personne remplacée', sub: 'Le contrat donne alors une durée minimale' }]} />
+                <DateInput label={c.cddTermeImprecis ? 'Fin de la durée minimale' : 'Date de fin prévue'} hint={c.cddTermeImprecis ? 'Le dernier jour de la durée minimale écrite dans le contrat.' : 'Le dernier jour prévu dans le contrat. Si le CDD est renouvelé, mets la nouvelle date.'} value={c.cddTerme ?? ''} min={c.start} onChange={(v) => set({ cddTerme: v || undefined })} />
+                <Choices label="Pourquoi ce CDD ?" value={c.cddMotif} onChange={(v) => set({ cddMotif: v })}
+                  options={[{ v: 'remplacement', l: 'Pour remplacer une assistante maternelle absente' }, { v: 'autre', l: 'Autre raison' }]} />
+                {messagesCdd(c).map((t) => <Banner tone={t.startsWith('Ton salaire') || t.startsWith('Si tu continues') ? 'info' : 'warn'}>{t}</Banner>)}
+              </>
+            )}
+            {nonGeresContrat(c).filter((t) => t !== CDD_A_COMPLETER).map((t) => <Banner tone="warn">{t}</Banner>)}
           </fieldset>
         </section>
 
