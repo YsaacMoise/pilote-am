@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { AmLeave, Contract, DayRec, Planning } from '../src/engine/model';
 import { dayInfo, makeCtx, mensuelMinutes, monthBase, regularisation, salaireMensualise } from '../src/engine/payroll';
 import { computeMonth, declarationLines } from '../src/engine/month';
-import { cpForMonth, decompteConge, indemnite, maintien } from '../src/engine/conges';
+import { acquisition, cpForMonth, decompteConge, indemnite, maintien } from '../src/engine/conges';
 import { finDeContrat } from '../src/engine/fin';
 import { nonGeresContrat } from '../src/engine/nonGeres';
 import { lecturePV, pvActif } from '../src/engine/planningVariable';
@@ -409,6 +409,32 @@ describe('T-076 : corrections du comparateur (D13, D6, fin courte)', () => {
     // × 30 h = 150 h × 5,00 € = 750,00 €. Régularisation = 1 500,00 − 1 384,10 = 115,90 €.
     const c2 = { ...c, heuresMensualisees: 45 };
     expect(regularisation(makeCtx(c2, [], [], T), '2026-01-05', '2026-03-29').montant).toBe(11590);
+  });
+});
+
+describe('T-076 : revue 2, B4 (refus D2 partout où l’absence compte)', () => {
+  const l2 = (over: Partial<Contract> = {}) => s1({ cycle: [A45, B25], heuresMensualisees: 130, ...over });
+  it('B4 a : absence retenue le lundi 30/03, semaine A finie en avril : mars et avril refusés', () => {
+    // Semaine A du 30/03 au 03/04 (45 h prévues > B = 30 h) : ses HC tombent en avril (jeudi 02/04 et vendredi 03/04).
+    const leaves: AmLeave[] = [{ id: 's', type: 'sans_solde', from: '2026-03-30', to: '2026-03-30' }];
+    const ctx = makeCtx(l2(), [], leaves, T);
+    expect(monthBase(ctx, '2026-03').nonGere.join(' ')).toMatch(/Absence retenue sur ton salaire le 30\/03/);
+    expect(monthBase(ctx, '2026-04').nonGere.join(' ')).toMatch(/Absence retenue sur ton salaire le 30\/03/);
+    expect(monthBase(ctx, '2026-05').nonGere).toEqual([]);
+  });
+  it('B4 b : mois refusé par D2 : jours acquis et indemnité de congés à confirmer, rien versé en juin', () => {
+    // Contrat depuis le 02/06/2025 ; congé sans solde le lundi 06/10/2025 (semaine A : 06/10 - 05/06 = 18 semaines, paire).
+    const c = l2({ start: '2025-06-02', trackedFrom: '2025-06-02', cycleAncre: '2025-06-02' });
+    const leaves: AmLeave[] = [{ id: 's', type: 'sans_solde', from: '2025-10-06', to: '2025-10-06' }];
+    const ctx = makeCtx(c, [], leaves, '2026-12-31');
+    expect(monthBase(ctx, '2025-10').nonGere.length).toBeGreaterThan(0);
+    expect(acquisition(ctx, 2025).aConfirmer?.message).toMatch(/Absence retenue sur ton salaire/);
+    expect(indemnite(ctx, 2025).aConfirmer).toBeDefined();
+    const juin = cpForMonth(ctx, '2026-06');
+    expect(juin.complement).toBe(0);
+    expect(juin.aConfirmer).toBeDefined();
+    // Sans l'absence : rien à confirmer pour cette raison.
+    expect(acquisition(makeCtx(c, [], [], '2026-12-31'), 2025).aConfirmer?.message ?? '').not.toMatch(/Absence retenue/);
   });
 });
 

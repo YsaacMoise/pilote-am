@@ -647,14 +647,14 @@ export function absencesL2NonGerees(ctx: Ctx, from: ISODate, to: ISODate): ISODa
   const t = termsAt(ctx.c, from);
   if (!pvActif(t) || lecturePV(t) !== 'L2' || to < from) return [];
   const B = baseHebdoMin(t);
+  // Revue 2 (B4 a) : toutes les semaines qui touchent [from, to], jour retenu dans ou hors de la période : une semaine à
+  // cheval range ses HC dans les deux mois, les deux sont refusés.
   const out: ISODate[] = [];
-  for (const d of eachDay(from, to)) {
-    const di = dayInfo(ctx, d);
-    if (!di.deducted || di.plannedMin <= 0) continue;
-    const l = mondayOf(d);
-    let prevu = 0;
-    for (let i = 0; i < 7; i++) prevu += dayInfo(ctx, addDays(l, i)).plannedMin;
-    if (prevu > B + 1e-9) out.push(d);
+  for (const l of [...new Set(eachDay(from, to).map(mondayOf))]) {
+    const jours = Array.from({ length: 7 }, (_, i) => addDays(l, i));
+    const prevu = jours.reduce((a, d) => a + dayInfo(ctx, d).plannedMin, 0);
+    if (prevu <= B + 1e-9) continue;
+    for (const d of jours) { const di = dayInfo(ctx, d); if (di.deducted && di.plannedMin > 0) out.push(d); }
   }
   return out;
 }
