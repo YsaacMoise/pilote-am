@@ -579,26 +579,30 @@ const OPTION_SANS_SOLDE_ENFANT = { v: 'sans_solde_enfant' as const, l: CHILD_ABS
  * (l'AM a répondu « Non » ou n'a pas pointé ce matin-là) : le planning ne la remplit pas, pour ne pas la noter présente.
  */
 export function heuresInitiales(planned: Plage[], pres: Presence[] | undefined, slots: number, maintenant?: string): Presence[] {
-  // T-068 : le jour même (`maintenant`, HH:MM), une heure prévue pas encore passée n'est pas proposée : le champ reste
-  // vide, pour que « Enregistrer » ne note jamais une arrivée ou un départ à venir sans geste de l'AM.
-  const prevue = (h: string | undefined) => (h && maintenant && minutes(h) > minutes(maintenant) ? '' : h ?? '');
+  // T-068 (direction T-072) : le jour même (`maintenant`, HH:MM), seules les heures pointées sont reprises. Une plage non
+  // pointée reste vide, même si son heure est passée ; le départ prévu n'est proposé que pour une arrivée pointée et une
+  // heure passée. « Enregistrer » n'écrit ainsi aucune heure sans geste de l'AM.
+  const passee = (h: string | undefined) => (h && maintenant && minutes(h) <= minutes(maintenant) ? h : '');
   return Array.from({ length: slots }, (_, i) => {
     const vide = !pres?.[i]?.a && (pres ?? []).slice(i + 1).some((x) => !!x?.a);
     if (vide) return { a: '', d: '' };
-    const a = pres?.[i]?.a ?? prevue(planned[i]?.start);
-    return { a, d: pres?.[i]?.d ?? (a ? prevue(planned[i]?.end) : '') };
+    if (maintenant) {
+      const a = pres?.[i]?.a ?? '';
+      return { a, d: pres?.[i]?.d ?? (a ? passee(planned[i]?.end) : '') };
+    }
+    return { a: pres?.[i]?.a ?? planned[i]?.start ?? '', d: pres?.[i]?.d ?? planned[i]?.end ?? '' };
   });
 }
 
 /**
  * Présences écrites par « Enregistrer » de la fiche de la journée ; `undefined` : aucune présence (journée comme prévu,
- * ou jour à venir). T-068 : le jour même, une heure prévue pas encore passée et laissée vide compte comme le planning.
+ * ou jour à venir). Jour passé : des heures égales au planning ne sont pas écrites. Le jour même (T-068), seules les
+ * heures saisies ou pointées sont écrites ; une fiche vide ne note rien (journée comme prévu).
  */
 export function presencesAEnregistrer(planned: Plage[], pres: Presence[], future: boolean, maintenant?: string): Presence[] | undefined {
   if (future) return undefined;
-  const aVenir = (h: string) => !!maintenant && minutes(h) > minutes(maintenant);
-  const comme = (v: string | undefined, h: string) => v === h || (!v && aVenir(h));
-  const samePlan = pres.length === planned.length && pres.every((p, i) => planned[i] && comme(p.a, planned[i].start) && comme(p.d, planned[i].end));
+  if (maintenant) { const r = presencesAGarder(pres); return r.length ? r : undefined; }
+  const samePlan = pres.length === planned.length && pres.every((p, i) => planned[i] && p.a === planned[i].start && p.d === planned[i].end);
   return samePlan ? undefined : presencesAGarder(pres);
 }
 

@@ -16,9 +16,9 @@ describe('T-068 : départ vide tant que son heure n’est pas passée', () => {
     expect(form).toEqual([{ a: '07:58', d: '' }]);
     expect(presencesAEnregistrer(ADAM, form, false, '10:00')).toEqual([{ a: '07:58', d: undefined }]);
   });
-  it('rien de pointé, fiche ouverte à 10 h puis « Enregistrer » : aucune heure écrite (journée comme prévu)', () => {
+  it('rien de pointé, fiche ouverte à 10 h puis « Enregistrer » : arrivée non proposée, aucune heure écrite (journée comme prévu)', () => {
     const form = heuresInitiales(ADAM, undefined, 1, '10:00');
-    expect(form).toEqual([{ a: '07:30', d: '' }]);
+    expect(form).toEqual([{ a: '', d: '' }]);
     expect(presencesAEnregistrer(ADAM, form, false, '10:00')).toBeUndefined();
   });
   it('avant l’arrivée prévue (6 h) : arrivée et départ vides, rien n’est écrit', () => {
@@ -36,11 +36,29 @@ describe('T-068 : départ vide tant que son heure n’est pas passée', () => {
     expect(form).toEqual([{ a: '07:35', d: '08:32' }, { a: '16:40', d: '' }]);
     expect(presencesAEnregistrer(ROSE, form, false, '17:00')).toEqual([{ a: '07:35', d: '08:32' }, { a: '16:40', d: undefined }]);
   });
-  it('heure atteinte (17 h 30) ou passée (18 h) : le départ prévu est proposé, comme avant (fiche du soir)', () => {
+  // Direction T-072 (point 4) : une plage dont l'heure d'arrivée est passée mais qui n'est pas pointée n'est pas remplie
+  // le jour même : sinon « Enregistrer », après une modification d'une autre plage, écrirait son arrivée sans geste.
+  it('matin pointé, soir non pointé, fiche à 17 h, départ du matin corrigé : l’arrivée du soir n’est pas écrite', () => {
+    const form = heuresInitiales(ROSE, [{ a: '07:35', d: '08:32' }], 2, '17:00');
+    expect(form).toEqual([{ a: '07:35', d: '08:32' }, { a: '', d: '' }]);
+    const modifie = [{ a: '07:35', d: '08:40' }, form[1]];
+    expect(presencesAEnregistrer(ROSE, modifie, false, '17:00')).toEqual([{ a: '07:35', d: '08:40' }]);
+  });
+  it('matin non pointé (passé), fiche à 17 h, arrivée du soir saisie : le matin reste vide (T-048, plage sautée)', () => {
+    const form = heuresInitiales(ROSE, undefined, 2, '17:00');
+    expect(form).toEqual([{ a: '', d: '' }, { a: '', d: '' }]);
+    expect(presencesAEnregistrer(ROSE, [form[0], { a: '16:40', d: '' }], false, '17:00')).toEqual([{}, { a: '16:40', d: undefined }]);
+  });
+  it('fiche à 19 h, rien de pointé : rien n’est proposé ni écrit sans geste', () => {
+    const form = heuresInitiales(ROSE, undefined, 2, '19:00');
+    expect(form).toEqual([{ a: '', d: '' }, { a: '', d: '' }]);
+    expect(presencesAEnregistrer(ROSE, form, false, '19:00')).toBeUndefined();
+  });
+  it('heure atteinte (17 h 30) ou passée (18 h) : le départ prévu d’une arrivée pointée est proposé, comme avant (fiche du soir)', () => {
     expect(heuresInitiales(ADAM, [{ a: '07:58' }], 1, '17:30')).toEqual([{ a: '07:58', d: '17:30' }]);
     expect(heuresInitiales(ADAM, [{ a: '07:58' }], 1, '18:00')).toEqual([{ a: '07:58', d: '17:30' }]);
     expect(presencesAEnregistrer(ADAM, [{ a: '07:58', d: '17:30' }], false, '18:00')).toEqual([{ a: '07:58', d: '17:30' }]);
-    expect(presencesAEnregistrer(ADAM, [{ a: '07:30', d: '17:30' }], false, '18:00')).toBeUndefined();
+    expect(presencesAEnregistrer(ADAM, [{ a: '07:30', d: '17:30' }], false, '18:00')).toEqual([{ a: '07:30', d: '17:30' }]);
   });
   it('jour passé (sans heure du jour) : inchangé, plage sautée vide (T-048), autres plages au planning', () => {
     expect(heuresInitiales(ADAM, [{ a: '07:58' }], 1)).toEqual([{ a: '07:58', d: '17:30' }]);
