@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { Plage } from '../src/engine/model';
-import { heuresInitiales, presencesAEnregistrer, departSansArrivee } from '../src/screens/Today';
+import { heuresInitiales, presencesAEnregistrer, departSansArrivee, verifierFiche } from '../src/screens/Today';
 
 const ADAM: Plage[] = [{ start: '07:30', end: '17:30' }];
 const ROSE: Plage[] = [{ start: '07:30', end: '08:30' }, { start: '16:30', end: '18:30' }];
@@ -105,8 +105,21 @@ describe('T-068 : départ vide tant que son heure n’est pas passée', () => {
     expect(departSansArrivee([{ a: '', d: '' }, { a: '16:40', d: '18:45' }], ROSE)).toBe('');
     expect(departSansArrivee([{ a: '07:30', d: '17:30' }], ADAM)).toBe('');
   });
-  it('B-2 : la fiche vérifie avant d’écrire', () => {
+  // Remarque du relecteur sur B-2 : avec une absence choisie (ou un jour à venir), le bloc des heures est caché et les heures
+  // ne sont pas enregistrées (save retire les présences). Les contrôles des heures ne s'appliquent pas : sinon « Enregistrer »
+  // resterait muet, le message étant dans le bloc caché.
+  it('B-2 : heures visibles, les deux contrôles s’appliquent', () => {
+    expect(verifierFiche([{ a: '', d: '18:15' }], ADAM, true)).toBe('Départ sans arrivée : indique aussi l’heure d’arrivée (prévue à 7 h 30).');
+    expect(verifierFiche([{ a: '08:00', d: '07:00' }], ADAM, true)).toBe('L’heure de départ doit être après l’arrivée.');
+    expect(verifierFiche([{ a: '08:00', d: '17:00' }], ADAM, true)).toBe('');
+  });
+  it('B-2 : absence choisie ou jour à venir (heures cachées, non enregistrées) : aucun contrôle, « Enregistrer » n’est pas bloqué', () => {
+    expect(verifierFiche([{ a: '', d: '18:15' }], ADAM, false)).toBe('');
+    expect(verifierFiche([{ a: '08:00', d: '07:00' }], ADAM, false)).toBe('');
+  });
+  it('B-2 : la fiche vérifie avant d’écrire, seulement quand les heures sont visibles', () => {
     const src = readFileSync('src/screens/Today.tsx', 'utf8');
-    expect(src).toMatch(/const sansArrivee = departSansArrivee\(pres, di\.planned\);\s*if \(sansArrivee\) \{ setErr\(sansArrivee\); return; \}/);
+    expect(src).toMatch(/const erreur = verifierFiche\(pres, di\.planned, abs === 'none' && !future\);\s*if \(erreur\) \{ setErr\(erreur\); return; \}/);
+    expect(src).toContain("{abs === 'none' && !future && (");
   });
 });

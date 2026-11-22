@@ -604,6 +604,18 @@ export function departSansArrivee(pres: Presence[], planned: Plage[]): string {
 }
 
 /**
+ * Contrôles des heures de la fiche avant « Enregistrer » : départ sans arrivée (B-2), départ avant l'arrivée. `heuresVisibles`
+ * faux (absence choisie, jour à venir) : les heures ne sont pas enregistrées, aucun contrôle (sinon refus muet, le message
+ * étant dans le bloc caché). Rend le message, ou ''.
+ */
+export function verifierFiche(pres: Presence[], planned: Plage[], heuresVisibles: boolean): string {
+  if (!heuresVisibles) return '';
+  const sansArrivee = departSansArrivee(pres, planned);
+  if (sansArrivee) return sansArrivee;
+  return pres.some((p) => p.a && p.d && p.d <= p.a) ? 'L’heure de départ doit être après l’arrivée.' : '';
+}
+
+/**
  * Présences écrites par « Enregistrer » de la fiche de la journée ; `undefined` : aucune présence (journée comme prévu,
  * ou jour à venir). Jour passé : des heures égales au planning ne sont pas écrites. Le jour même (T-068), seules les
  * heures saisies ou pointées sont écrites ; une fiche vide ne note rien (journée comme prévu).
@@ -644,11 +656,8 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
   useErreurAffichee('saisie', !!err && err.includes('sans arrivée'));
 
   async function save() {
-    const sansArrivee = departSansArrivee(pres, di.planned);
-    if (sansArrivee) { setErr(sansArrivee); return; }
-    for (const p of pres) {
-      if (p.a && p.d && p.d <= p.a) { setErr('L’heure de départ doit être après l’arrivée.'); return; }
-    }
+    const erreur = verifierFiche(pres, di.planned, abs === 'none' && !future);
+    if (erreur) { setErr(erreur); return; }
     const gardees = presencesAEnregistrer(di.planned, pres, future, day === today() ? nowHHMM() : undefined);
     const undo = await updateDay(c.id, day, (r) => {
       const next: DayRec = { ...r };
