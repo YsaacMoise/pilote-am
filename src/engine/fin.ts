@@ -94,8 +94,10 @@ export interface FinResult {
    * est comprise dans les salaires des mois du préavis (mensualisation) : information, jamais ajoutée au total de la fin.
    * `autre` : P-1, mois où l'AM a travaillé puis a été dispensée ; aucun texte ne dit quelle part du salaire est l'indemnité
    * (proportion de l'art. 111, ou heures dispensées × taux horaire). Présent si les deux lectures diffèrent : montant à confirmer.
+   * T-078 (D1) : `aConfirmer` et `variantes` présents si l'indemnité change d'une date de fin possible du préavis à l'autre
+   * (règle T-038) : `net` et `brut` sont alors ceux de la date de l'app, à ne pas donner comme dus.
    */
-  dispense?: { du: ISODate; au: ISODate; net: number; brut: number; autre?: number };
+  dispense?: { du: ISODate; au: ISODate; net: number; brut: number; autre?: number; aConfirmer?: string; variantes?: { fin: ISODate; libelle: string; net: number; autre?: number }[] };
 }
 
 /** PREAVIS-DATE-FIN : méthode de l'app sans texte (premier jour compté ; un mois de date à date, du 15/10 au 14/11) */
@@ -379,11 +381,35 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     : undefined;
   const cFin: Ctx['c'] = { ...c, rupture: rupturePreavis };
   const endCtx: Ctx = { ...ctx, c: { ...cFin, end: dernierJour }, cache: new Map(), finControlee: true };
-  let icp: { net: number; brut: number; autre?: number } | undefined;
+  // T-038 : chaque date de fin possible (fin calculée ; fin un jour plus tard si la date est à confirmer, AC-2 ; fin au bout
+  // d'un mois pour la démission de 3 mois à 1 an, AC-1, CASF L423-26 contre CCN art. 120) donne sa régularisation et ses
+  // congés non pris. Un montant qui change d'une variante à l'autre, ou selon les jours « à confirmer » (B-1), n'est ni donné
+  // ni compté : il est « à confirmer » avec ses valeurs. T-078 (D1) : l'indemnité de préavis des jours dispensés aussi.
+  const variantes: { fin: ISODate; libelle: string }[] = [{ fin: dernierJour, libelle: `fin le ${shortDate(dernierJour)}` }];
+  // T-045 : fin au dernier jour travaillé, avant la fin du préavis : la date de fin ne dépend plus du préavis.
+  if (preavisFinAConfirmer && !finAuDernierJourTravaille) variantes.push({ fin: addDays(dernierJour, 1), libelle: `fin le ${shortDate(addDays(dernierJour, 1))}` });
+  if (demission312 && !finAuDernierJourTravaille) {
+    const finMois = finPreavis(depart, {});
+    variantes.push({ fin: finMois, libelle: `préavis d’un mois, fin le ${shortDate(finMois)}` });
+    variantes.push({ fin: addDays(finMois, 1), libelle: `préavis d’un mois, fin le ${shortDate(addDays(finMois, 1))}` });
+  }
+  let icp: { net: number; brut: number; autre?: number; aConfirmer?: string; variantes?: { fin: ISODate; libelle: string; net: number; autre?: number }[] } | undefined;
   if (dispense) {
     icp = icpDispense(c, dispense.du, dispense.au);
+    // T-078 (D1) : art. 64.2 et 66, indemnité « jusqu'à la date prévue de fin » ; cette date est à confirmer (variantes). Une
+    // indemnité qui change d'une date à l'autre est « à confirmer » avec ses valeurs, comme l'indemnité du décès (plus haut).
+    const du = dispense.du;
+    const parFin = variantes.map((v) => ({ ...v, ...(v.fin === dispense!.au ? icp! : icpDispense(c, du, v.fin)) }));
+    if (parFin.some((v) => v.net !== icp!.net || v.autre !== icp!.autre)) {
+      const valeur = (v: (typeof parFin)[number]) => `${euros(v.net)} net${v.autre != null ? ` (ou ${euros(v.autre)} en comptant les heures dispensées au taux horaire)` : ''}`;
+      icp.variantes = parFin.map((v) => ({ fin: v.fin, libelle: v.libelle, net: v.net, ...(v.autre != null ? { autre: v.autre } : {}) }));
+      icp.aConfirmer = `Indemnité de préavis à confirmer : elle court jusqu’à la date prévue de fin du préavis (convention, articles 64.2 et 66), et cette date dépend ${demission312 ? 'de la durée du préavis et de sa date de fin, à confirmer' : 'de la date de fin du préavis, elle-même à confirmer'}. ${parFin.map((v) => `${v.libelle.replace(/^./, (x) => x.toUpperCase())} : ${valeur(v)}`).join(' ; ')}.`;
+    }
     const jours = dispense.du === dispense.au ? `le ${shortDate(dispense.du)}` : `du ${shortDate(dispense.du)} au ${shortDate(dispense.au)}`;
-    alertes.push(`Préavis non fait en entier, à la demande des parents : tu as accueilli l’enfant jusqu’au ${shortDate(inexecution!.dernierJourTravaille)}. Le contrat finit le ${shortDate(dernierJour)}, date prévue de fin du préavis (convention, article 64). Pour les jours dispensés (${jours}), les parents te versent une indemnité compensatrice de préavis égale au salaire de ces jours : ${euros(icp.net)} net, soit environ ${euros(icp.brut)} brut${icp.autre != null ? ` (ou ${euros(icp.autre)} net en comptant les heures dispensées au taux horaire : la part du salaire qui est l’indemnité est à confirmer)` : ''}. Elle est comprise dans tes salaires des mois du préavis, pas en plus, et soumise aux cotisations. Ces jours comptent pour tes congés et ton ancienneté (article 64.2). Pas d’indemnité d’entretien ni de repas ces jours-là (article 114). Garde par écrit que ce sont les parents qui t’ont dispensée : si c’est toi qui as demandé à partir, le contrat finit à ton dernier jour travaillé et ces jours ne sont pas payés.`);
+    const montantIcp = icp.aConfirmer
+      ? ` : ${icp.aConfirmer.replace(/^Indemnité de préavis à confirmer : /, 'montant à confirmer, ')}`
+      : ` : ${euros(icp.net)} net, soit environ ${euros(icp.brut)} brut${icp.autre != null ? ` (ou ${euros(icp.autre)} net en comptant les heures dispensées au taux horaire : la part du salaire qui est l’indemnité est à confirmer)` : ''}.`;
+    alertes.push(`Préavis non fait en entier, à la demande des parents : tu as accueilli l’enfant jusqu’au ${shortDate(inexecution!.dernierJourTravaille)}. Le contrat finit le ${shortDate(dernierJour)}, date prévue de fin du préavis (convention, article 64). Pour les jours dispensés (${jours}), les parents te versent une indemnité compensatrice de préavis égale au salaire de ces jours${montantIcp} Elle est comprise dans tes salaires des mois du préavis, pas en plus, et soumise aux cotisations. Ces jours comptent pour tes congés et ton ancienneté (article 64.2). Pas d’indemnité d’entretien ni de repas ces jours-là (article 114). Garde par écrit que ce sont les parents qui t’ont dispensée : si c’est toi qui as demandé à partir, le contrat finit à ton dernier jour travaillé et ces jours ne sont pas payés.`);
     alertes.push('Déclaration à Pajemploi : la part du salaire à mettre dans la case de l’indemnité de préavis, et les heures et jours à déclarer pour les jours dispensés, sont à confirmer avec le service Pajemploi. Le total à verser, lui, ne change pas.');
   }
 
@@ -429,18 +455,6 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // depuis l'embauche, le début du suivi ou le dernier passage d'une année à l'autre (C-001 : les autres avenants ne coupent pas).
   const finTerms = termsAt(c, dernierJour);
   const regStart = regulStart(c, addDays(dernierJour, 1));
-  // T-038 : chaque date de fin possible (fin calculée ; fin un jour plus tard si la date est à confirmer, AC-2 ; fin au bout
-  // d'un mois pour la démission de 3 mois à 1 an, AC-1, CASF L423-26 contre CCN art. 120) donne sa régularisation et ses
-  // congés non pris. Un montant qui change d'une variante à l'autre, ou selon les jours « à confirmer » (B-1), n'est ni donné
-  // ni compté : il est « à confirmer » avec ses valeurs.
-  const variantes: { fin: ISODate; libelle: string }[] = [{ fin: dernierJour, libelle: `fin le ${shortDate(dernierJour)}` }];
-  // T-045 : fin au dernier jour travaillé, avant la fin du préavis : la date de fin ne dépend plus du préavis.
-  if (preavisFinAConfirmer && !finAuDernierJourTravaille) variantes.push({ fin: addDays(dernierJour, 1), libelle: `fin le ${shortDate(addDays(dernierJour, 1))}` });
-  if (demission312 && !finAuDernierJourTravaille) {
-    const finMois = finPreavis(depart, {});
-    variantes.push({ fin: finMois, libelle: `préavis d’un mois, fin le ${shortDate(finMois)}` });
-    variantes.push({ fin: addDays(finMois, 1), libelle: `préavis d’un mois, fin le ${shortDate(addDays(finMois, 1))}` });
-  }
   const ctxFin = (fin: ISODate): Ctx => (fin === dernierJour ? endCtx : { ...ctx, c: { ...cFin, end: fin }, cache: new Map(), finControlee: true });
   const regPour = (fin: ISODate) => regularisationLectures(ctxFin(fin), regulStart(c, addDays(fin, 1)), fin);
   const reg = regPour(dernierJour);
@@ -457,8 +471,12 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   }
   // T-055 : le message est aussi rendu à part, pour que l'écran ne montre pas « 0,00 € » à la place d'un montant non calculé.
   let regularisationNonCalculee: string | undefined;
+  // T-078 (D3) : la phrase sur l'indemnité de rupture n'est ajoutée, plus bas, que si cette indemnité existe et est « à confirmer »
+  // (jamais pour une démission, CCN art. 121.1).
+  let indexRegulNonCalculee = -1;
   if (manque > 0) {
-    regularisationNonCalculee = `Régularisation non calculée : il manque ${manque} semaine${manque > 1 ? 's' : ''} sans accueil dans le contrat. Saisis-les d’abord, sinon les vacances compteraient comme des semaines accueillies. L’indemnité de congés non pris en dépend : elle est à confirmer. L’indemnité de rupture aussi, même si tes bulletins couvrent le dernier mois.`;
+    regularisationNonCalculee = `Régularisation non calculée : il manque ${manque} semaine${manque > 1 ? 's' : ''} sans accueil dans le contrat. Saisis-les d’abord, sinon les vacances compteraient comme des semaines accueillies. L’indemnité de congés non pris en dépend : elle est à confirmer.`;
+    indexRegulNonCalculee = alertes.length;
     alertes.push(regularisationNonCalculee);
   } else if (finTerms.yearType === 'incomplete') {
     alertes.push('Vérifie que toutes les semaines sans accueil de la dernière année sont saisies : une semaine non saisie compte comme accueillie dans la régularisation.');
@@ -659,8 +677,11 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // F16842) ou à la fin du contrat, préavis compris (CCN art. 60 et 64.2 ; question D-1) ? Si les lectures diffèrent,
   // « à confirmer » avec leurs valeurs, jamais comptée.
   if (dispense && icp && motif === 'retrait') {
-    // R3 : sommes de la fin encore à confirmer, absentes du total des bruts.
-    const sansFin = cpAConfirmer || regularisationAConfirmer || regulNonCalculee ? ' (sans l’indemnité de congés non pris ni la régularisation de la fin, encore à confirmer)' : '';
+    // R3 : sommes de la fin encore à confirmer, absentes du total des bruts. T-078 (D2) : seulement celles qui en sont vraiment
+    // absentes (mêmes conditions que l'assiette : un bulletin qui couvre le dernier mois les contient, sauf une régularisation
+    // non calculée) ; la régularisation n'est citée que si elle est à confirmer ou non calculée.
+    const absentes = [iccpManquante ? 'l’indemnité de congés non pris' : '', regulManquante ? 'la régularisation de la fin' : ''].filter(Boolean);
+    const sansFin = absentes.length ? ` (sans ${absentes.join(' ni ')}, ${regulNonCalculee ? 'à confirmer : la régularisation n’est pas calculée' : 'encore à confirmer'})` : '';
     const ancFin = fullMonthsBetween(c.start, addDays(dernierJour, 1));
     const avec = Math.round(totalBrut / 80);
     const sans = Math.round((totalBrut - icp.brut) / 80);
@@ -675,6 +696,11 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
       ruptureAConfirmer = true;
       if (anc < 9) ruptureExplication = 'À confirmer : l’ancienneté de 9 mois se compte peut-être jusqu’à la fin du contrat (voir l’encadré plus haut).';
     }
+  }
+  // T-078 (D3) : la régularisation non calculée entre dans l'assiette de l'indemnité de rupture (CCN art. 121.1 et 124).
+  if (regularisationNonCalculee && ruptureAConfirmer) {
+    regularisationNonCalculee = `${regularisationNonCalculee} L’indemnité de rupture aussi, même si tes bulletins couvrent le dernier mois.`;
+    alertes[indexRegulNonCalculee] = regularisationNonCalculee;
   }
 
   // T-031 : un cas non géré pendant le contrat (Alsace-Moselle, horaires variables, accueil occasionnel, congé maternité,
