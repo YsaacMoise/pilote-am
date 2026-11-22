@@ -180,6 +180,8 @@ def indemnite_fin_cdd(brut_cdd_centimes, fin_cdd, iccp_centimes=None):
     ministerielle n° 8078, JO AN 21/06/1999) = part sure ; lecture 2 avec :
     a confirmer = 10 % x ICCP (iccp_centimes, part sure de l'ICCP ; None si non
     calculee : lecture 2 non donnee).
+    iccp_centimes : ICCP la plus haute (lecture 2 de P3 quand elle est calculee),
+    pour que les lectures couvrent [plus petite, plus grande].
     Sortie : indemnite_centimes (part sure), lectures, a_confirmer_centimes."""
     regles = ["R-CDD-07", "R-CDD-08"]
     due, texte = _fin(fin_cdd, regles)
@@ -218,10 +220,12 @@ def iccp_cdd(fin_cdd, periodes, ifc_centimes, brut_cdd_centimes, heures_hebdo_mi
     periodes : liste (la plus ancienne d'abord) de {salaires_bruts_periode_centimes,
     icp_versee_pendant_periode_centimes, icp_annee_precedente_centimes,
     regularisation_due_centimes (derniere periode), jours_acquis (int ou None),
-    jours_payes, code_jours (code du refus d'acquisition, facultatif)}.
-    Refus : A-28 (ICP selon la lecture), A-50 (jours deja payes en partie, ou
-    ICCP de la periode precedente dans la base : SUS-04), CDD-PLANCHER-L1242-16
-    (CP payes pendant le CDD : plancher non applique tel quel)."""
+    jours_payes, code_jours (code du refus d'acquisition, facultatif),
+    jours_supplementaires}.
+    Deux periodes (CDD a cheval sur le 1er juin, D10) : part sure donnee, lecture 2
+    non calculee (A-50, SUS-04 : ICCP de la periode precedente dans la base).
+    Refus : A-28 (ICP selon la lecture), CP-SUPP (jours supplementaires),
+    CDD-PLANCHER-L1242-16 (CP payes pendant le CDD : plancher non applique tel quel)."""
     regles = ["R-CDD-10", "R-FIN-09"]
     due_ifc, _ = _fin(fin_cdd, regles)
     if fin_cdd == "suite_cdi":
@@ -245,9 +249,9 @@ def iccp_cdd(fin_cdd, periodes, ifc_centimes, brut_cdd_centimes, heures_hebdo_mi
                 "CP payes pendant le CDD : le plancher de L1242-16 sur toute la duree du contrat n'est pas applique "
                 "tel quel (aucune regle de repartition lue)."))
         if not derniere:
-            # SUS-04 / A-50 : l'ICCP de cette periode, payee a la fin, entre-t-elle dans la base de la suivante ?
-            raise NonGere("A-50", regles, precision="ICCP de deux periodes : ICCP de la periode precedente dans la base "
-                                                    "du dixieme de la derniere (SUS-04).")
+            # D10 : la part sure est donnee. SUS-04 / A-50 (ICCP de cette periode dans la base de la suivante) :
+            # la lecture 2 n'est pas calculee.
+            code_l2 = code_l2 or "A-50"
         sal = entier(p.get("salaires_bruts_periode_centimes"), f"periodes[{i}].salaires_bruts_periode_centimes")
         icp1 = entier(p.get("icp_versee_pendant_periode_centimes", 0), "icp_versee_pendant_periode_centimes")
         icp2 = entier(p.get("icp_annee_precedente_centimes", icp1), "icp_annee_precedente_centimes")
@@ -256,7 +260,12 @@ def iccp_cdd(fin_cdd, periodes, ifc_centimes, brut_cdd_centimes, heures_hebdo_mi
         reg = max(0, entier(p.get("regularisation_due_centimes", 0) or 0, "regularisation_due_centimes")) \
             if derniere else 0
         base = sal + icp1 + reg + (ifc if derniere else 0)
-        dixiemes.append(Fraction(base, 10))
+        dix = Fraction(base, 10)
+        sup = entier(p.get("jours_supplementaires", 0) or 0, "jours_supplementaires")
+        if sup:
+            # CP-SUPP (comme R-CP-06) : jours supplementaires hors du dixieme ; si cela change le dixieme : refus.
+            raise NonGere("CP-SUPP", regles + ["R-CP-06"])
+        dixiemes.append(dix)
         j = p.get("jours_acquis")
         if j is None:
             maintiens.append(None)
@@ -297,3 +306,55 @@ def preavis_et_rupture_cdd(fin_cdd):
     _fin(fin_cdd, ["R-CDD-06"])
     return resultat_ok(preavis_et_rupture_cdd.regles, {"preavis_centimes": 0, "indemnite_rupture_centimes": 0,
                                                        "texte": "C. trav. L1243-5, L1242-14 ; CCN 62, 118."})
+
+
+@api("R-CDD-09", "P2", "D11")
+def solde_fin_cdd(totaux_lectures_centimes, verse_mois_centimes, fin_cdd):
+    """Solde verse a la fin d'un CDD dont le salaire a deux lectures (P2 ; P1 sur
+    plusieurs mois). D11 (decisions, section 4) : total sur = min(total lecture 1,
+    total lecture 2) ; chaque mois a deja verse sa part sure ; le solde de fin
+    est total sur - verse. A confirmer : plus grand total - total sur. Jamais sous
+    la plus petite lecture (decisions, preambule). D8 : CDD suivi d'un CDI : ni
+    regularisation de fin ni solde (L1243-11, CCN 124 : fin du contrat seulement).
+    totaux_lectures_centimes : [total 1, total 2] (salaires du contrat et
+    regularisation de fin de chaque lecture). Sortie : solde_centimes, lectures."""
+    _fin(fin_cdd, ["R-CDD-09"])
+    t1, t2 = (entier(x, "total") for x in totaux_lectures_centimes)
+    v = entier(verse_mois_centimes, "verse_mois_centimes")
+    if fin_cdd == "suite_cdi":
+        return resultat_ok(["D8"], {"solde_centimes": 0, "lectures": [0, 0],
+                                    "raison": "D8 : CDD suivi d'un CDI, pas de solde de fin (L1243-11, CCN 124)."})
+    if min(t1, t2) < v:
+        raise ErreurSaisie("Le verse depasse le plus petit total : parts sures des mois incoherentes.")
+    return resultat_ok(solde_fin_cdd.regles, {"solde_centimes": min(t1, t2) - v, "lectures": [t1 - v, t2 - v],
+                                              "a_confirmer_centimes": max(t1, t2) - min(t1, t2)})
+
+
+@api("R-CDD-08", "D9", "L1243-11")
+def controle_dates_cdd(fin_cdd, date_fin, date_terme):
+    """D9 (decisions, section 4) : une fin anticipee (initiative de l'AM, commun
+    accord, employeur, faute grave, essai) a la date du terme ou apres : refus
+    CDD-DATE-FIN (« au terme, choisis Terme »). Travail apres le terme sans CDI
+    signe : C. trav. L1243-11 (« Lorsque la relation contractuelle de travail se
+    poursuit apres l'echeance du terme du contrat a duree determinee, celui-ci
+    devient un contrat a duree indeterminee ») : refus CDD-DEVENU-CDI."""
+    _fin(fin_cdd, ["R-CDD-08"])
+    if not (isinstance(date_fin, date) and isinstance(date_terme, date)):
+        raise ErreurSaisie("Dates attendues.")
+    anticipees = ("initiative_am", "commun_accord", "employeur", "faute_grave", "essai")
+    if fin_cdd in anticipees and date_fin >= date_terme:
+        raise NonGere("CDD-DATE-FIN", ["D9"], precision="Fin anticipee a la date du terme ou apres : au terme, choisis Terme.")
+    if date_fin > date_terme and fin_cdd != "suite_cdi":
+        raise NonGere("CDD-DEVENU-CDI", ["D9"], precision="Travail apres le terme sans CDI signe : L1243-11.")
+    return resultat_ok(["D9"], {"dates_coherentes": True})
+
+
+@api("R-CDD-05", "D3")
+def verifier_cas_cdd(planning_variable, moins_d_un_mois, semaines_sans_accueil):
+    """D3 (decisions, section 4) : CDD a planning variable avec semaines sans accueil,
+    ou CDD qui cumule P1 et P2 : refus CDD-PASSAGE-2 au passage 1."""
+    if moins_d_un_mois and semaines_sans_accueil:
+        raise NonGere("CDD-PASSAGE-2", ["D3"], precision="CDD de moins d'un mois avec semaines sans accueil (P1 et P2).")
+    if planning_variable and semaines_sans_accueil:
+        raise NonGere("CDD-PASSAGE-2", ["D3"], precision="CDD a planning variable avec semaines sans accueil.")
+    return resultat_ok(["D3"], {"gere": True})

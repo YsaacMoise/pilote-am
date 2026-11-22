@@ -6,7 +6,7 @@ Lance : python3 comparer.py  (depuis ce dossier, ou avec un chemin absolu)
 3. execute A (Node) et B (Python) sur chaque situation ;
 4. classe chaque sortie :
    F1 : les deux calculent, egaux au centime ;
-   F2 : les deux calculent, differents ;
+   F2 : les deux calculent, differents (valeur, ou `lectures` quand les deux en donnent : T-076, D12) ;
    F3 : A calcule, B refuse (code d'ambiguite ou de refus de B) ;
    F4 : B calcule, A refuse ou n'a pas la fonction ;
    N  : aucun des deux ne calcule (hors famille).
@@ -164,7 +164,14 @@ def classer(situations, res_a, res_b):
             if b["statut"] == "erreur" or a.get("statut") == "refus" and cle.endswith(".erreur"):
                 fam = "ERREUR"
             elif a_calc and b_calc:
-                if egaux(a["valeur"], b["valeur"]):
+                # T-076, D12 : quand les deux moteurs donnent des `lectures` (point a confirmer), elles sont comparees
+                # aussi ; une difference est un desaccord (F2).
+                la, lb = a.get("lectures"), b.get("lectures")
+                lect_ok = (la is None or lb is None or
+                           (len(la) == len(lb) and all(egaux(x, y) for x, y in zip(la, lb))))
+                if not lect_ok:
+                    ligne["ecart_lectures"] = {"a": la, "b": lb}
+                if egaux(a["valeur"], b["valeur"]) and lect_ok:
                     fam = "F1"
                 elif cle in propage:
                     fam = "F3"

@@ -159,10 +159,12 @@ def mensualisation_planning_variable(semaines_programmees, heures_mensualisees, 
     return resultat_ok(mensualisation_planning_variable.regles, res)
 
 
-@api("R-PV-04", "R-PV-05", "P-PV-2", "R-HC-02", "R-HC-03")
+@api("R-PV-04", "R-PV-05", "P-PV-2", "R-HC-02", "R-HC-03", "D1", "D2", "D4")
 def heures_en_plus_semaine_planning_variable(lecture, heures_prevues_semaine_minutes, base_hebdo_minutes,
                                              heures_reelles_minutes, taux_horaire_centimes, majoration_hm_pourcent,
-                                             majoration_hc_pourcent=0, absence_dans_semaine=False):
+                                             majoration_hc_pourcent=0, absence_dans_semaine=False,
+                                             minutes_1er_mai_chome=0, minutes_payees_non_travaillees=0,
+                                             absence_retenue=False, prorata_base=None):
     """Heures complementaires et majorees d'une semaine (planning variable).
     - CCN 96.4 : HC « au-dela de la duree de travail hebdomadaire prevue au
       contrat et jusqu'a 45 heures par semaine incluses » ; une semaine ne
@@ -172,35 +174,63 @@ def heures_en_plus_semaine_planning_variable(lecture, heures_prevues_semaine_min
       HC = max(0 ; min(reelles ; 45 h) - reference).
     - CCN 96.4 et 110.1, CASF D423-10 : HM = max(0 ; reelles - 45 h), majoration
       d'au moins 10 % (R-PV-05). HC majorees du taux du contrat (CCN 110.2).
+    Lecture L2, decisions de la direction (section 4) :
+    - D1 : 1er mai chome un jour prevu (minutes_1er_mai_chome) : ses heures
+      prevues comptent (CCN 47.1, « aucune reduction de la remuneration »).
+      Autre ferie chome paye ou jour paye non travaille (evenement familial,
+      absence remuneree de l'enfant) (minutes_payees_non_travaillees) : deux
+      lectures, sans et avec ces heures (CCN 47.2 « remuneration brute
+      habituelle » ; CCN 105) ; part sure + a confirmer.
+    - D2 : absence retenue (deduite selon l'art. 111) dans une semaine prevue
+      au-dela de la base : refus PV-L2-ABSENCE-HC (passage 2).
+    - D4 : premiere ou derniere semaine incomplete du contrat
+      (prorata_base = (jours prevus dans le contrat, jours prevus de la semaine)) :
+      deux lectures, base entiere ou base x prorata.
     Refus : A-09 (absence dans la semaine et heures en plus, comme pour un
-    planning fixe), PV-SEMAINE-PREVUE-PLUS-45H.
-    Sortie : minutes et montants (centimes) des HC et des HM."""
+    planning fixe), PV-SEMAINE-PREVUE-PLUS-45H, PV-L2-ABSENCE-HC.
+    Sortie : minutes et montants (centimes, part sure) des HC et des HM ;
+    lectures_montant_complementaires [plus petite, plus grande]."""
     regles = ["R-PV-04", "R-PV-05"]
     if lecture not in ("L1", "L2"):
         raise ErreurSaisie("lecture : « L1 » ou « L2 » (sortie de mensualisation_planning_variable).")
     prevu = positif(heures_prevues_semaine_minutes, "heures_prevues_semaine_minutes")
     if prevu > SEUIL_45H:
         raise NonGere("PV-SEMAINE-PREVUE-PLUS-45H", regles + ["P-PV-3"])
-    if lecture == "L1":
-        ref = prevu
-    else:
-        ref = positif(base_hebdo_minutes, "base_hebdo_minutes")
     reelles = positif(heures_reelles_minutes, "heures_reelles_minutes")
     t = positif(taux_horaire_centimes, "taux_horaire_centimes")
     maj_hc = positif(majoration_hc_pourcent, "majoration_hc_pourcent")
     maj_hm = positif(majoration_hm_pourcent, "majoration_hm_pourcent")
     if maj_hm < MAJORATION_MINIMALE_HM:
         raise ErreurSaisie("Majoration des heures majorees inferieure a 10 % (CCN art. 110.1).", regles)
-    hc = max(Fraction(0), min(reelles, SEUIL_45H) - ref)
+    mai = positif(minutes_1er_mai_chome, "minutes_1er_mai_chome")
+    payees = positif(minutes_payees_non_travaillees, "minutes_payees_non_travaillees")
+    if lecture == "L1":
+        refs = [prevu]
+        reels = [reelles]
+    else:
+        base = positif(base_hebdo_minutes, "base_hebdo_minutes")
+        if absence_retenue and prevu > base:
+            raise NonGere("PV-L2-ABSENCE-HC", regles + ["D2"], precision=(
+                "Absence deduite dans une semaine prevue au-dela de la base : combinaison de la deduction de "
+                "l'art. 111 et de la perte des HC non ecrite (passage 2, question DDETS)."))
+        refs = [base]
+        if prorata_base is not None:
+            n, dnm = (entier(x, "prorata_base") for x in prorata_base)
+            if dnm == 0 or n > dnm:
+                raise ErreurSaisie("prorata_base : (jours dans le contrat, jours prevus de la semaine).")
+            refs.append(base * n / dnm)
+        reels = sorted({reelles + mai, reelles + mai + payees})
+    hcs = sorted({max(Fraction(0), min(r, SEUIL_45H) - ref) for r in reels for ref in refs})
     hm = max(Fraction(0), reelles - SEUIL_45H)
-    if absence_dans_semaine and (hc > 0 or hm > 0):
+    if absence_dans_semaine and (hcs[-1] > 0 or hm > 0):
         raise NonGere("A-09", regles + ["R-MENS-05"])
-    mhc = hc / 60 * t * (1 + maj_hc / 100)
+    montants = [vers_centimes(h / 60 * t * (1 + maj_hc / 100), "heures complementaires", regles) for h in hcs]
     mhm = hm / 60 * t * (1 + maj_hm / 100)
     return resultat_ok(heures_en_plus_semaine_planning_variable.regles, {
-        "reference_minutes": texte_fraction(ref),
-        "minutes_complementaires": texte_fraction(hc), "minutes_majorees": texte_fraction(hm),
-        "montant_complementaires_centimes": vers_centimes(mhc, "heures complementaires", regles),
+        "reference_minutes": texte_fraction(refs[0]),
+        "minutes_complementaires": texte_fraction(hcs[0]), "minutes_majorees": texte_fraction(hm),
+        "montant_complementaires_centimes": montants[0],
+        "lectures_montant_complementaires": [montants[0], montants[-1]],
         "montant_majorees_centimes": vers_centimes(mhm, "heures majorees", regles)})
 
 
@@ -342,7 +372,7 @@ def _lectures_cp(j, t, h_periode, n_sem, h_conges, base):
 def indemnite_cp_planning_variable(jours_conges, taux_horaire_centimes, heures_prevues_periode_minutes,
                                    semaines_prevues_travaillees, heures_prevues_jours_conge_minutes,
                                    salaires_bruts_periode_centimes, icp_versee_pendant_periode_centimes=0,
-                                   icp_annee_precedente_centimes=0):
+                                   icp_annee_precedente_centimes=0, jours_supplementaires=0):
     """Indemnite de CP d'un droit annuel avec un planning variable.
     CCN 48.1.1.5 : maintien (« remuneration brute que le salarie aurait percue
     pour une duree de travail egale a celle du conge paye ») ou dixieme ; « le
@@ -357,7 +387,8 @@ def indemnite_cp_planning_variable(jours_conges, taux_horaire_centimes, heures_p
     si cela change le resultat.
     Part sure = max(dixieme ; min(C1, C2)) ; a confirmer = max(dixieme ;
     max(C1, C2)) - part sure. heures_prevues_jours_conge_minutes = None (droit
-    pas encore pris en entier) : refus PV-C2-DROIT-NON-PRIS.
+    pas encore pris en entier) : refus PV-C2-DROIT-NON-PRIS. jours_supplementaires
+    (enfants a charge, fractionnement) : refus CP-SUPP s'ils changent le resultat.
     Sortie : indemnite_centimes (part sure), a_confirmer_centimes, lectures
     [C1 : max(dixieme, C1) ; C2 : max(dixieme, C2)], methode par lecture."""
     regles = ["R-PV-10", "P-PV-5"]
@@ -372,12 +403,21 @@ def indemnite_cp_planning_variable(jours_conges, taux_horaire_centimes, heures_p
     sal = entier(salaires_bruts_periode_centimes, "salaires_bruts_periode_centimes")
     icp1 = entier(icp_versee_pendant_periode_centimes, "icp_versee_pendant_periode_centimes")
     icp2 = entier(icp_annee_precedente_centimes, "icp_annee_precedente_centimes")
-    variantes = set()
+    sup = entier(jours_supplementaires, "jours_supplementaires")
+    if sup >= j:
+        raise ErreurSaisie("jours_supplementaires doit etre inferieur a jours_conges.")
+    variantes = {}
     for icp in sorted({icp1, icp2}):
-        c1, c2, dix = _lectures_cp(j, t, hp, n, hc, sal + icp)
-        variantes.add((max(dix, c1), max(dix, c2), dix))
-    if len({(a, b) for a, b, _ in variantes}) != 1:
-        raise NonGere("A-28", regles + ["R-CP-06"])
+        for echelle in ([False, True] if sup else [False]):
+            c1, c2, dix = _lectures_cp(j, t, hp, n, hc, sal + icp)
+            if echelle:
+                dix = dix * j / (j - sup)  # CP-SUPP : jours supplementaires hors du dixieme (comme R-CP-06)
+            variantes[(icp, echelle)] = (max(dix, c1), max(dix, c2), dix)
+    if len({(a, b) for a, b, _ in variantes.values()}) != 1:
+        codes = {("A-28" if k1[0] != k2[0] else "CP-SUPP") for k1 in variantes for k2 in variantes
+                 if variantes[k1][:2] != variantes[k2][:2]}
+        raise NonGere("A-28" if "A-28" in codes else "CP-SUPP", regles + ["R-CP-06"])
+    variantes = set(variantes.values())
     l1, l2, dix = next(iter(variantes))
     c1, c2, _ = _lectures_cp(j, t, hp, n, hc, sal + icp1)
     v1 = vers_centimes(l1, "indemnite de CP, lecture C1", regles)
@@ -407,3 +447,79 @@ def complement_cp_planning_variable(resultat_indemnite):
     if r["lectures"][0] != r["lectures"][1]:
         raise NonGere("P-PV-5", ["R-PV-10"], details={"lectures_centimes": r["lectures"]})
     return resultat_ok(["R-CP-07"], {"complement_centimes": 0})
+
+
+@api("R-PV-13", "P-PV-5", "R-FIN-09", "R-FIN-10", "R-CP-06")
+def iccp_planning_variable(type_annee, motif, periodes, taux_horaire_centimes):
+    """ICCP de fin d'un contrat a planning variable (R-PV-13). CCN 123.1 et 123.2 :
+    « methode du maintien de salaire ou methode du dixieme, selon les dispositions
+    prevues a l'article 48.1.1.5 » ; CCN 67 : CP « acquis, non remuneres au jour de
+    la date de fin ». Maintien : lecture C1 de P-PV-5 (duree habituelle moyenne de
+    la periode : taux x heures prevues / semaines prevues x jours / 6). C2 (heures
+    prevues des jours de conge pris) est sans objet : aucun conge n'est pris.
+    Memes refus que iccp() : A-49 (faute lourde), A-48 (agrement), A-50 (jours deja
+    payes en partie ; ICCP de la periode precedente dans la base si cela change le
+    resultat, SUS-04), A-28, CP-SUPP, ASSIETTE-A-CONFIRMER.
+    periodes : liste (la plus ancienne d'abord) de {jours_acquis, jours_payes,
+    salaires_bruts_periode_centimes, icp_versee_pendant_periode_centimes,
+    icp_annee_precedente_centimes, jours_supplementaires, heures_prevues_periode_minutes,
+    semaines_prevues_travaillees, regularisation_due_centimes (derniere),
+    regularisation_a_confirmer}. Sortie : iccp_centimes, detail_centimes."""
+    from .fin_contrat import _motif_exclu
+    regles = ["R-PV-13", "R-FIN-09"]
+    type_annee_valide(type_annee)
+    _motif_exclu(motif, regles)
+    if motif == "faute_lourde":
+        raise NonGere("A-49", regles)
+    if motif == "agrement":
+        raise NonGere("A-48", regles)
+    t = positif(taux_horaire_centimes, "taux_horaire_centimes")
+    total, detail, precedente = 0, [], 0
+    for i, p in enumerate(periodes):
+        derniere = i == len(periodes) - 1
+        a = entier(p.get("jours_acquis"), f"periodes[{i}].jours_acquis")
+        pay = entier(p.get("jours_payes", 0), f"periodes[{i}].jours_payes")
+        if pay > a:
+            raise ErreurSaisie(f"periodes[{i}] : plus de jours payes qu'acquis.")
+        if a - pay == 0:
+            v = 0
+        elif pay > 0:
+            raise NonGere("A-50", regles, precision=f"Periode {i + 1} : {pay} jours deja payes sur {a}.")
+        else:
+            if derniere and p.get("regularisation_a_confirmer"):
+                raise NonGere("ASSIETTE-A-CONFIRMER", regles)
+            reg = max(0, entier(p.get("regularisation_due_centimes", 0) or 0, "regularisation_due_centimes")) \
+                if derniere else 0
+            sal = entier(p.get("salaires_bruts_periode_centimes"), "salaires_bruts_periode_centimes")
+            icp1 = entier(p.get("icp_versee_pendant_periode_centimes", 0), "icp_versee_pendant_periode_centimes")
+            icp2 = entier(p.get("icp_annee_precedente_centimes", 0), "icp_annee_precedente_centimes")
+            sup = entier(p.get("jours_supplementaires", 0), "jours_supplementaires")
+            hp = entier(p.get("heures_prevues_periode_minutes"), "heures_prevues_periode_minutes")
+            n = entier(p.get("semaines_prevues_travaillees"), "semaines_prevues_travaillees", 1)
+            c1 = t * Fraction(hp, 60) / n * Fraction(a, 6)
+            vals = {}
+            for icp in sorted({icp1, icp2}):
+                for prec in sorted({0, precedente}):
+                    for ech in ([False, True] if sup else [False]):
+                        dix = Fraction(sal + icp + reg + prec, 10)
+                        if ech:
+                            dix = dix * a / (a - sup)
+                        vals[(icp, prec, ech)] = max(dix, c1)
+            if len(set(vals.values())) != 1:
+                ks = list(vals)
+                code = "A-50"
+                for k1 in ks:
+                    for k2 in ks:
+                        if vals[k1] != vals[k2]:
+                            if k1[0] != k2[0] and k1[1:] == k2[1:]:
+                                code = "A-28"
+                            elif k1[2] != k2[2] and k1[:2] == k2[:2] and code != "A-28":
+                                code = "CP-SUPP"
+                raise NonGere(code, regles)
+            v = vers_centimes(next(iter(vals.values())), f"ICCP periode {i + 1}", regles)
+        total += v
+        detail.append(v)
+        precedente = v
+    return resultat_ok(iccp_planning_variable.regles, {
+        "iccp_centimes": total, "detail_centimes": detail,
+        "note": "Maintien : lecture C1 (P-PV-5) ; C2 sans objet, aucun conge pris."})
