@@ -30,11 +30,31 @@ import { normaliserAbsences } from '__A_RACINE__/src/engine/absences';
 type Sortie = { statut: 'ok' | 'absent' | 'refus'; valeur?: unknown; note?: string; non_comparable?: boolean; lectures?: unknown[] };
 type Sorties = Record<string, Sortie>;
 
-function contrat(k: any): Contract {
+/** Planning de la situation ({"1": [["08:00", "17:00"]]}) au format du moteur A */
+function lirePlanning(x: any): Planning {
   const planning: Planning = {};
-  for (const [j, plages] of Object.entries(k.planning ?? {})) {
+  for (const [j, plages] of Object.entries(x ?? {})) {
     planning[Number(j)] = (plages as string[][]).map(([start, end]) => ({ start, end }));
   }
+  return planning;
+}
+
+/**
+ * T-076 : planning variable (regles/t076-decisions-direction.md, section 1, « Sorties du comparateur ») : `planning_variable`,
+ * `cycle` (liste de plannings) et `cycle_ancre`, ou `plannings_semaines` ({lundi: planning}), et `heures_mensualisees`.
+ */
+function planningVariable(k: any): Partial<Contract> {
+  if (!k.planning_variable) return {};
+  return {
+    planningVariable: true,
+    ...(Array.isArray(k.cycle) ? { pvForme: 'cycle' as const, cycle: k.cycle.map(lirePlanning), cycleAncre: k.cycle_ancre ?? undefined } : {}),
+    ...(k.plannings_semaines && !Array.isArray(k.cycle) ? { pvForme: 'remis' as const, planningsSemaines: Object.fromEntries(Object.entries(k.plannings_semaines).map(([l, p]) => [l, lirePlanning(p)])) } : {}),
+    ...(k.heures_mensualisees != null ? { heuresMensualisees: Number(k.heures_mensualisees) } : {}),
+  };
+}
+
+function contrat(k: any): Contract {
+  const planning = lirePlanning(k.planning);
   return {
     id: 'c1', child: 'Enfant', family: 'Famille', color: 0, start: k.debut, end: k.fin ?? undefined,
     yearType: k.type_annee, weeks: k.semaines, weeksOff: k.semaines_sans_accueil ?? [], planning,
@@ -56,6 +76,7 @@ function contrat(k: any): Contract {
     // T-042f (M11, T-045b) : réponse enregistrée sur le préavis (Contract.rupture), seulement si la situation la donne.
     ...(k.rupture ? { rupture: { motif: k.rupture.motif, notif: k.rupture.notif, presentation: k.rupture.presentation,
       preavis: k.rupture.preavis, dernierJourTravaille: k.rupture.dernier_jour_travaille } } : {}),
+    ...planningVariable(k),
   } as Contract;
 }
 
@@ -124,6 +145,8 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
         for (const cle of ['salaire_base_mois', 'deduction', 'salaire_mois_hors_cp']) out[cle] = refus(n);
       }
       if (b.kmAConfirmer) out.km = refus(`A : ${b.kmAConfirmer} km à confirmer`);
+      // T-076 (L2) : heures complémentaires des semaines de congé à confirmer : part sûre et les deux lectures.
+      if (b.complAConfirmerAmount) out.heures_compl_montant = { statut: 'ok', valeur: b.complAmount, lectures: [b.complAmount, b.complAmount + b.complAConfirmerAmount] };
       if (b.nonGere.length) for (const cle of Object.keys(out)) if (cle !== 'alertes') out[cle] = refus(`A : non géré (${b.nonGere.join(' ')})`);
       break;
     }
@@ -154,6 +177,14 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       out.maintien_cp = ok(i.maintien);
       out.dixieme_cp = ok(i.dixieme);
       out.jours_droit = ok(i.jours);
+      // T-076 (P-PV-5) : planning variable, lectures C1 et C2 du maintien ; valeur = part sûre (la plus petite lecture).
+      if (i.pv) {
+        const l1 = Math.max(i.dixieme, i.pv.c1), l2 = Math.max(i.dixieme, i.pv.c2);
+        out.indemnite_cp = i.pv.c2Complet ? { statut: 'ok', valeur: i.montant, lectures: [l1, l2] }
+          : refus(`A : maintien C2 incomplet (congés pas tous saisis) ; part sûre ${i.montant}`, [l1, l2]);
+        out.maintien_cp = i.pv.c2Complet ? { statut: 'ok', valeur: i.maintien, lectures: [i.pv.c1, i.pv.c2] }
+          : refus('A : maintien C2 incomplet (congés pas tous saisis)', [i.pv.c1, i.pv.c2]);
+      }
       if (i.aConfirmer) {
         const note = `A : à confirmer (${i.aConfirmer.message})`;
         const lec = i.aConfirmer.montants.map((m: any) => ({ libelle: m.libelle, jours: m.jours, montant: m.montant }));
@@ -165,6 +196,12 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       const m = cpForMonth(ctx, k.mois, enfants);
       out.cp_indemnite_mois = ok(m.indemnite);
       out.cp_complement_mois = ok(m.complement);
+      // T-076 (P-PV-5) : part sûre payée, l'écart entre les deux méthodes du maintien est à confirmer.
+      if (m.maintienAConfirmer) {
+        const cle = ctx.c.yearType === 'complete' ? 'cp_complement_mois' : 'cp_indemnite_mois';
+        const v = ctx.c.yearType === 'complete' ? m.complement : m.indemnite;
+        out[cle] = { statut: 'ok', valeur: v, lectures: [v, v + m.maintienAConfirmer] };
+      }
       if (m.aConfirmer) {
         // Année incomplète : l'indemnité est à confirmer ; il n'y a pas de complément de juin (année complète seulement).
         out.cp_indemnite_mois = refus(`A : à confirmer (${m.aConfirmer})`);

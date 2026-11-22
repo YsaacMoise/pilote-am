@@ -14,6 +14,8 @@ import { PartageCard } from './PartageCard';
 import { de } from '../engine/texte';
 import { PAJEMPLOI_PLUS_AIDE } from '../legal';
 import { NON_GERE_47_51, nonGeresContrat, semaines4751 } from '../engine/nonGeres';
+import { manquesPV } from '../engine/planningVariable';
+import { PlanningVariableSaisie } from './PlanningVariableSaisie';
 
 const ouiNon = (b: boolean | undefined): 'oui' | 'non' | undefined => (b === undefined ? undefined : b ? 'oui' : 'non');
 
@@ -91,7 +93,7 @@ export function Contrat({ id }: { id?: string }) {
     const errs: string[] = [];
     if (!c.child.trim()) errs.push('Indique le prénom de l’enfant.');
     if (!c.start) errs.push('Indique la date de début du contrat.');
-    if (wk <= 0) errs.push('Le planning est vide : ajoute au moins un jour d’accueil.');
+    if (!c.planningVariable && wk <= 0) errs.push('Le planning est vide : ajoute au moins un jour d’accueil.');
     for (let d = 1; d <= 7; d++) for (const p of c.planning[d] ?? []) if (p.end <= p.start) errs.push(`${JOUR_NOMS[d - 1]} : l’heure de fin doit être après le début.`);
     if (semaines4751(c.yearType, c.weeks)) errs.push(NON_GERE_47_51);
     else if (c.yearType === 'incomplete' && (c.weeks < 1 || c.weeks > 46)) errs.push('En année incomplète, le nombre de semaines va de 1 à 46.');
@@ -102,6 +104,9 @@ export function Contrat({ id }: { id?: string }) {
     if (c.repasParents === undefined) errs.push('Indique qui fournit les repas de l’enfant.');
     if (c.alsaceMoselle === undefined) errs.push('Indique où tu travailles (Alsace-Moselle ou non).');
     if (c.planningVariable === undefined) errs.push('Indique si les horaires sont les mêmes chaque semaine.');
+    // T-076 : horaires qui changent, données à compléter (cycle, semaine de départ, heures payées chaque mois).
+    for (const m of manquesPV(c)) errs.push(`Horaires qui changent : indique ${m}.`);
+    if (c.planningVariable) for (const pl of [...(c.cycle ?? []), ...Object.values(c.planningsSemaines ?? {})]) for (let d = 1; d <= 7; d++) for (const p of pl[d] ?? []) if (p.end <= p.start) errs.push(`${JOUR_NOMS[d - 1]} : l’heure de fin doit être après le début.`);
     if (c.accueilOccasionnel === undefined) errs.push('Indique si l’accueil est régulier.');
     if (c.cdd === undefined) errs.push('Indique si le contrat est un CDI ou un CDD.');
     // T-044b : choix explicite du mode de l'indemnité d'entretien sur un nouveau contrat.
@@ -189,7 +194,7 @@ export function Contrat({ id }: { id?: string }) {
             <Choices label="Où travailles-tu ?" value={c.mayotte ? 'mayotte' : ouiNon(c.alsaceMoselle)} onChange={(v) => set({ alsaceMoselle: v === 'oui', mayotte: v === 'mayotte' })}
               options={[{ v: 'non', l: 'Ailleurs en France (hors Mayotte)' }, { v: 'oui', l: 'Bas-Rhin, Haut-Rhin ou Moselle', sub: 'Alsace-Moselle : non géré par l’app' }, { v: 'mayotte', l: 'Mayotte', sub: 'Non géré par l’app' }]} />
             <Choices label="Les horaires sont-ils les mêmes chaque semaine ?" value={ouiNon(c.planningVariable === undefined ? undefined : !c.planningVariable)} onChange={(v) => set({ planningVariable: v === 'non' })}
-              options={[{ v: 'oui', l: 'Oui, la même semaine type', sub: 'Sans compter les semaines sans accueil' }, { v: 'non', l: 'Non, ils changent', sub: 'Semaines A et B, planning remis chaque mois : non géré par l’app' }]} />
+              options={[{ v: 'oui', l: 'Oui, la même semaine type', sub: 'Sans compter les semaines sans accueil' }, { v: 'non', l: 'Non, ils changent', sub: 'Semaines A et B, ou planning remis par les parents' }]} />
             <Choices label="L’accueil est-il régulier ?" value={ouiNon(c.accueilOccasionnel === undefined ? undefined : !c.accueilOccasionnel)} onChange={(v) => set({ accueilOccasionnel: v === 'non' })}
               options={[{ v: 'oui', l: 'Oui, régulier' }, { v: 'non', l: 'Non, occasionnel', sub: 'Court et sans régularité (article 97.2 de la convention) : non géré par l’app' }]} />
             <Choices label="Quel type de contrat ?" value={ouiNon(c.cdd)} onChange={(v) => set({ cdd: v === 'oui' })}
@@ -198,7 +203,9 @@ export function Contrat({ id }: { id?: string }) {
           </fieldset>
         </section>
 
-        <section class="card">
+        {c.planningVariable && <PlanningVariableSaisie c={c} set={set} />}
+
+        {!c.planningVariable && <section class="card">
           <fieldset>
             <legend>Le planning type</legend>
             <p class="hint">Les journées se remplissent toutes seules avec ce planning. Tu ne noteras que les changements.</p>
@@ -211,7 +218,7 @@ export function Contrat({ id }: { id?: string }) {
               </div>
             </div>
           </fieldset>
-        </section>
+        </section>}
 
         <section class="card">
           <fieldset>

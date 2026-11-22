@@ -51,7 +51,8 @@ const leave = (type: AbsenceLue['type'], from: string, to: string): AmLeave => n
 describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
   for (const [nom, over, motif] of [
     ['Alsace-Moselle', { alsaceMoselle: true }, /Alsace-Moselle .* non géré/],
-    ['horaires qui changent (semaines A et B)', { planningVariable: true }, /semaines A et B.*non géré/],
+    // T-076 : planning variable sans ses données (cycle ou plannings, heures payées chaque mois) : contrat à compléter.
+    ['horaires qui changent (semaines A et B), données absentes', { planningVariable: true }, /semaines A et B.*contrat à compléter/],
     ['accueil occasionnel (CCN art. 97.2)', { accueilOccasionnel: true }, /Accueil occasionnel : non géré/],
   ] as [string, Partial<Contract>, RegExp][]) {
     it(`${nom} : mois refusé, aucune case, aucun montant envoyé`, () => {
@@ -99,7 +100,8 @@ describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
   });
   it('fin de contrat : aucun montant', () => {
     const f = finDeContrat(makeCtx(ok({ planningVariable: true }), [], [], '2026-10-31'), '2026-10-15', 'retrait');
-    expect(f.nonGere?.join(' ')).toMatch(/non géré/);
+    // T-076 : planning variable sans ses données : « à compléter », aucun montant.
+    expect(f.nonGere?.join(' ')).toMatch(/à compléter/);
     expect(f.indemniteRupture + f.cpIndemnite + f.regularisation + f.indemnitePreavis).toBe(0);
   });
   it('compteur fiscal : mois refusés non comptés et signalés', () => {

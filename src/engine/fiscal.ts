@@ -84,6 +84,8 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
     hs += hsPart + r.reductionHS;
     // T-025 C-5 : un salaire d'événement familial à confirmer n'est pas dans ce net : le dire, ne pas le compter en silence.
     // T-028 : des congés payés à confirmer ne sont pas dans ce net (comme l'événement familial) : le dire.
+    if (r.cpMaintienAConfirmer) nonGere.add(`Congés payés à confirmer en ${monthLabel(m)} : ${euros(r.cpMaintienAConfirmer)} ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
+    if (r.complAConfirmerAmount) nonGere.add(`Heures complémentaires à confirmer en ${monthLabel(m)} : ${euros(r.complAConfirmerAmount)} ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
     if (r.cpAConfirmer) nonGere.add(`Congés payés à confirmer en ${monthLabel(m)} : ils ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
     if (r.evenementAConfirmer) nonGere.add(`${joindre(naturesAConfirmer(r).map((n) => ({ evenement: 'événement familial', cp: 'congés au-delà des droits', maladie: 'jours d’enfant malade' })[n])).replace(/^./, (x) => x.toUpperCase())} à confirmer : ${euros(r.evenementAConfirmer)} de salaire en ${monthLabel(m)} ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
     er += r.entretien + r.repas;

@@ -1,6 +1,6 @@
 // Moteur de paie d'un contrat d'assistante maternelle (CCN IDCC 3239). Montants en centimes entiers.
 import {
-  addDays, eachDay, firstDay, monthsBetween, lastDay, minutes, monthOf, mondayOf, weekday, daysBetween, addMonthsToDate,
+  addDays, eachDay, firstDay, monthsBetween, lastDay, minutes, monthOf, mondayOf, daysBetween, addMonthsToDate,
   type ISODate, type Month,
 } from './dates';
 import { holidayName, isMayDay } from './holidays';
@@ -10,6 +10,7 @@ import { controleKm, indemniteKmJour } from './km';
 import { euros } from './money';
 import { cpAConfirmerEntre, cpExces, cpExcesAConfirmer, MESSAGE_CP_AU_DELA_A_CONFIRMER } from './conges';
 import { nonGeresPeriode } from './nonGeres';
+import { baseHebdoMin, lecturePV, mensuelMinutesPV, messageBasePV, plagesDuJour, pvActif } from './planningVariable';
 import type { AmAbs, AmLeave, Contract, DayRec, Plage, Planning } from './model';
 
 export interface Ctx {
@@ -71,13 +72,16 @@ export function daysPerWeek(pl: Planning): number {
   return n;
 }
 
-/** Heures mensualisées (en minutes) : hebdo × semaines ÷ 12 (art. 109) */
+/** Heures mensualisées (en minutes) : hebdo × semaines ÷ 12 (art. 109). T-076 : planning variable, heures écrites au contrat. */
 export function mensuelMinutes(c: Contract): number {
+  if (pvActif(c)) return mensuelMinutesPV(c);
   return (weeklyMinutes(c.planning) * weeksPerYear(c)) / 12;
 }
 
 /** Part des heures mensualisées au-delà de 45 h par semaine (en minutes) : à déclarer en « heures majorées » (art. 96.4) */
 export function mensuelMajoreesMinutes(c: Contract): number {
+  // T-076 : planning variable, aucune semaine prévue au-delà de 45 h n'est calculée (refus, P-PV-3) : rien de majoré ici.
+  if (pvActif(c)) return 0;
   return (Math.max(0, weeklyMinutes(c.planning) - H45) * weeksPerYear(c)) / 12;
 }
 
@@ -87,12 +91,17 @@ export function weeksPerYear(c: Contract): number {
 
 /** Salaire de base mensualisé (net, centimes). Les heures contractuelles au-delà de 45 h/semaine sont majorées. */
 export function salaireMensualise(c: Contract): number {
+  // T-076 (spécification, section 1) : salaire mensualisé = heures mensualisées × taux (R-PV-03, règle commune).
+  if (pvActif(c)) return Math.round(Math.round((c.heuresMensualisees ?? 0) * c.rateNet * 1e6) / 1e6);
   const h = weeklyMinutes(c.planning);
   const base = Math.min(h, H45) * c.rateNet + Math.max(0, h - H45) * c.rateNet * (1 + c.majoration / 100);
   return Math.round((base * weeksPerYear(c)) / 12 / 60);
 }
 
 export function joursMensualises(c: Contract): number {
+  // T-076 : planning variable, pas de nombre de jours par semaine unique. Valeur indicative pour les écrans (moyenne du
+  // cycle) ; le calcul du mois compte les jours prévus et payés du mois (computeRange).
+  if (pvActif(c) && c.cycle?.length) return Math.ceil((c.cycle.reduce((s, p) => s + daysPerWeek(p), 0) / c.cycle.length) * weeksPerYear(c) / 12 - 1e-9);
   return Math.ceil((daysPerWeek(c.planning) * weeksPerYear(c)) / 12 - 1e-9);
 }
 
@@ -115,7 +124,8 @@ export function plannedPlages(c: Contract, d: ISODate): Plage[] {
   const t = termsAt(c, d);
   // Semaines sans accueil du contrat et de ses avenants réunies, comme pour le contrôle (seconde relecture, point 5a).
   if (t.yearType === 'incomplete' && toutesSemainesSansAccueil(c).has(mondayOf(d))) return [];
-  return (t.planning[weekday(d)] ?? []).filter((p) => plageMin(p) > 0);
+  // T-076 : plages du planning fixe, ou de la semaine (cycle ou planning remis) en planning variable.
+  return plagesDuJour(t, d);
 }
 
 export type DayKind =
@@ -534,6 +544,70 @@ export function minutesSeuil45(ctx: Ctx, d: ISODate): number {
 
 /** Heures complémentaires et majorées, calculées par semaine civile (art. 96-4 et 110) */
 export function weekOvertime(ctx: Ctx, monday: ISODate): Map<ISODate, { compl: number; maj: number }> {
+  return weekOvertimeDetail(ctx, monday).parJour;
+}
+
+/**
+ * Détail d'une semaine. `parJour` : heures complémentaires et majorées par jour (mois de rattachement). T-076, lecture L2 :
+ * `complPrevu` (part des heures complémentaires qui sont des heures prévues au-delà de la base, sert à la régularisation) et
+ * `complAConfirmer` (heures complémentaires de plus si les jours de congés payés comptent dans les heures réelles).
+ */
+export function weekOvertimeDetail(ctx: Ctx, monday: ISODate): { parJour: Map<ISODate, { compl: number; maj: number; complPrevu?: number; complAConfirmer?: number }> } {
+  return memo(ctx, 'wkd' + monday, () => {
+    const base = weekOvertimeL1(ctx, monday);
+    const t = termsAt(ctx.c, monday);
+    if (!pvActif(t) || lecturePV(t) !== 'L2') return { parJour: base };
+    return { parJour: weekOvertimeL2(ctx, monday, baseHebdoMin(t), base) };
+  });
+}
+
+/**
+ * T-076, lecture L2 + H2 (spécification, section 1 ; R-PV-04, P-PV-1, P-PV-2) : HC(s) = max(0 ; min(réel(s) ; 45 h) − B),
+ * B = heures mensualisées × 12 ÷ (52 ou N). Les heures prévues au-delà de B sont des HC. Heures majorées (au-delà de 45 h
+ * réelles, R-PV-05) : inchangées (calcul de l'app, `base`).
+ * Réel(s) : heures prévues qui comptent comme travail (minutesSeuil45 : présence, absence payée de l'enfant, congés payés)
+ * plus les heures en plus. Point que la spécification ne tranche pas : un jour de congé payé est-il une heure « réelle » pour
+ * les HC ? Lecture sûre (payée) : non, ses heures sont payées par l'indemnité de congés (maintien C2 : heures prévues des
+ * jours de congé) ; le seuil des 45 h les compte toujours. L'écart avec la lecture « oui » est mis à confirmer.
+ * Rattachement au mois : les heures de la semaine sont rangées dans l'ordre des jours ; celles qui dépassent B vont au jour
+ * où elles tombent.
+ */
+function weekOvertimeL2(ctx: Ctx, monday: ISODate, B: number, base: Map<ISODate, { compl: number; maj: number }>): Map<ISODate, { compl: number; maj: number; complPrevu?: number; complAConfirmer?: number }> {
+  const jours = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+  const cpMin = (d: ISODate) => { const di = dayInfo(ctx, d); return di.kind === 'am' && di.amLeave === 'cp' && !di.cpSansDroits ? di.plannedMin : 0; };
+  const totalCp = jours.reduce((s, d) => s + cpMin(d), 0);
+  // Répartit [début, fin] de chaque morceau sur l'intervalle [B, plafond].
+  const ranger = (avecCp: boolean) => {
+    const plafond = avecCp ? H45 : H45 - totalCp;
+    const out = new Map<ISODate, { prevu: number; extra: number }>();
+    let pos = 0;
+    const part = (n: number) => { const a = pos, b = pos + n; pos = b; return Math.max(0, Math.min(b, plafond) - Math.max(a, B)); };
+    for (const d of jours) {
+      const prevu = minutesSeuil45(ctx, d) - (avecCp ? 0 : cpMin(d));
+      const p = part(prevu);
+      const e = part(dayInfo(ctx, d).extraMin);
+      if (p || e) out.set(d, { prevu: p, extra: e });
+    }
+    return out;
+  };
+  const sure = ranger(false), large = ranger(true);
+  const out = new Map<ISODate, { compl: number; maj: number; complPrevu?: number; complAConfirmer?: number }>();
+  for (const d of jours) {
+    const s = sure.get(d), m = base.get(d);
+    if (s || m) out.set(d, { compl: (s?.prevu ?? 0) + (s?.extra ?? 0), maj: m?.maj ?? 0, complPrevu: s?.prevu ?? 0 });
+  }
+  const tot = (x: Map<ISODate, { prevu: number; extra: number }>) => [...x.values()].reduce((a, v) => a + v.prevu + v.extra, 0);
+  const ecart = tot(large) - tot(sure);
+  if (ecart > 0) {
+    // Écart rattaché au premier jour de congé payé de la semaine.
+    const d = jours.find((x) => cpMin(x) > 0)!;
+    const v = out.get(d) ?? { compl: 0, maj: 0, complPrevu: 0 };
+    out.set(d, { ...v, complAConfirmer: ecart });
+  }
+  return out;
+}
+
+function weekOvertimeL1(ctx: Ctx, monday: ISODate): Map<ISODate, { compl: number; maj: number }> {
   return memo(ctx, 'wk' + monday, () => {
     const out = new Map<ISODate, { compl: number; maj: number }>();
     // Base de la semaine : heures prévues qui comptent comme heures de travail (voir minutesSeuil45).
@@ -583,6 +657,11 @@ export interface MonthBase {
   majContratAmount: number;
   complAmount: number;
   majAmount: number;
+  /** T-076, lecture L2 : minutes d'heures complémentaires qui sont des heures prévues au-delà de la base (déjà dans complMin) */
+  complPrevuMin?: number;
+  /** T-076, lecture L2 : heures complémentaires à confirmer (jours de congés payés comptés ou non dans les heures réelles), hors du total */
+  complAConfirmerMin?: number;
+  complAConfirmerAmount?: number;
   ferieAmount: number;
   ferieDays: ISODate[];
   presenceDays: number;
@@ -723,7 +802,7 @@ export function semainesSansAccueilManquantes(c: Contract, from: ISODate, until:
 
 /** Minutes prévues au planning type du contrat ce jour-là, sans tenir compte des semaines sans accueil, absences ni fériés */
 export function planningBrutMin(t: Contract, d: ISODate): number {
-  return (t.planning[weekday(d)] ?? []).reduce((s, p) => s + plageMin(p), 0);
+  return plagesDuJour(t, d).reduce((s, p) => s + plageMin(p), 0);
 }
 
 /**
@@ -748,7 +827,8 @@ export function regularisation(ctx: Ctx, from: ISODate, to: ISODate, cur?: { m: 
     if (cur && m === cur.m) { payees += cur.payees + (lecture === 'dus' ? cur.aConfirmer ?? 0 : 0); continue; }
     const b = monthBase(ctx, m);
     if (!b.active || b.fromHistory) continue;
-    const verse = b.base + (lecture === 'dus' ? b.evenementAConfirmer : 0);
+    // T-076 (L2) : les heures prévues au-delà de la base, payées en heures complémentaires, sont déjà versées (au taux du contrat).
+    const verse = b.base + (lecture === 'dus' ? b.evenementAConfirmer : 0) + Math.round(((b.complPrevuMin ?? 0) * termsAt(c, lastDay(m)).rateNet) / 60);
     if (m === monthOf(from) && from > c.start && from.slice(8) !== '01') {
       // Mois entamé : seule la part postérieure au début de la période compte.
       let part = 0;
@@ -818,7 +898,7 @@ function hoursMin(min: number): string {
   return mm ? `${h} h ${String(mm).padStart(2, '0')}` : `${h} h`;
 }
 
-const SUM_KEYS = ['base', 'retenue', 'majContratMin', 'majContratAmount', 'joursActivite', 'complMin', 'majMin', 'complAmount', 'majAmount', 'ferieAmount',
+const SUM_KEYS = ['base', 'retenue', 'majContratMin', 'majContratAmount', 'joursActivite', 'complMin', 'majMin', 'complAmount', 'majAmount', 'complPrevuMin', 'complAConfirmerMin', 'complAConfirmerAmount', 'ferieAmount',
   'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'evenementAConfirmer', 'joursCpAConfirmer', 'joursEvenementAConfirmer', 'joursMaladieAConfirmer', 'kmAConfirmer', 'entretienAConfirmer', 'entretienJoursDuree', 'entretienJoursTarifJour', 'entretienJoursHorsPlanning', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
 
 function mergeParts(m: Month, parts: MonthBase[], cuts: ISODate[]): MonthBase {
@@ -1034,7 +1114,8 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   // reçoit sa part des jours mensualisés de ses propres conditions (jours prévus de la période ÷ jours prévus du mois),
   // la somme est arrondie dans mergeParts.
   const entreeSortie = c.start > from || (!!c.end && c.end < to);
-  if (entreeSortie) r.joursActivite = actDays + r.extraDays;
+  // T-076 : planning variable, aucun nombre de jours par semaine unique : jours prévus et payés du mois, comme une entrée.
+  if (entreeSortie || pvActif(c)) r.joursActivite = actDays + r.extraDays;
   else if (startsOrEndsInMonth) r.joursActivite = Math.max(0, (joursMensualises(c) * (fullDays ? segDays / fullDays : 0)) - dedDays - suspDays) + r.extraDays;
   else r.joursActivite = Math.max(0, joursMensualises(c) - dedDays - suspDays) + r.extraDays;
   if (suspRaisons.length) {
@@ -1081,16 +1162,30 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
 
   // Heures en plus, par semaine, rattachées au mois du jour.
   const weeks = new Set(allDays.filter(inSeg).map(mondayOf));
+  let complPrevu = 0, complAConf = 0;
   for (const mon of weeks) {
-    for (const [d, v] of weekOvertime(ctx, mon)) {
+    for (const [d, v] of weekOvertimeDetail(ctx, mon).parJour) {
       if (monthOf(d) !== m || !inSeg(d)) continue;
       r.complMin += v.compl;
       r.majMin += v.maj;
+      complPrevu += v.complPrevu ?? 0;
+      complAConf += v.complAConfirmer ?? 0;
     }
   }
   // R-HC-02 (CCN art. 96.4 et 110.2) : payées au taux du contrat, majorées seulement si le contrat le prévoit (T-019).
   r.complAmount = Math.round((r.complMin * c.rateNet * (100 + (c.majorationCompl ?? 0))) / 100 / 60);
   r.majAmount = Math.round((r.majMin * c.rateNet * (100 + c.majoration)) / 100 / 60);
+  if (pvActif(c)) {
+    // T-076 : la base des heures complémentaires est celle du contrat (message à l'AM, spécification section 1).
+    r.alerts.unshift(messageBasePV(c));
+    if (complPrevu) r.complPrevuMin = complPrevu;
+    if (complAConf) {
+      r.complAConfirmerMin = complAConf;
+      r.complAConfirmerAmount = Math.round(((r.complMin + complAConf) * c.rateNet * (100 + (c.majorationCompl ?? 0))) / 100 / 60) - r.complAmount;
+      r.alerts.push(`Heures complémentaires à confirmer : ${hoursMin(complAConf)} (${euros(r.complAConfirmerAmount)}), non comprises dans le total. Tu as pris des congés payés une semaine où tes heures prévues dépassent la base de ton contrat. La convention ne dit pas si les heures prévues de ces jours de congé comptent comme des heures faites pour les heures complémentaires. Mets-toi d’accord par écrit avec les parents.`);
+      if (to < ctx.today && !r.alerts.includes(MESSAGE_MOIS_DEJA_DECLARE)) r.alerts.push(MESSAGE_MOIS_DEJA_DECLARE);
+    }
+  }
 
   r.net = r.base + r.complAmount + r.majAmount + r.ferieAmount;
   if (forgotten.length) r.alerts.push(`${forgotten.length} départ${forgotten.length > 1 ? 's' : ''} non pointé${forgotten.length > 1 ? 's' : ''} : l’heure prévue a été retenue.`);
