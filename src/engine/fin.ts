@@ -81,6 +81,8 @@ export interface FinResult {
    * ou le mois finit à la même date), elle n'est ni donnée ni comptée : `regularisation` vaut 0.
    */
   regularisationAConfirmer?: string;
+  /** T-055 : régularisation non calculée (semaines sans accueil manquantes, C-002). `regularisation` vaut alors 0 mais n'est pas un montant : à confirmer. */
+  regularisationNonCalculee?: string;
   manquants: Month[];
   alertes: string[];
   /** T-031 : cas non gérés pendant le contrat. Rempli : aucun montant n'est donné (tous à 0), le calcul est refusé. */
@@ -393,8 +395,11 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     const { attendu, saisies } = semainesSansAccueilAnnee(c, debut);
     if (debut >= regStart && attendu > 0 && saisies === 0) manque += attendu;
   }
+  // T-055 : le message est aussi rendu à part, pour que l'écran ne montre pas « 0,00 € » à la place d'un montant non calculé.
+  let regularisationNonCalculee: string | undefined;
   if (manque > 0) {
-    alertes.push(`Régularisation non calculée : il manque ${manque} semaine${manque > 1 ? 's' : ''} sans accueil dans le contrat. Saisis-les d’abord, sinon les vacances compteraient comme des semaines accueillies. L’indemnité de congés non pris en dépend : elle est à confirmer. L’indemnité de rupture aussi, sauf si le total de tes bulletins couvre le dernier mois.`);
+    regularisationNonCalculee = `Régularisation non calculée : il manque ${manque} semaine${manque > 1 ? 's' : ''} sans accueil dans le contrat. Saisis-les d’abord, sinon les vacances compteraient comme des semaines accueillies. L’indemnité de congés non pris en dépend : elle est à confirmer. L’indemnité de rupture aussi, sauf si le total de tes bulletins couvre le dernier mois.`;
+    alertes.push(regularisationNonCalculee);
   } else if (finTerms.yearType === 'incomplete') {
     alertes.push('Vérifie que toutes les semaines sans accueil de la dernière année sont saisies : une semaine non saisie compte comme accueillie dans la régularisation.');
   }
@@ -572,6 +577,6 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   return {
     ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, ruptureVariantes, totalBrut, brutsEstimes,
     indemnitePreavis, indemnitePreavisExplication, indemnitePreavisAConfirmer,
-    regularisation: regularisation_, regulMinutes, cpJoursRestants, cpIndemnite, cpDixiemeEnCours, cpExplication, cpAConfirmer, regularisationAConfirmer, manquants, alertes,
+    regularisation: regularisation_, regulMinutes, cpJoursRestants, cpIndemnite, cpDixiemeEnCours, cpExplication, cpAConfirmer, regularisationAConfirmer, regularisationNonCalculee, manquants, alertes,
   };
 }

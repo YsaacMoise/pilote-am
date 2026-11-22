@@ -4,7 +4,8 @@ import { ctxFor, putContract, toast, useStore } from '../store';
 import { addMonths, monthLabel, monthOf, shortDate, today, type Month } from '../engine/dates';
 import { finDeContrat, MOTIF_LABEL, type DemandeurInexecution, type Motif } from '../engine/fin';
 import type { Rupture } from '../engine/model';
-import { euros, eurosArrondis, hoursLabel } from '../engine/money';
+import { euros, eurosArrondis } from '../engine/money';
+import { ligneRegularisation } from './fin-lignes';
 import { Banner, Choices, DateInput, EuroInput, Gommette, Topbar } from '../ui/kit';
 
 /** « de mars », « d’août », « d’octobre » */
@@ -55,7 +56,8 @@ export function Fin({ id }: { id?: string }) {
     toast(`Fin de contrat enregistrée : dernier jour le ${shortDate(f.dernierJour)}`, prev ? async () => { await putContract(prev); } : undefined);
   };
   const total = (f.ruptureAConfirmer ? 0 : f.indemniteRupture) + f.regularisation + f.cpIndemnite + f.indemnitePreavis;
-  const aConfirmer = !!f.cpAConfirmer || !!f.ruptureAConfirmer || !!f.regularisationAConfirmer || !!f.indemnitePreavisAConfirmer;
+  const aConfirmer = !!f.cpAConfirmer || !!f.ruptureAConfirmer || !!f.regularisationAConfirmer || !!f.regularisationNonCalculee || !!f.indemnitePreavisAConfirmer;
+  const ligneRegul = ligneRegularisation(f, termsAt(c, f.dernierJour).yearType === 'incomplete');
   // L'indemnité de rupture dépend du brut : tant qu'un mois est estimé, elle est affichée arrondie, comme une estimation.
   const surBrut = motif === 'retrait' || motif === 'deces' || motif === 'inaptitude' || motif === 'inaptitude_pro';
   const estime = surBrut && f.brutsEstimes.length > 0;
@@ -140,7 +142,7 @@ export function Fin({ id }: { id?: string }) {
           <div class="decl">
             <div class="decl-line"><span class="decl-label"><span>Indemnité de rupture</span><span class="decl-hint">{f.ruptureExplication}</span></span><span class="decl-value">{f.ruptureAConfirmer ? 'à confirmer' : estime && f.indemniteRupture > 0 ? `environ ${eurosArrondis(f.indemniteRupture)}` : euros(f.indemniteRupture)}</span></div>
             {motif === 'deces' && <div class="decl-line"><span class="decl-label"><span>Indemnité égale au préavis</span><span class="decl-hint">{f.indemnitePreavisExplication}</span></span><span class="decl-value">{f.indemnitePreavisAConfirmer ? 'à confirmer' : euros(f.indemnitePreavis)}</span></div>}
-            <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint">{f.regularisationAConfirmer ? 'Montant à confirmer : voir l’encadré plus haut' : f.regularisation > 0 || termsAt(c, f.dernierJour).yearType === 'incomplete' ? (f.regulMinutes ? `${hoursLabel(f.regulMinutes)} accueillies mais non payées par la mensualisation` : 'Pas d’heures accueillies au-delà de ce qui a été payé') : 'Année complète : pas de régularisation'}</span></span><span class="decl-value">{f.regularisationAConfirmer ? 'à confirmer' : euros(f.regularisation)}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint">{ligneRegul.hint}</span></span><span class="decl-value">{ligneRegul.valeur}</span></div>
             <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{f.cpAConfirmer ? 'à confirmer' : euros(f.cpIndemnite)}</span></div>
           </div>
           <div class="spread"><b>{aConfirmer ? 'Total estimé, hors salaire du dernier mois et sommes à confirmer' : 'Total estimé, hors salaire du dernier mois'}</b><span class="decl-value">{estime && f.indemniteRupture > 0 && !f.ruptureAConfirmer ? `environ ${eurosArrondis(total)}` : euros(total)}</span></div>
