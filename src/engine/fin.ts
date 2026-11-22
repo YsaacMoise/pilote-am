@@ -5,7 +5,7 @@ import { finPreavis, finsAdmises, preavisEmployeur } from './preavis';
 import type { DemandeurInexecution, Motif } from './model';
 import { euros } from './money';
 import {
-  addDays, addMonthsToDate, cpPeriod, cpPeriodStartYear, fullMonthsBetween, lastDay, monthOf, monthsBetween, shortDate,
+  addDays, addMonthsToDate, cpPeriod, cpPeriodStartYear, fullMonthsBetween, lastDay, monthLabel, monthOf, monthsBetween, shortDate,
   type ISODate, type Month,
 } from './dates';
 import { acquisition, baseDixieme, compteur, cpForMonth, indemnite, maintien } from './conges';
@@ -561,9 +561,20 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     // seul le salaire d'un mois non couvert change avec la date de fin.
     const brutFin = brutJusqua(endCtx, c, dernierJour, enfants, couvert, bruts.parMois);
     const conversionFin = (fin: ISODate) => netToBrut(assietteFinNet, lastDay(monthOf(fin)));
-    const autres = variantes.map((v) => ({ ...v, montant: v.fin === dernierJour ? indemniteRupture : Math.round(((totalBrut + brutJusqua(ctxFin(v.fin), c, v.fin, enfants, couvert, bruts.parMois) - brutFin + conversionFin(v.fin) - conversionFin(dernierJour)) * facteur) / 80) }));
+    // Relecture T-072 (B-1) : dernier mois couvert par les bulletins, variante dans un mois qui ne l'est pas. L'ICCP et la
+    // régularisation de la fin seraient payées sur le bulletin de ce mois-là, hors du total saisi (CCN art. 121.1, 123.1,
+    // 124) : elles s'ajoutent entières. Si l'une est « à confirmer », le montant de cette variante l'est aussi.
+    const deplacees = (fin: ISODate) => finCouverte(dernierMois) && !finCouverte(monthOf(fin));
+    const sommesFinAConfirmer = !!cpAConfirmer || !!regularisationAConfirmer || regulNonCalculee;
+    const ecartFin = (fin: ISODate) => (deplacees(fin) ? conversionFin(fin) : conversionFin(fin) - conversionFin(dernierJour));
+    const autres = variantes.map((v) => ({ ...v, montant: v.fin === dernierJour ? indemniteRupture
+      : deplacees(v.fin) && sommesFinAConfirmer ? null
+        : Math.round(((totalBrut + brutJusqua(ctxFin(v.fin), c, v.fin, enfants, couvert, bruts.parMois) - brutFin + ecartFin(v.fin)) * facteur) / 80) }));
     if (autres.some((v) => v.montant !== indemniteRupture)) {
-      ruptureVariantes = `Indemnité de rupture à confirmer : elle dépend de la date de fin du préavis, à confirmer. ${autres.map((v) => `${v.libelle.replace(/^./, (x) => x.toUpperCase())} : ${euros(v.montant)}`).join(' ; ')}. Elle n'est pas comptée dans le total.`;
+      const valeur = (v: (typeof autres)[number]) => (v.montant == null
+        ? `à confirmer (l’indemnité de congés non pris ou la régularisation de la fin, à confirmer, serait sur le bulletin de ${monthLabel(monthOf(v.fin))}, hors du total de tes bulletins)`
+        : euros(v.montant));
+      ruptureVariantes = `Indemnité de rupture à confirmer : elle dépend de la date de fin du préavis, à confirmer. ${autres.map((v) => `${v.libelle.replace(/^./, (x) => x.toUpperCase())} : ${valeur(v)}`).join(' ; ')}. Elle n'est pas comptée dans le total.`;
       ruptureAConfirmer = true;
     }
   }

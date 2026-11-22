@@ -50,17 +50,35 @@ describe('T-054 : variante de date de fin et bulletins saisis jusqu’au dernier
         // Lendemain dans un mois couvert : même montant, donc pas de variante.
         if (f.ruptureVariantes) fautes.push(`${notif} (fin ${f.dernierJour}) : ${f.ruptureVariantes.slice(0, 140)}`);
       } else {
-        // Fin le dernier jour du mois : le lendemain est dans un mois non couvert. Un jour sans accueil (samedi, dimanche)
-        // n'ajoute rien ; un jour d'accueil ajoute son salaire, donc un montant plus haut.
+        // Fin le dernier jour du mois : le lendemain est dans un mois non couvert par les bulletins. Relecture T-072, B-1 :
+        // dans cette variante, l'ICCP et la régularisation de la fin seraient payées sur le bulletin de ce mois-là, hors du
+        // total saisi (CCN art. 121.1, 123.1, 124). Elles doivent y être ajoutées ; si elles sont « à confirmer », la
+        // variante l'est aussi. Un jour d'accueil ajoute aussi son salaire.
         finsDeMois++;
         const jour = new Date(`${lendemain}T12:00:00Z`).getUTCDay();
-        if (jour === 0 || jour === 6) { if (f.ruptureVariantes) fautes.push(`${notif} (fin ${f.dernierJour}, lendemain week-end) : ${f.ruptureVariantes.slice(0, 140)}`); }
-        else if (!((v.get(lendemain) ?? 0) > base)) fautes.push(`${notif} (fin ${f.dernierJour}) : le jour du ${lendemain} n'est pas compté`);
+        const sommesFin = !!f.cpAConfirmer || !!f.regularisationAConfirmer || f.cpIndemnite > 0 || f.regularisation > 0;
+        if (!sommesFin && (jour === 0 || jour === 6)) { if (f.ruptureVariantes) fautes.push(`${notif} (fin ${f.dernierJour}, rien ne change) : ${f.ruptureVariantes.slice(0, 140)}`); }
+        else {
+          if (!f.ruptureAConfirmer) fautes.push(`${notif} (fin ${f.dernierJour}) : indemnité donnée comme sûre, variante du ${lendemain} oubliée`);
+          const vl = v.get(lendemain);
+          const dit = (f.ruptureVariantes ?? '').includes(`Fin le ${lendemain.slice(8, 10)}/${lendemain.slice(5, 7)}/${lendemain.slice(0, 4)} : à confirmer`);
+          if (f.cpAConfirmer || f.regularisationAConfirmer) { if (!dit) fautes.push(`${notif} (fin ${f.dernierJour}) : variante du ${lendemain} donnée avec un montant sans l'ICCP à confirmer`); }
+          else if (!(vl != null && vl > base)) fautes.push(`${notif} (fin ${f.dernierJour}) : variante du ${lendemain} sans les sommes de la fin`);
+        }
       }
     }
     expect(vus).toBe(178);
     expect(finsDeMois).toBeGreaterThanOrEqual(6);
     expect(fautes).toEqual([]);
+  });
+
+  it('B-1 (relecture T-072) : fin le samedi 31/10/2026, total saisi jusqu’à octobre, variante du dimanche 01/11 : indemnité à confirmer', () => {
+    const f = finDeContrat(ctx(), '2026-10-17', 'retrait', 0, undefined, { total: T, jusqua: '2026-10' });
+    expect(f.dernierJour).toBe('2026-10-31');
+    expect(f.cpAConfirmer).toBeDefined();
+    expect(f.ruptureAConfirmer).toBe(true);
+    expect(f.ruptureVariantes).toContain('Fin le 31/10/2026 : 154,31');
+    expect(f.ruptureVariantes).toContain('Fin le 01/11/2026 : à confirmer');
   });
 
   it('brut du dernier mois lu sur un bulletin contrôlé : la variante du lendemain, dans ce mois, n’ajoute rien', () => {
