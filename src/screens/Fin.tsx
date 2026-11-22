@@ -52,7 +52,7 @@ export function Fin({ id }: { id?: string }) {
   const enregistre = c.end === f.dernierJour && JSON.stringify(c.rupture) === JSON.stringify(rupture);
   const enregistrer = async () => {
     const prev = await putContract({ ...c, end: f.dernierJour, rupture });
-    toast(`Fin de contrat enregistrée : dernier jour le ${shortDate(f.dernierJour)}`, prev ? async () => { await putContract(prev); } : undefined);
+    toast(`Fin de contrat enregistrée : ${f.dispense ? "fin du contrat" : "dernier jour"} le ${shortDate(f.dernierJour)}`, prev ? async () => { await putContract(prev); } : undefined);
   };
   // T-074 : préavis dispensé par les parents : la date de fin reste celle du préavis, donc à confirmer comme lui.
   const finSelonPreavis = !inexecution || inexecution.demandeur === 'employeur';
