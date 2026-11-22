@@ -1,5 +1,5 @@
 // Compteur fiscal (CGI art. 80 sexies) : abattement spécifique et revenu imposable estimé.
-import { eachDay, lastDay, monthLabel, monthsBetween, type Month } from './dates';
+import { eachDay, lastDay, monthLabel, monthOf, monthsBetween, type Month } from './dates';
 import { computeMonth } from './month';
 import { dayInfo, joindre, naturesAConfirmer, termsAt, type Ctx } from './payroll';
 import { MESSAGE_PERIODE_NON_GEREE, plafondHS, ratesAt } from './rates';
@@ -82,6 +82,11 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
   let partiel = false;
   let moisHistorique = 0;
   const last = upTo && upTo < `${year}-12` ? upTo : (`${year}-12` as Month);
+  // T-076 (vérification CDD, M4) : les sommes de la fin d'un CDD (régularisation et complément de salaire, indemnité de fin
+  // de contrat, indemnité de congés non pris) ne sont pas dans les mois : le dire, comme les autres parts non comptées.
+  if (c.cdd && c.end && c.end.slice(0, 4) === String(year) && monthOf(c.end) <= last) {
+    nonGere.add(`Fin du CDD en ${monthLabel(monthOf(c.end))} : la régularisation et le complément de salaire, l’indemnité de fin de contrat et l’indemnité de congés non pris ne sont pas comptés ici. Ajoute-les à partir de ton dernier bulletin.`);
+  }
   for (const m of monthsBetween(`${year}-01`, last)) {
     const r = computeMonth(ctx, m, enfants);
     if (!r.active) continue;
@@ -98,7 +103,11 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
     hs += hsPart + r.reductionHS;
     // T-025 C-5 : un salaire d'événement familial à confirmer n'est pas dans ce net : le dire, ne pas le compter en silence.
     // T-028 : des congés payés à confirmer ne sont pas dans ce net (comme l'événement familial) : le dire.
+    if (r.cpMaintienAConfirmer) nonGere.add(`Congés payés à confirmer en ${monthLabel(m)} : ${euros(r.cpMaintienAConfirmer)} ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
+    if (r.complAConfirmerAmount) nonGere.add(`Heures complémentaires à confirmer en ${monthLabel(m)} : ${euros(r.complAConfirmerAmount)} ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
     if (r.cpAConfirmer) nonGere.add(`Congés payés à confirmer en ${monthLabel(m)} : ils ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
+    // T-076 (vérification CDD, M4) : salaire d'un CDD qui dépend de la façon de le calculer (P1, P2) : pas dans ce net.
+    if (r.cddAConfirmer) nonGere.add(`Salaire du CDD à confirmer en ${monthLabel(m)} : ${euros(r.cddAConfirmer)} ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
     if (r.evenementAConfirmer) nonGere.add(`${joindre(naturesAConfirmer(r).map((n) => ({ evenement: 'événement familial', cp: 'congés au-delà des droits', maladie: 'jours d’enfant malade', ferieLocal: 'jours fériés locaux', maintien: 'jours d’absence pour maladie' })[n])).replace(/^./, (x) => x.toUpperCase())} à confirmer : ${euros(r.evenementAConfirmer)} de salaire en ${monthLabel(m)} ne sont pas comptés. Ajoute-les une fois confirmés avec les parents.`);
     er += r.entretien + r.repas;
     km += r.km;

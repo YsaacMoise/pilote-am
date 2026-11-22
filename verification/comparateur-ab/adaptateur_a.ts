@@ -21,10 +21,17 @@ const montant = (v: unknown): number => {
 import { dayInfo, makeCtx, mensuelMinutes, monthBase, regularisation, salaireMensualise, type Ctx } from '__A_RACINE__/src/engine/payroll';
 import { acquisition, cpForMonth, decompteConge, indemnite, maintien } from '__A_RACINE__/src/engine/conges';
 import { finDeContrat, type Motif } from '__A_RACINE__/src/engine/fin';
+// T-076 : fin de CDD et seconde lecture du salaire d'un CDD (P1, P2). Lues par espace de noms : une version de A qui ne les a
+// pas donne `undefined` (refus visible), sans casser la construction.
+import * as FinA from '__A_RACINE__/src/engine/fin';
+import * as PayrollA from '__A_RACINE__/src/engine/payroll';
+const A_CDD = typeof (FinA as Record<string, unknown>).finDeCdd === 'function';
+const ctxLectureCdd2 = (PayrollA as Record<string, unknown>).ctxLectureCdd2 as ((ctx: Ctx) => Ctx | undefined) | undefined;
 import { entretienPlancher, netToBrut, ratesAt } from '__A_RACINE__/src/engine/rates';
 // T-077 : fonctions régionales (absentes des versions de A d'avant T-077 : lues à l'exécution, sans import statique).
 import * as RATES_A from '__A_RACINE__/src/engine/rates';
 import * as REGIONS_A from '__A_RACINE__/src/engine/regions';
+import { lastDay, monthOf } from '__A_RACINE__/src/engine/dates';
 // T-027 : fonctions publiques du moteur A pour les kilomètres et les événements familiaux (signatures seulement).
 import { controleKm } from '__A_RACINE__/src/engine/km';
 import { dureeEvenement } from '__A_RACINE__/src/engine/evenements';
@@ -33,22 +40,43 @@ import { normaliserAbsences } from '__A_RACINE__/src/engine/absences';
 type Sortie = { statut: 'ok' | 'absent' | 'refus'; valeur?: unknown; note?: string; non_comparable?: boolean; lectures?: unknown[] };
 type Sorties = Record<string, Sortie>;
 
-function contrat(k: any): Contract {
+/** Planning de la situation ({"1": [["08:00", "17:00"]]}) au format du moteur A */
+function lirePlanning(x: any): Planning {
   const planning: Planning = {};
-  for (const [j, plages] of Object.entries(k.planning ?? {})) {
+  for (const [j, plages] of Object.entries(x ?? {})) {
     planning[Number(j)] = (plages as string[][]).map(([start, end]) => ({ start, end }));
   }
+  return planning;
+}
+
+/**
+ * T-076 : planning variable (regles/t076-decisions-direction.md, section 1, « Sorties du comparateur ») : `planning_variable`,
+ * `cycle` (liste de plannings) et `cycle_ancre`, ou `plannings_semaines` ({lundi: planning}), et `heures_mensualisees`.
+ */
+function planningVariable(k: any): Partial<Contract> {
+  if (!k.planning_variable) return {};
+  return {
+    planningVariable: true,
+    ...(Array.isArray(k.cycle) ? { pvForme: 'cycle' as const, cycle: k.cycle.map(lirePlanning), cycleAncre: k.cycle_ancre ?? undefined } : {}),
+    ...(k.plannings_semaines && !Array.isArray(k.cycle) ? { pvForme: 'remis' as const, planningsSemaines: Object.fromEntries(Object.entries(k.plannings_semaines).map(([l, p]) => [l, lirePlanning(p)])) } : {}),
+    ...(k.heures_mensualisees != null ? { heuresMensualisees: Number(k.heures_mensualisees) } : {}),
+  };
+}
+
+function contrat(k: any): Contract {
+  const planning = lirePlanning(k.planning);
   return {
     id: 'c1', child: 'Enfant', family: 'Famille', color: 0, start: k.debut, end: k.fin ?? undefined,
     yearType: k.type_annee, weeks: k.semaines, weeksOff: k.semaines_sans_accueil ?? [], planning,
     // T-033 (M6) : taux des heures complémentaires du contrat (T-030, HC-03 à HC-06) ; réponses aux 3 questions T-031
     // (situations de la grille et des cas officiels : métropole, semaine type fixe, accueil régulier).
     rateNet: k.taux, majoration: k.majoration_hm ?? 10, majorationCompl: k.majoration_hc, entretienJour: k.entretien_jour ?? 0,
-    // T-034 (M7) : réponse à la question « CDI ou CDD ? » ajoutée par T-033 (cbbbd66). Toutes les situations sont des CDI
-    // (FIN-11, seul CDD, est déclaré « absent » de A par generer_situations.py).
+    // T-034 (M7) : réponse à la question « CDI ou CDD ? » ajoutée par T-033 (cbbbd66). T-076 : CDD lu dans la situation
+    // (`cdd`, `cdd_terme`, `cdd_motif` ; decisions-direction, section 2) ; absent : CDI, comme avant.
     // T-077 : région du contrat (champ « region » des situations ; absent = métropole).
     alsaceMoselle: k.region === 'alsace_moselle', ...(k.region === 'mayotte' ? { mayotte: true } : {}),
-    planningVariable: false, accueilOccasionnel: false, cdd: false,
+    planningVariable: false, accueilOccasionnel: false, cdd: k.cdd === true,
+    ...(k.cdd === true ? { cddTerme: k.cdd_terme ?? undefined, cddMotif: k.cdd_motif ?? undefined, cddTermeImprecis: k.cdd_terme_imprecis === true ? true : undefined } : {}),
     repasPrix: k.repas_prix ?? 0, repasParJour: k.repas_par_jour ?? 0, kmTaux: k.km_taux ?? 0, kmCv: k.km_cv ?? undefined,
     cpMode: k.cp_mode ?? 'juin', majoreFiscal: false, trackedFrom: k.suivi_depuis ?? k.debut,
     balances: {
@@ -65,6 +93,7 @@ function contrat(k: any): Contract {
       ...(a.semaines_sans_accueil ? { weeksOff: a.semaines_sans_accueil } : {}) } })) } : {}),
     ...(k.rupture ? { rupture: { motif: k.rupture.motif, notif: k.rupture.notif, presentation: k.rupture.presentation,
       preavis: k.rupture.preavis, dernierJourTravaille: k.rupture.dernier_jour_travaille } } : {}),
+    ...planningVariable(k),
   } as Contract;
 }
 
@@ -140,6 +169,31 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
         out.ferie_travaille_montant = refus(n, [b.ferieAmount, b.ferieAmount + flac]);
         out.salaire_mois_hors_cp = refus(n, [b.net, b.net + flac]);
       }
+      // T-076 (L2) : heures complémentaires des semaines de congé à confirmer : part sûre et les deux lectures.
+      if (b.complAConfirmerAmount) {
+        out.heures_compl_montant = { statut: 'ok', valeur: b.complAmount, lectures: [b.complAmount, b.complAmount + b.complAConfirmerAmount] };
+        out.salaire_mois_hors_cp = { statut: 'ok', valeur: b.net, lectures: [b.net, b.net + b.complAConfirmerAmount] };
+      }
+      // T-076 (P1, P2) : CDD à deux lectures du salaire. Le mois sorti est celui que A paie (computeMonth : la lecture dont le
+      // net, congés compris, est le plus bas ; lecture 1 si égal), toutes ses sorties de la même lecture (vérification, m1).
+      // `lectures` = [lecture 1, lecture 2] sur le salaire de base et le salaire hors congés.
+      const ctx2 = ctxLectureCdd2?.(ctx);
+      if (ctx2 && !b.nonGere.length) {
+        const b2 = monthBase(ctx2, k.mois);
+        if (!b2.nonGere.length) {
+          const cp1 = cpForMonth(ctx, k.mois, enfants), cp2 = cpForMonth(ctx2, k.mois, enfants);
+          const paye = b2.net + cp2.indemnite + cp2.complement < b.net + cp1.indemnite + cp1.complement ? b2 : b;
+          const note = 'A : CDD, deux lectures (mois payé = lecture la plus basse)';
+          const poser = (cle: string, v: Sortie) => { if (out[cle]?.statut === 'ok') out[cle] = v; };
+          poser('salaire_mensualise', ok(paye.salaireMens));
+          poser('deduction', ok(paye.salaireMens - paye.base));
+          poser('heures_compl_montant', ok(paye.complAmount));
+          poser('heures_maj_montant', ok(paye.majAmount));
+          poser('ferie_travaille_montant', ok(paye.ferieAmount));
+          poser('salaire_base_mois', b.base !== b2.base ? { statut: 'ok', valeur: paye.base, lectures: [b.base, b2.base], note } : ok(paye.base));
+          poser('salaire_mois_hors_cp', b.net !== b2.net ? { statut: 'ok', valeur: paye.net, lectures: [b.net, b2.net], note } : ok(paye.net));
+        }
+      }
       if (b.nonGere.length) for (const cle of Object.keys(out)) if (cle !== 'alertes') out[cle] = refus(`A : non géré (${b.nonGere.join(' ')})`);
       break;
     }
@@ -170,6 +224,14 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       out.maintien_cp = ok(i.maintien);
       out.dixieme_cp = ok(i.dixieme);
       out.jours_droit = ok(i.jours);
+      // T-076 (P-PV-5) : planning variable, lectures C1 et C2 du maintien ; valeur = part sûre (la plus petite lecture).
+      if (i.pv) {
+        const l1 = Math.max(i.dixieme, i.pv.c1), l2 = Math.max(i.dixieme, i.pv.c2);
+        out.indemnite_cp = i.pv.c2Complet ? { statut: 'ok', valeur: i.montant, lectures: [l1, l2] }
+          : refus(`A : maintien C2 incomplet (congés pas tous saisis) ; part sûre ${i.montant}`, [l1, l2]);
+        out.maintien_cp = i.pv.c2Complet ? { statut: 'ok', valeur: i.maintien, lectures: [i.pv.c1, i.pv.c2] }
+          : refus('A : maintien C2 incomplet (congés pas tous saisis)', [i.pv.c1, i.pv.c2]);
+      }
       if (i.aConfirmer) {
         const note = `A : à confirmer (${i.aConfirmer.message})`;
         const lec = i.aConfirmer.montants.map((m: any) => ({ libelle: m.libelle, jours: m.jours, montant: m.montant }));
@@ -181,6 +243,12 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       const m = cpForMonth(ctx, k.mois, enfants);
       out.cp_indemnite_mois = ok(m.indemnite);
       out.cp_complement_mois = ok(m.complement);
+      // T-076 (P-PV-5) : part sûre payée, l'écart entre les deux méthodes du maintien est à confirmer.
+      if (m.maintienAConfirmer) {
+        const cle = ctx.c.yearType === 'complete' ? 'cp_complement_mois' : 'cp_indemnite_mois';
+        const v = ctx.c.yearType === 'complete' ? m.complement : m.indemnite;
+        out[cle] = { statut: 'ok', valeur: v, lectures: [v, v + m.maintienAConfirmer] };
+      }
       if (m.aConfirmer) {
         // Année incomplète : l'indemnité est à confirmer ; il n'y a pas de complément de juin (année complète seulement).
         out.cp_indemnite_mois = refus(`A : à confirmer (${m.aConfirmer})`);
@@ -189,6 +257,51 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       break;
     }
     case 'fin': {
+      // T-076 : fin de CDD. Format de la situation (decisions-direction, section 2) : `fin: {"date", "motif": "fin_cdd",
+      // "fin_cdd"}`, dans le calcul ou dans la situation ; à défaut, `notification` (ou `date`) et `fin_cdd` du calcul.
+      const finSit = k.fin ?? s.fin;
+      const estCdd = s.contrat.cdd === true || k.motif === 'fin_cdd' || finSit?.motif === 'fin_cdd';
+      if (estCdd) {
+        const cles = ['ifc', 'ifc_brut', 'ifc_net', 'brut_cdd', 'iccp', 'preavis', 'indemnite_rupture', 'regularisation_fin', 'solde_fin_cdd'];
+        if (!A_CDD) {
+          for (const cle of cles) out[cle] = refus('A : CDD non géré par cette version de A (pas de finDeCdd)');
+          break;
+        }
+        const date = finSit?.date ?? k.notification ?? k.date ?? s.contrat.fin;
+        // Direction T-076 : la grille écrit « saisonnier » (CDD saisonnier ou d'usage) ; A l'appelle « saisonnier_usage ».
+        const fcBrut = finSit?.fin_cdd ?? k.fin_cdd;
+        const fc = fcBrut === 'saisonnier' ? 'saisonnier_usage' : fcBrut;
+        const f = (FinA as unknown as { finDeCdd: (...a: unknown[]) => ReturnType<typeof finDeContrat> }).finDeCdd(ctx, date, fc, enfants);
+        const part = (p: { montant: number; lectures: number[] } | undefined, v: number, ordre: 'p3' | 'p4'): Sortie =>
+          // P4 : [lecture 1 sans ICCP, lecture 2 avec] ; P3 : [lecture A comparaison, lecture B dixième seul] (rapport t076-cdd.md).
+          (p ? { statut: 'ok', valeur: v, lectures: ordre === 'p4' ? [v, v + p.montant] : [v + p.montant, v], note: 'A : part sûre, écart à confirmer' } : ok(v));
+        // T-076 (direction) : le comparateur compare les montants en net, comme l'ICCP. L'IFC est calculée en net par A
+        // (arrondi de 10 % de l'assiette nette) ; `ifc_brut` est le brut d'affichage, dérivé du net.
+        const enBrut = (n: number) => netToBrut(n, lastDay(monthOf(date)));
+        out.ifc = part(f.ifcPartAConfirmer, f.ifcNet ?? 0, 'p4');
+        out.ifc_brut = f.ifcPartAConfirmer
+          ? { statut: 'ok', valeur: f.ifc ?? 0, lectures: [f.ifc ?? 0, enBrut((f.ifcNet ?? 0) + f.ifcPartAConfirmer.montant)], note: 'A : brut dérivé du net' }
+          : ok(f.ifc ?? 0);
+        out.ifc_net = ok(f.ifcNet ?? 0);
+        out.brut_cdd = ok(f.brutCdd ?? 0);
+        out.iccp = part(f.cpPartAConfirmer, f.cpIndemnite, 'p3');
+        out.preavis = ok(0);
+        out.indemnite_rupture = ok(f.indemniteRupture);
+        // Régularisation (art. 124) de chaque lecture ; la somme que A verse à la fin (complément qui porte le total versé au
+        // plus petit des deux totaux, direction T-076) est sortie à part : `solde_fin_cdd`.
+        const regL = (f as { regularisationParLecture?: number[] }).regularisationParLecture;
+        out.regularisation_fin = regL && new Set(regL).size > 1
+          ? { statut: 'ok', valeur: Math.min(...regL), lectures: [...regL], note: 'A : régularisation de chaque lecture' }
+          : ok(regL ? regL[0] : f.regularisation);
+        out.solde_fin_cdd = f.regularisationPartAConfirmer
+          ? { statut: 'ok', valeur: f.regularisation, lectures: [...f.regularisationPartAConfirmer.lectures], note: 'A : part sûre, écart à confirmer' }
+          : ok(f.regularisation);
+        if (f.ifcAConfirmer) out.ifc = refus(`A : à confirmer (${f.ifcAConfirmer})`);
+        if (f.cpAConfirmer) out.iccp = refus(`A : à confirmer (${f.cpAConfirmer})`);
+        if (f.regularisationAConfirmer) { out.regularisation_fin = refus(`A : à confirmer (${f.regularisationAConfirmer})`); out.solde_fin_cdd = out.regularisation_fin; }
+        if (f.nonGere?.length) for (const cle of Object.keys(out)) out[cle] = refus(`A : non géré (${f.nonGere.join(' ')})`);
+        break;
+      }
       // T-042c (M11, T-045) : préavis non exécuté, transmis à A sous la forme `Inexecution` (6e paramètre de
       // finDeContrat). Une version de A sans ce paramètre l'ignorerait en silence : refus visible dans ce cas.
       if (k.inexecution && !A_INEXECUTION) {

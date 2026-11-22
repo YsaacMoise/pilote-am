@@ -52,6 +52,9 @@ export function finsAdmises(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' |
   return { preavisFin, admises };
 }
 
+const lo2 = (a: ISODate, b: ISODate) => (a < b ? a : b);
+const hi2 = (a: ISODate, b: ISODate) => (a > b ? a : b);
+
 const REGLE_DISPENSE = 'si les parents t’ont dispensée de tout ou partie du préavis, ils te doivent une indemnité compensatrice égale au salaire jusqu’à la date prévue de fin du préavis (convention, articles 64, 64.2 et 66)';
 
 /**
@@ -59,10 +62,22 @@ const REGLE_DISPENSE = 'si les parents t’ont dispensée de tout ou partie du p
  * touchée (`du`, `au`) et le message de refus. Jamais un total silencieux : chaque mois, régularisation ou période de
  * congés qui touche cette période est refusé (nonGeresPeriode).
  */
-export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'> & Partial<Pick<Contract, 'alsaceMoselle' | 'mayotte'>>): { du: ISODate; au: ISODate; message: string } | undefined {
+export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'> & Partial<Pick<Contract, 'alsaceMoselle' | 'mayotte' | 'cdd'>>): { du: ISODate; au: ISODate; message: string } | undefined {
   const end = c.end;
   if (!end) return undefined;
   const r = c.rupture;
+  // T-076 (R-CDD-06) : un CDD « cesse de plein droit à l'échéance du terme » (C. trav. L1243-5), sans préavis. Aucun mois ne
+  // dépend d'un préavis : la date de fin saisie n'est pas contrôlée face à un préavis. Seule une fin enregistrée avec les
+  // règles d'un CDI (lettre, préavis) est refusée, ou un dernier jour enregistré qui n'est pas la date de fin.
+  if (c.cdd) {
+    if (r && r.motif !== 'fin_cdd') {
+      return { du: lo2(r.notif, end), au: hi2(r.notif, end), message: 'Ce contrat est un CDD, mais la fin enregistrée suit les règles d’un CDI (lettre, préavis). Refais la fin dans l’écran « Fin de contrat » : dis comment finit le CDD.' };
+    }
+    if (r && r.notif !== end) {
+      return { du: lo2(r.notif, end), au: hi2(r.notif, end), message: `La date de fin du contrat (${shortDate(end)}) n’est pas le dernier jour enregistré dans l’écran « Fin de contrat » (${shortDate(r.notif)}). Corrige l’une des deux.` };
+    }
+    return undefined;
+  }
   if (!r) {
     // Le préavis dure au plus un mois (art. 120) : la période où il a pu ne pas être fait commence un mois avant la fin.
     return {

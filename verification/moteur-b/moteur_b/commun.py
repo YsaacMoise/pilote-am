@@ -148,6 +148,19 @@ CODES = {
     "EXCLU-DECES-PARTIE": "Deces de l'employeur ou de l'AM exclu de la version 0.",
     "EXCLU-CDD-ANTICIPE": "Rupture anticipee du CDD exclue de la version 0.",
     "EXCLU-SAISONNIER": "CDD saisonnier ou d'usage : disposition conventionnelle plus favorable non verifiee.",
+    # T-076 (planning variable, CDD) : regles/t076-planning-variable.md, regles/t076-cdd.md, regles/t076-decisions-direction.md.
+    "PV-SEMAINE-SANS-PLANNING": "Planning variable : semaine sans planning saisi ; le mois n'est pas calcule (CCN 111 et 48.1.1.3 renvoient au planning, P-PV-4). Saisir le planning de cette semaine.",
+    "PV-SEMAINE-PREVUE-PLUS-45H": "Planning variable : semaine prevue au-dela de 45 h ; place de la majoration des heures prevues non tranchee (P-PV-3, A-13), passage 2.",
+    "PV-C2-DROIT-NON-PRIS": "Planning variable : lecture C2 du maintien (heures prevues des jours de conge) inconnue tant que le droit n'est pas pris en entier (P-PV-5).",
+    "P-PV-5": "Planning variable : base du maintien des CP (C1 moyenne de la periode, C2 heures des jours de conge) ; les deux lectures different ici.",
+    "CDD-FIN-NON-GEREE": "Fin de CDD non geree (force majeure, inaptitude, jeune en vacances, saisonnier ou d'usage) : R-CDD-08, R-CDD-13.",
+    "PV-L2-ABSENCE-HC": "Planning variable, base L2 : absence deduite dans une semaine prevue au-dela de la base ; combinaison de la deduction de l'art. 111 et de la perte des HC non ecrite (D2, passage 2).",
+    "CDD-PASSAGE-2": "CDD a planning variable avec semaines sans accueil, ou CDD de moins d'un mois avec semaines sans accueil : passage 2 (D3).",
+    "CDD-DATE-FIN": "Fin anticipee de CDD a la date du terme ou apres : au terme, choisis Terme (D9).",
+    "CDD-DEVENU-CDI": "Travail apres le terme du CDD sans CDI signe : le contrat devient un CDI (C. trav. L1243-11, D9).",
+    "CDD-ESSAI-DEPASSE": "Fin pendant la periode d'essai apres la duree maximale d'essai du CDD (C. trav. L1242-10, D19).",
+    "CDD-ESSAI-LIMITE": "Fin d'essai du CDD entre les deux lectures de la duree maximale (semaines entieres ou entamees, L1242-10, D19).",
+    "CDD-PLANCHER-L1242-16": "CDD avec CP payes pendant le contrat : plancher de C. trav. L1242-16 (dixieme de toute la duree du contrat) non applique tel quel.",
 }
 
 

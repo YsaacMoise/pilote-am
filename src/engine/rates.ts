@@ -200,6 +200,7 @@ export function netToBrut(net: number, d: ISODate, region: Region = 'metropole')
   return Math.round((net * 10000) / netSurBrutRegion(region, d, ratesAt(d)?.netSurBrut ?? NET_BRUT));
 }
 
+
 /**
  * Dernier jour couvert par des barèmes vérifiés. Le SMIC, le minimum garanti et les cotisations sont revalorisés
  * au moins chaque 1er janvier, le CMG chaque 1er avril : au-delà de cette date, l'app reprend les derniers barèmes

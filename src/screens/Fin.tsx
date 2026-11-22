@@ -2,9 +2,10 @@ import { termsAt } from '../engine/payroll';
 import { useState } from 'preact/hooks';
 import { ctxFor, putContract, toast, useStore } from '../store';
 import { addDays, addMonths, monthLabel, monthOf, shortDate, today, type Month } from '../engine/dates';
-import { finDeContrat, type DemandeurInexecution, type Motif } from '../engine/fin';
-import type { Rupture } from '../engine/model';
-import { euros, eurosArrondis } from '../engine/money';
+import { FIN_CDD_LABEL, finDeContrat, finDeCdd, MESSAGE_CDD_IFC, MESSAGE_CDD_PAS_DE_PREAVIS, type DemandeurInexecution, type FinCdd, type FinCddNonGere, type FinResult, type Motif } from '../engine/fin';
+import { FINS_CDD, FINS_CDD_NON_GEREES, type Contract, type Rupture } from '../engine/model';
+import { cddDeuxLectures } from '../engine/cdd';
+import { euros, eurosArrondis, hoursLabel } from '../engine/money';
 import { ligneIndemnitePreavis, ligneRegularisation } from './fin-lignes';
 import { Banner, Choices, DateInput, EuroInput, Gommette, Topbar } from '../ui/kit';
 
@@ -44,6 +45,15 @@ export function Fin({ id }: { id?: string }) {
   const changeEnvoi = (v: string) => { setNotif(v); if (presentation && presentation < v) setPresentation(null); };
   const c = s.contracts.find((x) => x.id === cid);
   if (!c) return <><Topbar title="Fin de contrat" back="#/plus" screen="fin" /><main><div class="card empty"><p>Aucun contrat.</p></div></main></>;
+  const choixEnfant = s.contracts.length > 1 && (
+    <div class="chips" role="group" aria-label="Enfant">
+      {s.contracts.map((k) => (
+        <button class="chip" aria-pressed={k.id === c.id} onClick={() => setCid(k.id)}><Gommette name={k.child} color={k.color} size="sm" />{k.child}</button>
+      ))}
+    </div>
+  );
+  // T-076 : un CDD finit sans lettre ni préavis (R-CDD-06) : écran à part.
+  if (c.cdd) return <><Topbar title="Fin de contrat" back="#/plus" screen="fin" /><main>{choixEnfant}<FinCddEcran key={c.id} c={c} /></main></>;
   const envoi = notif < c.start ? c.start : notif;
   // C-017 : le préavis part de la première présentation de la lettre recommandée ou de la remise en main propre
   // contre décharge (art. 120), jamais de l'annonce orale.
@@ -84,13 +94,7 @@ export function Fin({ id }: { id?: string }) {
     <>
       <Topbar title="Fin de contrat" back="#/plus" screen="fin" />
       <main>
-        {s.contracts.length > 1 && (
-          <div class="chips" role="group" aria-label="Enfant">
-            {s.contracts.map((k) => (
-              <button class="chip" aria-pressed={k.id === c.id} onClick={() => setCid(k.id)}><Gommette name={k.child} color={k.color} size="sm" />{k.child}</button>
-            ))}
-          </div>
-        )}
+        {choixEnfant}
         <p class="muted">Une simulation pour savoir ce qui t’est dû. L’app ne produit pas les documents officiels (certificat de travail, attestation France Travail, reçu pour solde de tout compte) : c’est au parent employeur de les établir.</p>
         <section class="card">
           <fieldset>
@@ -175,6 +179,93 @@ export function Fin({ id }: { id?: string }) {
           {enregistre ? <p>Enregistrée.</p> : <button class="btn btn-primary btn-block" onClick={enregistrer}>Enregistrer la fin du contrat</button>}
         </section>
       </main>
+    </>
+  );
+}
+
+/** Ligne « à confirmer » d'une somme de la fin d'un CDD : part sûre, écart hors du total */
+const partAConfirmer = (p: FinResult['cpPartAConfirmer']) => (p ? ` + ${euros(p.montant)} à confirmer` : '');
+
+/**
+ * T-076 : fin d'un CDD (regles/t076-cdd.md, parties 5.1 et 5.2 ; decisions-direction, section 2). Pas de lettre ni de préavis :
+ * le dernier jour et la façon dont le CDD finit. Sommes : indemnité de fin de contrat (IFC), régularisation, congés non pris,
+ * chacune avec sa part à confirmer hors du total.
+ */
+function FinCddEcran({ c }: { c: Contract }) {
+  const s = useStore();
+  const r0 = c.rupture?.motif === 'fin_cdd' ? c.rupture : undefined;
+  const [dernier, setDernier] = useState<string>(r0?.notif ?? c.end ?? c.cddTerme ?? today());
+  const [finCdd, setFinCdd] = useState<FinCdd | FinCddNonGere | undefined>(r0?.finCdd);
+  const jour = dernier < c.start ? c.start : dernier;
+  const f = finDeCdd(ctxFor({ ...c, end: undefined }), jour, finCdd, s.settings.enfantsACharge);
+  // D17 : une fin non gérée n'est jamais enregistrée (le message s'affiche, rien n'est gardé).
+  const finGeree = finCdd && (FINS_CDD as string[]).includes(finCdd) ? finCdd as FinCdd : undefined;
+  const rupture: Rupture = { motif: 'fin_cdd', notif: jour, preavis: 'execute', ...(finGeree ? { finCdd: finGeree } : {}) };
+  const enregistre = c.end === jour && JSON.stringify(c.rupture) === JSON.stringify(rupture);
+  const enregistrer = async () => {
+    const prev = await putContract({ ...c, end: jour, rupture });
+    toast(`Fin du CDD enregistrée : dernier jour le ${shortDate(jour)}`, prev ? async () => { await putContract(prev); } : undefined);
+  };
+  const ifcNet = f.ifcAConfirmer ? 0 : f.ifcNet ?? 0;
+  const total = ifcNet + (f.regularisationAConfirmer ? 0 : f.regularisation) + (f.cpAConfirmer ? 0 : f.cpIndemnite);
+  const aConfirmer = !!(f.ifcAConfirmer || f.ifcPartAConfirmer || f.cpAConfirmer || f.cpPartAConfirmer || f.regularisationAConfirmer || f.regularisationPartAConfirmer);
+  const choix = [...FINS_CDD, ...FINS_CDD_NON_GEREES];
+  // m3 : CDD à deux lectures du salaire (P1, P2) : la somme de fin complète le total au plus petit des deux calculs.
+  const deuxLectures = cddDeuxLectures(c) && f.finCdd !== 'suite_cdi';
+  return (
+    <>
+      <p class="muted">Une simulation pour savoir ce qui t’est dû. L’app ne produit pas les documents officiels (certificat de travail, attestation France Travail, reçu pour solde de tout compte) : c’est au parent employeur de les établir.</p>
+      <section class="card">
+        <fieldset>
+          <legend>La fin du CDD</legend>
+          <p class="hint">{MESSAGE_CDD_PAS_DE_PREAVIS}</p>
+          <DateInput label="Dernier jour du contrat" hint={c.cddTerme ? `${c.cddTermeImprecis ? 'Fin de la durée minimale' : 'Date de fin prévue'} : ${shortDate(c.cddTerme)}. Si la date a été reportée, mets d’abord la nouvelle date de fin prévue dans le contrat.` : 'Le dernier jour du contrat.'} value={jour} min={c.start} onChange={(v) => setDernier(v || jour)} />
+          <Choices label="Comment finit le CDD ?" value={finCdd} onChange={setFinCdd} options={choix.map((k) => ({ v: k, l: FIN_CDD_LABEL[k].l, sub: FIN_CDD_LABEL[k].sub }))} />
+        </fieldset>
+      </section>
+      {f.nonGere ? (
+        <section class="card stack" aria-labelledby="fincdd-ng" aria-live="polite">
+          <h2 id="fincdd-ng">Fin du CDD non calculée</h2>
+          {f.nonGere.map((t) => <Banner tone="warn">{t}</Banner>)}
+          <p class="hint">L’app ne donne aucun montant.</p>
+        </section>
+      ) : <>
+        {f.alertes.map((a) => <Banner tone="warn">{a}</Banner>)}
+        {[f.ifcAConfirmer, f.ifcPartAConfirmer?.message, f.regularisationAConfirmer, f.regularisationPartAConfirmer?.message, f.cpAConfirmer, f.cpPartAConfirmer?.message].filter(Boolean).map((t) => <Banner tone="warn">{t}</Banner>)}
+        <section class="card stack" aria-labelledby="fincdd-res" aria-live="polite">
+          <h2 id="fincdd-res">Ce qui t’est dû</h2>
+          <dl class="kv">
+            <dt>Préavis</dt><dd>Aucun</dd>
+            <dt>Dernier jour</dt><dd>{shortDate(f.dernierJour)}</dd>
+          </dl>
+          <div class="decl">
+            <div class="decl-line"><span class="decl-label"><span>Indemnité de fin de contrat</span><span class="decl-hint">{f.ifcExplication}</span></span><span class="decl-value">{f.ifcAConfirmer ? 'à confirmer' : `${euros(ifcNet)} net${partAConfirmer(f.ifcPartAConfirmer)}${ifcNet > 0 ? ` (environ ${eurosArrondis(f.ifc ?? 0)} brut)` : ''}`}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>{deuxLectures ? 'Régularisation et complément de salaire' : 'Régularisation'}</span><span class="decl-hint">{f.regularisationAConfirmer ? 'Montant à confirmer : voir l’encadré plus haut' : f.finCdd === 'suite_cdi' ? 'Ton contrat continue en CDI : rien n’est dû maintenant' : deuxLectures ? 'Ce qui porte ton total au plus petit des deux calculs du CDD : voir l’encadré plus haut' : termsAt(c, f.dernierJour).yearType === 'incomplete' ? (f.regulMinutes ? `${hoursLabel(f.regulMinutes)} accueillies mais non payées par la mensualisation` : 'Pas d’heures accueillies au-delà de ce qui a été payé') : 'Accueil toute l’année : pas de régularisation'}</span></span><span class="decl-value">{f.regularisationAConfirmer ? 'à confirmer' : `${euros(f.regularisation)}${partAConfirmer(f.regularisationPartAConfirmer)}`}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{f.cpAConfirmer ? 'à confirmer' : `${euros(f.cpIndemnite)}${partAConfirmer(f.cpPartAConfirmer)}`}</span></div>
+          </div>
+          <div class="spread"><b>{aConfirmer ? 'Total net estimé, hors salaire du dernier mois et sommes à confirmer' : 'Total net estimé, hors salaire du dernier mois'}</b><span class="decl-value">{euros(total)}</span></div>
+          {ifcNet > 0 && <p class="hint">{MESSAGE_CDD_IFC} Elle est calculée sur {euros(f.assietteNetteCdd ?? 0)} de salaires nets : l’Urssaf la fait déclarer et payer en net. Le brut est une estimation.</p>}
+        </section>
+        {!!f.declaration?.length && (
+          <section class="card stack-sm" aria-labelledby="fincdd-decl">
+            <h2 id="fincdd-decl">À déclarer à Pajemploi avec le dernier salaire</h2>
+            <p class="hint">L’indemnité de congés non pris et la régularisation se déclarent aussi avec le dernier salaire.</p>
+            <div class="decl">
+              {f.declaration.map((d) => <div class="decl-line"><span class="decl-label"><span>{d.libelle}</span><span class="decl-hint">{d.hint}</span></span><span class="decl-value">{euros(d.net)}</span></div>)}
+            </div>
+          </section>
+        )}
+      </>}
+      <section class="card stack" aria-labelledby="fincdd-save">
+        <h2 id="fincdd-save">Enregistrer cette fin de CDD</h2>
+        {c.end && !enregistre && <Banner tone="warn">La date de fin enregistrée ({shortDate(c.end)}) ou ta réponse enregistrée ne correspondent pas à ce calcul.</Banner>}
+        <p class="hint">Enregistre le dernier jour ({shortDate(jour)}) et la façon dont le CDD finit : le calcul de chaque mois et de la fin s’en sert.</p>
+        {/* D8 : la suite en CDI ne termine pas le contrat : pas d'enregistrement de fin. */}
+        {finCdd === 'suite_cdi'
+          ? <p class="hint">Ton CDD continue en CDI : ne l’enregistre pas comme une fin. Ouvre le contrat et passe-le en CDI.</p>
+          : finCdd && !finGeree ? <p class="hint">L’app ne calcule pas ce cas : elle n’enregistre pas cette fin, et ne garde pas ta réponse.</p>
+          : enregistre ? <p>Enregistrée.</p> : <button class="btn btn-primary btn-block" onClick={enregistrer} disabled={!finGeree}>Enregistrer la fin du CDD</button>}
+      </section>
     </>
   );
 }

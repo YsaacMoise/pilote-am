@@ -125,21 +125,23 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
         <section class="card">
           <fieldset>
             <legend>Le planning</legend>
-            <Seg label="Année complète ou incomplète ?" value={t.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(t.weeks, 46) || 46 })}
-              options={[{ v: 'complete', l: 'Année complète' }, { v: 'incomplete', l: 'Année incomplète' }]} />
-            <p class="hint">{AIDE_ANNEE}</p>
-            {t.yearType === 'incomplete' && <NumberInput label="Semaines d’accueil prévues au contrat" hint={AIDE_SEMAINES} value={t.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />}
+            {!c.planningVariable && <Seg label="Année complète ou incomplète ?" value={t.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(t.weeks, 46) || 46 })}
+              options={[{ v: 'complete', l: 'Année complète' }, { v: 'incomplete', l: 'Année incomplète' }]} />}
+            {!c.planningVariable && <p class="hint">{AIDE_ANNEE}</p>}
+            {!c.planningVariable && t.yearType === 'incomplete' && <NumberInput label="Semaines d’accueil prévues au contrat" hint={AIDE_SEMAINES} value={t.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />}
             {semaines4751(t.yearType, t.weeks) && <Banner tone="warn">{NON_GERE_47_51}</Banner>}
             {before.yearType === 'incomplete' && t.yearType === 'complete' && <p class="hint">Le contrat passe de l’année incomplète à l’année complète : l’app calcule une régularisation à la date de l’avenant (heures accueillies et pas encore payées), versée avec le salaire de ce mois.</p>}
             {before.yearType === 'incomplete' && t.yearType === 'incomplete' && <p class="hint">Année incomplète : la régularisation se fait en fin de contrat, pas à l’avenant.</p>}
-            {[1, 2, 3, 4, 5, 6, 7].map((d) => <PlanDay d={d} plages={t.planning[d] ?? []} onChange={(p) => set({ planning: { ...t.planning, [d]: p } as Planning })} />)}
-            <div class="banner info" style={{ marginTop: '4px' }}>
+            {/* T-076 : horaires variables, l'app ne sait pas changer un cycle ou des plannings par avenant (refus, planningVariable.ts). */}
+            {c.planningVariable && <Banner tone="warn">Tes horaires changent d’une semaine à l’autre : l’app ne sait pas encore changer le cycle, les plannings, les heures payées chaque mois ni le type d’année par un avenant. Ne change ici que le taux, l’entretien, les repas ou les kilomètres.</Banner>}
+            {!c.planningVariable && [1, 2, 3, 4, 5, 6, 7].map((d) => <PlanDay d={d} plages={t.planning[d] ?? []} onChange={(p) => set({ planning: { ...t.planning, [d]: p } as Planning })} />)}
+            {!c.planningVariable && <div class="banner info" style={{ marginTop: '4px' }}>
               <span class="b-ico"><Icon name="clock" /></span>
               <div class="b-body">
                 <span><b>{hoursLabel(wk)}</b> par semaine sur {daysPerWeek(t.planning)} jours</span>
                 <span>Soit <b>{hoursLabel(Math.round(mensuelMinutes(preview)))}</b> et <b>{joursMensualises(preview)} jours</b> par mois, pour <b>{euros(salaireMensualise(preview))}</b> net.</span>
               </div>
-            </div>
+            </div>}
           </fieldset>
         </section>
 

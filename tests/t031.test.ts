@@ -9,7 +9,7 @@ import { fiscalYear } from '../src/engine/fiscal';
 import { computeMonth, declarationLines, declarationText } from '../src/engine/month';
 import { acquisition, cpForMonth, indemnite, soldesDeDepart } from '../src/engine/conges';
 import { finDeContrat } from '../src/engine/fin';
-import { NON_GERE_CDD } from '../src/engine/nonGeres';
+import { CDD_A_COMPLETER } from '../src/engine/cdd';
 import { buildSnapshot } from '../src/partage/snapshot';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
@@ -52,7 +52,8 @@ describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
   for (const [nom, over, motif] of [
     // T-077 : l'Alsace-Moselle est calculée ; l'accueil de 47 à 51 semaines reste refusé (A-01).
     ['47 à 51 semaines (A-01)', { yearType: 'incomplete', weeks: 48 }, /47 à 51 semaines par an : non géré/],
-    ['horaires qui changent (semaines A et B)', { planningVariable: true }, /semaines A et B.*non géré/],
+    // T-076 : planning variable sans ses données (cycle ou plannings, heures payées chaque mois) : contrat à compléter.
+    ['horaires qui changent (semaines A et B), données absentes', { planningVariable: true }, /semaines A et B.*contrat à compléter/],
     ['accueil occasionnel (CCN art. 97.2)', { accueilOccasionnel: true }, /Accueil occasionnel : non géré/],
   ] as [string, Partial<Contract>, RegExp][]) {
     it(`${nom} : mois refusé, aucune case, aucun montant envoyé`, () => {
@@ -100,7 +101,8 @@ describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
   });
   it('fin de contrat : aucun montant', () => {
     const f = finDeContrat(makeCtx(ok({ planningVariable: true }), [], [], '2026-10-31'), '2026-10-15', 'retrait');
-    expect(f.nonGere?.join(' ')).toMatch(/non géré/);
+    // T-076 : planning variable sans ses données : « à compléter », aucun montant.
+    expect(f.nonGere?.join(' ')).toMatch(/à compléter/);
     expect(f.indemniteRupture + f.cpIndemnite + f.regularisation + f.indemnitePreavis).toBe(0);
   });
   it('compteur fiscal : mois refusés non comptés et signalés', () => {
@@ -173,17 +175,18 @@ describe('T-033 : CDD (cas officiel C-FIN-11, décision du DG du 18/11/2026 : qu
     const f = finDeContrat(makeCtx(ok({ start: '2026-01-05', trackedFrom: '2026-01-05' }), [], [], '2026-12-31'), '2026-10-14', 'retrait');
     expect(f.nonGere).toBeUndefined();
   });
-  it('CDD : mois et fin de contrat refusés, sans montant', () => {
+  // T-076 (22/11/2026) : le CDD est calculé (regles/t076-cdd.md). Seul le CDD sans date de fin prévue reste refusé.
+  it('CDD sans date de fin prévue : mois et fin de contrat refusés, sans montant', () => {
     const c = ok({ start: '2026-01-05', trackedFrom: '2026-01-05', cdd: true });
-    const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-14', 'retrait');
-    expect(f.nonGere).toContain(NON_GERE_CDD);
-    expect(f.indemniteRupture + f.regularisation + f.cpIndemnite).toBe(0);
+    const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-14', 'fin_cdd');
+    expect(f.nonGere?.length).toBeGreaterThan(0);
+    expect(f.indemniteRupture + f.regularisation + f.cpIndemnite + (f.ifc ?? 0)).toBe(0);
     const r = monthBase(makeCtx(c, [], [], '2026-12-31'), '2026-03');
-    expect(r.nonGere).toContain(NON_GERE_CDD);
-    // Urssaf : « Dans le cas d'un contrat à durée déterminée (CDD), vous devez verser [...] « indemnité de précarité » »
-    expect(NON_GERE_CDD).toMatch(/CDD\) : non géré/);
-    expect(NON_GERE_CDD).toMatch(/précarité/);
-    expect(NON_GERE_CDD).not.toMatch(/€|%/);
+    expect(r.nonGere).toContain(CDD_A_COMPLETER);
+  });
+  it('CDD avec sa date de fin prévue : les mois sont calculés', () => {
+    const c = ok({ start: '2026-01-05', trackedFrom: '2026-01-05', cdd: true, cddTerme: '2026-10-30' });
+    expect(monthBase(makeCtx(c, [], [], '2026-12-31'), '2026-03').nonGere).toEqual([]);
   });
   it('sans réponse à la question CDI ou CDD : contrat à compléter, rien calculé', () => {
     const c = ok({ start: '2026-01-05', trackedFrom: '2026-01-05', cdd: undefined });
