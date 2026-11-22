@@ -77,8 +77,9 @@ def semaine_prevue(lundi, cycle=None, cycle_ancre=None, plannings_semaines=None)
     S2 (CCN 98.1.2 : planning ecrit remis) : planning saisi pour ce lundi. Une
     semaine sans planning saisi : refus PV-SEMAINE-SANS-PLANNING (donnee
     manquante, rien n'est devine ; CCN 111 et 48.1.1.3 renvoient au planning).
-    Une semaine prevue au-dela de 45 h (dans le cycle ou dans n'importe quel planning
-    saisi) : refus PV-SEMAINE-PREVUE-PLUS-45H pour tout le contrat (P-PV-3).
+    Une semaine prevue au-dela de 45 h : refus PV-SEMAINE-PREVUE-PLUS-45H (P-PV-3) ;
+    S1 : toute semaine type du cycle au-dela de 45 h refuse tout le contrat (le cycle
+    se repete) ; S2 : seule la semaine concernee est refusee (les mois qu'elle touche).
     Sortie : forme (S1/S2), index (S1), minutes_par_jour, minutes_semaine."""
     regles = ["R-PV-02", "R-PV-04"]
     _lundi(lundi, "lundi")
@@ -96,19 +97,20 @@ def semaine_prevue(lundi, cycle=None, cycle_ancre=None, plannings_semaines=None)
                                                  "minutes_semaine": _total(p)})
     cles = {}
     for k, v in plannings_semaines.items():
-        cles[_lundi(k, "plannings_semaines (cle)")] = _planning(v, f"planning du {k}")
-    # P-PV-3 : une semaine prevue au-dela de 45 h refuse tout le contrat (decisions, 1).
-    _refus_plus_45h([(f"semaine du {l.isoformat()}", p) for l, p in sorted(cles.items())], regles)
+        cles[_lundi(k, "plannings_semaines (cle)")] = v
     if lundi not in cles:
         raise NonGere("PV-SEMAINE-SANS-PLANNING", regles + ["R-PV-08", "R-PV-09", "P-PV-4"],
                       precision=f"Planning de la semaine du {lundi.isoformat()} non saisi.")
-    p = cles[lundi]
+    p = _planning(cles[lundi], f"planning du {lundi.isoformat()}")
+    # P-PV-3 (decisions, 1) : en S2, seule la semaine prevue au-dela de 45 h est refusee, donc les mois
+    # qu'elle touche ; en S1 le cycle se repete, tout le contrat est refuse (controle du cycle ci-dessus).
+    _refus_plus_45h([(f"semaine du {lundi.isoformat()}", p)], regles)
     return resultat_ok(regles, {"forme": "S2", "minutes_par_jour": p, "minutes_semaine": _total(p)})
 
 
 @api("R-PV-01", "R-PV-03", "P-PV-1", "P-PV-2", "R-MENS-02")
 def mensualisation_planning_variable(semaines_programmees, heures_mensualisees, taux_horaire_centimes,
-                                     cycle=None, date_paie=None, plannings_semaines=None):
+                                     cycle=None, date_paie=None):
     """Salaire mensualise d'un contrat a planning variable.
     - CCN 108.1 (mensualise « quels que soient le nombre d'heures de travail par
       semaine ») et CASF L423-19 al. 2 : jamais paye au reel (R-PV-01).
@@ -121,7 +123,8 @@ def mensualisation_planning_variable(semaines_programmees, heures_mensualisees, 
     - Lecture : heures mensualisees >= total prevu / 12 (a 1 minute pres) ->
       L1 + H1 (HC sur le prevu de la semaine) ; sinon L2 + H2, base hebdomadaire
       B = heures mensualisees x 12 / semaines programmees (P-PV-1, P-PV-2).
-    S2 : plannings_semaines (facultatif) sert au seul controle des 45 h prevues.
+    S2 : la base vient des seules heures mensualisees du contrat (decisions, 1) ; une
+    semaine prevue au-dela de 45 h est refusee par semaine_prevue, mois par mois.
     Refus : A-01 (47 a 51 semaines), PV-SEMAINE-PREVUE-PLUS-45H (P-PV-3).
     Sortie : salaire_mensualise_centimes, heures_mensualisees, lecture,
     base_hebdo_minutes (L2), total_prevu_mensuel_minutes, note."""
@@ -143,9 +146,6 @@ def mensualisation_planning_variable(semaines_programmees, heures_mensualisees, 
         moyenne = Fraction(sum(_total(p) for p in types), len(types))
         total_mensuel = moyenne * semaines_programmees / 12
     else:
-        if plannings_semaines:
-            _refus_plus_45h([(f"semaine du {k}", _planning(v, f"planning du {k}"))
-                             for k, v in plannings_semaines.items()], regles)
         total_mensuel = hm_min  # S2 : moyenne ecrite au contrat (decisions, 1)
     if hm_min >= total_mensuel - 1:
         lecture, base = "L1", None

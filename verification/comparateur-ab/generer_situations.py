@@ -517,9 +517,17 @@ def officiels():
                    "cle": "iccp_centimes"}],
                  contrat=complet(P5x9, 400, debut="2025-09-01", fin="2026-08-31"),
                  evenements={"absences_am": [conge("cp", "2026-06-08", "2026-06-27")]}))
+    # T-076 (direction) : A calcule la fin de CDD (decisions, section 2). Contrat du 01/01 au 28/02/2026 choisi pour
+    # un salaire mensuel de 800 EUR : 4 jours (lundi, mardi, mercredi, vendredi ; le 1er janvier, jeudi, n'est pas
+    # travaille) de 9 h 24, 4,91 EUR : 37,6 h x 52 / 12 x 4,91 = 800,0027 EUR, 800,00 EUR au centime (ARR-01).
     S.append(off("C-FIN-11", "fin de contrat", {"precarite": 16000},
-                 [{"type": "absent", "sorties": ["precarite"], "note": "A ne gère pas le CDD (indemnité de précarité)."}],
-                 [{"sortie": "precarite", "fonction": "indemnite_precarite_cdd", "args": [160000], "cle": "indemnite_centimes"}]))
+                 [{"type": "fin", "date": "2026-02-28", "motif": "fin_cdd", "fin_cdd": "terme",
+                   "renommer": R(ifc="precarite"), "sorties": ["ifc"]}],
+                 [{"sortie": "precarite", "fonction": "indemnite_precarite_cdd", "args": [160000], "cle": "indemnite_centimes"}],
+                 contrat={"debut": "2026-01-01", "fin": "2026-02-28", "type_annee": "complete", "semaines": 52,
+                          "planning": semaine([1, 2, 3, 5], "08:00", "17:24"), "taux": 491, "majoration_hm": 10,
+                          "cdd": True, "cdd_terme": "2026-02-28", "cdd_motif": "remplacement"},
+                 note="Exemple Urssaf (Virginie) : 800 EUR brut par mois du 1er janvier au 28 février."))
     S.append(off("C-FIN-12", "fin de contrat", {"jours_a_indemniser": 0},
                  [{"type": "absent", "non_comparable": True, "sorties": ["jours_a_indemniser"],
                    "note": "Non comparable : A ne sort pas l'ICCP ni les jours période par période."}],
@@ -1142,7 +1150,8 @@ def situations_t076():
                  [mois("sep", "2026-09"), mois("oct", "2026-10")],
                  theme="planning remis, une semaine de septembre sans planning saisi", marques=m))
     S.append(sit("PV-C52-S2-PLUS45H", "planning variable", contrat_pv_s2("C52", dict(pl, **{"2026-10-12": PV_A50}), 130),
-                 [mois("m", "2026-09")], theme="planning remis, une semaine prévue de 50 h", marques=m))
+                 [mois("m", "2026-09"), mois("oct", "2026-10")],
+                 theme="planning remis, une semaine prévue de 50 h en octobre (seul octobre est refusé)", marques=m))
     off_s2 = ["2026-10-19", "2026-10-26"]
     pl_i = dict(pl, **{l: {} for l in off_s2})
     S.append(sit("PV-I36-S2-S01", "planning variable",

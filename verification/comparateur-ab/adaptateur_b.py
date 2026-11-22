@@ -224,6 +224,10 @@ class Ctx:
 
 # ------------------------------------------------------------------ qualification d'un jour
 
+# Refus d'un jour qui empechent de savoir s'il est travaille : les sorties qui en dependent sont refusees, jamais
+# mises a 0 par defaut. T-076 : planning variable (semaine sans planning, semaine prevue au-dela de 45 h).
+REFUS_BLOQUANTS = ("HORS-COMPARATEUR", "PV-SEMAINE-SANS-PLANNING", "PV-SEMAINE-PREVUE-PLUS-45H")
+
 _TYPE_AM = {"am_malade": "am_maladie", "am_enfant_malade": "am_enfant_malade",
             "sans_solde": "am_convenance_personnelle", "evenement": "am_evenement_familial"}
 
@@ -426,13 +430,11 @@ def mensualise(ctx):
                 # T-076 (R-PV-03, P-PV-1) : heures mensualisees du contrat ; lecture L1 ou L2 donnee par B.
                 def mins(pl):
                     return {j: sum(b - a for a, b in p) for j, p in pl.items()}
-                cyc = sem = None
+                cyc = None
                 if ctx.pv_cycle is not None:
                     cyc = [mins(pl) for pl in ctx.pv_cycle]
-                else:
-                    sem = {l: mins(pl) for l, pl in ctx.pv_semaines.items()}
                 r = appel("mensualisation_planning_variable", ctx.semaines, str(ctx.k["heures_mensualisees"]),
-                          ctx.taux, cycle=cyc, plannings_semaines=sem)
+                          ctx.taux, cycle=cyc)
                 ctx.pv_lecture = r["resultat"]["lecture"]
                 ctx.pv_base = r["resultat"]["base_hebdo_minutes"]
             elif ctx.cdd and ctx.type == "complete":
@@ -550,7 +552,7 @@ def mois_b(ctx, m):
                 else:
                     q = qual[d]
                 if isinstance(q, Refus):
-                    if q.code == "HORS-COMPARATEUR":
+                    if q.code in REFUS_BLOQUANTS:
                         raise q
                     # Jour non travaille dont la paie est refusee par B : c'est bien une absence dans la semaine.
                     q = ("absence", None, 0)
@@ -599,6 +601,8 @@ def mois_b(ctx, m):
         for d in jours:
             q = qual[d]
             if isinstance(q, Refus):
+                if q.code in REFUS_BLOQUANTS[1:]:
+                    raise q  # T-076 : planning refuse, ferie travaille inconnu
                 continue
             if q[0] == "ferie_travaille":
                 appel("ferie_travaille", d)
@@ -635,8 +639,8 @@ def mois_b(ctx, m):
         for d in jours:
             q = qual[d]
             if isinstance(q, Refus):
-                if q.code == "HORS-COMPARATEUR":
-                    raise q
+                if q.code in REFUS_BLOQUANTS:
+                    raise q  # T-076 : planning inconnu ou refuse : le jour n'est pas qualifie, rien n'est mis a 0
                 continue  # jour d'absence ou ferie chome : pas de travail effectif (R-ABS-10)
             if q[0] in ("travaille", "ferie_travaille") and q[2] > 0:
                 res.append((d, q[2]))
@@ -844,7 +848,7 @@ def indemnite_b(ctx, y):
                 pris += decompte_b(ctx, l["du"], reprise)
                 jours_c += sum(ctx.prevu(x) for x in jours_entre(l["du"], l["au"]) if not est_ferie(x))
             hc = jours_c if pris == j else None
-            r = appel("indemnite_cp_planning_variable", j, ctx.taux, hp, max(n, 1), hc, sal, icp_pendant, icp_prec)
+            r = appel("indemnite_cp_planning_variable", j, ctx.taux, hp, n, hc, sal, icp_pendant, icp_prec)
             res = {"indemnite_cp": Lect(r["resultat"]["indemnite_centimes"], r["resultat"]["lectures"]),
                    "maintien_cp": Refus("P-PV-5", "maintien"), "ind": r}
         else:
@@ -1262,15 +1266,19 @@ def fin_cdd_b(ctx, k):
                 pj["icp_versee_pendant_periode_centimes"] = pend
                 if isinstance(ja, Refus):
                     pj["jours_acquis"], pj["code_jours"] = None, ja.code
-                    payes = 0
                 else:
                     pj["jours_acquis"] = ja
-                    q0 = date(yy + 1, 6, 1)
-                    if cv.type == "complete":
-                        payes = sum(decompte_b(cv, l["du"], l["au"] + timedelta(days=1)) for l in cv.conges
-                                    if l["type"] == "cp" and q0 <= l["du"] <= fin)
-                    else:
-                        payes = ja if fin >= q0 and cv.k.get("cp_mode", "juin") == "juin" else 0
+                # Jours deja payes : faits du contrat (conges pris en 52 semaines, paiement de juin en 46 semaines).
+                q0 = date(yy + 1, 6, 1)
+                if cv.type == "complete":
+                    payes = sum(decompte_b(cv, l["du"], l["au"] + timedelta(days=1)) for l in cv.conges
+                                if l["type"] == "cp" and q0 <= l["du"] <= fin)
+                elif fin >= q0:
+                    if isinstance(ja, Refus):
+                        raise ja  # jours payes en juin inconnus : rien n'est suppose
+                    payes = ja
+                else:
+                    payes = 0
                 pj["jours_payes"] = payes
                 periodes.append(pj)
             if periodes:
