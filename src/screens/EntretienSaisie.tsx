@@ -20,14 +20,14 @@ export function EntretienSaisie({ t, set, hint, passe }: { t: Valeurs; set: (p: 
   const mode = modeEntretien(t);
   return (
     <>
-      <Choices label="Indemnité d’entretien : comment le contrat la fixe-t-il ?" value={mode}
+      <Choices label="Comment ton contrat fixe-t-il l’indemnité d’entretien ?" value={mode}
         options={[
-          { v: 'heure', l: 'Par heure', sub: 'Un montant par heure : chaque jour, il suit la durée réelle. C’est ce que prévoit la convention (article 114.1).' },
-          { v: 'jour', l: 'Par jour', sub: 'Un montant par jour : si une journée est plus longue ou plus courte que le planning, une partie restera « à confirmer ».' },
+          { v: 'heure', l: 'Par heure d’accueil', sub: 'Le montant suit la durée réelle de chaque journée, comme le prévoit la convention (article 114.1).' },
+          { v: 'jour', l: 'Par jour d’accueil', sub: 'Un montant fixe par journée. Si une journée est plus longue ou plus courte que le planning, une partie du montant reste « à confirmer ».' },
         ]}
         onChange={(v) => set({ entretienMode: v, entretienJour: 0, entretienHeure: 0 })} />
-      {mode === 'heure' && <EuroInput key="h" label="Montant par heure" hint={hint} cents={t.entretienHeure || undefined} allowEmpty onChange={(v) => set({ entretienHeure: v ?? 0, entretienJour: 0 })} />}
-      {mode === 'jour' && <EuroInput key="j" label="Montant par jour" hint={hint} cents={t.entretienJour} onChange={(v) => set({ entretienJour: v ?? 0, entretienHeure: 0 })} />}
+      {mode === 'heure' && <EuroInput key="h" label="Montant par heure d’accueil" hint={hint} cents={t.entretienHeure || undefined} allowEmpty onChange={(v) => set({ entretienHeure: v ?? 0, entretienJour: 0 })} />}
+      {mode === 'jour' && <EuroInput key="j" label="Montant par jour d’accueil" hint={hint} cents={t.entretienJour} onChange={(v) => set({ entretienJour: v ?? 0, entretienHeure: 0 })} />}
       {passe && <Banner tone="warn">Ce changement touche des mois déjà passés : leur indemnité d’entretien sera recalculée. {MESSAGE_MOIS_DEJA_DECLARE}</Banner>}
     </>
   );

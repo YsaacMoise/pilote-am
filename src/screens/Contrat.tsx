@@ -14,6 +14,8 @@ import { PartageCard } from './PartageCard';
 import { de } from '../engine/texte';
 import { PAJEMPLOI_PLUS_AIDE } from '../legal';
 import { NON_GERE_47_51, nonGeresContrat, semaines4751 } from '../engine/nonGeres';
+import { DEPARTEMENTS, libelleDepartement, reponseSaisie, trouverDepartement } from '../engine/departements';
+import { AIDE_ANNEE, AIDE_COMPLEMENTAIRES, AIDE_SEMAINES } from './textes-contrat';
 
 const ouiNon = (b: boolean | undefined): 'oui' | 'non' | undefined => (b === undefined ? undefined : b ? 'oui' : 'non');
 
@@ -100,9 +102,9 @@ export function Contrat({ id }: { id?: string }) {
     // la régularisation n'est pas calculée tant qu'une année terminée en manque.
     if (c.end && c.end < c.start) errs.push('La date de fin est avant le début.');
     if (c.repasParents === undefined) errs.push('Indique qui fournit les repas de l’enfant.');
-    if (c.alsaceMoselle === undefined) errs.push('Indique où tu travailles (Alsace-Moselle ou non).');
-    if (c.planningVariable === undefined) errs.push('Indique si les horaires sont les mêmes chaque semaine.');
-    if (c.accueilOccasionnel === undefined) errs.push('Indique si l’accueil est régulier.');
+    if (c.alsaceMoselle === undefined) errs.push('Indique le département où tu accueilles l’enfant.');
+    if (c.planningVariable === undefined) errs.push('Indique si le planning est le même chaque semaine.');
+    if (c.accueilOccasionnel === undefined) errs.push('Indique si l’accueil est régulier ou occasionnel.');
     if (c.cdd === undefined) errs.push('Indique si le contrat est un CDI ou un CDD.');
     // T-044b : choix explicite du mode de l'indemnité d'entretien sur un nouveau contrat.
     if (isNew && !c.entretienMode) errs.push('Indique si l’indemnité d’entretien est fixée par heure ou par jour.');
@@ -146,7 +148,7 @@ export function Contrat({ id }: { id?: string }) {
           <fieldset>
             <legend>L’enfant accueilli</legend>
             <TextInput label="Prénom de l’enfant" value={c.child} onChange={(v) => set({ child: v })} autoComplete="off" />
-            <TextInput label="Nom de la famille" hint="Le parent qui t’emploie et déclare sur Pajemploi" value={c.family} onChange={(v) => set({ family: v })} />
+            <TextInput label="Nom de la famille" hint="Celui du parent qui t’emploie et te déclare sur Pajemploi" value={c.family} onChange={(v) => set({ family: v })} />
             <div class="field">
               <span class="label" id="col-l">Sa couleur</span>
               <div class="couleurs" role="radiogroup" aria-labelledby="col-l">
@@ -174,26 +176,26 @@ export function Contrat({ id }: { id?: string }) {
         <section class="card">
           <fieldset>
             <legend>Le contrat</legend>
-            <DateInput label="Date de début réelle" hint="Le premier jour d’accueil, même si c’était il y a longtemps" value={c.start} onChange={(v) => set({ start: v })} />
-            {!isNew && <DateInput label="Date de fin (si le contrat est terminé)" hint="Mieux : passe par l’écran Fin de contrat, qui enregistre aussi la lettre et le préavis. Sans eux, les derniers mois ne sont pas calculés." value={c.end ?? ''} onChange={(v) => set({ end: v || undefined })} />}
-            <Seg label="Accueil sur l’année" value={c.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(c.weeks, 46) || 46 })}
-              options={[{ v: 'complete', l: 'Toute l’année (52 sem.)' }, { v: 'incomplete', l: 'Année incomplète' }]} />
+            <DateInput label="Premier jour d’accueil" hint="Le vrai premier jour, même s’il remonte à plusieurs années" value={c.start} onChange={(v) => set({ start: v })} />
+            {!isNew && <DateInput label="Date de fin du contrat" hint="Seulement si le contrat est terminé. Mieux : passe par l’écran Fin de contrat, qui note aussi la lettre et le préavis ; sans eux, les derniers mois ne sont pas calculés." value={c.end ?? ''} onChange={(v) => set({ end: v || undefined })} />}
+            <Seg label="Année complète ou incomplète ?" value={c.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(c.weeks, 46) || 46 })}
+              options={[{ v: 'complete', l: 'Année complète' }, { v: 'incomplete', l: 'Année incomplète' }]} />
+            <p class="hint">{AIDE_ANNEE}</p>
             {c.yearType === 'incomplete' && (
               <>
-                <NumberInput label="Semaines d’accueil par an" hint="46 au plus, sans compter tes congés payés" value={c.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />
+                <NumberInput label="Semaines d’accueil prévues au contrat" hint={AIDE_SEMAINES} value={c.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />
                 {semaines4751(c.yearType, c.weeks) && <Banner tone="warn">{NON_GERE_47_51}</Banner>}
                 <WeeksOff c={c} onChange={(w) => set({ weeksOff: w })} />
               </>
             )}
             {/* T-031 : cas que l'app ne gère pas. Une réponse est demandée : sans elle, l'app ne sait pas si ses montants valent. */}
-            <Choices label="Où travailles-tu ?" value={c.mayotte ? 'mayotte' : ouiNon(c.alsaceMoselle)} onChange={(v) => set({ alsaceMoselle: v === 'oui', mayotte: v === 'mayotte' })}
-              options={[{ v: 'non', l: 'Ailleurs en France (hors Mayotte)' }, { v: 'oui', l: 'Bas-Rhin, Haut-Rhin ou Moselle', sub: 'Alsace-Moselle : non géré par l’app' }, { v: 'mayotte', l: 'Mayotte', sub: 'Non géré par l’app' }]} />
-            <Choices label="Les horaires sont-ils les mêmes chaque semaine ?" value={ouiNon(c.planningVariable === undefined ? undefined : !c.planningVariable)} onChange={(v) => set({ planningVariable: v === 'non' })}
-              options={[{ v: 'oui', l: 'Oui, la même semaine type', sub: 'Sans compter les semaines sans accueil' }, { v: 'non', l: 'Non, ils changent', sub: 'Semaines A et B, planning remis chaque mois : non géré par l’app' }]} />
-            <Choices label="L’accueil est-il régulier ?" value={ouiNon(c.accueilOccasionnel === undefined ? undefined : !c.accueilOccasionnel)} onChange={(v) => set({ accueilOccasionnel: v === 'non' })}
-              options={[{ v: 'oui', l: 'Oui, régulier' }, { v: 'non', l: 'Non, occasionnel', sub: 'Court et sans régularité (article 97.2 de la convention) : non géré par l’app' }]} />
-            <Choices label="Quel type de contrat ?" value={ouiNon(c.cdd)} onChange={(v) => set({ cdd: v === 'oui' })}
-              options={[{ v: 'non', l: 'CDI', sub: 'Contrat à durée indéterminée, sans date de fin prévue' }, { v: 'oui', l: 'CDD', sub: 'Contrat à durée déterminée : non géré par l’app' }]} />
+            <ChoixDepartement c={c} set={set} />
+            <Choices label="Le planning est-il le même chaque semaine ?" value={ouiNon(c.planningVariable === undefined ? undefined : !c.planningVariable)} onChange={(v) => set({ planningVariable: v === 'non' })}
+              options={[{ v: 'oui', l: 'Oui, une semaine type qui se répète', sub: 'Les semaines sans accueil prévues au contrat ne comptent pas.' }, { v: 'non', l: 'Non, il change d’une semaine à l’autre', sub: 'Semaines A et B, ou planning remis chaque mois. Arvela ne calcule pas encore ce cas.' }]} />
+            <Choices label="L’accueil est-il régulier ou occasionnel ?" value={ouiNon(c.accueilOccasionnel === undefined ? undefined : !c.accueilOccasionnel)} onChange={(v) => set({ accueilOccasionnel: v === 'non' })}
+              options={[{ v: 'oui', l: 'Régulier', sub: 'L’enfant vient selon le planning du contrat.' }, { v: 'non', l: 'Occasionnel', sub: 'Accueil court, sans rythme fixe (article 97.2 de la convention). Arvela ne calcule pas encore ce cas.' }]} />
+            <Choices label="CDI ou CDD ?" value={ouiNon(c.cdd)} onChange={(v) => set({ cdd: v === 'oui' })}
+              options={[{ v: 'non', l: 'CDI', sub: 'Contrat à durée indéterminée : aucune date de fin n’est prévue.' }, { v: 'oui', l: 'CDD', sub: 'Contrat à durée déterminée : la date de fin est écrite au contrat. Arvela ne calcule pas encore ce cas.' }]} />
             {nonGeresContrat(c).map((t) => <Banner tone="warn">{t}</Banner>)}
           </fieldset>
         </section>
@@ -233,24 +235,27 @@ export function Contrat({ id }: { id?: string }) {
             <Choices label="Qui fournit les repas de l’enfant ?" value={c.repasParents === undefined ? undefined : c.repasParents ? 'parents' : 'am'}
               onChange={(v) => set(v === 'parents' ? { repasParents: true, repasPrix: 0, repasParJour: 0 } : { repasParents: false })}
               options={[
-                { v: 'am', l: 'Moi', sub: 'Les parents me paient les repas' },
-                { v: 'parents', l: 'Les parents', sub: `À ajouter à tes revenus pour les impôts (${repasAvantageAu(today()) !== undefined ? `${eurosTexte(repasAvantageAu(today())!)} par jour en ${today().slice(0, 4)}` : `valeur de ${today().slice(0, 4)} pas encore dans l’app`}), l’app le compte` },
+                { v: 'am', l: 'Moi', sub: 'Les parents te paient chaque repas, au prix du contrat.' },
+                { v: 'parents', l: 'Les parents', sub: `Pour tes impôts, l’app ajoute l’avantage repas à tes revenus (${repasAvantageAu(today()) !== undefined ? `${eurosTexte(repasAvantageAu(today())!)} par jour en ${today().slice(0, 4)}` : `montant de ${today().slice(0, 4)} pas encore connu de l’app`}).` },
               ]} />
             {c.repasParents === false && (
               <div class="grid2">
                 <EuroInput label="Prix d’un repas" cents={c.repasPrix} onChange={(v) => set({ repasPrix: v ?? 0 })} />
-                <NumberInput label="Repas par jour" value={c.repasParJour} max={4} onChange={(v) => set({ repasParJour: v ?? 0 })} />
+                <NumberInput label="Repas fournis par jour" value={c.repasParJour} max={4} onChange={(v) => set({ repasParJour: v ?? 0 })} />
               </div>
             )}
-            <EuroInput label="Indemnité kilométrique (par km)" hint="0 si tu ne transportes pas l’enfant" cents={c.kmTaux} onChange={(v) => set({ kmTaux: v ?? 0 })} />
-            {c.kmTaux > 0 && <NumberInput label="Puissance fiscale de ta voiture (CV)" hint="Sur la carte grise. Sert à vérifier le tarif : entre le barème de l’administration et le barème fiscal (article 57)." value={c.kmCv} min={1} max={30} onChange={(v) => set({ kmCv: v || undefined })} />}
-            <NumberInput label="Majoration après 45 h par semaine (%)" hint="10 % au minimum" value={c.majoration} min={10} max={100} onChange={(v) => set({ majoration: v ?? 10 })} />
-            <NumberInput label="Majoration des heures complémentaires (%)" hint="Heures en plus jusqu’à 45 h par semaine. Seulement si ton contrat la prévoit, sinon laisse 0." value={c.majorationCompl ?? 0} min={0} max={100} onChange={(v) => set({ majorationCompl: v ?? 0 })} />
+            <EuroInput label="Indemnité kilométrique, par km" hint="Laisse 0 si tu ne transportes pas l’enfant en voiture." cents={c.kmTaux} onChange={(v) => set({ kmTaux: v ?? 0 })} />
+            {c.kmTaux > 0 && <NumberInput label="Puissance fiscale de ta voiture (CV)" hint="Sur la carte grise (case P.6). L’app vérifie que ton tarif est compris entre le barème de l’administration et le barème fiscal (article 57 de la convention)." value={c.kmCv} min={1} max={30} onChange={(v) => set({ kmCv: v || undefined })} />}
+            <NumberInput label="Majoration des heures au-delà de 45 h par semaine (%)" hint="Le taux de ton contrat : 10 % au moins." value={c.majoration} min={10} max={100} onChange={(v) => set({ majoration: v ?? 10 })} />
+            <NumberInput label="Majoration des heures complémentaires (%)" hint={AIDE_COMPLEMENTAIRES} value={c.majorationCompl ?? 0} min={0} max={100} onChange={(v) => set({ majorationCompl: v ?? 0 })} />
             {c.yearType === 'incomplete' && (
-              <Seg label="Paiement des congés payés" value={c.cpMode} onChange={(v) => set({ cpMode: v })}
-                options={[{ v: 'juin', l: 'En juin' }, { v: 'principale', l: 'À la prise principale' }, { v: 'fur', l: 'Au fur et à mesure' }]} />
+              <Seg label="Quand tes congés payés te sont-ils versés ?" value={c.cpMode} onChange={(v) => set({ cpMode: v })}
+                options={[{ v: 'juin', l: 'En juin' }, { v: 'principale', l: 'Congé principal' }, { v: 'fur', l: 'Au fur et à mesure' }]} />
             )}
-            <Switch label="Enfant en situation de handicap ou de maladie" hint="Abattement fiscal majoré (4 SMIC par jour au lieu de 3)" checked={c.majoreFiscal} onChange={(v) => set({ majoreFiscal: v })} />
+            {c.yearType === 'incomplete' && (
+              <p class="hint">Comme écrit au contrat : en une fois en juin, lors de la prise du congé principal, ou au fur et à mesure des congés pris.</p>
+            )}
+            <Switch label="Enfant en situation de handicap ou de maladie" hint="Pour tes impôts : abattement majoré de 4 SMIC horaires par jour d’accueil, au lieu de 3." checked={c.majoreFiscal} onChange={(v) => set({ majoreFiscal: v })} />
             <Switch label="Les parents ont adhéré à Pajemploi+" hint={PAJEMPLOI_PLUS_AIDE} checked={!!c.pajemploiPlus} onChange={(v) => set({ pajemploiPlus: v })} />
           </fieldset>
         </section>
@@ -273,7 +278,7 @@ export function Contrat({ id }: { id?: string }) {
                   <NumberInput label="Congés en cours d’acquisition (jours)" hint="Acquis depuis le 1er juin, avant le suivi par l’app" value={c.balances.cpEnCours} step={0.5} max={30} onChange={(v) => set({ balances: { ...c.balances, cpEnCours: v ?? 0 } })} />
                 </>
               )}
-              <NumberInput label="Jours d’enfant malade déjà déduits" hint="Sur l’année de contrat en cours (5 au plus)" value={c.balances.maladieDeduits} max={14} onChange={(v) => set({ balances: { ...c.balances, maladieDeduits: v ?? 0 } })} />
+              <NumberInput label="Jours d’absence de l’enfant malade déjà déduits" hint="Avec certificat médical, retenus sur ton salaire depuis le début de l’année de contrat en cours" value={c.balances.maladieDeduits} max={14} onChange={(v) => set({ balances: { ...c.balances, maladieDeduits: v ?? 0 } })} />
               {!isNew && <a class="btn btn-outline" href={`#/historique/${c.id}`}><Icon name="file" />Bulletins passés ({c.history.length})</a>}
             </fieldset>
           </section>
@@ -295,6 +300,33 @@ export function Contrat({ id }: { id?: string }) {
         )}
       </main>
     </>
+  );
+}
+
+/**
+ * T-079 : « Dans quel département accueilles-tu l'enfant ? » (liste, recherche par saisie). Le département est enregistré ;
+ * alsaceMoselle et mayotte en sont déduits, comme le faisaient les trois choix d'avant. Un contrat saisi avant garde sa
+ * réponse : l'écran propose de préciser le département sans bloquer le calcul.
+ */
+function ChoixDepartement({ c, set }: { c: Contract; set: (p: Partial<Contract>) => void }) {
+  // Réponse trouvée à l'ouverture : un contrat d'avant la T-079 la retrouve si la saisie ne mène à aucun département.
+  const [origine] = useState(() => ({ departement: c.departement, alsaceMoselle: c.alsaceMoselle, mayotte: c.mayotte }));
+  const [saisie, setSaisie] = useState(c.departement ? libelleDepartement(c.departement) : '');
+  const inconnu = saisie.trim() !== '' && !trouverDepartement(saisie);
+  const ancien = !c.departement && c.alsaceMoselle !== undefined;
+  return (
+    <div class="field">
+      <label for="departement">Dans quel département accueilles-tu l’enfant ?</label>
+      <input id="departement" class="input" list="departements-liste" value={saisie} autoComplete="off" placeholder="Numéro ou nom : 75 ou Paris"
+        aria-invalid={inconnu ? 'true' : undefined} aria-describedby="departement-h"
+        onInput={(e) => {
+          const v = (e.target as HTMLInputElement).value;
+          setSaisie(v);
+          set(reponseSaisie(v, origine));
+        }} />
+      <datalist id="departements-liste">{DEPARTEMENTS.map((d) => <option value={`${d.code} – ${d.nom}`} />)}</datalist>
+      <span class={inconnu ? 'err' : 'hint'} id="departement-h" aria-live="polite">{inconnu ? 'Choisis un département dans la liste.' : ancien ? 'Précise ton département quand tu peux. En attendant, le calcul garde ta réponse d’avant.' : 'Tape le numéro ou le nom, puis choisis dans la liste.'}</span>
+    </div>
   );
 }
 

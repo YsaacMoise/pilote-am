@@ -227,7 +227,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
         <section class="card">
           <fieldset>
             <legend>L’accueil</legend>
-            <Seg label="Horaires" value={parJour ? 'differents' : 'identiques'} options={[{ v: 'identiques', l: 'Les mêmes chaque jour' }, { v: 'differents', l: 'Selon les jours' }]}
+            <Seg label="Horaires d’accueil" value={parJour ? 'differents' : 'identiques'} options={[{ v: 'identiques', l: 'Les mêmes chaque jour' }, { v: 'differents', l: 'Selon les jours' }]}
               onChange={(v) => { if (v === 'identiques' && !horairesIdentiques(i.planning)) plagesIdentiques(modele); setParJour(v === 'differents'); }} />
             {!parJour ? (
               <>
@@ -257,9 +257,9 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             {r.depasseAnnuel && <Banner tone="warn">Ce planning dépasse {nf.format(HEURES_MAX_AN)} h par an, même avec l’accord de l’assistante maternelle : {hoursLabel(Math.round(r.heuresMax * 60))} par semaine au plus sur {r.semainesGarde} semaines travaillées.</Banner>}
             {r.accordNecessaire && <Banner tone="info">Plus de {HEURES_SANS_ACCORD} h par semaine : l’assistante maternelle doit donner son accord écrit, et ne pas dépasser {nf.format(HEURES_MAX_AN)} h par an, tous contrats confondus.</Banner>}
             {r.heuresMajMoisMin > 0 && (
-              <NumberInput label="Majoration au-delà de 45 h (%)" hint="10 % au moins (convention collective)" value={i.majoration} min={10} max={100} onChange={(v) => set({ majoration: Math.max(10, v ?? 10) })} />
+              <NumberInput label="Majoration des heures au-delà de 45 h par semaine (%)" hint="10 % au moins (convention collective)" value={i.majoration} min={10} max={100} onChange={(v) => set({ majoration: Math.max(10, v ?? 10) })} />
             )}
-            <Seg label="Semaines d’accueil" value={i.yearType} options={[{ v: 'complete', l: '52 semaines' }, { v: 'incomplete', l: 'Moins de 52' }]} onChange={(v) => set({ yearType: v })} />
+            <Seg label="Année complète ou incomplète ?" value={i.yearType} options={[{ v: 'complete', l: 'Année complète' }, { v: 'incomplete', l: 'Année incomplète' }]} onChange={(v) => set({ yearType: v })} />
             {i.yearType === 'incomplete' && (
               <Stepper label="Semaines sans accueil, en plus des 5 semaines de congés" value={Math.max(1, i.semainesAbsence)} min={1} max={30} onChange={(v) => set({ semainesAbsence: v })} />
             )}
@@ -274,7 +274,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             <EuroInput label="Salaire horaire brut" hint={`Soit ${euros(r.tauxNet)} net. Minimum : ${euros(r.minimumBrut)} brut${minimumAmAp !== undefined ? ` (${euros(minimumAmAp)} avec le titre « Assistant maternel - garde d’enfants »)` : ''}.`} cents={i.tauxBrut} onChange={(v) => set({ tauxBrut: v ?? 0 })} />
             {r.sousMinimum && <Banner tone="warn">Ce taux est sous le minimum de la convention collective : {euros(r.minimumBrut)} brut de l’heure depuis le {dateLongue(minConvDepuis(d)!)}. {MINIMUM_SANS_TITRE}</Banner>}
             <Switch label="L’assistante maternelle travaille en Alsace-Moselle" hint="Bas-Rhin, Haut-Rhin ou Moselle : non géré par l’app, aucun résultat n’est donné." checked={i.alsaceMoselle} onChange={(v) => set({ alsaceMoselle: v })} />
-            <Seg label="Indemnité d’entretien prévue" value={i.entretienMode} options={[{ v: 'jour', l: 'Par jour' }, { v: 'heure', l: 'Par heure' }]} onChange={(v) => set({ entretienMode: v, entretien: 0 })} />
+            <Seg label="Comment l’indemnité d’entretien est-elle fixée ?" value={i.entretienMode} options={[{ v: 'heure', l: 'Par heure d’accueil' }, { v: 'jour', l: 'Par jour d’accueil' }]} onChange={(v) => set({ entretienMode: v, entretien: 0 })} />
             <EuroInput label={i.entretienMode === 'jour' ? 'Montant par jour d’accueil' : 'Montant par heure d’accueil'} allowEmpty cents={i.entretien || undefined} onChange={(v) => set({ entretien: v ?? 0 })}
               hint={`Minimum légal chaque jour : ${eurosTexte(entretienHoraireMin(d)!)} par heure d’accueil, jamais moins de ${eurosTexte(ratesConnus(d).entretienPlancherJour)}.${joursAuMinimum.length ? ` Il s’applique le ${listeJours(joursAuMinimum)}.` : ''}`} />
             <Switch label="L’assistante maternelle fournit des repas" checked={repasOuverts}
@@ -311,7 +311,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             <legend>La famille</legend>
             <p class="hint">Pour l’aide de la CAF (le CMG, complément de libre choix du mode de garde) et le crédit d’impôt.</p>
             <h3 class="sim-sous">Les parents</h3>
-            <Seg label="Le foyer" value={i.foyer} options={[{ v: 'couple', l: 'En couple' }, { v: 'seul', l: 'Parent seul' }]} onChange={(v) => set({ foyer: v })} />
+            <Seg label="Votre foyer" value={i.foyer} options={[{ v: 'couple', l: 'En couple' }, { v: 'seul', l: 'Parent seul' }]} onChange={(v) => set({ foyer: v })} />
             {i.foyer === 'seul' && <p class="hint">Parent seul : même aide de la CAF qu’un couple aux mêmes revenus, mais versée jusqu’aux 12 ans de l’enfant au lieu de 6 ans.</p>}
             <div class={i.foyer === 'couple' ? 'grid2' : ''}>
               <SelectStatut label={i.foyer === 'couple' ? 'Vous' : 'Votre situation'} value={i.statutVous} onChange={(v) => set({ statutVous: v })} />
@@ -339,14 +339,14 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
               <span class="hint">Mois et année de naissance. Chaque enfant confié a son contrat et sa propre aide de la CAF.</span>
             </div>
             <Switch label="Résidence alternée" hint={`L’enfant vit aussi chez l’autre parent. Chaque parent a sa propre aide de la CAF, calculée sur ses revenus et les heures qu’il paie : faites une simulation par parent. Crédit d’impôt : ${eurosTexte(creditMaxAlterne)} par an au plus.`} checked={i.residenceAlternee} onChange={(v) => set({ residenceAlternee: v })} />
-            <Stepper label="Nombre total d’enfants des parents" value={Math.max(i.enfantsACharge, i.enfants.length)} min={i.enfants.length} max={10} onChange={(v) => set({ enfantsACharge: v, enfantsAeeh: Math.min(i.enfantsAeeh, v) })} />
-            <p class="hint">Tous les enfants de moins de 20 ans à la charge des parents, confiés ou non : {i.enfants.length > 1 ? 'les enfants confiés' : 'l’enfant confié'}, ses frères et sœurs. Plus il y en a, plus l’aide de la CAF est élevée.</p>
+            <Stepper label="Nombre d’enfants à votre charge" value={Math.max(i.enfantsACharge, i.enfants.length)} min={i.enfants.length} max={10} onChange={(v) => set({ enfantsACharge: v, enfantsAeeh: Math.min(i.enfantsAeeh, v) })} />
+            <p class="hint">Tous vos enfants de moins de 20 ans à charge, confiés ou non : {i.enfants.length > 1 ? 'les enfants confiés' : 'l’enfant confié'}, ses frères et sœurs. Plus il y en a, plus l’aide de la CAF est élevée.</p>
             {(() => {
               const total = Math.max(i.enfantsACharge, i.enfants.length);
               const confies = i.enfants.length;
               return <p class="sim-resume">{total === confies ? (total === 1 ? 'Un seul enfant dans la famille : celui qui est confié.' : `${total} enfants dans la famille, tous confiés à l’assistante maternelle.`) : `${total} enfants dans la famille, dont ${confies} confié${confies > 1 ? 's' : ''} à l’assistante maternelle.`}</p>;
             })()}
-            <Stepper label="Parmi eux, enfants pour qui les parents touchent l’AEEH" value={i.enfantsAeeh} min={0} max={Math.max(i.enfantsACharge, i.enfants.length)} onChange={(v) => set({ enfantsAeeh: v })} />
+            <Stepper label="Parmi eux, enfants pour qui vous touchez l’AEEH" value={i.enfantsAeeh} min={0} max={Math.max(i.enfantsACharge, i.enfants.length)} onChange={(v) => set({ enfantsAeeh: v })} />
             <p class="hint">AEEH : allocation d’éducation de l’enfant handicapé. Chacun de ces enfants compte comme un enfant de plus pour l’aide de la CAF.</p>
 
             <h3 class="sim-sous">Les revenus</h3>
@@ -383,7 +383,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             {i.adaptationHeures > 0 && (
               <>
                 <div class="grid2">
-                  <NumberInput label="Heures faites ce mois-là" value={i.adaptationHeures} min={1} max={300} onChange={(v) => set({ adaptationHeures: v ?? 0 })} />
+                  <NumberInput label="Heures d’accueil faites ce mois-là" value={i.adaptationHeures} min={1} max={300} onChange={(v) => set({ adaptationHeures: v ?? 0 })} />
                   <NumberInput label="Jours d’accueil" value={i.adaptationJours} min={1} max={31} onChange={(v) => set({ adaptationJours: v ?? 0 })} />
                 </div>
                 {/* T-038 (G-2) : CCN art. 94, 30 jours calendaires au plus depuis le premier jour d'accueil. */}
@@ -399,7 +399,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             )}
             {i.yearType === 'incomplete' && (
               <>
-                <Seg label="Congés payés versés" value={i.cpMode} options={[{ v: 'juin', l: 'En juin' }, { v: 'principale', l: 'Au congé principal' }]} onChange={(v) => set({ cpMode: v })} />
+                <Seg label="Quand les congés payés sont-ils versés ?" value={i.cpMode} options={[{ v: 'juin', l: 'En juin' }, { v: 'principale', l: 'Congé principal' }]} onChange={(v) => set({ cpMode: v })} />
                 {i.cpMode === 'principale' && (
                   <div class="field">
                     <label for="sim-moiscp">Mois du congé principal</label>

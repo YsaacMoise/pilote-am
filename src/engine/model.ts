@@ -137,6 +137,12 @@ export interface Contract {
    * à Mayotte contre 3,28 € en métropole et Drom). Absent : « Ailleurs en France (hors Mayotte) » ou Alsace-Moselle.
    */
   mayotte?: boolean;
+  /**
+   * T-079 (décision de la direction, consigne T-071) : numéro du département où l'AM accueille l'enfant (« 75 », « 2A »,
+   * « 976 »). Il remplace la question « Où travailles-tu ? » à l'écran ; alsaceMoselle et mayotte en sont déduits
+   * (engine/departements.ts) et restent les seuls champs lus par le calcul. Absent : contrat saisi avant la T-079.
+   */
+  departement?: string;
   /** Horaires qui changent d'une semaine à l'autre (semaines A et B, planning remis par écrit, CCN art. 98.1.2) */
   planningVariable?: boolean;
   /** Accueil occasionnel : « de courte durée et n'a pas de caractère régulier » (CCN art. 97.2) */
