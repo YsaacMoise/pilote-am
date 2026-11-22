@@ -580,15 +580,13 @@ const OPTION_SANS_SOLDE_ENFANT = { v: 'sans_solde_enfant' as const, l: CHILD_ABS
  */
 export function heuresInitiales(planned: Plage[], pres: Presence[] | undefined, slots: number, maintenant?: string): Presence[] {
   // T-068 (direction T-072) : le jour même (`maintenant`, HH:MM), seules les heures pointées sont reprises. Une plage non
-  // pointée reste vide, même si son heure est passée ; le départ prévu n'est proposé que pour une arrivée pointée et une
-  // heure passée. « Enregistrer » n'écrit ainsi aucune heure sans geste de l'AM.
-  const passee = (h: string | undefined) => (h && maintenant && minutes(h) <= minutes(maintenant) ? h : '');
+  // pointée reste vide, même si son heure est passée, et aucun départ non pointé n'est proposé, même après l'heure prévue
+  // (quatrième passe, B-3) : l'AM utilise le bouton Départ ou tape l'heure. « Enregistrer » n'écrit aucune heure sans geste.
   return Array.from({ length: slots }, (_, i) => {
     const vide = !pres?.[i]?.a && (pres ?? []).slice(i + 1).some((x) => !!x?.a);
     if (vide) return { a: '', d: '' };
     if (maintenant) {
-      const a = pres?.[i]?.a ?? '';
-      return { a, d: pres?.[i]?.d ?? (a ? passee(planned[i]?.end) : '') };
+      return { a: pres?.[i]?.a ?? '', d: pres?.[i]?.d ?? '' };
     }
     return { a: pres?.[i]?.a ?? planned[i]?.start ?? '', d: pres?.[i]?.d ?? planned[i]?.end ?? '' };
   });

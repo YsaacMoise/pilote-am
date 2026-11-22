@@ -54,9 +54,17 @@ describe('T-068 : départ vide tant que son heure n’est pas passée', () => {
     expect(form).toEqual([{ a: '', d: '' }, { a: '', d: '' }]);
     expect(presencesAEnregistrer(ROSE, form, false, '19:00')).toBeUndefined();
   });
-  it('heure atteinte (17 h 30) ou passée (18 h) : le départ prévu d’une arrivée pointée est proposé, comme avant (fiche du soir)', () => {
-    expect(heuresInitiales(ADAM, [{ a: '07:58' }], 1, '17:30')).toEqual([{ a: '07:58', d: '17:30' }]);
-    expect(heuresInitiales(ADAM, [{ a: '07:58' }], 1, '18:00')).toEqual([{ a: '07:58', d: '17:30' }]);
+  // Direction T-072, quatrième passe (B-3 de la relecture) : « aucune heure enregistrée sans geste de l'AM ». Le jour même,
+  // aucun départ non pointé n'est proposé, même après l'heure prévue : l'AM utilise le bouton Départ (T-048) ou tape l'heure.
+  it('B-3 : heure atteinte (17 h 30) ou passée (18 h, 20 h) : départ non pointé laissé vide, « Enregistrer » ne l’écrit pas', () => {
+    for (const h of ['17:30', '18:00', '20:00']) {
+      const form = heuresInitiales(ADAM, [{ a: '07:58' }], 1, h);
+      expect(form).toEqual([{ a: '07:58', d: '' }]);
+      expect(presencesAEnregistrer(ADAM, form, false, h)).toEqual([{ a: '07:58', d: undefined }]);
+    }
+    expect(heuresInitiales(ROSE, [{ a: '07:35' }, { a: '16:40' }], 2, '19:00')).toEqual([{ a: '07:35', d: '' }, { a: '16:40', d: '' }]);
+  });
+  it('B-3 : un départ tapé par l’AM est écrit tel quel', () => {
     expect(presencesAEnregistrer(ADAM, [{ a: '07:58', d: '17:30' }], false, '18:00')).toEqual([{ a: '07:58', d: '17:30' }]);
     expect(presencesAEnregistrer(ADAM, [{ a: '07:30', d: '17:30' }], false, '18:00')).toEqual([{ a: '07:30', d: '17:30' }]);
   });
