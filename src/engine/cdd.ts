@@ -34,19 +34,29 @@ export const NON_GERE_CDD_P1_P2 =
   'CDD de moins d’un mois avec des semaines sans accueil : non géré. Chacun de ces deux cas a deux façons de calculer le salaire, et l’app ne sait pas les combiner. Fais la paie sans l’app.';
 
 /**
- * T-076, décision D3 de la direction (regles/t076-decisions-direction.md, section 4) : CDD à horaires variables avec des
- * semaines sans accueil. La lecture 2 de P2 (52 semaines, CCN 109.1) n'est pas définie pour un planning variable : les
- * heures payées chaque mois du contrat sont écrites pour l'année incomplète. Refusé au passage 1.
+ * T-076, décision D15 de la direction (regles/t076-decisions-direction.md, section 5 ; remplace D3) : CDD à horaires
+ * variables refusé en entier au passage 1. Les deux lectures du CDD (P1, P2) ne sont pas définies avec un planning variable
+ * (relecture R1 : heures prévues au-delà de la base payées deux fois en P1 ; R3 : congés de la période précédente).
  */
-export const NON_GERE_CDD_PV_P2 =
-  'CDD avec des horaires qui changent d’une semaine à l’autre et des semaines sans accueil : non géré. Le salaire d’un CDD avec des semaines sans accueil se calcule de deux façons, et l’une d’elles n’est pas définie quand les horaires changent chaque semaine. Fais la paie sans l’app.';
+export const NON_GERE_CDD_PV =
+  'CDD avec des horaires qui changent d’une semaine à l’autre : non géré pour l’instant. Le salaire d’un CDD court ou avec des semaines sans accueil se calcule de deux façons, et l’app ne sait pas encore les combiner avec des horaires variables, ni la fin de ce CDD. Fais la paie sans l’app.';
+/** D3 (section 4), gardé pour les écrans et tests qui le citent : même refus que D15 */
+export const NON_GERE_CDD_PV_P2 = NON_GERE_CDD_PV;
+
+/**
+ * Décision D18 (section 5) : mois travaillés après le terme précis d'un CDD sans fin enregistrée à cette date : le CDD est
+ * devenu un CDI (C. trav. L1243-11). Les jours après le terme sont refusés.
+ */
+export function messageApresTerme(terme: string): string {
+  return `Tu travailles après la date de fin prévue de ton CDD (${shortDate(terme)}), sans fin enregistrée à cette date. Sans nouveau contrat, ton CDD est devenu un CDI (code du travail, article L1243-11). Si la date a été reportée par écrit, mets la nouvelle date de fin prévue dans le contrat ; si le CDD a fini, enregistre la fin dans l’écran « Fin de contrat » ; sinon passe le contrat en CDI. L’app ne calcule pas ces jours avant.`;
+}
 
 /** Cas du contrat CDD que l'app refuse (tous ses mois) */
 export function nonGeresCdd(c: CddChamps): string[] {
   if (!c.cdd) return [];
   if (!c.cddTerme) return [CDD_A_COMPLETER];
   if (estCddMoinsUnMois(c) && estCddSemainesSansAccueil(c)) return [NON_GERE_CDD_P1_P2];
-  if (c.planningVariable && estCddSemainesSansAccueil(c)) return [NON_GERE_CDD_PV_P2];
+  if (c.planningVariable) return [NON_GERE_CDD_PV];
   return [];
 }
 

@@ -323,8 +323,8 @@ describe('T-076 : corrections après vérification (décisions D1 à D6)', () =>
     const c = l2({ cdd: true, cddTerme: '2026-09-30', yearType: 'incomplete', weeks: 46, heuresMensualisees: 115 });
     expect(nonGeresContrat(c)).toContain(NON_GERE_CDD_PV_P2);
     expect(monthBase(makeCtx(c, [], [], T), '2026-04').nonGere).toContain(NON_GERE_CDD_PV_P2);
-    // CDD à horaires variables sur 52 semaines : pas ce refus.
-    expect(nonGeresContrat(l2({ cdd: true, cddTerme: '2026-09-30' }))).not.toContain(NON_GERE_CDD_PV_P2);
+    // D15 (section 5, remplace D3) : CDD à horaires variables refusé en entier, aussi sur 52 semaines.
+    expect(nonGeresContrat(l2({ cdd: true, cddTerme: '2026-09-30' }))).toContain(NON_GERE_CDD_PV_P2);
   });
   it('M1 / D4 : L2, première semaine coupée : base entière (sûr) ou réduite aux jours prévus dans le contrat (à confirmer)', () => {
     // Entrée le mercredi 04/03/2026, semaine A : mercredi-vendredi 27 h. Sûr : 27 − 30 < 0 → 0 HC.

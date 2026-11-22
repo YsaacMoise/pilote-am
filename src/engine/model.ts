@@ -81,8 +81,11 @@ export interface Rupture {
   presentation?: ISODate;
   preavis: 'execute' | DemandeurInexecution;
   dernierJourTravaille?: ISODate;
-  /** T-076 : CDD seulement (motif `fin_cdd`) : comment le CDD finit. `notif` porte alors le dernier jour du contrat. */
-  finCdd?: FinCdd | FinCddNonGere;
+  /**
+   * T-076 : CDD seulement (motif `fin_cdd`) : comment le CDD finit. `notif` porte alors le dernier jour du contrat.
+   * Décision D17 : une fin non gérée (force majeure, inaptitude…) n'est jamais enregistrée : seules les fins calculées.
+   */
+  finCdd?: FinCdd;
 }
 
 export interface Contract {
