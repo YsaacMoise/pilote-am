@@ -57,11 +57,13 @@ class PVCycle(unittest.TestCase):
                          "PV-SEMAINE-PREVUE-PLUS-45H")
         self.assertEqual(m.semaine_prevue(date(2026, 9, 7), plannings_semaines={date(2026, 9, 7): a50})["code"],
                          "PV-SEMAINE-PREVUE-PLUS-45H")
-        # S2 : une autre semaine du contrat prevue a 50 h refuse aussi cette semaine-ci (contrat refuse).
+        # S2 (decisions, 1) : la semaine de 50 h ne refuse que les mois qu'elle touche ; le mensualise vient du
+        # contrat (heures mensualisees), les autres semaines sont calculees.
         pl = {date(2026, 9, 7): B20, date(2026, 10, 12): a50}
-        self.assertEqual(m.semaine_prevue(date(2026, 9, 7), plannings_semaines=pl)["code"], "PV-SEMAINE-PREVUE-PLUS-45H")
-        self.assertEqual(m.mensualisation_planning_variable(52, 130, 500, plannings_semaines=pl)["code"],
+        self.assertEqual(R(m.semaine_prevue(date(2026, 9, 7), plannings_semaines=pl), "minutes_semaine"), 1200)
+        self.assertEqual(m.semaine_prevue(date(2026, 10, 12), plannings_semaines=pl)["code"],
                          "PV-SEMAINE-PREVUE-PLUS-45H")
+        self.assertEqual(R(m.mensualisation_planning_variable(52, 130, 500), "salaire_mensualise_centimes"), 65000)
 
 
 class PVMensualisation(unittest.TestCase):
