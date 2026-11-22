@@ -71,7 +71,7 @@ describe('T-078 D1 : indemnité de préavis des jours dispensés, une valeur par
     expect(f.dispense!.net).toBe(Math.round((145275 * 90) / 198));
   });
 
-  it('dispense dès le 1er du mois, préavis d’un mois : 31/10 ou 01/11, à confirmer (le 01/11 ajoute un jour de novembre)', () => {
+  it('dispense dès le 1er du mois, préavis d’un mois : fin le 31/10 ou le 01/11 (dimanche férié, aucun jour de plus) : une seule valeur, montant donné', () => {
     const f = finDeContrat(ctx(contrat52('2025-09-01')), '2026-10-01', 'retrait', 0, undefined, dispense('2026-09-30'));
     // Le dimanche 01/11/2026 est un jour férié et un dimanche : aucun jour d'accueil, une seule valeur.
     expect(f.dispense!.net).toBe(145275);
@@ -102,6 +102,38 @@ describe('T-078 D1 bis : dispense déclarée, dernier jour travaillé = date de 
   });
 });
 
+describe('T-078 D4 : 9 mois à la fin du contrat (question D-1), pour chaque date de fin possible', () => {
+  // 52 semaines, début 05/01/2026, retrait, lettre le 19/09/2026 (8 mois), 15 jours : fin le 03/10 selon l'app, ou le 04/10.
+  // Fin du contrat au 03/10 : 8 mois ; au 04/10 : 9 mois (CCN art. 60 et 64.2 ; regles/t074-preavis-dispense.md, point 5).
+  it('ANC9 : « pas d’indemnité » n’est plus donné sûr ; valeurs de la fin au 04/10 (209,26 € ou 203,98 €)', () => {
+    const f = finDeContrat(ctx(contrat52('2026-01-05')), '2026-09-19', 'retrait', 0, undefined, dispense('2026-09-25'));
+    expect(f.dernierJour).toBe('2026-10-03');
+    expect(f.indemniteRupture).toBe(0);
+    expect(f.ruptureAConfirmer).toBe(true);
+    expect(f.ruptureExplication).toMatch(/^À confirmer/);
+    expect(f.ruptureVariantes).toContain(euros(20926));
+    expect(f.ruptureVariantes).toContain(euros(20398));
+    // Témoin : lettre le 20/09, fin le 04/10 selon l'app : mêmes valeurs.
+    const t = finDeContrat(ctx(contrat52('2026-01-05')), '2026-09-20', 'retrait', 0, undefined, dispense('2026-09-25'));
+    expect(t.ruptureVariantes).toContain(`${euros(20926)} avec l’indemnité de préavis dans les salaires bruts, ${euros(20398)} sans elle`);
+  });
+  it('D1 bis : lettre le 21/09, dernier jour travaillé = fin retenue (05/10, 9 mois à la fin) : à confirmer', () => {
+    const f = finDeContrat(ctx(contrat52('2026-01-05')), '2026-09-21', 'retrait', 0, undefined, dispense('2026-10-05'));
+    expect(f.dernierJour).toBe('2026-10-05');
+    expect(f.dispense?.aConfirmer).toBeDefined();
+    expect(f.ruptureAConfirmer).toBe(true);
+    expect(f.ruptureVariantes).toMatch(/9 mois/);
+    // Une valeur par date de fin possible : le 06/10 ajoute un jour dispensé payé.
+    expect(f.ruptureVariantes).toContain('fin le 05/10/2026 : ');
+    expect(f.ruptureVariantes).toContain('fin le 06/10/2026 : ');
+  });
+  it('témoin : 9 mois à la fin sous aucune date (lettre le 01/09) : pas d’indemnité, sûr', () => {
+    const f = finDeContrat(ctx(contrat52('2026-01-05')), '2026-09-01', 'retrait', 0, undefined, dispense('2026-09-04'));
+    expect(f.indemniteRupture).toBe(0);
+    expect(f.ruptureAConfirmer).toBeFalsy();
+  });
+});
+
 describe('T-078 D2 : bulletins saisis jusqu’au dernier mois, le texte suit le calcul', () => {
   it('P4 : l’encadré de la rupture ne dit plus « sans l’indemnité de congés non pris ni la régularisation »', () => {
     const f = finDeContrat(ctx(contrat52('2025-09-01')), '2026-10-01', 'retrait', 0, undefined, dispense('2026-09-30'), { total: 2500000, jusqua: '2026-10' });
@@ -113,6 +145,12 @@ describe('T-078 D2 : bulletins saisis jusqu’au dernier mois, le texte suit le 
     const avecSans = f.ruptureVariantes!.slice(f.ruptureVariantes!.indexOf('Avec elle'));
     expect(avecSans).not.toMatch(/sans l’indemnité de congés non pris/);
     expect(avecSans).not.toMatch(/régularisation de la fin/);
+  });
+  it('P4, variante du 01/11 hors des bulletins : année complète, seule l’indemnité de congés non pris est citée', () => {
+    const f = finDeContrat(ctx(contrat52('2025-09-01')), '2026-10-01', 'retrait', 0, undefined, dispense('2026-09-30'), { total: 2500000, jusqua: '2026-10' });
+    expect(f.regularisationAConfirmer).toBeUndefined();
+    expect(f.ruptureVariantes).toMatch(/Fin le 01\/11\/2026 : à confirmer \(l’indemnité de congés non pris, à confirmer, serait sur le bulletin de novembre 2026/);
+    expect(f.ruptureVariantes).not.toMatch(/ou la régularisation de la fin/);
   });
   it('témoin : sans bulletins, année complète : l’indemnité de congés à confirmer reste dite absente, sans parler de régularisation', () => {
     const f = finDeContrat(ctx(contrat52('2025-09-01')), '2026-10-01', 'retrait', 0, undefined, dispense('2026-09-30'));

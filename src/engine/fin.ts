@@ -658,30 +658,39 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // T-038 suite (point 3 remonté au DG) : l'indemnité de rupture (1/80 ou 2/80 des salaires bruts jusqu'à la fin) change si la
   // fin du préavis, à confirmer, bouge d'un jour. Même mécanisme qu'AC-2 : si elle change, « à confirmer » avec les valeurs.
   let ruptureVariantes: string | undefined;
-  if (indemniteRupture > 0 && !ruptureAConfirmer && variantes.length > 1) {
-    const facteur = motif === 'inaptitude_pro' ? 2 : 1;
-    // T-050 : écart de bruts entre la variante et la fin calculée, ajouté au total retenu (qui peut venir des bulletins saisis, C-008).
+  // T-078 (D4) : assiette de chaque date de fin possible, sortie du bloc ci-dessous pour servir aussi au bloc T-074 (D-1).
+  // T-050 : écart de bruts entre la variante et la fin calculée, ajouté au total retenu (qui peut venir des bulletins saisis, C-008).
     // T-050b : même assiette pour chaque variante (ICCP et régularisation de la fin).
     // T-050d (B-1) : ces sommes sont dans le total retenu une seule fois : ajoutées au dernier mois (ajoutFin), ou déjà dans
     // les bulletins saisis ou lus quand ils couvrent ce mois. Dans une variante, elles quittent le dernier mois pour le mois de
     // la variante : seul l'écart de conversion en brut entre les deux mois s'ajoute, jamais une seconde fois la somme.
     // T-054 : un mois couvert par les bulletins (total saisi ou brut lu) garde le brut du bulletin dans chaque variante ;
-    // seul le salaire d'un mois non couvert change avec la date de fin.
-    const brutFin = brutJusqua(endCtx, c, dernierJour, enfants, couvert, bruts.parMois);
-    const conversionFin = (fin: ISODate) => netToBrut(assietteFinNet, lastDay(monthOf(fin)));
+  // seul le salaire d'un mois non couvert change avec la date de fin.
+  let brutFinMemo: number | undefined;
+  const brutFin = () => (brutFinMemo ??= brutJusqua(endCtx, c, dernierJour, enfants, couvert, bruts.parMois));
+  const conversionFin = (fin: ISODate) => netToBrut(assietteFinNet, lastDay(monthOf(fin)));
     // Relecture T-072 (B-1) : dernier mois couvert par les bulletins, variante dans un mois qui ne l'est pas. L'ICCP et la
     // régularisation de la fin seraient payées sur le bulletin de ce mois-là, hors du total saisi (CCN art. 121.1, 123.1,
     // 124) : elles s'ajoutent entières. Si l'une est « à confirmer », le montant de cette variante l'est aussi.
-    const deplacees = (fin: ISODate) => finCouverte(dernierMois) && !finCouverte(monthOf(fin));
-    const sommesFinAConfirmer = !!cpAConfirmer || !!regularisationAConfirmer || regulNonCalculee;
-    const ecartFin = (fin: ISODate) => (deplacees(fin) ? conversionFin(fin) : conversionFin(fin) - conversionFin(dernierJour));
-    const autres = variantes.map((v) => ({ ...v, montant: v.fin === dernierJour ? indemniteRupture
-      : deplacees(v.fin) && sommesFinAConfirmer ? null
-        : Math.round(((totalBrut + brutJusqua(ctxFin(v.fin), c, v.fin, enfants, couvert, bruts.parMois) - brutFin + ecartFin(v.fin)) * facteur) / 80) }));
+  const deplacees = (fin: ISODate) => finCouverte(dernierMois) && !finCouverte(monthOf(fin));
+  const sommesFinAConfirmer = !!cpAConfirmer || !!regularisationAConfirmer || regulNonCalculee;
+  const ecartFin = (fin: ISODate) => (deplacees(fin) ? conversionFin(fin) : conversionFin(fin) - conversionFin(dernierJour));
+  /** Total des bruts retenu si le contrat finit le `fin` ; null si une somme à confirmer quitterait les bulletins (B-1). */
+  const totalBrutPour = (fin: ISODate): number | null => (fin === dernierJour ? totalBrut
+    : deplacees(fin) && sommesFinAConfirmer ? null
+      : totalBrut + brutJusqua(ctxFin(fin), c, fin, enfants, couvert, bruts.parMois) - brutFin() + ecartFin(fin));
+  // T-078 (point 3, réserve B-1 de la relecture T-072) : seules les sommes de la fin vraiment à confirmer sont citées (pas de
+  // régularisation en année complète).
+  const sommesDeplacees = [cpAConfirmer ? 'l’indemnité de congés non pris' : '', regularisationAConfirmer || regulNonCalculee ? 'la régularisation de la fin' : ''].filter(Boolean);
+  const texteDeplacees = (fin: ISODate) => `à confirmer (${sommesDeplacees.join(' ou ')}, à confirmer, ${sommesDeplacees.length > 1 ? 'seraient' : 'serait'} sur le bulletin de ${monthLabel(monthOf(fin))}, hors du total de tes bulletins)`;
+  if (indemniteRupture > 0 && !ruptureAConfirmer && variantes.length > 1) {
+    const facteur = motif === 'inaptitude_pro' ? 2 : 1;
+    const autres = variantes.map((v) => {
+      const t = totalBrutPour(v.fin);
+      return { ...v, montant: v.fin === dernierJour ? indemniteRupture : t == null ? null : Math.round((t * facteur) / 80) };
+    });
     if (autres.some((v) => v.montant !== indemniteRupture)) {
-      const valeur = (v: (typeof autres)[number]) => (v.montant == null
-        ? `à confirmer (l’indemnité de congés non pris ou la régularisation de la fin, à confirmer, serait sur le bulletin de ${monthLabel(monthOf(v.fin))}, hors du total de tes bulletins)`
-        : euros(v.montant));
+      const valeur = (v: (typeof autres)[number]) => (v.montant == null ? texteDeplacees(v.fin) : euros(v.montant));
       ruptureVariantes = `Indemnité de rupture à confirmer : elle dépend de la date de fin du préavis, à confirmer. ${autres.map((v) => `${v.libelle.replace(/^./, (x) => x.toUpperCase())} : ${valeur(v)}`).join(' ; ')}. Elle n'est pas comptée dans le total.`;
       ruptureAConfirmer = true;
     }
@@ -692,7 +701,11 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // 1/80 (CCN art. 121.1 ; envoi 1 à la DDETS, question 4) ? les 9 mois se comptent-ils à la remise de la lettre (service-public
   // F16842) ou à la fin du contrat, préavis compris (CCN art. 60 et 64.2 ; question D-1) ? Si les lectures diffèrent,
   // « à confirmer » avec leurs valeurs, jamais comptée.
-  if (dispense && icp && motif === 'retrait') {
+  // T-078 (D4, règle T-038) : l'ancienneté de fin et l'assiette sont prises pour chaque date de fin possible du préavis ; le
+  // bloc tourne aussi quand aucun jour n'est dispensé à la date de l'app mais qu'une autre date en donne (D1 bis).
+  if (((dispense && icp) || sansJourDispense) && motif === 'retrait') {
+    const duDisp = dispense?.du ?? sansJourDispense!.du;
+    const icpBrutPour = (fin: ISODate) => (fin < duDisp ? 0 : fin === dernierJour && icp ? icp.brut : icpDispense(c, duDisp, fin).brut);
     // R3 : sommes de la fin encore à confirmer, absentes du total des bruts. T-078 (D2) : seulement celles qui en sont vraiment
     // absentes (mêmes conditions que l'assiette : un bulletin qui couvre le dernier mois les contient, sauf une régularisation
     // non calculée) ; la régularisation n'est citée que si elle est à confirmer ou non calculée.
@@ -700,9 +713,22 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     const sansFin = absentes.length ? ` (sans ${absentes.join(' ni ')}, ${regulNonCalculee ? 'à confirmer : la régularisation n’est pas calculée' : 'encore à confirmer'})` : '';
     const ancFin = fullMonthsBetween(c.start, addDays(dernierJour, 1));
     const avec = Math.round(totalBrut / 80);
-    const sans = Math.round((totalBrut - icp.brut) / 80);
+    const sans = Math.round((totalBrut - icpBrutPour(dernierJour)) / 80);
+    const ancVariantes = variantes.map((v) => ({ ...v, anc: fullMonthsBetween(c.start, addDays(v.fin, 1)) }));
     let msg = '';
-    if (anc >= 9 && avec !== sans) {
+    // D4 : valeur de chaque date de fin possible si l'ancienneté se compte à la fin du contrat.
+    const valeur = (v: (typeof ancVariantes)[number]) => {
+      if (v.anc < 9) return `pas d’indemnité (${v.anc} mois)`;
+      const t = totalBrutPour(v.fin);
+      if (t == null) return texteDeplacees(v.fin);
+      const a = Math.round(t / 80), b = Math.round((t - icpBrutPour(v.fin)) / 80);
+      return a === b ? euros(a) : `${euros(a)} avec l’indemnité de préavis dans les salaires bruts, ${euros(b)} sans elle`;
+    };
+    const valeursFin = anc < 9 && ancVariantes.some((v) => v.anc >= 9) ? ancVariantes.map(valeur) : [];
+    if (new Set(valeursFin).size > 1) {
+      // D4 (règle T-038) : la valeur change d'une date de fin possible à l'autre (9 mois atteints ou non, jours dispensés) : par date.
+      msg = `Indemnité de rupture à confirmer : il faut 9 mois d’ancienneté, et aucun texte ne dit s’ils se comptent à la remise de la lettre ou à la fin du contrat, préavis dispensé compris (convention, articles 60, 64.2 et 121.1 ; question pour la DDETS) ; la date de fin du préavis est elle-même à confirmer. À la remise de la lettre (${anc} mois) : pas d’indemnité ; à la fin du contrat : ${ancVariantes.map((v, i) => `${v.libelle} : ${valeursFin[i]}`).join(' ; ')}${sansFin}. Elle n'est pas comptée dans le total.`;
+    } else if (anc >= 9 && avec !== sans) {
       msg = `Indemnité de rupture à confirmer : aucun texte ne dit si l’indemnité de préavis compte dans les salaires bruts qui servent au calcul (convention, article 121.1 ; question posée à la DDETS). Avec elle : ${euros(avec)} ; sans elle : ${euros(sans)}${sansFin}. Elle n'est pas comptée dans le total.`;
     } else if (anc < 9 && ancFin >= 9) {
       msg = `Indemnité de rupture à confirmer : il faut 9 mois d’ancienneté, et aucun texte ne dit s’ils se comptent à la remise de la lettre ou à la fin du contrat, préavis dispensé compris (convention, articles 60, 64.2 et 121.1 ; question pour la DDETS). À la remise de la lettre (${anc} mois) : pas d’indemnité ; à la fin du contrat : ${avec === sans ? euros(avec) : `${euros(avec)} avec l’indemnité de préavis dans les salaires bruts, ${euros(sans)} sans elle`}${sansFin}. Elle n'est pas comptée dans le total.`;
