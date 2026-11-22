@@ -250,7 +250,10 @@ export function Contrat({ id }: { id?: string }) {
             <NumberInput label="Majoration des heures complémentaires (%)" hint={AIDE_COMPLEMENTAIRES} value={c.majorationCompl ?? 0} min={0} max={100} onChange={(v) => set({ majorationCompl: v ?? 0 })} />
             {c.yearType === 'incomplete' && (
               <Seg label="Quand tes congés payés te sont-ils versés ?" value={c.cpMode} onChange={(v) => set({ cpMode: v })}
-                options={[{ v: 'juin', l: 'En juin' }, { v: 'principale', l: 'Lors du congé principal' }, { v: 'fur', l: 'Au fur et à mesure des congés pris' }]} />
+                options={[{ v: 'juin', l: 'En juin' }, { v: 'principale', l: 'Congé principal' }, { v: 'fur', l: 'Au fur et à mesure' }]} />
+            )}
+            {c.yearType === 'incomplete' && (
+              <p class="hint">Comme écrit au contrat : en une fois en juin, lors de la prise du congé principal, ou au fur et à mesure des congés pris.</p>
             )}
             <Switch label="Enfant en situation de handicap ou de maladie" hint="Pour tes impôts : abattement majoré de 4 SMIC horaires par jour d’accueil, au lieu de 3." checked={c.majoreFiscal} onChange={(v) => set({ majoreFiscal: v })} />
             <Switch label="Les parents ont adhéré à Pajemploi+" hint={PAJEMPLOI_PLUS_AIDE} checked={!!c.pajemploiPlus} onChange={(v) => set({ pajemploiPlus: v })} />

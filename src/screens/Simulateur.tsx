@@ -399,7 +399,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             )}
             {i.yearType === 'incomplete' && (
               <>
-                <Seg label="Quand les congés payés sont-ils versés ?" value={i.cpMode} options={[{ v: 'juin', l: 'En juin' }, { v: 'principale', l: 'Lors du congé principal' }]} onChange={(v) => set({ cpMode: v })} />
+                <Seg label="Quand les congés payés sont-ils versés ?" value={i.cpMode} options={[{ v: 'juin', l: 'En juin' }, { v: 'principale', l: 'Congé principal' }]} onChange={(v) => set({ cpMode: v })} />
                 {i.cpMode === 'principale' && (
                   <div class="field">
                     <label for="sim-moiscp">Mois du congé principal</label>
