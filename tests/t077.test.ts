@@ -240,3 +240,17 @@ describe('T-077 R6 : revenu imposable à Mayotte', () => {
     expect(fm.abattementSmicNational).toBeUndefined();
   });
 });
+
+describe('T-077 R7 : simulateur en Alsace-Moselle', () => {
+  it('résultat donné, et l’autre lecture (sans Vendredi saint ni 26 décembre) chiffrée', async () => {
+    const { simuler, simulationParDefaut } = await import('../src/engine/simulation');
+    const d = '2026-11-01';
+    const base = { ...simulationParDefaut(d), entretien: 400, entretienMode: 'jour' as const };
+    const a = simuler({ ...base, alsaceMoselle: true }, d);
+    expect(a.feriesLocauxB).toBeDefined();
+    expect(a.feriesLocauxB!.feriesAn).toBeLessThan(a.feriesAn);
+    // Moins de fériés : plus de jours d'accueil, donc au moins autant d'entretien.
+    expect(a.feriesLocauxB!.entretien).toBeGreaterThanOrEqual(a.entretien);
+    expect(simuler({ ...base, alsaceMoselle: false }, d).feriesLocauxB).toBeUndefined();
+  });
+});
