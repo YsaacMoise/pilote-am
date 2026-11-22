@@ -108,3 +108,18 @@ def heures_mensualisees(semaines_accueil, heures_hebdo_minutes, horaires_variabl
     return resultat_ok(heures_mensualisees.regles,
                        {"type_annee": ta, "heures_mensualisees": texte_fraction(m / 60),
                         "minutes_mensualisees": texte_fraction(m)})
+
+
+@api("R-MENS-01")
+def verifier_date_effet_avenant(date_effet):
+    """T-072 : un avenant qui change le salaire mensualise (type d'annee, semaines,
+    heures, taux) s'applique a un mois entier. CCN 109.1 : « Le salaire mensualise
+    est verse chaque mois » ; la formule (R-MENS-01) donne un montant par mois et
+    aucun texte lu ne partage un mois entre deux contrats. Effet le 1er du mois :
+    ok. Sinon refus AVENANT-EN-COURS-DE-MOIS."""
+    from datetime import date
+    if not isinstance(date_effet, date):
+        raise ErreurSaisie("date_effet : date attendue.")
+    if date_effet.day != 1:
+        raise NonGere("AVENANT-EN-COURS-DE-MOIS", ["R-MENS-01"], precision=f"Effet le {date_effet.isoformat()}.")
+    return resultat_ok(verifier_date_effet_avenant.regles, {"mois_entier": True})
