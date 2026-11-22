@@ -578,6 +578,7 @@ export function weekOvertimeDetail(ctx: Ctx, monday: ISODate): { parJour: Map<IS
  *   réduction de la rémunération du salarié », tranché).
  * Deux lectures pour les points non tranchés ; la part sûre (lecture basse) est payée, l'écart est à confirmer :
  * - jour de congé payé : ses heures comptent ou non (lecture sûre : non, elles relèvent de l'indemnité de congés) ;
+ * - absence de l'enfant payée (D13, même traitement que D1 ; CCN 105, CASF L423-20) : ses heures prévues comptent ou non ;
  * - autre férié chômé payé et jour d'événement familial payé : leurs heures prévues comptent ou non (D1 ; CCN 47.2
  *   « maintien de la rémunération brute habituelle » ; question DDETS) ;
  * - première et dernière semaine du contrat, coupées : base B entière, ou B × jours prévus de la semaine dans le contrat ÷
@@ -589,8 +590,11 @@ function weekOvertimeL2(ctx: Ctx, monday: ISODate, B: number, base: Map<ISODate,
   const jours = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
   const cpMin = (d: ISODate) => { const di = dayInfo(ctx, d); return di.kind === 'am' && di.amLeave === 'cp' && !di.cpSansDroits ? di.plannedMin : 0; };
   const mai1Min = (d: ISODate) => { const di = dayInfo(ctx, d); return di.kind === 'ferie' && isMayDay(d) ? di.plannedMin : 0; };
+  // D13 : absence de l'enfant payée (comptée dans minutesSeuil45) : lecture sûre sans ses heures, lecture haute avec.
+  const enfantPaye = (d: ISODate) => { const di = dayInfo(ctx, d); return di.kind === 'absent' && !di.deducted && !di.aConfirmer ? di.plannedMin : 0; };
   const autreMin = (d: ISODate) => {
     const di = dayInfo(ctx, d);
+    if (di.kind === 'absent' && !di.deducted && !di.aConfirmer) return di.plannedMin;
     if (di.kind === 'ferie' && !isMayDay(d) && !di.deducted) return di.plannedMin;
     if (di.kind === 'am' && di.amLeave === 'evenement' && !di.aConfirmer && !di.deducted) return di.plannedMin;
     return 0;
@@ -603,7 +607,7 @@ function weekOvertimeL2(ctx: Ctx, monday: ISODate, B: number, base: Map<ISODate,
   const ranger = (large: boolean) => {
     const morceaux = jours.map((d) => ({
       d,
-      prevu: minutesSeuil45(ctx, d) - (large ? 0 : cpMin(d)) + mai1Min(d) + (large ? autreMin(d) : 0),
+      prevu: minutesSeuil45(ctx, d) - (large ? 0 : cpMin(d) + enfantPaye(d)) + mai1Min(d) + (large ? autreMin(d) - enfantPaye(d) : 0),
       extra: dayInfo(ctx, d).extraMin,
     }));
     const b = large ? Bcoupee : B;
@@ -1240,7 +1244,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     if (complAConf) {
       r.complAConfirmerMin = complAConf;
       r.complAConfirmerAmount = Math.round(((r.complMin + complAConf) * c.rateNet * (100 + (c.majorationCompl ?? 0))) / 100 / 60) - r.complAmount;
-      r.alerts.push(`Heures complémentaires à confirmer : ${hoursMin(complAConf)} (${euros(r.complAConfirmerAmount)}), non comprises dans le total. Une semaine où tes heures prévues dépassent la base de ton contrat contient des jours payés sans être travaillés (congés payés, jour férié, événement familial) ou le début ou la fin du contrat. La convention ne dit pas si les heures prévues de ces jours comptent pour les heures complémentaires, ni si la base se réduit pour une semaine coupée. L’app paie la part sûre. La question est posée à la DDETS. Mets-toi d’accord par écrit avec les parents.`);
+      r.alerts.push(`Heures complémentaires à confirmer : ${hoursMin(complAConf)} (${euros(r.complAConfirmerAmount)}), non comprises dans le total. Une semaine où tes heures prévues dépassent la base de ton contrat contient des jours payés sans être travaillés (congés payés, jour férié, événement familial, absence de l’enfant payée) ou le début ou la fin du contrat. La convention ne dit pas si les heures prévues de ces jours comptent pour les heures complémentaires, ni si la base se réduit pour une semaine coupée. L’app paie la part sûre. La question est posée à la DDETS. Mets-toi d’accord par écrit avec les parents.`);
       if (to < ctx.today && !r.alerts.includes(MESSAGE_MOIS_DEJA_DECLARE)) r.alerts.push(MESSAGE_MOIS_DEJA_DECLARE);
     }
   }
