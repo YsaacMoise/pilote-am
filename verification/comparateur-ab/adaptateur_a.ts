@@ -190,6 +190,12 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       const bloque = f.alertes.some((a) => a.startsWith('Régularisation non calculée'));
       out.regularisation_fin = bloque ? { statut: 'refus', note: 'alerte : semaines sans accueil manquantes' } : ok(f.regularisation);
       out.assiette_rupture = ok(f.totalBrut);
+      // T-074 : indemnité de préavis des jours dispensés par les parents (FinResult.dispense, information comprise dans les
+      // salaires). P-1 : deux lectures de la part du salaire qui est l'indemnité, si elles diffèrent : refus.
+      if (k.inexecution?.demandeur === 'employeur') {
+        const dis = (f as { dispense?: { net: number; autre?: number } }).dispense;
+        out.indemnite_preavis = !dis ? ok(0) : dis.autre != null ? refus(`A : à confirmer (P-1 : ${dis.net} ou ${dis.autre})`) : ok(dis.net);
+      }
       if (f.preavisFinAConfirmer) out.date_fin_preavis = refus(`A : date calculée ${f.preavisFin}, affichée à confirmer (${f.preavisFinAConfirmer})`);
       if (f.ruptureAConfirmer) out.indemnite_rupture = refus(`A : indemnité affichée à confirmer (${f.indemniteRupture} calculés)`);
       // T-050c : l'assiette (totalBrut) n'est pas définitive quand l'indemnité est « à confirmer » (une somme à confirmer n'y est pas).

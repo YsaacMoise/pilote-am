@@ -95,7 +95,9 @@ describe('T-074 : préavis dispensé par les parents (CCN art. 64, 64.2, 66, 122
     expect(computeMonth(ctxDe(c), '2026-10').alerts.join(' ')).not.toMatch(/dispensée/);
   });
 
-  it('R2 : dispense totale, enfant plus confié dès le jour de la lettre : la veille est admise', () => {
+  it('R2 : dispense totale, enfant plus confié dès le jour de la lettre : la veille est admise, pas au-delà d’une semaine', () => {
+    expect(finDeContrat(ctxDe(contract()), '2026-11-23', 'retrait', 0, undefined, { demandeur: 'employeur', dernierJourTravaille: '2026-11-20' }).nonGere).toBeUndefined();
+    expect(finDeContrat(ctxDe(contract()), '2026-11-23', 'retrait', 0, undefined, { demandeur: 'employeur', dernierJourTravaille: '2026-11-13' }).nonGere?.length).toBeGreaterThan(0);
     const f = finDeContrat(ctxDe(contract()), '2026-11-23', 'retrait', 0, undefined, { demandeur: 'employeur', dernierJourTravaille: '2026-11-22' });
     expect(f.nonGere).toBeUndefined();
     expect(f.dispense).toMatchObject({ du: '2026-11-23', au: '2026-11-30' });

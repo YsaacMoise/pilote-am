@@ -322,8 +322,9 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     const d = inexecution.dernierJourTravaille;
     if (motif !== 'retrait' && motif !== 'demission') {
       refusFin.push(`Préavis non exécuté : ce motif (${MOTIF_LABEL[motif].toLowerCase()}) n’a pas de préavis. Retire la réponse sur le préavis ou vérifie le motif.`);
-    } else if (d < notif && !(inexecution.demandeur === 'employeur' && d === addDays(notif, -1))) {
-      // T-074 (R2) : dispense totale, l'enfant n'est plus confié dès le jour de la lettre : la veille est admise.
+    } else if (d < notif && !(inexecution.demandeur === 'employeur' && d >= addDays(notif, -7))) {
+      // T-074 (R2) : dispense totale, l'enfant n'est plus confié dès le jour de la lettre : le dernier jour d'accueil peut
+      // précéder la lettre (veille, ou vendredi avant une lettre du lundi), dans la semaine qui précède.
       refusFin.push(`Préavis non exécuté : le dernier jour travaillé (${shortDate(d)}) est avant l’envoi de la lettre (${shortDate(notif)}). Cas non géré : vérifie les dates avec les parents.`);
     } else if (d > preavisFin) {
       refusFin.push(`Préavis non exécuté : le dernier jour travaillé (${shortDate(d)}) est après la fin du préavis calculée par l’app (${shortDate(preavisFin)}). Cas non géré : vérifie les dates avec les parents.`);

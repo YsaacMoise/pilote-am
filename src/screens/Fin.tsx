@@ -99,7 +99,7 @@ export function Fin({ id }: { id?: string }) {
                   { v: 'am_sans_accord', l: 'Non, je pars sans leur accord' },
                 ]} />
                 {preavisFait !== 'oui' && (
-                  <DateInput label="Dernier jour travaillé" hint={preavisFait === 'employeur' ? 'Le dernier jour où tu as accueilli l’enfant. Si les parents ne l’ont plus confié dès le jour de la lettre, mets la veille.' : 'Le dernier jour où tu as accueilli l’enfant.'} value={dernierTravaille ?? envoi} min={preavisFait === 'employeur' ? addDays(envoi, -1) : envoi} onChange={(v) => setDernierTravaille(v || null)} />
+                  <DateInput label="Dernier jour travaillé" hint={preavisFait === 'employeur' ? 'Le dernier jour où tu as accueilli l’enfant. S’ils ne l’ont plus confié dès le jour de la lettre, mets le dernier jour où tu l’as accueilli avant la lettre.' : 'Le dernier jour où tu as accueilli l’enfant.'} value={dernierTravaille ?? envoi} min={preavisFait === 'employeur' ? addDays(envoi, -7) : envoi} onChange={(v) => setDernierTravaille(v || null)} />
                 )}
               </>
             ) : avecLettre ? (
