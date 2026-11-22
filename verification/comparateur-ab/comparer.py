@@ -129,6 +129,10 @@ def lectures(cle, a_sorties, b_sortie, a_val):
         if nom == cle and etape in ("deduction_absence", "mensualisation") and b_sortie.get("details"):
             return a_val in lect, sorted(lect)
         return None
+    # T-077 (MB7) : le moteur B donne les valeurs possibles d'une sortie à confirmer (fériés locaux, maintien du droit local).
+    if "lectures_valeurs" in det:
+        lect = set(det["lectures_valeurs"])
+        return a_val in lect, sorted(lect, key=str)
     if code in ("A-23", "SUS-11") and "resultats_par_methode" in det and cle.split(".")[-1] in ("jours_acquis", "jours_acquis_hors_enfants"):
         lect = set(det["resultats_par_methode"].values())
         return a_val in lect, sorted(lect)

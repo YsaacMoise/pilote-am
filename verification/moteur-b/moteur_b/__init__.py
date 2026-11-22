@@ -8,7 +8,7 @@ from .baremes import baremes_du_jour, minimum_horaire_brut, verifier_taux_horair
 from .mensualisation import type_annee, semaines_programmees, mensualisation, heures_mensualisees
 from .heures import temps_de_travail_jour, heures_en_plus_semaine, salaire_du_mois
 from .absences import (qualifier_absence, absence_enfant_malade, deduction_absence, prevu_du_mois,
-                       ferie_chome, ferie_travaille)
+                       ferie_chome, ferie_travaille, ferie_local_travaille)
 from .conges import (acquisition_cp, jours_enfants_a_charge, jours_fractionnement, decompte_jours_cp,
                      indemnite_cp, complement_cp_annee_complete, paiement_cp_annee_incomplete,
                      indemnite_cp_prise_partielle)
@@ -19,3 +19,4 @@ from .fin_contrat import (duree_preavis, indemnite_compensatrice_preavis, jours_
                           indemnite_precarite_cdd, solde_de_tout_compte)
 from .evenements import EVENEMENTS, conge_evenement_familial, jours_conge_evenement
 from .perimetre import verifier_perimetre, convertir_brut_net
+from .regions import REGIONS, brut_depuis_net, repere_net_minimum, feries_locaux, region_du_departement

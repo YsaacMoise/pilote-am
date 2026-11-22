@@ -155,9 +155,20 @@ def _chercher(table, d, nom, regle, soumis_a52=False):
     raise NonGere("BAREME-ABSENT", [regle], precision=f"{nom} au {d.isoformat()}.")
 
 
-def smic(d):
-    # R-SAL-01
+def smic(d, region="metropole"):
+    # R-SAL-01 ; T-077 (R2) : a Mayotte, SMIC de Mayotte (CASF R544-2 XV pour D423-9 ; C. trav. L3423-1 :
+    # releve a la meme date que la metropole, donc A-52 aussi au 01/12/2026).
+    from .regions import region_valide, SMIC_MAYOTTE
+    if region_valide(region) == "mayotte":
+        return _chercher(SMIC_MAYOTTE, d, "SMIC horaire brut de Mayotte", "R-SAL-01", soumis_a52=True)
     return _chercher(SMIC, d, "SMIC horaire brut", "R-SAL-01", soumis_a52=True)
+
+
+def _titre_region(titre_am_ap, region):
+    """T-077 (R2) : majoration de 4 % du titre a Mayotte : Urssaf « Non concerne », aucun texte lu ne l'ecarte."""
+    from .regions import region_valide
+    if titre_am_ap and region_valide(region) == "mayotte":
+        raise NonGere("A77-TITRE-MAYOTTE", ["R-SAL-05", "T077-R2"])
 
 
 def minimum_garanti(d):
@@ -178,12 +189,14 @@ def bareme_km(d):
 
 
 @api("R-SAL-01", "R-SAL-02", "R-SAL-03", "R-SAL-04", "R-SAL-05")
-def baremes_du_jour(d, titre_am_ap=False):
+def baremes_du_jour(d, titre_am_ap=False, region="metropole"):
     """Affiche les baremes applicables a une date, avec leur source.
     Entree : d (datetime.date), titre_am_ap (bool).
     Sortie : smic, mg, minimum_legal_exact (0,281 x SMIC, R-SAL-03, non arrondi),
-    minimum_conventionnel, minimum_applicable (le plus eleve, R-SAL-04)."""
-    s, src_s, p1 = smic(d)
+    minimum_conventionnel, minimum_applicable (le plus eleve, R-SAL-04).
+    T-077 : region (Mayotte : SMIC de Mayotte)."""
+    _titre_region(titre_am_ap, region)
+    s, src_s, p1 = smic(d, region)
     g, src_g, p2 = minimum_garanti(d)
     c, src_c, p3 = minimum_conventionnel(d, titre_am_ap)
     legal = Fraction(281, 1000) * s  # R-SAL-03 (CASF D423-9)
@@ -199,16 +212,19 @@ def baremes_du_jour(d, titre_am_ap=False):
 
 
 @api("R-SAL-01", "R-SAL-03", "R-SAL-04", "R-SAL-05", "R-SAL-06")
-def minimum_horaire_brut(d, titre_am_ap=False, titre_obtenu_dans_le_mois=False):
+def minimum_horaire_brut(d, titre_am_ap=False, titre_obtenu_dans_le_mois=False, region="metropole"):
     """Minimum horaire brut applicable (R-SAL-04 : max(minimum legal ; minimum
     conventionnel)). Entree : d, titre_am_ap, titre_obtenu_dans_le_mois.
     Sortie : minimum_centimes (entier si exact), composantes et sources.
     Le minimum legal 0,281 x SMIC n'est jamais arrondi : il n'est utilise que
-    pour la comparaison exacte."""
+    pour la comparaison exacte.
+    T-077 (R2) : a Mayotte, minimum legal = 0,281 x SMIC de Mayotte (CASF R544-2 XV) ;
+    grille de l'annexe 5 identique (CCN art. 2)."""
     if titre_obtenu_dans_le_mois:
         raise NonGere("A-54", ["R-SAL-05"])
+    _titre_region(titre_am_ap, region)
     c, src_c, p_c = minimum_conventionnel(d, titre_am_ap)
-    s, src_s, p_s = smic(d)
+    s, src_s, p_s = smic(d, region)
     legal = Fraction(281, 1000) * s
     mini = max(legal, Fraction(c))
     if mini == c:
@@ -228,16 +244,18 @@ def minimum_horaire_brut(d, titre_am_ap=False, titre_obtenu_dans_le_mois=False):
 
 
 @api("R-SAL-01", "R-SAL-03", "R-SAL-04", "R-SAL-05", "R-SAL-06")
-def verifier_taux_horaire(taux_horaire_brut_centimes, d, titre_am_ap=False, titre_obtenu_dans_le_mois=False):
+def verifier_taux_horaire(taux_horaire_brut_centimes, d, titre_am_ap=False, titre_obtenu_dans_le_mois=False,
+                          region="metropole"):
     """Controle du taux horaire brut du contrat face au minimum (R-SAL-04).
     Sortie : conforme (bool). Si le SMIC est inconnu (A-52), le moteur conclut
     seulement quand le taux est inferieur au minimum conventionnel connu."""
     t = exact(taux_horaire_brut_centimes, "taux_horaire_brut_centimes")
     if titre_obtenu_dans_le_mois:
         raise NonGere("A-54", ["R-SAL-05"])
+    _titre_region(titre_am_ap, region)
     c, src_c, p_c = minimum_conventionnel(d, titre_am_ap)
     try:
-        s, src_s, p_s = smic(d)
+        s, src_s, p_s = smic(d, region)
     except NonGere:
         if t < c:
             return resultat_ok(verifier_taux_horaire.regles,

@@ -9,14 +9,16 @@ _HORS_METROPOLE = {"971", "972", "973", "974", "975", "976", "977", "978", "986"
 @api("Hors perimetre (regles-v0)", "R-MENS-10", "R-SAL-07")
 def verifier_perimetre(departement, accueil="regulier", semaines_alternees=False, type_contrat="CDI",
                        cdd_remplacement=False, majoration_difficultes_enfant=False):
-    """Controle du perimetre v0 : France metropolitaine hors Alsace-Moselle,
+    """Controle du perimetre v0 : France metropolitaine (Alsace-Moselle comprise depuis T-077) et Mayotte,
     accueil regulier, pas de semaines alternees. CDD de remplacement : regle
     R-MENS-10 douteuse. Majoration pour difficultes de l'enfant : A-55.
     Sortie : dans_perimetre (True) ou refus."""
     dep = str(departement).strip().upper()
-    if dep in _ALSACE_MOSELLE:
-        raise NonGere("EXCLU-ALSACE-MOSELLE")
-    if dep in _HORS_METROPOLE or (len(dep) == 3 and dep.isdigit()):
+    # T-077 (MB7) : Alsace-Moselle et Mayotte ouvertes (regles/t077-decisions.md, R0 a R4) ;
+    # les autres outre-mer restent exclus (aucune regle de feries locaux relue pour eux).
+    from .regions import region_du_departement
+    region = region_du_departement(dep)
+    if region is None:
         raise NonGere("EXCLU-HORS-METROPOLE")
     if accueil == "occasionnel":
         raise NonGere("EXCLU-OCCASIONNEL")
@@ -30,7 +32,7 @@ def verifier_perimetre(departement, accueil="regulier", semaines_alternees=False
         raise NonGere("R-MENS-10", ["R-MENS-10"])
     if majoration_difficultes_enfant:
         raise NonGere("A-55", ["R-SAL-07"])
-    return resultat_ok(verifier_perimetre.regles, {"dans_perimetre": True})
+    return resultat_ok(verifier_perimetre.regles, {"dans_perimetre": True, "region": region})
 
 
 @api("R-PAJ-04", "R-SAL-06", "M-01", "M-02")
