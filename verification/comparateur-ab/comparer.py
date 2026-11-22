@@ -165,10 +165,11 @@ def classer(situations, res_a, res_b):
                 fam = "ERREUR"
             elif a_calc and b_calc:
                 # T-076, D12 : quand les deux moteurs donnent des `lectures` (point a confirmer), elles sont comparees
-                # aussi ; une difference est un desaccord (F2).
+                # aussi ; une difference est un desaccord (F2). Comparees sans leur ordre : les rapports et la spec ne
+                # numerotent pas les lectures de la meme facon (P2) ; ce sont les montants qui comptent.
                 la, lb = a.get("lectures"), b.get("lectures")
                 lect_ok = (la is None or lb is None or
-                           (len(la) == len(lb) and all(egaux(x, y) for x, y in zip(la, lb))))
+                           (len(la) == len(lb) and all(egaux(x, y) for x, y in zip(sorted(la, key=str), sorted(lb, key=str)))))
                 if not lect_ok:
                     ligne["ecart_lectures"] = {"a": la, "b": lb}
                 if egaux(a["valeur"], b["valeur"]) and lect_ok:
