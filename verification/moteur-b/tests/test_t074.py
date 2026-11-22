@@ -175,5 +175,16 @@ class RuptureD1EtA45(unittest.TestCase):
         self.assertEqual(r["statut"], "erreur_saisie")
 
 
+class SortieSemaineSansAccueil(unittest.TestCase):
+    """CCN 111, dernier alinea : semaines de non-accueil au denominateur ; numerateur non ecrit."""
+
+    def test_refus_a_confirmer(self):
+        # Fin le 10/08/2026, semaines des 10, 17 et 24/08 sans accueil : 644 x 20/21 = 613,33 EUR si ces jours ne
+        # sont pas deduits ; 644 x 6/21 = 184 EUR s'ils le sont. Aucun texte ne tranche : refus, jamais un montant.
+        for t in ("incomplete",):
+            r = m.qualifier_absence("hors_contrat_semaine_non_accueil", t)
+            self.assertEqual(r["code"], "SORTIE-SEMAINE-SANS-ACCUEIL")
+
+
 if __name__ == "__main__":
     unittest.main()

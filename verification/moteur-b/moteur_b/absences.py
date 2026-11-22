@@ -51,6 +51,12 @@ _REFUS = {
     "accident_travail": ("EXCLU-AT", []),
     "maladie_professionnelle": ("EXCLU-AT", []),
     "accident_trajet": ("EXCLU-AT", []),
+    # T-074 (signal de la direction, S74-I46-15J-SANS-ACCUEIL) : jour du planning hors du contrat (apres la fin
+    # ou avant l'embauche) qui tombe dans une semaine sans accueil, mois d'entree ou de sortie en annee
+    # incomplete. CCN 111, dernier alinea : les semaines de non-accueil comptent au denominateur (« heures et
+    # jours qui auraient ete travailles »). Aucun texte lu ne dit si ces jours comptent au numerateur (« jours
+    # non travailles dans le mois, donnant lieu a deduction ») : lus deduits ou non, le salaire du mois change.
+    "hors_contrat_semaine_non_accueil": ("SORTIE-SEMAINE-SANS-ACCUEIL", ["R-FIN-12", "R-EMB-01", "R-ABS-08"]),
 }
 
 

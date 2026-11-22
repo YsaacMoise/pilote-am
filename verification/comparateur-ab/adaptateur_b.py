@@ -437,6 +437,9 @@ def mois_b(ctx, m):
                             x = 0
                         if x:
                             unites += x if ctx.type == "complete" else 1
+        # T-074 : jour du planning hors du contrat dans une semaine sans accueil (mois d'entree ou de sortie) :
+        # B dit s'il se deduit (aujourd'hui : refus SORTIE-SEMAINE-SANS-ACCUEIL, a confirmer).
+        _hors_contrat_sans_accueil(ctx, jours)
         if unites == 0:
             return 0
         plan0 = {j: v for j, v in ctx.plan_min.items()}
@@ -797,6 +800,15 @@ def _unite(ctx, d):
     return x if ctx.type == "complete" else 1
 
 
+def _hors_contrat_sans_accueil(ctx, jours):
+    if ctx.type != "incomplete":
+        return
+    for d in jours:
+        if (d < ctx.debut or (ctx.fin is not None and d > ctx.fin)) and lundi(d) in ctx.sans_accueil \
+                and ctx.plan_min.get(d.weekday(), 0):
+            appel("qualifier_absence", "hors_contrat_semaine_non_accueil", ctx.type)
+
+
 def icp_b(ctx):
     """T-074 : indemnite de preavis des jours dispenses, demandee a B (indemnite_preavis_dispense). L'adaptateur
     ne fait que compter les jours du calendrier. Renvoie (total, detail par mois, lectures) ; leve Refus."""
@@ -822,6 +834,7 @@ def icp_b(ctx):
             p = appel("prevu_du_mois", a.year, a.month, dict(ctx.plan_min), ctx.type,
                       contient_semaine_non_accueil=contient)
             prevu = p["resultat"]["prevu_minutes"] if ctx.type == "complete" else p["resultat"]["prevu_jours"]
+            _hors_contrat_sans_accueil(ctx, jours)  # meme regle que la deduction du mois
             non_payes = sum(_unite(ctx, d) for d in jours if d < ctx.debut or d > ctx.fin)
             mois_l.append({"salaire_mensualise_centimes": mens, "prevu_mois": prevu, "non_payes": non_payes,
                            "mixte": bool(payes_hors_dispense),
