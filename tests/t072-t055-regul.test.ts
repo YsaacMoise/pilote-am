@@ -54,10 +54,35 @@ describe('T-055 : régularisation non calculée, rien n’est calculé avec 0', 
       expect(l.hint).not.toMatch(/accueillies mais non payées/);
     });
   }
+  // Direction T-072 (point 2) : la régularisation entre dans l'assiette du 1/80 (CCN art. 121.1 ; analyse T-050, point 2 ;
+  // art. 124 : « régularisation définitive du salaire »). Non calculée, elle n'est pas connue : un total de bulletins
+  // couvrant le dernier mois ne prouve pas qu'elle y est. L'indemnité reste « à confirmer ».
+  for (const [cause, off] of [['semaine passée non saisie', PASSEE], ['2e année sans semaine saisie', AN2]] as const) {
+    it(`${cause}, total des bulletins saisi jusqu’au dernier mois : indemnité de rupture à confirmer`, () => {
+      const f0 = fin(off, 'retrait');
+      const f = fin(off, 'retrait', '2026-10-28', { total: 1000000, jusqua: f0.dernierJour.slice(0, 7) });
+      expect(f.totalBrut).toBe(1000000);
+      expect(f.ruptureAConfirmer).toBe(true);
+      expect(f.alertes.some((a) => a.startsWith('Indemnité de rupture à confirmer') && a.includes('qui n’est pas calculée'))).toBe(true);
+      expect(f.regularisationNonCalculee).not.toContain('sauf si');
+    });
+    it(`${cause}, brut du dernier mois lu sur un bulletin : indemnité de rupture à confirmer`, () => {
+      const f0 = fin(off, 'retrait');
+      const m = f0.dernierJour.slice(0, 7);
+      const avant = `${m.slice(0, 5)}${String(Number(m.slice(5)) - 1).padStart(2, '0')}`;
+      const f = fin(off, 'retrait', '2026-10-28', { total: 900000, jusqua: avant, parMois: { [m]: 150000 } });
+      expect(f.totalBrut).toBe(1050000);
+      expect(f.ruptureAConfirmer).toBe(true);
+    });
+    it(`${cause} : la base du dixième en cours n’est pas donnée (cpDixiemeEnCours absent)`, () => {
+      expect(fin(off, 'retrait').cpDixiemeEnCours).toBeUndefined();
+    });
+  }
   it('témoin : toutes les semaines saisies, régularisation calculée et affichée en euros', () => {
     const f = fin(SEMAINES_OFF, 'retrait');
     expect(f.regularisationNonCalculee).toBeUndefined();
     expect(f.regularisation).toBe(62857);
+    expect(f.cpDixiemeEnCours).toBeGreaterThan(0);
     expect(ligneRegularisation(f, true).valeur).toMatch(/^628,57\s€$/);
   });
 });

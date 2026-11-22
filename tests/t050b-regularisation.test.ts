@@ -68,6 +68,6 @@ describe('T-050b, A-50 : régularisation à confirmer et congés non pris', () =
     const endCtx = { ...c0(), c: { ...contract(), end: r.dernierJour }, cache: new Map(), finControlee: true };
     expect(r.cpIndemnite).toBe(congesNonPris(endCtx, endCtx.c, r.dernierJour, 0, r.regularisation).cpIndemnite);
     expect(r.cpDixiemeEnCours).toBe(congesNonPris(endCtx, endCtx.c, r.dernierJour, 0, r.regularisation).dixiemeEnCours);
-    expect(r.cpDixiemeEnCours - congesNonPris(endCtx, endCtx.c, r.dernierJour, 0, 0).dixiemeEnCours).toBe(Math.round(r.regularisation / 10));
+    expect(r.cpDixiemeEnCours! - congesNonPris(endCtx, endCtx.c, r.dernierJour, 0, 0).dixiemeEnCours).toBe(Math.round(r.regularisation / 10));
   });
 });
