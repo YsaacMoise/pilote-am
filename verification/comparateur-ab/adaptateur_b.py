@@ -1015,6 +1015,9 @@ def composition(s):
         t = k["type"]
         if t == "mois":
             res = {n: v for n, v in mois_b(ctx, k["mois"]).items() if not n.startswith("_") and n != "deduction"}
+            # T-072 (T-052) : B ne lit pas les avenants de la situation. Refus visible, aucune regle ajoutee.
+            if s["contrat"].get("avenants"):
+                res = {n: Refus("AVENANT-NON-GERE", "mois", {"avenants": s["contrat"]["avenants"]}) for n in res}
         elif t == "cp_acquisition":
             res = acquisition_b(ctx, k["periode"])
         elif t == "cp_indemnite":
@@ -1024,6 +1027,12 @@ def composition(s):
             res = cp_mois_b(ctx, k["mois"])
         elif t == "fin":
             res = fin_b(ctx, k)
+            # T-072 (T-054) : B ne lit pas le total des bruts des bulletins saisi (C-008). L'assiette et l'indemnite de
+            # rupture en dependent : refus visible, aucune regle ajoutee. Les autres sorties n'en dependent pas.
+            if k.get("bulletins"):
+                for cle in ("indemnite_rupture", "assiette_rupture"):
+                    if cle in res:
+                        res[cle] = Refus("BULLETINS-NON-GERES", "fin", {"bulletins": k["bulletins"]})
         elif t == "cp_decompte":
             try:
                 r = appel("decompte_jours_cp", d_(k["du"]), d_(k["reprise"]), ctx.jours_travailles)

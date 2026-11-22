@@ -839,6 +839,7 @@ def grille():
                    "sorties": ["preavis", "indemnite_rupture"]}], theme="décès de l'enfant après 6 mois"))
     S += situations_t027()
     S += situations_s50b()  # T-050c
+    S += situations_t072()  # T-072 (T-052, T-054, T-055)
     return S
 
 
@@ -1007,6 +1008,75 @@ def situations_s50b():
                                               [("2026-07-13" if fam == "F2" else "2026-08-03"), "2026-11-09",
                                                "2027-02-15", "2027-02-22", "2027-04-12", "2027-04-19"]),
              "2026-12-27", "deces", "année incomplète, fin en cours de période (décembre)")
+    return S
+
+
+MARQUE_T072_BULLETINS = ("T-072 (T-054) : total des bruts des bulletins saisi (C-008), lu par A seulement ; "
+                         "B ne lit pas cette entrée (refus BULLETINS-NON-GERES)")
+MARQUE_T072_AVENANT = "T-072 (T-052) : avenant vers l'année complète, lu par A seulement ; B ne lit pas les avenants (refus)"
+MARQUE_T072_REGUL = ("T-072 (T-055) : une semaine sans accueil n'est pas saisie : A ne calcule pas la régularisation, "
+                     "B la calcule avec la liste donnée")
+
+
+def situations_t072():
+    """T-072 : situations nouvelles pour les défauts T-052, T-054 et T-055 (registre de direction). Entrées seulement,
+    aucun résultat attendu calculé ici."""
+    S = []
+    # T-052 : contrat de la fiche DDETS 31 « 46 semaines » (Mme Bertrand), absence pour maladie du 13 au 15/10/2021,
+    # avenant vers 52 semaines au 01/06/2022, congés du 01 au 30/06/2022, deux enfants à charge (sonde s4, relecture T-050).
+    for suf, abs_ in (("MALADIE", [conge("am_malade", "2021-10-13", "2021-10-15")]), ("TEMOIN", [])):
+        k = dict(BERTRAND, enfants_a_charge=2,
+                 avenants=[{"du": "2022-06-01", "type_annee": "complete", "semaines": 52, "semaines_sans_accueil": []}])
+        d = sit(f"T072-T052-{suf}", "congés payés", k, [mois("m", "2022-06")],
+                {"absences_am": abs_ + [conge("cp", "2022-06-01", "2022-06-30")]},
+                theme="congés pris au-delà de droits à confirmer", marques={"*": MARQUE_T072_AVENANT})
+        d["aujourdhui"] = "2022-07-15"
+        S.append(d)
+
+    # T-054 : année complète, retrait, préavis de 15 jours (9 mois à 1 an d'ancienneté), total des bulletins saisi
+    # jusqu'au mois de la fin (et une fois jusqu'au mois d'avant). Fins en cours de mois, un vendredi, au dernier jour
+    # d'un mois (dont février), le lendemain étant un jour d'accueil ou un week-end.
+    def fin_bulletins(id_, notif, fin, jusqua, theme):
+        k = dict(contrat_grille("C52", "H32", "T420", debut="2025-04-01", fin=fin), planning=PMaJ9, taux=420,
+                 rupture={"motif": "retrait", "notif": notif, "preavis": "execute"})
+        S.append(sit(id_, "fin de contrat", k,
+                     [{"id": "f", "type": "fin", "notification": notif, "motif": "retrait", "comparer_assiette": True,
+                       "bulletins": {"total": 1000000, "jusqua": jusqua}}],
+                     theme=theme, marques={"*": MARQUE_T072_BULLETINS}))
+    for notif, theme in (("2026-01-17", "fin le samedi 31/01, dernier jour du mois"),
+                         ("2026-02-02", "fin le lundi 16/02, en cours de mois"),
+                         ("2026-02-12", "fin le jeudi 26/02"),
+                         ("2026-02-13", "fin le vendredi 27/02"),
+                         ("2026-02-14", "fin le samedi 28/02, dernier jour de février"),
+                         ("2026-03-06", "fin le vendredi 20/03"),
+                         ("2026-03-17", "fin le mardi 31/03, dernier jour du mois, lendemain jour d'accueil")):
+        fin = (date.fromisoformat(notif) + timedelta(days=14)).isoformat()
+        fin_bulletins(f"T072-T054-{fin}", notif, fin, fin[:7], "bulletins saisis jusqu'au dernier mois, " + theme)
+    fin_bulletins("T072-T054-2026-02-26-MOISAVANT", "2026-02-12", "2026-02-26", "2026-01",
+                  "bulletins saisis jusqu'au mois d'avant la fin (février estimé)")
+
+    # T-055 : année incomplète de 46 semaines (contrats S50B), une semaine sans accueil non saisie.
+    def fin_regul(id_, k, notif, motif, theme):
+        k = dict(k)
+        if motif != "deces":
+            k["rupture"] = {"motif": motif, "notif": notif, "preavis": "execute"}
+        S.append(sit(id_, "fin de contrat", k,
+                     [{"id": "f", "type": "fin", "notification": notif, "motif": motif, "comparer_assiette": True}],
+                     theme=theme, marques={"*": MARQUE_T072_REGUL}))
+    # Contrat des tests t038 (36 semaines, 40 h du lundi au vendredi, 5 EUR), semaine du 16/02/2026 non saisie.
+    # Lettre du 28/10/2026 ; fin du préavis d'un mois le 27/11/2026 (date donnée en entrée, comme le contrat).
+    def lundis(du, n):
+        return [(date.fromisoformat(du) + timedelta(days=7 * i)).isoformat() for i in range(n)]
+    off38 = (lundis("2025-10-20", 2) + lundis("2025-12-22", 2) + ["2026-02-23"] + lundis("2026-04-13", 2)
+             + lundis("2026-07-06", 8) + ["2026-10-19"])
+    for motif, fin in (("deces", "2026-10-28"), ("retrait", "2026-11-27"), ("demission", "2026-11-27")):
+        k1 = incomplet(P5x8, 500, 36, fin=fin, majoration_hm=10, cp_mode="juin", semaines_sans_accueil=off38)
+        fin_regul(f"T072-T055-PASSEE-{motif.upper()}", k1, "2026-10-28", motif, f"semaine passée non saisie, {motif}")
+    # Seconde année sans aucune semaine sans accueil saisie (contrat S50B-I46-F1-2P sans les semaines de 2026-2027).
+    a1b = ["2025-11-17", "2026-03-02", "2026-06-01", "2026-06-08", "2026-07-20", "2026-08-03"]
+    k2 = dict(contrat_grille("I46", "H40", "T420", debut="2025-11-01", fin="2027-05-31"), planning=S50B_MER, taux=420,
+              semaines=46, semaines_sans_accueil=a1b)
+    fin_regul("T072-T055-AN2-DECES", k2, "2027-05-31", "deces", "seconde année sans semaine saisie, décès")
     return S
 
 
