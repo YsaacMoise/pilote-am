@@ -704,7 +704,8 @@ function coeurCdd(endCtx: Ctx, dernierJour: ISODate, finCdd: FinCdd, enfants: nu
   // régularisation ; sans entretien, repas ni kilomètres (CCN 114.1, 114.2, 57), sans ICCP (P4) ni IFC.
   // Direction T-076 (22/11/2026) : l'IFC est calculée sur le net, montant déclaré et payé (Urssaf : « La déclaration et le
   // paiement doivent être réalisés sur la base du net ») ; le brut n'est qu'un affichage, dérivé du net (netToBrut).
-  let netCdd = 0, cpPayeNet = 0;
+  let netCdd = 0, cpPayeNet = 0, extraHi = 0;
+  let congesAC = false;
   const manquants: Month[] = [];
   const incomplets = new Set<string>();
   for (const m of monthsBetween(monthOf(c.start), dernierMois)) {
@@ -714,7 +715,11 @@ function coeurCdd(endCtx: Ctx, dernierJour: ISODate, finCdd: FinCdd, enfants: nu
     const cp = cpForMonth(endCtx, m, enfants);
     netCdd += b.net + cp.indemnite + cp.complement;
     cpPayeNet += cp.indemnite + cp.complement;
-    if (cp.aConfirmer) incomplets.add('les congés payés à confirmer');
+    // m4 : parts « à confirmer » du planning variable (HC, maintien des congés) : dans la borne haute de l'IFC seulement.
+    extraHi += (b.complAConfirmerAmount ?? 0) + (cp.maintienAConfirmer ?? 0);
+    // D10 : des congés « à confirmer » (non versés) ne bloquent plus l'IFC : la part sûre les laisse de côté ; ils sont payés
+    // à la fin dans l'ICCP (période précédente) et la lecture haute de P4 les compte.
+    if (cp.aConfirmer) congesAC = true;
     if (b.evenementAConfirmer) incomplets.add(`le salaire ${libelleNatures(naturesAConfirmer(b))} à confirmer`);
   }
   if (manquants.length) alertes.push(`Historique incomplet : ${manquants.length} mois sans bulletin. Ajoute les bulletins manquants dans l’historique pour un calcul juste.`);
@@ -742,13 +747,15 @@ function coeurCdd(endCtx: Ctx, dernierJour: ISODate, finCdd: FinCdd, enfants: nu
   if (regul.inconnu) incomplets.add('la régularisation, qui n’est pas calculée');
   const salairesNet = netCdd;
   netCdd += regul.lo;
-  const netHi = netCdd - regul.lo + regul.hi;
+  const netHi = netCdd - regul.lo + regul.hi + extraHi;
 
   // Étape 4 : IFC nette = arrondi(10 % × assiette nette) (R-CDD-07, direction T-076), si elle est due (R-CDD-08).
   // P4 (lecture 1, retenue) : sans l'ICCP.
   const due = IFC_DUE[finCdd];
   const ifc: Plage = { lo: due ? Math.round(netCdd / 10) : 0, hi: due ? Math.round(netHi / 10) : 0, raisons: [] };
   if (due && regul.hi > regul.lo) ifc.raisons.push('Elle compte la régularisation, elle-même en partie à confirmer.');
+  if (due && congesAC) ifc.raisons.push('Des congés payés sont à confirmer : ils ne sont pas dans la part sûre.');
+  if (due && extraHi) ifc.raisons.push('Des heures complémentaires ou des congés du planning variable sont à confirmer : ils ne sont pas dans la part sûre.');
   const ifcNet = (x: number) => x;
 
   // Étape 5 : ICCP (R-CDD-10), IFC dans la base du dixième de la dernière période, plancher L1242-16.
@@ -769,22 +776,53 @@ function coeurCdd(endCtx: Ctx, dernierJour: ISODate, finCdd: FinCdd, enfants: nu
     const restantsPrec = Math.max(0, cpt.reste);
     cpJours = acq.joursADate + restantsPrec;
     cpDixiemeEnCours = Math.round((bd.base + regul.lo + ifcNet(ifc.lo)) / 10);
-    if (restantsPrec > 0 || cpt.aPrendreAConfirmer) {
-      // P3 sur la période précédente : l'app ne calcule pas la lecture « dixième seul » de ces jours (limite T-076).
-      iccp.inconnu = `Indemnité de congés non pris à confirmer : il te reste des jours de la période de congés précédente. Pour un CDD, l’app ne sait pas encore calculer ces jours avec le dixième seul (DREETS, Pajemploi) et avec la comparaison de la convention (article 48.1.1.5). Elle ne donne pas de montant.`;
+    // Décision D10 (22/11/2026) : CDD à cheval sur le 1er juin, la part sûre de l'ICCP est donnée.
+    // Période précédente : toute lecture doit au moins le dixième de cette période (P3, lecture B ; L1242-16), moins ce qui
+    // est déjà versé pour elle pendant le CDD (indemnités et compléments depuis le 1er juin ; en année complète, maintien des
+    // jours pris, payé dans le salaire). Haut : le plus favorable entre dixième et maintien des jours (lecture la plus haute).
+    const juin = `${y}-06` as Month;
+    const complete = termsAt(c, dernierJour).yearType === 'complete';
+    let precLo = 0, precHi = 0, complHi = 0;
+    let precInconnu: string | undefined;
+    const yPrec = y - 1;
+    if (yPrec >= cpPeriodStartYear(c.trackedFrom) && `${y}-05-31` >= c.start) {
+      const indP = indemnite(endCtx, yPrec, enfants);
+      if (indP.jours > 0 || indP.aConfirmer) {
+        if (indP.manquants.length || (indP.aConfirmer && !indP.aConfirmer.baseSure)) {
+          precInconnu = 'Indemnité de congés non pris à confirmer : la base du dixième de la période de congés précédente n’est pas sûre (mois sans bulletin ou sommes à confirmer). L’app ne donne pas de montant.';
+        } else {
+          const jours = indP.aConfirmer ? (indP.aConfirmer.montants.length ? indP.aConfirmer.montants.map((x) => x.jours) : [indP.jours]) : [indP.jours];
+          let paye = 0;
+          for (const m of monthsBetween(juin, dernierMois)) { const k = cpForMonth(endCtx, m, enfants); paye += k.indemnite + k.complement; }
+          if (complete) paye += maintien(endCtx, cpt.pris, dernierJour);
+          const maints = jours.map((j) => maintien(endCtx, j, `${y}-06-01`));
+          const haut = Math.max(indP.dixieme, ...maints);
+          precLo = Math.max(0, indP.dixieme - paye);
+          precHi = Math.max(precLo, haut - paye);
+          if (precHi > precLo || precLo > 0) iccp.raisons.push('Il te reste des congés de la période précédente : l’app paie au moins le dixième de cette période, moins ce qui est déjà payé (DREETS, Pajemploi : dixième seul). La convention (article 48.1.1.5) peut donner plus.');
+          // Complément ou indemnité de juin « à confirmer », pas versé : il peut entrer dans la base de la période en cours.
+          if (dernierMois >= juin && cpForMonth(endCtx, juin, enfants).aConfirmer) complHi = complete ? Math.max(0, indP.dixieme - Math.min(...maints)) : haut;
+        }
+      }
+    }
+    const juinAC = dernierMois >= juin && !!cpForMonth(endCtx, juin, enfants).aConfirmer;
+    const autresAC = dernierMois >= juin && monthsBetween(juin, dernierMois).some((m) => m !== juin && !!cpForMonth(endCtx, m, enfants).aConfirmer);
+    if (precInconnu) {
+      iccp.inconnu = precInconnu;
     } else if (cpt.decompteAConfirmer.length) {
       iccp.inconnu = `Indemnité de congés non pris à confirmer : ${cpt.decompteAConfirmer.join(' ')}`;
-    } else if (bd.aConfirmer || bd.evenementAConfirmer || bd.manquants.length) {
+    } else if ((bd.aConfirmer && (autresAC || !juinAC)) || bd.evenementAConfirmer || bd.manquants.length) {
       iccp.inconnu = 'Indemnité de congés non pris à confirmer : la base du dixième contient des sommes encore à confirmer (congés ou salaire de jours à confirmer) ou des mois sans bulletin. L’app ne donne pas de montant.';
     } else {
-      const dixHi = Math.round((bd.base + regul.hi + ifcNet(ifc.hi)) / 10);
+      const dixHi = Math.round((bd.base + complHi + regul.hi + ifcNet(ifc.hi)) / 10);
       // Jours acquis : les lectures officielles quand elles sont calculées ; sinon la borne haute interne (acquisition).
       const lecturesJours = (acq.aConfirmer?.lectures ?? []).map((l) => l.joursADate);
       const joursMax = acq.aConfirmer ? (lecturesJours.length ? Math.max(...lecturesJours) : acq.jours) : acq.joursADate;
       const maintienHi = maintien(endCtx, joursMax, dernierJour);
-      iccp.lo = cpDixiemeEnCours;
-      iccp.hi = Math.max(dixHi, maintienHi);
+      iccp.lo = cpDixiemeEnCours + precLo;
+      iccp.hi = Math.max(dixHi, maintienHi) + precHi;
       if (maintienHi > dixHi) iccp.raisons.push(MESSAGE_P3);
+      if (complHi) iccp.raisons.push('Le complément de congés de juin, à confirmer, peut aussi entrer dans sa base.');
       if (maintienHi > dixHi && acq.aConfirmer) iccp.raisons.push('Le nombre de jours de congés acquis n’est pas tranché non plus (les fiches officielles comptent différemment) : le maintien de salaire en dépend.');
       if (regul.hi > regul.lo || ifc.hi > ifc.lo) iccp.raisons.push('Sa base compte la régularisation et l’indemnité de fin de contrat, en partie à confirmer.');
       // Plancher L1242-16 : « ne peut être inférieur au dixième de la rémunération totale brute perçue par le salarié pendant
@@ -844,8 +882,16 @@ export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCdd
   if (fin === 'terme' && c.cddTerme && dernierJour < c.cddTerme) {
     return vide([`Tu as choisi « le CDD arrive à sa date de fin », mais le dernier jour (${shortDate(dernierJour)}) est avant la ${c.cddTermeImprecis ? 'fin de la durée minimale' : 'date de fin prévue'} (${shortDate(c.cddTerme)}). Choisis comment le CDD s’est arrêté avant la date, ou corrige la date : l’indemnité de fin de contrat en dépend.`]);
   }
-  if (fin === 'terme' && c.cddTerme && !c.cddTermeImprecis && dernierJour > c.cddTerme) {
-    alertes.push(`Ton CDD finit le ${shortDate(dernierJour)}, après la date prévue (${shortDate(c.cddTerme)}). C’est possible si la date a été reportée par écrit ou au retour de la personne remplacée (code du travail, article L1243-7). Sinon, ${MESSAGE_CDD_DEVIENT_CDI.charAt(0).toLowerCase()}${MESSAGE_CDD_DEVIENT_CDI.slice(1)}`);
+  // Décision D9 de la direction (22/11/2026) : cohérence des dates face au terme précis.
+  const anticipees: FinCdd[] = ['initiative_am', 'commun_accord', 'employeur', 'faute_grave', 'essai'];
+  if (anticipees.includes(fin) && c.cddTerme && !c.cddTermeImprecis && dernierJour >= c.cddTerme) {
+    return vide([`Tu as choisi une fin avant la date, mais le dernier jour (${shortDate(dernierJour)}) est ${dernierJour === c.cddTerme ? 'la' : 'après la'} date de fin prévue (${shortDate(c.cddTerme)}). Au terme, choisis « ${FIN_CDD_LABEL.terme.l} » ; sinon corrige la date.`]);
+  }
+  if (fin !== 'suite_cdi' && c.cddTerme && !c.cddTermeImprecis && dernierJour > c.cddTerme) {
+    // C. trav. L1243-11 : « Lorsque la relation contractuelle de travail se poursuit après l'échéance du terme du contrat à
+    // durée déterminée, celui-ci devient un contrat à durée indéterminée. » Un report écrit du terme (L1243-7, renouvellement)
+    // change la date de fin prévue du contrat.
+    return vide([`Le dernier jour (${shortDate(dernierJour)}) est après la date de fin prévue du CDD (${shortDate(c.cddTerme)}). Si la date a été reportée par écrit, mets la nouvelle date de fin prévue dans le contrat. Sinon, si tu as continué à travailler après la date sans nouveau contrat, ton CDD est devenu un CDI (code du travail, article L1243-11) : l’app ne calcule pas ce cas comme une fin de CDD.`]);
   }
   const endCtx: Ctx = { ...ctx, c: { ...c, end: dernierJour }, cache: new Map(), finControlee: true };
   const nonGere = nonGeresPeriode(endCtx.c, ctx.leaves, c.start, dernierJour, 'non');
@@ -899,7 +945,9 @@ export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCdd
       },
     };
   };
-  const reg = reunir(ctx2 ? 'Régularisation et complément de salaire du CDD' : 'Régularisation', finSalaires);
+  // Décision D8 (22/11/2026) : suite en CDI, ni régularisation de fin, ni solde P2, ni ICCP (L1243-11 : même contrat ;
+  // CCN 124 : régularisation « à la date de fin du contrat de travail »). Rien n'est dû maintenant.
+  const reg = fin === 'suite_cdi' ? { valeur: 0 } as ReturnType<typeof reunir> : reunir(ctx2 ? 'Régularisation et complément de salaire du CDD' : 'Régularisation', finSalaires);
   const ifc = reunir('Indemnité de fin de contrat', lectures.map((l) => l.ifc));
   const iccp = reunir('Indemnité de congés non pris', lectures.map((l) => l.iccp));
   const assiette = Math.min(...lectures.map((l) => l.netCdd));
@@ -925,10 +973,10 @@ export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCdd
     ancienneteMois: anc, preavisLabel: 'Pas de préavis : fin de CDD', preavisFin: dernierJour, dernierJour,
     indemniteRupture: 0, ruptureExplication: MESSAGE_CDD_PAS_DE_PREAVIS, indemnitePreavis: 0,
     totalBrut: brutCdd, brutsEstimes: [], manquants: l1.manquants,
-    regularisation: reg.valeur, regulMinutes: l1.regulMinutes,
+    regularisation: reg.valeur, regulMinutes: fin === 'suite_cdi' ? 0 : l1.regulMinutes,
     ...(regulExpl ? { regularisationAConfirmer: `${regulExpl} Elle n'est pas comptée dans le total.` } : {}),
     ...(reg.part ? { regularisationPartAConfirmer: reg.part } : {}),
-    ...(ctx2 ? { regularisationParLecture: lectures.map((l) => l.regul.lo) } : {}),
+    ...(ctx2 && fin !== 'suite_cdi' ? { regularisationParLecture: lectures.map((l) => l.regul.lo) } : {}),
     cpJoursRestants: l1.cpJours, cpIndemnite: iccp.valeur, cpDixiemeEnCours: l1.cpDixiemeEnCours,
     cpExplication: iccp.inconnu ? 'À confirmer : l’app ne donne pas de montant.' : l1.cpExplication,
     ...(iccp.inconnu ? { cpAConfirmer: iccp.inconnu } : {}),
