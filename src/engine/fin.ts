@@ -206,6 +206,16 @@ export function congesNonPris(endCtx: Ctx, c: Ctx['c'], dernierJour: ISODate, en
     if (finTerms.yearType === 'complete') {
       // Les jours pris ont été payés dans le salaire, le complément du dixième en juin : reste le maintien.
       precMontant = maintien(endCtx, restantsPrec, dernierJour, y - 1);
+      // T-076 (relecture R2, décision de la direction section 5) : planning variable, même base que le complément de juin
+      // (cpForMonth). L'indemnité de la période précédente vaut la part sûre ; déjà versés : le complément de juin et, pour
+      // chaque jour pris, le maintien compris dans le salaire mensualisé (`verseDansSalaire` ÷ jours). Reste dû = part sûre
+      // − complément − versé des jours pris. En L1 comme en L2.
+      const indPrevPv = y - 1 >= cpPeriodStartYear(c.trackedFrom) ? indemnite(endCtx, y - 1, enfants) : null;
+      if (pvActif(finTerms) && indPrevPv?.pv && indPrevPv.jours > 0 && !indPrevPv.aConfirmer) {
+        const complementJuin = cpForMonth(endCtx, `${y}-06` as Month, enfants).complement;
+        const parJour = indPrevPv.pv.verseDansSalaire / indPrevPv.jours;
+        precMontant = Math.max(0, Math.round(indPrevPv.montant - complementJuin - parJour * Math.min(cpt.pris, cpt.aPrendre)));
+      }
     } else {
       const indPrev = y - 1 >= cpPeriodStartYear(c.trackedFrom) ? indemnite(endCtx, y - 1, enfants) : null;
       if (indPrev && indPrev.jours) {
