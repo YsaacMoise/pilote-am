@@ -201,3 +201,31 @@ Engagement réciproque rompu avant l'embauche (R-ESS-04), durée de la période 
 - `tests/test_t039.py` : 5 tests (absence de l'enfant « sans solde »), attendus tirés des textes (T-039-MB4.md).
 - `tests/test_t035.py` : 9 tests (embauche en cours de mois, décès de l'enfant, entretien sous le minimum), attendus tirés des textes (T-035-MB3.md).
 - `ECARTS.md` : cas officiels non passés et leur cause.
+
+## T-076 (22/11/2026, passage 1) : planning variable et CDD
+
+D'après regles/t076-planning-variable.md, regles/t076-cdd.md et regles/t076-decisions-direction.md (sections 1 et 2). Point à confirmer : la fonction donne les deux lectures ; part sûre = la plus petite ; à confirmer = l'écart.
+
+| Fonction (`planning_variable.py`) | Règles |
+|---|---|
+| `semaine_prevue(lundi, cycle, cycle_ancre, plannings_semaines)` | R-PV-02, P-PV-4 (Q1) ; refus PV-SEMAINE-SANS-PLANNING, PV-SEMAINE-PREVUE-PLUS-45H |
+| `mensualisation_planning_variable(semaines, heures_mensualisees, taux, cycle, plannings_semaines)` | R-PV-03 (D423-5 14°), P-PV-1 : lecture L1 ou L2, base B |
+| `heures_en_plus_semaine_planning_variable(lecture, prevu, base, reelles, taux, maj_hm, maj_hc, absence)` | R-PV-04, R-PV-05 (CCN 96.4, 110.1) |
+| `mois_de_rattachement_semaine(lundi)` | E-PV-02 (source secondaire ; A-11) |
+| `prevu_du_mois_planning_variable(annee, mois, plannings_par_lundi, type_annee)` | R-PV-08 (CCN 111) |
+| `ferie_chome_planning_variable(date, jours_prevus, ...)` | R-PV-12, lecture F1 (CCN 47.1, 47.2) |
+| `decompte_jours_cp_planning_variable(du, reprise, jours_prevus)` | R-PV-09 (CCN 48.1.1.3) |
+| `indemnite_cp_planning_variable(jours, taux, h_periode, n_semaines, h_conges, salaires, icp...)` | R-PV-10, P-PV-5 (C1, C2) |
+| `complement_cp_planning_variable(resultat)` | R-CP-07 ; refus A-29, P-PV-5 |
+
+| Fonction (`cdd.py`) | Règles |
+|---|---|
+| `mensualisation_cdd(heures_hebdo, taux)` | R-CDD-04 (CCN 108.1, 109.1, L1242-14) |
+| `cdd_moins_d_un_mois(debut, terme)`, `salaire_mois_cdd_moins_d_un_mois(...)` | P1 |
+| `qualifier_semaine_sans_accueil_cdd(lecture)`, `deux_lectures_cdd(l1, l2, point)` | P2 |
+| `assiette_ifc(salaires, cp, regularisation, autres)` | R-CDD-07 (L1243-8, L3221-3) |
+| `ifc_due(fin_cdd)`, `indemnite_fin_cdd(brut, fin_cdd, iccp)` | R-CDD-08, R-CDD-07, P4 |
+| `iccp_cdd(fin_cdd, periodes, ifc, brut, heures_hebdo, taux)` | R-CDD-10 (L1242-16, CCN 48.1.1.5), P3 |
+| `preavis_et_rupture_cdd(fin_cdd)` | R-CDD-06 (L1243-5) |
+
+Gardés tels quels (tests existants) : `mensualisation(horaires_variables=True)` refuse A-04 et `verifier_perimetre(type_contrat="CDD", cdd_remplacement=True)` refuse R-MENS-10 ; les nouvelles fonctions ci-dessus sont le chemin T-076. Tests : `tests/test_t076.py` (31 tests, dont E-PV-02, E-PV-03, E-CDD-01, E-CDD-02).
