@@ -578,12 +578,53 @@ const OPTION_SANS_SOLDE_ENFANT = { v: 'sans_solde_enfant' as const, l: CHILD_ABS
  * T-048 (contrôle de la n° 53) : une plage sans arrivée alors qu'une plage plus loin a déjà une arrivée reste vide
  * (l'AM a répondu « Non » ou n'a pas pointé ce matin-là) : le planning ne la remplit pas, pour ne pas la noter présente.
  */
-export function heuresInitiales(planned: Plage[], pres: Presence[] | undefined, slots: number): Presence[] {
+export function heuresInitiales(planned: Plage[], pres: Presence[] | undefined, slots: number, maintenant?: string): Presence[] {
+  // T-068 (direction T-072) : le jour même (`maintenant`, HH:MM), seules les heures pointées sont reprises. Une plage non
+  // pointée reste vide, même si son heure est passée, et aucun départ non pointé n'est proposé, même après l'heure prévue
+  // (quatrième passe, B-3) : l'AM utilise le bouton Départ ou tape l'heure. « Enregistrer » n'écrit aucune heure sans geste.
   return Array.from({ length: slots }, (_, i) => {
     const vide = !pres?.[i]?.a && (pres ?? []).slice(i + 1).some((x) => !!x?.a);
     if (vide) return { a: '', d: '' };
+    if (maintenant) {
+      return { a: pres?.[i]?.a ?? '', d: pres?.[i]?.d ?? '' };
+    }
     return { a: pres?.[i]?.a ?? planned[i]?.start ?? '', d: pres?.[i]?.d ?? planned[i]?.end ?? '' };
   });
+}
+
+/**
+ * Relecture T-072 (B-2) : un départ saisi sans arrivée serait perdu (seules les plages avec arrivée sont gardées). La fiche
+ * refuse alors « Enregistrer » avec ce message, qui rappelle l'arrivée prévue. Rend '' si chaque départ a son arrivée.
+ */
+export function departSansArrivee(pres: Presence[], planned: Plage[]): string {
+  const i = pres.findIndex((p) => !p.a && !!p.d);
+  if (i < 0) return '';
+  const prevue = planned[i]?.start;
+  return `Départ${pres.length > 1 ? ` (${i + 1})` : ''} sans arrivée : indique aussi l’heure d’arrivée${prevue ? ` (prévue à ${fmtH(prevue)})` : ''}.`;
+}
+
+/**
+ * Contrôles des heures de la fiche avant « Enregistrer » : départ sans arrivée (B-2), départ avant l'arrivée. `heuresVisibles`
+ * faux (absence choisie, jour à venir) : les heures ne sont pas enregistrées, aucun contrôle (sinon refus muet, le message
+ * étant dans le bloc caché). Rend le message, ou ''.
+ */
+export function verifierFiche(pres: Presence[], planned: Plage[], heuresVisibles: boolean): string {
+  if (!heuresVisibles) return '';
+  const sansArrivee = departSansArrivee(pres, planned);
+  if (sansArrivee) return sansArrivee;
+  return pres.some((p) => p.a && p.d && p.d <= p.a) ? 'L’heure de départ doit être après l’arrivée.' : '';
+}
+
+/**
+ * Présences écrites par « Enregistrer » de la fiche de la journée ; `undefined` : aucune présence (journée comme prévu,
+ * ou jour à venir). Jour passé : des heures égales au planning ne sont pas écrites. Le jour même (T-068), seules les
+ * heures saisies ou pointées sont écrites ; une fiche vide ne note rien (journée comme prévu).
+ */
+export function presencesAEnregistrer(planned: Plage[], pres: Presence[], future: boolean, maintenant?: string): Presence[] | undefined {
+  if (future) return undefined;
+  if (maintenant) { const r = presencesAGarder(pres); return r.length ? r : undefined; }
+  const samePlan = pres.length === planned.length && pres.every((p, i) => planned[i] && p.a === planned[i].start && p.d === planned[i].end);
+  return samePlan ? undefined : presencesAGarder(pres);
 }
 
 /**
@@ -600,7 +641,7 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
   const di = dayInfo(ctxFor(c), day);
   const rec = di.rec;
   const slots = Math.max(di.planned.length, rec?.pres?.length ?? 0, 1);
-  const init = heuresInitiales(di.planned, rec?.pres, slots);
+  const init = heuresInitiales(di.planned, rec?.pres, slots, day === today() ? nowHHMM() : undefined);
   const [pres, setPres] = useState<Presence[]>(init);
   const [abs, setAbs] = useState<ChildAbs | 'none'>(rec?.abs ?? 'none');
   const [repas, setRepas] = useState<number>(rec?.repas ?? c.repasParJour);
@@ -611,20 +652,20 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
   const [ferieT, setFerieT] = useState<boolean>(!!rec?.ferieTravaille);
   const [err, setErr] = useState('');
   const future = day > today();
-  useErreurAffichee('depart_avant_arrivee', !!err);
+  useErreurAffichee('depart_avant_arrivee', !!err && !err.includes('sans arrivée'));
+  useErreurAffichee('saisie', !!err && err.includes('sans arrivée'));
 
   async function save() {
-    for (const p of pres) {
-      if (p.a && p.d && p.d <= p.a) { setErr('L’heure de départ doit être après l’arrivée.'); return; }
-    }
-    const samePlan = pres.every((p, i) => di.planned[i] && p.a === di.planned[i].start && p.d === di.planned[i].end) && pres.length === di.planned.length;
+    const erreur = verifierFiche(pres, di.planned, abs === 'none' && !future);
+    if (erreur) { setErr(erreur); return; }
+    const gardees = presencesAEnregistrer(di.planned, pres, future, day === today() ? nowHHMM() : undefined);
     const undo = await updateDay(c.id, day, (r) => {
       const next: DayRec = { ...r };
       if (abs !== 'none') { next.abs = abs; delete next.pres; }
       else {
         delete next.abs;
-        if (samePlan || future) delete next.pres;
-        else next.pres = presencesAGarder(pres);
+        if (!gardees) delete next.pres;
+        else next.pres = gardees;
         if (!di.planned.length && next.pres?.length) next.extra = true;
       }
       if (repas !== c.repasParJour) next.repas = repas; else delete next.repas;

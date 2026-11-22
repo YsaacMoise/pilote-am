@@ -2,7 +2,7 @@
 rupture, ICCP, regularisation d'annee incomplete, indemnite de precarite,
 solde de tout compte (domaine 9 et R-MENS-06 de regles-v0)."""
 
-from datetime import date
+from datetime import date, timedelta
 from fractions import Fraction
 
 from .commun import (
@@ -275,6 +275,179 @@ def indemnite_rupture(motif, auteur, date_debut_accueil, date_reference, salaire
     return resultat_ok(indemnite_rupture.regles,
                        {"indemnite_centimes": vers_centimes(Fraction(assiette, 80), "indemnite de rupture", regles),
                         "assiette_centimes": assiette})
+
+
+@api("R-FIN-03")
+def dates_fin_preavis_possibles(date_premiere_presentation, preavis):
+    """T-072 : dates de fin possibles d'un preavis execute.
+    CCN art. 64.1 (socle commun) : le preavis est « un delai prefix commencant a
+    courir a compter de la date de la premiere presentation de la lettre
+    recommandee [...] ou de la date de remise en mains propres ». CCN art. 120 :
+    durees en « jours calendaires » ou « un mois ». Aucun texte ne dit si le jour
+    de depart compte (regles/t021-convention.md 2.4, PREAVIS-DATE-FIN) ; la fiche
+    anciennete de la branche (valeur indicative, non conventionnelle) le compte.
+    B ne tranche pas : il rend les deux lectures, triees.
+    - {"jours": n} : presentation + n - 1 (jour de depart compte) et presentation + n.
+    - {"mois": 1} : meme quantieme le mois suivant, moins un jour, et ce quantieme ;
+      refus DATE-MOIS apres le 28 (fin de mois non ecrite).
+    Sortie : dates (liste de datetime.date)."""
+    regles = ["R-FIN-03"]
+    if not isinstance(date_premiere_presentation, date):
+        raise ErreurSaisie("date_premiere_presentation : date attendue.")
+    if not isinstance(preavis, dict) or len(preavis) != 1:
+        raise ErreurSaisie("preavis : {'jours': n} ou {'mois': 1}.")
+    if "jours" in preavis:
+        n = entier(preavis["jours"], "preavis.jours", 1)
+        dates = [date_premiere_presentation + timedelta(days=n - 1), date_premiere_presentation + timedelta(days=n)]
+    elif preavis.get("mois") == 1:
+        from .calendrier import ajouter_mois
+        quantieme = ajouter_mois(date_premiere_presentation, 1)
+        dates = [quantieme - timedelta(days=1), quantieme]
+    else:
+        raise ErreurSaisie("preavis : {'jours': n} ou {'mois': 1}.")
+    return resultat_ok(dates_fin_preavis_possibles.regles, {"dates": dates},
+                       notes=["Deux lectures : le jour de la premiere presentation compte ou non (CCN 64.1, 120)."])
+
+
+def _mois_cle(d):
+    return f"{d.year:04d}-{d.month:02d}"
+
+
+def _mois_suivant(cle):
+    a, m = int(cle[:4]), int(cle[5:])
+    return f"{a + (m == 12):04d}-{m % 12 + 1:02d}"
+
+
+@api("R-FIN-06", "R-FIN-07")
+def indemnite_rupture_bulletins(motif, auteur, date_debut_accueil, date_reference, variantes,
+                                total_bulletins_centimes=None, total_jusqua=None, bruts_lus_centimes=None):
+    """T-072 (T-054) : indemnite de rupture quand l'utilisatrice a saisi le total
+    reel de ses bulletins (du debut du contrat au mois « total_jusqua » compris,
+    « AAAA-MM ») ou des bruts lus sur des bulletins ({"AAAA-MM": centimes}).
+
+    Texte : CCN art. 121.1 (socle AM) : 1/80 « du total des salaires bruts percus
+    pendant la duree du contrat, hors indemnites non soumises a contributions et
+    cotisations sociales telles que l'indemnite kilometrique, l'indemnite
+    d'entretien et les frais de repas ». Le mot « percus » : les montants des
+    bulletins font foi pour les mois qu'ils couvrent (consigne T-072 ; regles/
+    points-t021.md A-45). Hypothese d'entree, a confirmer par la direction pour
+    l'ecran de saisie : le total ou le brut lu est un total de SALAIRES BRUTS
+    soumis a cotisations (sans entretien, repas, kilometres, ni l'indemnite de
+    rupture elle-meme, exoneree : regles-v0 R-PAJ, declaration de fin).
+
+    Sommes de fin : l'ICCP (CCN art. 67, 123 : conges « non remuneres au jour de
+    la date de fin »), la regularisation (art. 124 : « effectuee a la date de fin
+    du contrat ») et l'indemnite de preavis sont payees sur le dernier bulletin,
+    avec le salaire du dernier mois (regles/t050-trois-regles.md, point 2, 5 ;
+    declaration de fin Pajemploi : le parent y « coche les indemnites dues et
+    leurs montants », regles-v0 R-PAJ). Donc :
+    - dernier mois couvert par les bulletins : ces sommes sont dans le montant
+      saisi ; B n'ajoute rien. Restent a confirmer : une regularisation non
+      calculee (son signe est inconnu) ; refus A-45 : une regularisation negative
+      ou une indemnite de preavis non nulle, dont l'effet sur l'assiette n'est pas
+      tranche et qui seraient deja melees au montant saisi ;
+    - dernier mois non couvert : B ajoute les salaires des mois non couverts, l'ICCP
+      et la regularisation (T-050b) ; une somme non calculee (None) rend
+      l'indemnite « a confirmer » (ASSIETTE-A-CONFIRMER).
+
+    variantes : une par date de fin possible (voir dates_fin_preavis_possibles) :
+    {"date_fin": date, "salaires_mois_centimes": {"AAAA-MM": int ou None},
+     "iccp_centimes": int ou None, "regularisation_centimes": int ou None,
+     "indemnite_preavis_centimes": int ou None}. Les salaires d'un mois sont le
+    salaire brut et les CP payes ce mois (hors indemnites non soumises).
+    B conclut seulement si toutes les variantes donnent la meme assiette ; sinon
+    refus FIN-DATE-A-CONFIRMER (aucun texte ne fixe le dernier jour du preavis).
+    Sortie : indemnite_centimes, assiette_centimes."""
+    regles = ["R-FIN-06"]
+    essai = indemnite_rupture.interne(motif, auteur, date_debut_accueil, date_reference, 0)
+    if essai["resultat"].get("raison"):
+        return resultat_ok(indemnite_rupture_bulletins.regles, essai["resultat"])
+    if motif == "deces_enfant":
+        regles = ["R-FIN-07"]
+    if total_bulletins_centimes is None and not bruts_lus_centimes:
+        raise ErreurSaisie("Donner total_bulletins_centimes (avec total_jusqua) ou bruts_lus_centimes.")
+    lus = {}
+    for cle, v in (bruts_lus_centimes or {}).items():
+        lus[str(cle)] = entier(v, f"bruts_lus_centimes[{cle}]")
+    total = 0
+    if total_bulletins_centimes is not None:
+        total = entier(total_bulletins_centimes, "total_bulletins_centimes")
+        if not (isinstance(total_jusqua, str) and len(total_jusqua) == 7):
+            raise ErreurSaisie("total_jusqua : mois « AAAA-MM » attendu avec le total.")
+        doubles = sorted(c for c in lus if c <= total_jusqua)
+        if doubles:
+            raise ErreurSaisie("Bruts lus pour des mois deja dans le total saisi : " + ", ".join(doubles) + ".")
+    if not variantes:
+        raise ErreurSaisie("variantes : au moins une date de fin.")
+    debut = _mois_cle(date_debut_accueil)
+    assiettes = {}
+    a_confirmer = {}
+    ambigus = {}
+    for v in variantes:
+        fin = v.get("date_fin")
+        if not isinstance(fin, date) or fin < date_debut_accueil:
+            raise ErreurSaisie("variante : date_fin attendue, apres le debut.")
+        dernier = _mois_cle(fin)
+        manque = []
+        if total_bulletins_centimes is not None and total_jusqua > dernier:
+            manque.append(f"bulletins saisis au-dela du mois de fin ({total_jusqua})")
+        hors = sorted(c for c in lus if c < debut or c > dernier)
+        if hors:
+            manque.append("bruts lus hors du contrat (" + ", ".join(hors) + ")")
+
+        def couvert(c):
+            return (total_bulletins_centimes is not None and c <= total_jusqua) or c in lus
+
+        assiette = total + sum(x for c, x in lus.items() if debut <= c <= dernier)
+        sal = v.get("salaires_mois_centimes") or {}
+        c = debut
+        while c <= dernier:
+            if not couvert(c):
+                x = sal.get(c)
+                if x is None:
+                    manque.append(f"salaire {c}")
+                else:
+                    assiette += entier(x, f"salaires_mois_centimes[{c}]")
+            c = _mois_suivant(c)
+        reg = v.get("regularisation_centimes")
+        pre = v.get("indemnite_preavis_centimes")
+        cle_v = fin.isoformat()
+        if pre is None:
+            manque.append("indemnite de preavis")
+        elif entier(pre, "indemnite_preavis_centimes"):
+            ambigus[cle_v] = {"indemnite_preavis_centimes": pre}
+        if reg is None:
+            manque.append("regularisation")
+        elif isinstance(reg, int) and not isinstance(reg, bool) and reg < 0:
+            ambigus.setdefault(cle_v, {})["regularisation_centimes"] = reg
+        if not couvert(dernier):
+            iccp_v = v.get("iccp_centimes")
+            if iccp_v is None:
+                manque.append("iccp")
+            else:
+                assiette += entier(iccp_v, "iccp_centimes")
+            if reg is not None and reg > 0:
+                assiette += entier(reg, "regularisation_centimes")
+        if manque:
+            a_confirmer[cle_v] = manque
+        else:
+            assiettes[cle_v] = assiette
+    if ambigus:
+        raise NonGere("A-45", regles, precision=(
+            "Indemnite de preavis ou regularisation negative dans l'assiette du 1/80 : point non tranche."),
+            details={"sommes_ambigues_centimes": ambigus})
+    if a_confirmer:
+        raise NonGere("ASSIETTE-A-CONFIRMER", regles, precision="Assiette du 1/80 incomplete pour au moins une date de fin.",
+                      details={"sommes_a_confirmer": a_confirmer, "assiettes_connues_centimes": assiettes})
+    valeurs = set(assiettes.values())
+    if len(valeurs) > 1:
+        raise NonGere("FIN-DATE-A-CONFIRMER", regles + ["R-FIN-03"],
+                      precision="L'assiette change selon la date de fin du preavis, que le texte ne fixe pas.",
+                      details={"assiettes_centimes": assiettes})
+    assiette = valeurs.pop()
+    return resultat_ok(indemnite_rupture_bulletins.regles,
+                       {"indemnite_centimes": vers_centimes(Fraction(assiette, 80), "indemnite de rupture", regles),
+                        "assiette_centimes": assiette, "dates_fin_testees": sorted(assiettes)})
 
 
 _COMPOSANTES = ("feries_chomes_payes", "absences_remunerees", "heures_complementaires")
