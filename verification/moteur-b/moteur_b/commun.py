@@ -88,6 +88,7 @@ CODES = {
     "D-1": "T-074 : 9 mois d'accueil pour l'indemnite de rupture appreciees a la date d'envoi de la lettre (F16842) ou a la date de fin du contrat, preavis dispense compris (CCN 60, 64.2) : non tranche (question D-1).",
     "D-2": "T-074 : regularisation de fin d'annee incomplete avec preavis dispense par l'employeur : jours dispenses comptes comme dus et payes (a) ou regularisation arretee au dernier jour travaille, ICP a part (b) ; non tranche (question D-2).",
     "P-1": "T-074 : part de l'indemnite de preavis dans un mois paye en partie en salaire (proportion de l'art. 111 ou heures x taux) : non ecrite (question P-1).",
+    "SORTIE-SEMAINE-SANS-ACCUEIL": "Annee incomplete, mois d'embauche ou de fin : jours du planning hors du contrat dans une semaine sans accueil. Ils comptent au denominateur de l'art. 111 (dernier alinea) ; leur deduction au numerateur n'est ecrite nulle part et change le salaire du mois (a confirmer).",
     "PREAVIS-FERIE": "T-074 : jour ferie sur un jour d'accueil prevu pendant le preavis dispense : paiement non ecrit (aucun texte lu ne le traite).",
     "ASSIETTE-A-CONFIRMER": "Une somme de l'assiette (ICCP ou regularisation de fin) n'est pas calculee : le montant qui en depend n'est pas donne (T-050b).",
     "A-47": "Deces de l'enfant avant 9 mois d'accueil (levee par T-035a : indemnite due, CCN 119.4.2, F16842 ; code garde pour l'historique).",
