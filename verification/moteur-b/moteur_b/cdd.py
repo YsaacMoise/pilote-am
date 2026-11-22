@@ -351,10 +351,38 @@ def controle_dates_cdd(fin_cdd, date_fin, date_terme):
 
 @api("R-CDD-05", "D3")
 def verifier_cas_cdd(planning_variable, moins_d_un_mois, semaines_sans_accueil):
-    """D3 (decisions, section 4) : CDD a planning variable avec semaines sans accueil,
-    ou CDD qui cumule P1 et P2 : refus CDD-PASSAGE-2 au passage 1."""
+    """D15 (decisions, section 5, remplace D3 pour le planning variable) : CDD a
+    planning variable refuse en entier au passage 1. D3 : CDD qui cumule P1 et P2
+    (moins d'un mois avec semaines sans accueil) : refus. Code CDD-PASSAGE-2."""
+    if planning_variable:
+        raise NonGere("CDD-PASSAGE-2", ["D15"], precision="CDD a planning variable : non calcule au passage 1.")
     if moins_d_un_mois and semaines_sans_accueil:
         raise NonGere("CDD-PASSAGE-2", ["D3"], precision="CDD de moins d'un mois avec semaines sans accueil (P1 et P2).")
-    if planning_variable and semaines_sans_accueil:
-        raise NonGere("CDD-PASSAGE-2", ["D3"], precision="CDD a planning variable avec semaines sans accueil.")
     return resultat_ok(["D3"], {"gere": True})
+
+
+@api("R-CDD-12", "D19", "L1242-10")
+def controle_essai_cdd(date_debut, date_terme_initial, date_fin):
+    """D19 (decisions, section 5) : fin « pendant la periode d'essai » apres la duree
+    maximale d'essai : refus. C. trav. L1242-10 : « cette periode d'essai ne peut
+    exceder une duree calculee a raison d'un jour par semaine, dans la limite de deux
+    semaines lorsque la duree initialement prevue au contrat est au plus egale a six
+    mois et d'un mois dans les autres cas. » Aucun texte lu ne dit comment compter les
+    semaines (R-CDD-12) : semaines entieres (lecture stricte) ou entamees (lecture
+    large). Jours comptes en jours calendaires depuis le debut. Fin apres la limite
+    large : refus CDD-ESSAI-DEPASSE ; entre les deux lectures : refus CDD-ESSAI-LIMITE.
+    Sortie : dans_essai (True)."""
+    for d in (date_debut, date_terme_initial, date_fin):
+        if not isinstance(d, date):
+            raise ErreurSaisie("Dates attendues.")
+    duree = (date_terme_initial - date_debut).days + 1
+    six_mois = ajouter_mois(date_debut, 6) - timedelta(days=1)
+    plafond = 14 if date_terme_initial <= six_mois else (ajouter_mois(date_debut, 1) - date_debut).days
+    strict = min(duree // 7, plafond)
+    large = min(-(-duree // 7), plafond)
+    jours = (date_fin - date_debut).days + 1
+    if jours > large:
+        raise NonGere("CDD-ESSAI-DEPASSE", ["D19"], precision=f"Fin au jour {jours} ; essai de {large} jours au plus.")
+    if jours > strict:
+        raise NonGere("CDD-ESSAI-LIMITE", ["D19"], precision=f"Fin au jour {jours} : essai de {strict} ou {large} jours.")
+    return resultat_ok(["D19"], {"dans_essai": True, "essai_max_jours": [strict, large]})

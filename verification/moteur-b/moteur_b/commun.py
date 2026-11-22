@@ -143,6 +143,8 @@ CODES = {
     "CDD-PASSAGE-2": "CDD a planning variable avec semaines sans accueil, ou CDD de moins d'un mois avec semaines sans accueil : passage 2 (D3).",
     "CDD-DATE-FIN": "Fin anticipee de CDD a la date du terme ou apres : au terme, choisis Terme (D9).",
     "CDD-DEVENU-CDI": "Travail apres le terme du CDD sans CDI signe : le contrat devient un CDI (C. trav. L1243-11, D9).",
+    "CDD-ESSAI-DEPASSE": "Fin pendant la periode d'essai apres la duree maximale d'essai du CDD (C. trav. L1242-10, D19).",
+    "CDD-ESSAI-LIMITE": "Fin d'essai du CDD entre les deux lectures de la duree maximale (semaines entieres ou entamees, L1242-10, D19).",
     "CDD-PLANCHER-L1242-16": "CDD avec CP payes pendant le contrat : plancher de C. trav. L1242-16 (dixieme de toute la duree du contrat) non applique tel quel.",
 }
 

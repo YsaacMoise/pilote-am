@@ -437,6 +437,7 @@ def mensualise(ctx):
                           ctx.taux, cycle=cyc)
                 ctx.pv_lecture = r["resultat"]["lecture"]
                 ctx.pv_base = r["resultat"]["base_hebdo_minutes"]
+                ctx.pv_base_contrat = r["resultat"].get("base_contrat_minutes")  # D16 (S2)
             elif ctx.cdd and ctx.type == "complete":
                 r = appel("mensualisation_cdd", ctx.hebdo, ctx.taux)  # T-076, R-CDD-04
             else:
@@ -546,6 +547,7 @@ def mois_b(ctx, m):
     def heures():
         hc = hm = 0
         hc_haut = 0  # T-076 : plus grande lecture des HC (D1, D4)
+        d16 = [0, 0]  # T-076, D16 : HC du mois, lecture 1 (planning remis) et lecture 2 (duree du contrat)
         semaines = sorted({lundi(d) for d in jours})
         for lu in semaines:
             sem = [lu + timedelta(days=i) for i in range(7)]
@@ -586,6 +588,10 @@ def mois_b(ctx, m):
                 if ctx.pv_lecture == "L1":
                     ref, haut = contrat_min, reelles
                     kw["absence_dans_semaine"] = absence
+                    if ctx.pv_base_contrat is not None:
+                        # D16 : planning remis, seconde reference = duree hebdomadaire du contrat.
+                        kw["base_contrat_minutes"] = ctx.pv_base_contrat
+                        ref = min(ref, Fraction(ctx.pv_base_contrat))
                 else:
                     # D1, D2, D4 (decisions, section 4) : faits comptes ici, regle appliquee par B.
                     ref, haut = Fraction(ctx.pv_base), reelles + mai + payees
@@ -604,8 +610,14 @@ def mois_b(ctx, m):
                           reelles, ctx.taux, ctx.maj_hm, majoration_hc_pourcent=ctx.maj_hc, **kw)
                 lo, hi = r["resultat"]["lectures_montant_complementaires"]
                 hc_minutes[0] += Fraction(r["resultat"]["minutes_complementaires"])
-                hc += lo
-                hc_haut += hi - lo
+                if "montants_par_lecture" in r["resultat"]:
+                    # D16 : totaux du mois lecture par lecture (planning remis / duree du contrat).
+                    l1_, l2_ = r["resultat"]["montants_par_lecture"]
+                    d16[0] += l1_
+                    d16[1] += l2_
+                else:
+                    hc += lo
+                    hc_haut += hi - lo
                 hm += r["resultat"]["montant_majorees_centimes"]
                 continue
             if extra == 0:
@@ -616,6 +628,8 @@ def mois_b(ctx, m):
                       majoration_hc_pourcent=ctx.maj_hc, absence_dans_semaine=absence)
             hc += r["resultat"]["montant_complementaires_centimes"]
             hm += r["resultat"]["montant_majorees_centimes"]
+        if d16 != [0, 0]:
+            return Lect(hc + min(d16), [hc + d16[0], hc + d16[1]]), hm
         if hc_haut:
             return Lect(hc, [hc, hc + hc_haut]), hm
         return hc, hm
@@ -653,7 +667,8 @@ def mois_b(ctx, m):
         v = r["resultat"]["salaire_brut_mois_centimes"]
         lect = getattr(out["_heures"][0], "lectures", None)
         if lect:
-            return Lect(v, [v, v + lect[1] - lect[0]])  # T-076 (D1, D4) : HC en deux lectures
+            hors_hc = v - int(out["_heures"][0])
+            return Lect(v, [hors_hc + lect[0], hors_hc + lect[1]])  # T-076 (D1, D4, D16) : HC en deux lectures
         return v
 
     garde("salaire_mois_hors_cp", total)
@@ -1241,7 +1256,11 @@ def mois_cdd(ctx, m):
     noms = ("salaire_base_mois", "salaire_mois_hors_cp")
     try:
         p1 = cdd_p1(ctx)
-        appel("verifier_cas_cdd", ctx.pv, p1, cdd_p2(ctx))  # D3 : PV ou P1 avec semaines sans accueil
+        appel("verifier_cas_cdd", ctx.pv, p1, cdd_p2(ctx))  # D15, D3
+        # D18 : mois travaille apres le terme sans CDI enregistre (L1243-11).
+        apres = [d for d in jours_entre(premier(m), dernier(m)) if ctx.dans_contrat(d) and d > d_(ctx.k["cdd_terme"])]
+        if apres:
+            appel("controle_dates_cdd", "terme", max(apres), d_(ctx.k["cdd_terme"]))
     except Refus as e:
         for n in list(out):
             if not n.startswith("_"):
@@ -1293,6 +1312,8 @@ def fin_cdd_b(ctx, k):
         p2 = cdd_p2(ctx)
         appel("verifier_cas_cdd", ctx.pv, p1, p2)  # D3
         appel("controle_dates_cdd", fc, fin, d_(ctx.k["cdd_terme"]))  # D9
+        if fc == "essai":  # D19 : duree maximale d'essai (L1242-10), sur la duree initialement prevue
+            appel("controle_essai_cdd", ctx.debut, d_(ctx.k.get("cdd_terme_initial") or ctx.k["cdd_terme"]), fin)
     except Refus as e:
         for cle in ("preavis", "indemnite_rupture", "ifc", "iccp", "regularisation_fin", "assiette_ifc",
                     "salaire_dernier_mois") + (("solde_fin_cdd",) if ctx.type == "incomplete" else ()):

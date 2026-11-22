@@ -368,7 +368,29 @@ class T076Corrections(unittest.TestCase):
     def test_d3(self):
         self.assertEqual(m.verifier_cas_cdd(True, False, True)["code"], "CDD-PASSAGE-2")
         self.assertEqual(m.verifier_cas_cdd(False, True, True)["code"], "CDD-PASSAGE-2")
-        self.assertTrue(R(m.verifier_cas_cdd(True, False, False), "gere"))
+        self.assertEqual(m.verifier_cas_cdd(True, False, False)["code"], "CDD-PASSAGE-2")  # D15
+        self.assertTrue(R(m.verifier_cas_cdd(False, False, True), "gere"))
+
+    def test_d16_s2_deux_references(self):
+        # Planning remis 40 h, contrat 130 h sur 52 semaines : B = 130 x 12 / 52 = 30 h. 40 h faites.
+        r = m.mensualisation_planning_variable(52, 130, 500)
+        self.assertEqual(R(r, "base_contrat_minutes"), "1800")
+        h = m.heures_en_plus_semaine_planning_variable("L1", 2400, None, 2400, 500, 25, base_contrat_minutes=1800)
+        self.assertEqual(R(h, "lectures_montant_complementaires"), [0, 5000])
+        self.assertEqual(R(h, "montants_par_lecture"), [0, 5000])
+        # Semaine courte (15 h prevues, 17 h faites) : 2 HC en lecture 1, aucune en lecture 2 ; le mois somme
+        # chaque lecture a part (jamais le minimum semaine par semaine).
+        h = m.heures_en_plus_semaine_planning_variable("L1", 900, None, 1020, 500, 25, base_contrat_minutes=1800)
+        self.assertEqual(R(h, "montants_par_lecture"), [1000, 0])
+
+    def test_d19_essai(self):
+        # Du 05/01 au 29/05/2026 : 145 jours, 20 semaines entieres ou 21 entamees, plafond 14 jours (<= 6 mois).
+        d, t = date(2026, 1, 5), date(2026, 5, 29)
+        self.assertEqual(R(m.controle_essai_cdd(d, t, date(2026, 1, 9)), "essai_max_jours"), [14, 14])
+        self.assertEqual(m.controle_essai_cdd(d, t, date(2026, 1, 30))["code"], "CDD-ESSAI-DEPASSE")
+        # CDD de 8 semaines et 3 jours (59 jours) : 8 ou 9 jours d'essai.
+        t2 = date(2026, 3, 4)
+        self.assertEqual(m.controle_essai_cdd(d, t2, date(2026, 1, 13))["code"], "CDD-ESSAI-LIMITE")
 
 
 if __name__ == "__main__":
