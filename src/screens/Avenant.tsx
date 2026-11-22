@@ -121,9 +121,9 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
         <section class="card">
           <fieldset>
             <legend>Le planning</legend>
-            <Seg label="Accueil sur l’année" value={t.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(t.weeks, 46) || 46 })}
-              options={[{ v: 'complete', l: 'Toute l’année (52 sem.)' }, { v: 'incomplete', l: 'Année incomplète' }]} />
-            {t.yearType === 'incomplete' && <NumberInput label="Semaines d’accueil par an" hint="46 au plus" value={t.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />}
+            {!c.planningVariable && <Seg label="Accueil sur l’année" value={t.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(t.weeks, 46) || 46 })}
+              options={[{ v: 'complete', l: 'Toute l’année (52 sem.)' }, { v: 'incomplete', l: 'Année incomplète' }]} />}
+            {!c.planningVariable && t.yearType === 'incomplete' && <NumberInput label="Semaines d’accueil par an" hint="46 au plus" value={t.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />}
             {semaines4751(t.yearType, t.weeks) && <Banner tone="warn">{NON_GERE_47_51}</Banner>}
             {before.yearType === 'incomplete' && t.yearType === 'complete' && <p class="hint">Le contrat passe de l’année incomplète à l’année complète : l’app calcule une régularisation à la date de l’avenant (heures accueillies et pas encore payées), versée avec le salaire de ce mois.</p>}
             {before.yearType === 'incomplete' && t.yearType === 'incomplete' && <p class="hint">Année incomplète : la régularisation se fait en fin de contrat, pas à l’avenant.</p>}

@@ -9,6 +9,8 @@ import { cpForMonth, decompteConge, indemnite, maintien } from '../src/engine/co
 import { finDeContrat } from '../src/engine/fin';
 import { nonGeresContrat } from '../src/engine/nonGeres';
 import { lecturePV, pvActif } from '../src/engine/planningVariable';
+import { NON_GERE_CDD_PV_P2 } from '../src/engine/cdd';
+import { toutesSemainesSansAccueil, MESSAGE_MOIS_DEJA_DECLARE } from '../src/engine/payroll';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
   const p: Planning = {};
@@ -129,7 +131,9 @@ describe('T-076 : heures complémentaires et majorées (R-PV-04, R-PV-05)', () =
     expect(b.salaireMens).toBe(52000); // 130 h × 4,00 €
     expect(b.net).toBe(64000);
     expect(b.alerts.join(' ')).toMatch(/base de 30 h par semaine/);
-    expect(monthBase(ctx, '2026-04').complMin).toBeGreaterThanOrEqual(15 * 60);
+    // Avril : semaine du 30/03 (6 h jeudi 02/04 + 9 h vendredi 03/04) ; semaine B du 06/04 (lundi de Pâques) : 0 ; semaine A
+    // du 13/04 : 15 h ; semaine A du 27/04 : lundi-jeudi 36 h, B atteint le jeudi 30/04 → 6 h en avril. Total 36 h.
+    expect(monthBase(ctx, '2026-04').complMin).toBe(36 * 60);
   });
   it('L2 : semaine de congé payé, part sûre sans les jours de congé, l’écart à confirmer', () => {
     const c = s1({ cycle: [A45, B25], heuresMensualisees: 130, start: '2025-06-02', trackedFrom: '2025-06-02', balances: { cpRestants: 30, cpEnCours: 0, maladieDeduits: 0 } });
@@ -157,8 +161,26 @@ describe('T-076 : heures complémentaires et majorées (R-PV-04, R-PV-05)', () =
     ];
     const b = monthBase(makeCtx(c, recs, [], '2024-12-31'), '2024-01');
     expect(b.nonGere).toEqual([]);
-    // 5 + 2 = 7 HC ; « Les 5 heures seront payées sur février ».
+    // 5 + 2 = 7 HC en janvier, comme la source.
     expect(b.complMin).toBe(7 * 60);
+  });
+  it('E-PV-02, semaine à cheval : l’app rattache chaque heure au mois du jour où elle est faite (A-11), pas au mois où la semaine finit', () => {
+    // Règle de l'app (payroll.ts, computeRange : « Heures en plus, par semaine, rattachées au mois du jour ») : la semaine est
+    // la semaine civile du lundi au dimanche pour le seuil (CCN 96.4 « par semaine », semaine non définie : ambiguïté A-11,
+    // non tranchée, regles/t021-convention.md) et chaque heure va au mois de son jour. La source (Département du Cher, E-PV-02)
+    // rattache toute la semaine à cheval au mois où elle finit (« Les 5 heures seront payées sur février »).
+    // Ce test le montre : les 5 heures faites le lundi 29 janvier vont en janvier (7 + 5 = 12 HC), et non en février.
+    // E-PV-02 n'est donc respecté que si les heures de la semaine à cheval tombent en février ; écart noté au rapport.
+    const ps: Record<string, Planning> = {};
+    for (const l of ['2024-01-01', '2024-01-08', '2024-01-15', '2024-01-22', '2024-01-29']) ps[l] = week('08:00', '14:00');
+    const c = contract({ start: '2023-09-04', trackedFrom: '2024-01-01', planningVariable: true, planningsSemaines: ps, heuresMensualisees: 130 });
+    const recs = [
+      rec('2024-01-01', { ferieTravaille: true, pres: [{ a: '08:00', d: '14:00' }] }),
+      rec('2024-01-08', { pres: [{ a: '08:00', d: '19:00' }] }),
+      rec('2024-01-24', { pres: [{ a: '08:00', d: '16:00' }] }),
+      rec('2024-01-29', { pres: [{ a: '08:00', d: '19:00' }] }), // semaine 5, +5 h le lundi 29 janvier
+    ];
+    expect(monthBase(makeCtx(c, recs, [], '2024-12-31'), '2024-01').complMin).toBe(12 * 60);
   });
 });
 
@@ -255,6 +277,89 @@ describe('T-076 : régularisation et fin (R-PV-07, R-PV-13)', () => {
     // mois ; celle du 30/03 tombe en avril) = 90 h × 4,00 € = 360,00 €. Total 1 698,18 €. Régularisation = 53,82 €.
     expect(monthBase(ctx, '2026-01').base).toBe(41818);
     expect(regularisation(ctx, '2026-01-05', '2026-03-31').montant).toBe(5382);
+  });
+});
+
+describe('T-076 : corrections après vérification (décisions D1 à D6)', () => {
+  // Cycle A 45 h / B 25 h, 130 h mensualisées : lecture L2, B = 30 h.
+  const l2 = (over: Partial<Contract> = {}) => s1({ cycle: [A45, B25], heuresMensualisees: 130, ...over });
+  it('B1 / D1 : L2, 1er mai chômé : HC prévues payées ; autres fériés chômés : part sûre et écart à confirmer', () => {
+    const b = monthBase(makeCtx(l2(), [], [], T), '2026-05');
+    // Semaine A du 27/04 : lundi-jeudi 36 h + vendredi 1er mai 9 h (CCN 47.1) = 45 h → 15 HC ; rangées dans l'ordre des jours,
+    // 6 h le jeudi 30/04 (avril) et 9 h le 1er mai (mai).
+    // Semaines B (25 h, vendredi 08/05 férié compris) : sous 30 h → 0.
+    // Semaine A du 11/05 (jeudi 14/05 Ascension) : sûr 36 h → 6 HC ; lecture « férié compté » 45 h → 15 HC ; écart 9 h.
+    // Semaine A du 25/05 (lundi 25/05 Pentecôte) : sûr 6 HC, écart 9 h.
+    // Mai : sûr 9 + 6 + 6 = 21 HC = 84,00 € ; à confirmer 18 h = 72,00 €. Net = 520,00 + 84,00 = 604,00 €.
+    expect(b.nonGere).toEqual([]);
+    expect(b.complMin).toBe(21 * 60);
+    expect(b.complAmount).toBe(8400);
+    expect(b.complAConfirmerMin).toBe(18 * 60);
+    expect(b.complAConfirmerAmount).toBe(7200);
+    expect(b.net).toBe(60400);
+  });
+  it('B1 / D1 : L2, jour d’événement familial payé : HC prévues du jour à confirmer', () => {
+    // Mardi 03/03 (semaine A, 9 h) : événement familial payé (2 jours prévus pour un mariage, ici 1 jour pris).
+    const leaves: AmLeave[] = [{ id: 'e', type: 'evenement', from: '2026-03-03', to: '2026-03-03', joursEvenement: 4 }];
+    const b = monthBase(makeCtx(l2(), [], leaves, T), '2026-03');
+    // Semaine du 02/03 : sûr 36 h → 6 HC ; lecture « jour payé compté » 45 h → 15 HC : écart 9 h. Semaine du 16/03 : 15 HC.
+    expect(b.complMin).toBe(21 * 60);
+    expect(b.complAConfirmerMin).toBe(9 * 60);
+  });
+  it('B2 / D2 : L2, absence retenue dans une semaine au-delà de la base : mois refusé, message précis', () => {
+    // Congé sans solde mardi 03/03 (semaine A, 45 h prévues > 30 h) : mois non calculé.
+    const sansSolde: AmLeave[] = [{ id: 's', type: 'sans_solde', from: '2026-03-03', to: '2026-03-03' }];
+    const ctx = makeCtx(l2(), [], sansSolde, T);
+    expect(monthBase(ctx, '2026-03').nonGere.join(' ')).toMatch(/Absence retenue sur ton salaire le 03\/03, une semaine où tes heures prévues dépassent la base de ton contrat : non géré/);
+    expect(declarationLines(ctx, computeMonth(ctx, '2026-03'))).toEqual([]);
+    expect(finDeContrat(ctx, '2026-10-15', 'retrait').nonGere?.join(' ')).toMatch(/Absence retenue sur ton salaire/);
+    // Même absence une semaine B (25 h prévues ≤ 30 h) : aucune HC prévue touchée, mois calculé.
+    const semaineB: AmLeave[] = [{ id: 's', type: 'sans_solde', from: '2026-03-10', to: '2026-03-10' }];
+    expect(monthBase(makeCtx(l2(), [], semaineB, T), '2026-03').nonGere).toEqual([]);
+    // L1 : la règle existante s'applique (déduction de l'art. 111), mois calculé.
+    expect(monthBase(makeCtx(s1(), [], sansSolde, T), '2026-03').nonGere).toEqual([]);
+  });
+  it('B3 / D3 : CDD à horaires variables avec semaines sans accueil : refusé, message précis', () => {
+    const c = l2({ cdd: true, cddTerme: '2026-09-30', yearType: 'incomplete', weeks: 46, heuresMensualisees: 115 });
+    expect(nonGeresContrat(c)).toContain(NON_GERE_CDD_PV_P2);
+    expect(monthBase(makeCtx(c, [], [], T), '2026-04').nonGere).toContain(NON_GERE_CDD_PV_P2);
+    // CDD à horaires variables sur 52 semaines : pas ce refus.
+    expect(nonGeresContrat(l2({ cdd: true, cddTerme: '2026-09-30' }))).not.toContain(NON_GERE_CDD_PV_P2);
+  });
+  it('M1 / D4 : L2, première semaine coupée : base entière (sûr) ou réduite aux jours prévus dans le contrat (à confirmer)', () => {
+    // Entrée le mercredi 04/03/2026, semaine A : mercredi-vendredi 27 h. Sûr : 27 − 30 < 0 → 0 HC.
+    // Lecture 2 : B × 3 jours ÷ 5 jours = 18 h → 27 − 18 = 9 HC, à confirmer (36,00 €).
+    // Reste de mars : semaine A du 16/03 → 15 HC ; semaine du 30/03 → HC en avril.
+    const c = l2({ start: '2026-03-04', trackedFrom: '2026-03-04' });
+    const b = monthBase(makeCtx(c, [], [], T), '2026-03');
+    expect(b.complMin).toBe(15 * 60);
+    expect(b.complAConfirmerMin).toBe(9 * 60);
+    expect(b.complAConfirmerAmount).toBe(3600);
+    // Entrée en cours de mois (52 semaines, heures) : 520,00 € × (158 − 18) ÷ 158 = 460,76 €.
+    expect(b.base).toBe(46076);
+  });
+  it('D5 : mois passé avec une part de congés à confirmer : message du mois déjà déclaré', () => {
+    const c = s1({ start: '2026-06-01', trackedFrom: '2026-06-01', cycleAncre: '2026-06-01' });
+    const ctx = makeCtx(c, [], [], '2027-12-31');
+    // Aucun congé saisi : C2 inconnu (0 jour sur 30) ; part sûre = dixième, écart à confirmer = max(dixième ; C1) − dixième.
+    const r = computeMonth(ctx, '2027-06');
+    if (r.cpMaintienAConfirmer) expect(r.alerts).toContain(MESSAGE_MOIS_DEJA_DECLARE);
+    else expect(cpForMonth(ctx, '2027-06').maintienAConfirmer ?? 0).toBe(0);
+    // Avec les congés de l'été 2027 (cas R-PV-10) : écart 224,02 €, mois de juin passé → message.
+    const leaves: AmLeave[] = ['2027-06-14', '2027-06-28', '2027-07-26', '2027-08-09', '2027-08-23'].map((l, i) => {
+      const d = new Date(`${l}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 5);
+      return { id: `cp${i}`, type: 'cp', from: l, to: d.toISOString().slice(0, 10) };
+    });
+    expect(computeMonth(makeCtx(c, [], leaves, '2027-12-31'), '2027-06').alerts).toContain(MESSAGE_MOIS_DEJA_DECLARE);
+  });
+  it('D6 : planning remis, année incomplète : semaine sans accueil du contrat sans planning à saisir ; « sans accueil » = semaine sans accueil', () => {
+    const ps: Record<string, Planning> = {};
+    for (const l of ['2026-01-26', '2026-02-02', '2026-02-09', '2026-02-23']) ps[l] = week('08:00', '14:00');
+    ps['2026-03-02'] = {};
+    const c = contract({ planningVariable: true, planningsSemaines: ps, heuresMensualisees: 100, yearType: 'incomplete', weeks: 40, weeksOff: ['2026-02-16'] });
+    expect(monthBase(makeCtx(c, [], [], T), '2026-02').nonGere).toEqual([]);
+    expect(toutesSemainesSansAccueil(c).has('2026-02-16')).toBe(true);
+    expect(toutesSemainesSansAccueil(c).has('2026-03-02')).toBe(true);
   });
 });
 

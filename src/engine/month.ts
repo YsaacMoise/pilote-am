@@ -1,7 +1,7 @@
 // Récapitulatif mensuel par enfant, dans l'ordre de la déclaration Pajemploi.
 import { lastDay, monthLabel, type Month } from './dates';
 import { cpForMonth } from './conges';
-import { ctxLectureCdd2, libelleSalaireAConfirmer, monthBase, naturesAConfirmer, termsAt, type Ctx, type MonthBase } from './payroll';
+import { MESSAGE_MOIS_DEJA_DECLARE, ctxLectureCdd2, libelleSalaireAConfirmer, monthBase, naturesAConfirmer, termsAt, type Ctx, type MonthBase } from './payroll';
 import { libelleLecturesCdd } from './cdd';
 import { netToBrut, REDUCTION_HS } from './rates';
 import { euros, hoursLabel } from './money';
@@ -55,7 +55,11 @@ function computeMonthLecture(ctx: Ctx, m: Month, enfants = 0): MonthResult {
   const cp = cpForMonth(ctx, m, enfants);
   const netTotal = b.net + cp.indemnite + cp.complement;
   const alerts = cp.aConfirmer ? [...b.alerts, cp.aConfirmer] : [...b.alerts];
-  if (cp.maintienAConfirmer && cp.maintienMessage) alerts.push(cp.maintienMessage);
+  if (cp.maintienAConfirmer && cp.maintienMessage) {
+    alerts.push(cp.maintienMessage);
+    // T-076, D5 : un mois déclaré ne change pas après coup ; une saisie tardive suit le mécanisme existant des mois déclarés.
+    if (lastDay(m) < ctx.today && !alerts.includes(MESSAGE_MOIS_DEJA_DECLARE)) alerts.push(MESSAGE_MOIS_DEJA_DECLARE);
+  }
   const hsNet = b.complAmount + b.majAmount + b.majContratAmount;
   const hsBrut = netToBrut(hsNet, lastDay(m));
   return {
