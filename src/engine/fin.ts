@@ -2,20 +2,21 @@
 // indemnité de congés non pris. Aucun document officiel n'est produit.
 import { nonGeresPeriode } from './nonGeres';
 import { finPreavis, finsAdmises, preavisEmployeur } from './preavis';
-import type { DemandeurInexecution, Motif } from './model';
+import { FINS_CDD_NON_GEREES, type DemandeurInexecution, type FinCdd, type FinCddNonGere, type Motif } from './model';
+import { estCddMoinsUnMois, libelleLecturesCdd, messagesCdd, MESSAGE_CDD_12_MOIS, MESSAGE_CDD_DEVIENT_CDI } from './cdd';
 import { euros } from './money';
 import {
   addDays, addMonthsToDate, cpPeriod, cpPeriodStartYear, fullMonthsBetween, lastDay, monthOf, monthsBetween, shortDate,
   type ISODate, type Month,
 } from './dates';
 import { acquisition, baseDixieme, compteur, cpForMonth, indemnite, maintien } from './conges';
-import { libelleRegulJoursAConfirmer, makeCtx, monthBase, naturesAConfirmer, monthBrut, regularisationLectures, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx } from './payroll';
-import { netToBrut } from './rates';
+import { ctxLectureCdd2, libelleRegulJoursAConfirmer, makeCtx, monthBase, naturesAConfirmer, monthBrut, regularisationLectures, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx } from './payroll';
+import { brutToNet, netToBrut } from './rates';
 
 /** Entrée en vigueur de l'avenant n° 10 du 9 septembre 2025 (inaptitude) */
 const AVENANT_10 = '2026-05-01';
 
-export type { DemandeurInexecution, Motif } from './model';
+export type { DemandeurInexecution, FinCdd, FinCddNonGere, Motif } from './model';
 
 export const MOTIF_LABEL: Record<Motif, string> = {
   retrait: 'Les parents retirent l’enfant',
@@ -25,7 +26,11 @@ export const MOTIF_LABEL: Record<Motif, string> = {
   inaptitude_pro: 'Inaptitude après un accident du travail ou une maladie professionnelle',
   faute_grave: 'Faute grave reprochée',
   essai: 'Rupture pendant la période d’essai',
+  fin_cdd: 'Fin de CDD',
 };
+
+/** Motifs de fin d'un CDI (écran Fin) : le motif `fin_cdd` est réservé au CDD (T-076) */
+export const MOTIFS_CDI = (Object.keys(MOTIF_LABEL) as Motif[]).filter((m) => m !== 'fin_cdd');
 
 /**
  * T-045 (constat B-2 de V5) : préavis non exécuté en tout ou en partie. CCN IDCC 3239, art. 64 (date de fin) et 64.2
@@ -85,7 +90,36 @@ export interface FinResult {
   alertes: string[];
   /** T-031 : cas non gérés pendant le contrat. Rempli : aucun montant n'est donné (tous à 0), le calcul est refusé. */
   nonGere?: string[];
+  /** T-076 : fin d'un CDD (champs suivants remplis seulement pour un CDD) */
+  cdd?: true;
+  finCdd?: FinCdd | FinCddNonGere;
+  /**
+   * T-076 : indemnité de fin de contrat (dite « de précarité »), en brut, part sûre (R-CDD-07 : 10 % de BrutCDD ; R-CDD-08 :
+   * 0 quand elle n'est pas due). Versée avec le dernier salaire.
+   */
+  ifc?: number;
+  /** T-076 : la même, convertie en net (rapport fixe de l'app) : c'est le montant à déclarer (Urssaf : « sur la base du net ») */
+  ifcNet?: number;
+  ifcExplication?: string;
+  /** T-076 : BrutCDD, total des rémunérations brutes du CDD qui sert de base à l'IFC (R-CDD-07) */
+  brutCdd?: number;
+  /** T-076 : IFC impossible à donner (base incomplète, congés à confirmer…) : `ifc` vaut 0 et n'est pas compté */
+  ifcAConfirmer?: string;
+  /** T-076 : part de l'IFC qui dépend d'une lecture (P1, P2, P4) : hors du total, `ifc` est la part sûre */
+  ifcPartAConfirmer?: PartAConfirmer;
+  /** T-076 : part de l'indemnité de congés non pris qui dépend d'une lecture (P1 à P3, plancher L1242-16) : hors du total */
+  cpPartAConfirmer?: PartAConfirmer;
+  /** T-076 : part de la régularisation qui dépend d'une lecture (P2, jours à confirmer) : hors du total */
+  regularisationPartAConfirmer?: PartAConfirmer;
+  /** T-076 : sommes de la fin à déclarer à Pajemploi qui ne correspondent à aucune heure (champ de l'API Pajemploi) */
+  declaration?: { champ: 'mntIndPrecarite'; libelle: string; net: number; hint: string }[];
 }
+
+/**
+ * T-076 (decisions-direction, principe commun) : « la part sûre est payée ; la part qui dépend de la lecture est affichée
+ * « à confirmer » à côté, hors du total ». `montant` : écart, hors du total ; `lectures` : valeurs de chaque lecture.
+ */
+export interface PartAConfirmer { montant: number; message: string; lectures: number[] }
 
 /** PREAVIS-DATE-FIN : méthode de l'app sans texte (premier jour compté ; un mois de date à date, du 15/10 au 14/11) */
 export const MESSAGE_PREAVIS_FIN =
@@ -226,6 +260,9 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   inexecutionOuBruts?: Inexecution | BrutsReels, brutsReels?: BrutsReels): FinResult {
   const inexecution = inexecutionOuBruts && 'demandeur' in inexecutionOuBruts ? inexecutionOuBruts : undefined;
   const bruts: BrutsReels = brutsReels ?? (inexecutionOuBruts && !('demandeur' in inexecutionOuBruts) ? inexecutionOuBruts : {});
+  // T-076 : un CDD finit sans préavis ni indemnité de rupture (R-CDD-06) : calcul à part, finDeCdd. La façon dont il finit est
+  // celle enregistrée avec le contrat (écran Fin) ; sans elle, aucun montant.
+  if (ctx.c.cdd || motif === 'fin_cdd') return finDeCdd(ctx, notif, motif === 'fin_cdd' ? ctx.c.rupture?.finCdd : undefined, enfants, bruts, motif);
   const c = ctx.c;
   const alertes: string[] = [];
   const anc = fullMonthsBetween(c.start, notif);
@@ -564,5 +601,310 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, ruptureVariantes, totalBrut, brutsEstimes,
     indemnitePreavis, indemnitePreavisExplication, indemnitePreavisAConfirmer,
     regularisation: regularisation_, regulMinutes, cpJoursRestants, cpIndemnite, cpDixiemeEnCours, cpExplication, cpAConfirmer, regularisationAConfirmer, manquants, alertes,
+  };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// T-076 : fin d'un CDD (regles/t076-cdd.md ; regles/t076-decisions-direction.md, section 2).
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** Libellés de l'écran Fin, question « Comment finit le CDD ? » (regles/t076-cdd.md, partie 5.1, point 8) */
+export const FIN_CDD_LABEL: Record<FinCdd | FinCddNonGere, { l: string; sub?: string }> = {
+  terme: { l: 'Le CDD arrive à sa date de fin', sub: 'Y compris après un renouvellement ou un report de la date' },
+  suite_cdi: { l: 'Je continue en CDI avec ce parent' },
+  refus_cdi: { l: 'Le parent m’a proposé un CDI et j’ai refusé', sub: 'Pour le même accueil, au même salaire ou plus' },
+  commun_accord: { l: 'Fin avant la date, d’un commun accord' },
+  initiative_am: { l: 'Fin avant la date, à ma demande', sub: 'Par exemple pour un CDI ailleurs' },
+  employeur: { l: 'Fin avant la date, voulue par le parent, sans faute grave' },
+  faute_grave: { l: 'Fin pour faute grave' },
+  essai: { l: 'Fin pendant la période d’essai' },
+  force_majeure: { l: 'Force majeure', sub: 'Non géré par l’app' },
+  inaptitude: { l: 'Inaptitude constatée par le médecin du travail', sub: 'Non géré par l’app' },
+  jeune_vacances: { l: 'CDD d’un jeune pendant ses vacances scolaires ou universitaires', sub: 'Non géré par l’app' },
+  saisonnier_usage: { l: 'CDD saisonnier ou d’usage', sub: 'Non géré par l’app' },
+  autre: { l: 'Autre cas', sub: 'Agrément suspendu ou retiré, décès de l’enfant… : non géré par l’app' },
+};
+
+/** R-CDD-08 : l'IFC est-elle due ? (table de décision du rapport, une ligne par fin) */
+const IFC_DUE: Record<FinCdd, boolean> = {
+  terme: true, suite_cdi: false, refus_cdi: false, initiative_am: false, faute_grave: false, essai: false, commun_accord: true, employeur: true,
+};
+
+/** Raison affichée quand l'IFC n'est pas due (R-CDD-08, textes cités) */
+const IFC_NON_DUE: Record<Exclude<FinCdd, 'terme' | 'commun_accord' | 'employeur'>, string> = {
+  suite_cdi: 'Pas d’indemnité de fin de contrat : ton CDD continue en CDI (code du travail, articles L1243-8 et L1243-11).',
+  refus_cdi: 'Pas d’indemnité de fin de contrat : tu as refusé un CDI pour le même accueil, à salaire au moins égal (code du travail, article L1243-10, 3°).',
+  initiative_am: 'Pas d’indemnité de fin de contrat : le CDD s’arrête avant la date à ta demande (code du travail, article L1243-10, 4°).',
+  faute_grave: 'Pas d’indemnité de fin de contrat en cas de faute grave (code du travail, article L1243-10, 4°). À contester si elle est injustifiée.',
+  essai: 'Pas d’indemnité de fin de contrat pendant la période d’essai (code du travail, article L1242-11, 4°).',
+};
+
+/** Fins de CDD non gérées (R-CDD-08, partie 6 du rapport) : message précis, aucun montant */
+export const MESSAGES_FIN_CDD_NON_GEREE: Record<FinCddNonGere, string> = {
+  force_majeure: 'Fin du CDD pour force majeure : non géré. L’app ne calcule pas ce cas (indemnité de fin de contrat non due, indemnité possible en cas de sinistre : code du travail, articles L1243-10 et L1243-4). Fais ta fin de contrat sans l’app.',
+  inaptitude: 'Fin du CDD pour inaptitude : non géré. La convention ne règle l’inaptitude que pour le CDI, et l’app ne calcule pas ce cas. Fais ta fin de contrat sans l’app.',
+  jeune_vacances: 'CDD d’un jeune pendant ses vacances scolaires ou universitaires : non géré. L’indemnité de fin de contrat n’est pas due (code du travail, article L1243-10, 2°), mais l’app ne calcule pas ce cas. Fais ta fin de contrat sans l’app.',
+  saisonnier_usage: 'CDD saisonnier ou d’usage : non géré. Ce n’est pas un cas prévu pour une assistante maternelle employée par un particulier, et l’app ne le calcule pas. Fais ta fin de contrat sans l’app.',
+  autre: 'L’app ne calcule pas ce cas (agrément suspendu ou retiré, décès de l’enfant ou autre). Fais ta fin de contrat sans l’app.',
+};
+
+export const MESSAGE_CDD_PAS_DE_PREAVIS = 'À la fin d’un CDD, il n’y a ni préavis ni indemnité de rupture.';
+export const MESSAGE_CDD_DOCUMENTS = 'Ton employeur te remet le certificat de travail, l’attestation France Travail et le reçu pour solde de tout compte.';
+export const MESSAGE_CDD_IFC = 'Tu touches une indemnité de fin de contrat : 10 % de tous tes salaires bruts du CDD. Les indemnités d’entretien, de repas et de kilomètres ne comptent pas.';
+export const MESSAGE_CDD_ICCP = 'Tes congés non payés te sont payés à la fin. Cette indemnité compte aussi l’indemnité de fin de contrat.';
+export const MESSAGE_CDD_DOMMAGES = 'Le parent a mis fin au CDD avant la date, sans faute grave : il peut te devoir aussi des dommages et intérêts, au moins les salaires jusqu’à la date prévue (code du travail, article L1243-4). L’app ne les calcule pas : vois-les avec un conseil (relais petite enfance, DREETS, avocat).';
+const MESSAGE_P3 = 'La convention (article 48.1.1.5) retient le plus favorable entre le maintien de salaire et le dixième. Pour un CDD, la DREETS Occitanie et le modèle de contrat Pajemploi ne retiennent que le dixième.';
+const MESSAGE_P4 = 'L’Urssaf, la DREETS et une réponse ministérielle calculent l’indemnité de fin de contrat sans l’indemnité de congés non pris, mais aucun texte ne le dit. Avec elle, l’indemnité de fin de contrat compte 10 % de l’indemnité de congés en plus.';
+
+/** Montant possible d'un élément de la fin : de `lo` (part sûre) à `hi` ; `inconnu` : aucun montant ne peut être donné */
+interface Plage { lo: number; hi: number; inconnu?: string; raisons: string[] }
+
+interface CoeurCdd {
+  brutCdd: number;
+  /** Salaires nets du CDD, congés versés et régularisation sûre compris (message P2) */
+  netCdd: number;
+  brutsEstimes: Month[];
+  manquants: Month[];
+  incomplets: string[];
+  regul: Plage;
+  regulMinutes: number;
+  ifc: Plage;
+  iccp: Plage;
+  cpJours: number;
+  cpDixiemeEnCours: number;
+  cpExplication: string;
+  alertes: string[];
+}
+
+/** Calcul d'une fin de CDD dans une lecture du salaire (R-CDD-09, étapes 1 à 5). `endCtx` : contrat qui finit le `dernierJour`. */
+function coeurCdd(endCtx: Ctx, dernierJour: ISODate, finCdd: FinCdd, enfants: number, bruts: BrutsReels): CoeurCdd {
+  const c = endCtx.c;
+  const alertes: string[] = [];
+  const dernierMois = monthOf(dernierJour);
+  // Étapes 1 et 3 : salaires du CDD (dernier mois compris, art. 111 pour les jours après la fin : monthBase).
+  // R-CDD-07 : BrutCDD = salaires mensualisés après déductions, HC, HM, majorations de fériés, congés payés versés,
+  // régularisation ; sans entretien, repas ni kilomètres (CCN 114.1, 114.2, 57), sans ICCP (P4) ni IFC.
+  const saisi = bruts.total != null && bruts.total > 0;
+  const couvert = (m: Month) => saisi && (!bruts.jusqua || m <= bruts.jusqua);
+  const finCouverte = (m: Month) => couvert(m) || (bruts.parMois?.[m] != null && bruts.parMois[m]! > 0);
+  let brutCdd = saisi ? bruts.total! : 0;
+  let netCdd = 0, cpPayeNet = 0;
+  const manquants: Month[] = [], brutsEstimes: Month[] = [];
+  const incomplets = new Set<string>();
+  for (const m of monthsBetween(monthOf(c.start), dernierMois)) {
+    const b = monthBase(endCtx, m);
+    if (!b.active) continue;
+    if (b.missing) { manquants.push(m); continue; }
+    const cp = cpForMonth(endCtx, m, enfants);
+    netCdd += b.net + cp.indemnite + cp.complement;
+    cpPayeNet += cp.indemnite + cp.complement;
+    if (cp.aConfirmer) incomplets.add('les congés payés à confirmer');
+    if (b.evenementAConfirmer) incomplets.add(`le salaire ${libelleNatures(naturesAConfirmer(b))} à confirmer`);
+    if (couvert(m)) continue;
+    const lu = bruts.parMois?.[m];
+    if (lu != null && lu > 0) { brutCdd += lu; continue; }
+    if (!b.brut) brutsEstimes.push(m);
+    brutCdd += monthBrut(endCtx, m) + netToBrut(cp.indemnite + cp.complement, lastDay(m));
+  }
+  if (manquants.length) alertes.push(`Historique incomplet : ${manquants.length} mois sans bulletin. Ajoute les bulletins manquants dans l’historique pour un calcul juste.`);
+
+  // Étape 2 : régularisation (R-CDD-09, R-FIN-11). 52 semaines : aucune (R-CDD-11). 46 semaines ou moins : art. 109.2 et 124.
+  const regul: Plage = { lo: 0, hi: 0, raisons: [] };
+  let regulMinutes = 0;
+  if (termsAt(c, dernierJour).yearType === 'incomplete') {
+    const regStart = regulStart(c, addDays(dernierJour, 1));
+    let manque = semainesSansAccueilManquantes(c, regStart, dernierJour);
+    let debut = c.start;
+    while (addMonthsToDate(debut, 12) <= dernierJour) debut = addMonthsToDate(debut, 12);
+    const { attendu, saisies } = semainesSansAccueilAnnee(c, debut);
+    if (debut >= regStart && attendu > 0 && saisies === 0) manque += attendu;
+    if (manque > 0) {
+      regul.inconnu = `Régularisation non calculée : il manque ${manque} semaine${manque > 1 ? 's' : ''} sans accueil dans le contrat. Saisis-les d’abord.`;
+    } else {
+      const reg = regularisationLectures(endCtx, regStart, dernierJour);
+      regulMinutes = reg.dus.minutes;
+      regul.lo = Math.min(reg.dus.montant, reg.retenus.montant);
+      regul.hi = Math.max(reg.dus.montant, reg.retenus.montant);
+      if (!reg.sure) regul.raisons.push(`Elle dépend de jours de salaire encore à confirmer (voir les mois concernés) : ${libelleRegulJoursAConfirmer(reg.dus.montant, reg.retenus.montant)}.`);
+    }
+  }
+  if (regul.inconnu) incomplets.add('la régularisation, qui n’est pas calculée');
+  netCdd += regul.lo;
+  const regulBrut = (x: number) => (finCouverte(dernierMois) ? 0 : netToBrut(x, lastDay(dernierMois)));
+  const brutLo = brutCdd + regulBrut(regul.lo);
+  const brutHi = brutCdd + regulBrut(regul.hi);
+
+  // Étape 4 : IFC = 10 % × BrutCDD (R-CDD-07), si elle est due (R-CDD-08). P4 (lecture 1, retenue) : sans l'ICCP.
+  const due = IFC_DUE[finCdd];
+  const ifc: Plage = { lo: due ? Math.round(brutLo / 10) : 0, hi: due ? Math.round(brutHi / 10) : 0, raisons: [] };
+  if (due && regul.hi > regul.lo) ifc.raisons.push('Elle compte la régularisation, elle-même en partie à confirmer.');
+  const ifcNet = (brut: number) => brutToNet(brut, lastDay(dernierMois));
+
+  // Étape 5 : ICCP (R-CDD-10), IFC dans la base du dixième de la dernière période, plancher L1242-16.
+  const iccp: Plage = { lo: 0, hi: 0, raisons: [] };
+  let cpJours = 0, cpDixiemeEnCours = 0;
+  let cpExplication = `${MESSAGE_CDD_ICCP} L’app retient le dixième ; le maintien de salaire, s’il est plus haut, est à confirmer.`;
+  if (finCdd === 'suite_cdi') {
+    // L1242-16, al. 3 : « sauf si le contrat à durée déterminée se poursuit par un contrat de travail à durée indéterminée ».
+    cpExplication = 'Pas d’indemnité de congés non pris : ton CDD continue en CDI, tes congés restent acquis (code du travail, article L1242-16).';
+  } else {
+    // R-CDD-10 et P3. Part sûre = dixième de la dernière période, régularisation et IFC comprises (CCN 48.1.1.5 et 124 ;
+    // L1243-8). Il ne dépend pas du nombre de jours acquis : un nombre de jours à confirmer (T-030, SUS-11) ne change que le
+    // maintien, donc la part à confirmer. À confirmer = max(dixième ; maintien) − dixième.
+    const y = cpPeriodStartYear(dernierJour);
+    const cpt = compteur(endCtx, dernierJour, enfants);
+    const acq = acquisition(endCtx, y, enfants);
+    const bd = baseDixieme(endCtx, y, enfants);
+    const restantsPrec = Math.max(0, cpt.reste);
+    cpJours = acq.joursADate + restantsPrec;
+    cpDixiemeEnCours = Math.round((bd.base + regul.lo + ifcNet(ifc.lo)) / 10);
+    if (restantsPrec > 0 || cpt.aPrendreAConfirmer) {
+      // P3 sur la période précédente : l'app ne calcule pas la lecture « dixième seul » de ces jours (limite T-076).
+      iccp.inconnu = `Indemnité de congés non pris à confirmer : il te reste des jours de la période de congés précédente. Pour un CDD, l’app ne sait pas encore calculer ces jours avec le dixième seul (DREETS, Pajemploi) et avec la comparaison de la convention (article 48.1.1.5). Elle ne donne pas de montant.`;
+    } else if (cpt.decompteAConfirmer.length) {
+      iccp.inconnu = `Indemnité de congés non pris à confirmer : ${cpt.decompteAConfirmer.join(' ')}`;
+    } else if (bd.aConfirmer || bd.evenementAConfirmer || bd.manquants.length) {
+      iccp.inconnu = 'Indemnité de congés non pris à confirmer : la base du dixième contient des sommes encore à confirmer (congés ou salaire de jours à confirmer) ou des mois sans bulletin. L’app ne donne pas de montant.';
+    } else {
+      const dixHi = Math.round((bd.base + regul.hi + ifcNet(ifc.hi)) / 10);
+      // Jours acquis : les lectures officielles quand elles sont calculées ; sinon la borne haute interne (acquisition).
+      const lecturesJours = (acq.aConfirmer?.lectures ?? []).map((l) => l.joursADate);
+      const joursMax = acq.aConfirmer ? (lecturesJours.length ? Math.max(...lecturesJours) : acq.jours) : acq.joursADate;
+      const maintienHi = maintien(endCtx, joursMax, dernierJour);
+      iccp.lo = cpDixiemeEnCours;
+      iccp.hi = Math.max(dixHi, maintienHi);
+      if (maintienHi > dixHi) iccp.raisons.push(MESSAGE_P3);
+      if (maintienHi > dixHi && acq.aConfirmer) iccp.raisons.push('Le nombre de jours de congés acquis n’est pas tranché non plus (les fiches officielles comptent différemment) : le maintien de salaire en dépend.');
+      if (regul.hi > regul.lo || ifc.hi > ifc.lo) iccp.raisons.push('Sa base compte la régularisation et l’indemnité de fin de contrat, en partie à confirmer.');
+      // Plancher L1242-16 : « ne peut être inférieur au dixième de la rémunération totale brute perçue par le salarié pendant
+      // la durée de son contrat ». Rapport (R-CDD-10) : sans congé pris ni payé pendant le CDD, ce dixième vaut
+      // 0,10 × (BrutCDD + IFC). Avec des congés pris ou payés, aucun texte ne dit s'ils comptent : l'écart reste à confirmer.
+      const cpPris = cpPayeNet > 0 || endCtx.leaves.some((l) => l.type === 'cp' && l.to >= c.start && l.from <= dernierJour);
+      const plancherLo = Math.round((netCdd + ifcNet(ifc.lo)) / 10);
+      if (!cpPris) {
+        if (plancherLo > iccp.lo) iccp.raisons.push('Le code du travail (article L1242-16) fixe un minimum : le dixième de tous les salaires bruts du CDD, indemnité de fin de contrat comprise.');
+        iccp.lo = Math.max(iccp.lo, plancherLo);
+        iccp.hi = Math.max(iccp.hi, plancherLo);
+      } else if (iccp.lo + cpPayeNet < plancherLo) {
+        iccp.hi = Math.max(iccp.hi, plancherLo - cpPayeNet);
+        iccp.raisons.push('Le code du travail (article L1242-16) fixe un minimum : le dixième de tous les salaires bruts du CDD. Tu as eu des congés pendant le CDD, et aucun texte ne dit s’ils comptent dans ce minimum.');
+      }
+    }
+  }
+  // P4 : à confirmer = 10 % × ICCP (lecture 2 : ICCP dans la base de l'IFC).
+  if (due) {
+    if (iccp.inconnu) ifc.raisons.push('Si l’indemnité de congés non pris entre aussi dans sa base (point non tranché), elle augmente de 10 % de cette indemnité, elle-même à confirmer.');
+    else if (iccp.hi > 0) {
+      ifc.hi += Math.round(netToBrut(iccp.hi, lastDay(dernierMois)) / 10);
+      ifc.raisons.push(MESSAGE_P4);
+    }
+  }
+  if (due && incomplets.size) ifc.inconnu = `Indemnité de fin de contrat à confirmer : elle ne compte pas encore ${joindreNi([...incomplets])}. L’app ne donne pas de montant.`;
+  return { brutCdd: brutLo, netCdd, brutsEstimes, manquants, incomplets: [...incomplets], regul, regulMinutes, ifc, iccp, cpJours, cpDixiemeEnCours, cpExplication, alertes };
+}
+
+const joindreNi = (l: string[]) => (l.length <= 1 ? l.join('') : `${l.slice(0, -1).join(', ')} ni ${l.at(-1)}`);
+const libelleNatures = (n: ('evenement' | 'cp' | 'maladie')[]) => n.map((x) => ({ evenement: 'd’événement familial', cp: 'de congés pris au-delà des droits', maladie: 'd’enfant malade' })[x]).join(' ou ');
+
+/**
+ * T-076 : fin d'un CDD. `dernierJour` : dernier jour du contrat (date de fin réelle, report de L1243-7 compris).
+ * `finCdd` : façon dont le CDD finit (R-CDD-08). Ni préavis ni indemnité de rupture (R-CDD-06). Ordre R-CDD-09.
+ * P1 et P2 : les deux lectures du salaire sont calculées ; pour chaque somme, la part sûre (la plus basse) est donnée, l'écart
+ * est « à confirmer », hors du total. P3 et P4 : même principe sur l'ICCP et l'IFC.
+ * `motifCdi` : motif de CDI reçu pour un CDD (refusé).
+ */
+export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCddNonGere | undefined, enfants = 0, bruts: BrutsReels = {}, motifCdi?: Motif): FinResult {
+  const c = ctx.c;
+  const anc = fullMonthsBetween(c.start, dernierJour);
+  const vide = (nonGere: string[], alertes: string[] = []): FinResult => ({
+    ancienneteMois: anc, preavisLabel: 'Pas de préavis : fin de CDD', preavisFin: dernierJour, dernierJour, indemniteRupture: 0,
+    ruptureExplication: 'Non calculée : cas non géré.', totalBrut: 0, brutsEstimes: [], indemnitePreavis: 0, regularisation: 0, regulMinutes: 0,
+    cpJoursRestants: 0, cpIndemnite: 0, cpDixiemeEnCours: 0, cpExplication: 'Non calculés : cas non géré.', manquants: [], alertes, nonGere,
+    cdd: true, finCdd, ifc: 0, ifcNet: 0, ifcExplication: 'Non calculée : cas non géré.', brutCdd: 0,
+  });
+  if (!c.cdd) return vide(['Ce contrat est un CDI : la fin « fin de CDD » ne s’applique pas. Choisis qui arrête et pourquoi.']);
+  if (motifCdi && motifCdi !== 'fin_cdd') return vide(['Ce contrat est un CDD : les règles de fin d’un CDI (lettre, préavis, indemnité de rupture) ne s’appliquent pas. Dis comment finit le CDD.']);
+  if (!finCdd) return vide(['Dis comment finit le CDD : l’indemnité de fin de contrat en dépend.']);
+  if ((FINS_CDD_NON_GEREES as string[]).includes(finCdd)) return vide([MESSAGES_FIN_CDD_NON_GEREE[finCdd as FinCddNonGere]]);
+  const fin = finCdd as FinCdd;
+  if (dernierJour < c.start) return vide([`Le dernier jour (${shortDate(dernierJour)}) est avant le début du contrat (${shortDate(c.start)}). Corrige la date.`]);
+  const alertes: string[] = [];
+  if (fin === 'terme' && c.cddTerme && dernierJour < c.cddTerme) {
+    return vide([`Tu as choisi « le CDD arrive à sa date de fin », mais le dernier jour (${shortDate(dernierJour)}) est avant la ${c.cddTermeImprecis ? 'fin de la durée minimale' : 'date de fin prévue'} (${shortDate(c.cddTerme)}). Choisis comment le CDD s’est arrêté avant la date, ou corrige la date : l’indemnité de fin de contrat en dépend.`]);
+  }
+  if (fin === 'terme' && c.cddTerme && !c.cddTermeImprecis && dernierJour > c.cddTerme) {
+    alertes.push(`Ton CDD finit le ${shortDate(dernierJour)}, après la date prévue (${shortDate(c.cddTerme)}). C’est possible si la date a été reportée par écrit ou au retour de la personne remplacée (code du travail, article L1243-7). Sinon, ${MESSAGE_CDD_DEVIENT_CDI.charAt(0).toLowerCase()}${MESSAGE_CDD_DEVIENT_CDI.slice(1)}`);
+  }
+  const endCtx: Ctx = { ...ctx, c: { ...c, end: dernierJour }, cache: new Map(), finControlee: true };
+  const nonGere = nonGeresPeriode(endCtx.c, ctx.leaves, c.start, dernierJour, 'non');
+  if (nonGere.length) return vide(nonGere);
+
+  const ctx2 = ctxLectureCdd2(endCtx);
+  const lectures = [coeurCdd(endCtx, dernierJour, fin, enfants, bruts), ...(ctx2 ? [coeurCdd(ctx2, dernierJour, fin, enfants, bruts)] : [])];
+  const noms = ctx2 ? (() => { const l = libelleLecturesCdd(c); return [`lecture 1 (${l.l1})`, `lecture 2 (${l.l2})`]; })() : [];
+  const l1 = lectures[0];
+  for (const l of lectures) for (const a of l.alertes) if (!alertes.includes(a)) alertes.push(a);
+  if (ctx2) {
+    const l = libelleLecturesCdd(c);
+    const totaux = lectures.map((x) => euros(x.netCdd - x.regul.lo + x.regul.hi));
+    if (!estCddMoinsUnMois(c)) alertes.push(`Sur tout le CDD, salaires, congés versés et régularisation : ${totaux[0]} en lecture 1, ${totaux[1]} en lecture 2. Tant que la question n’est pas tranchée, l’app prend au plus bas chaque mois et la régularisation, séparément : le total versé est alors plus bas que les deux. Vois l’écart avec les parents.`);
+    alertes.push(`${l.pourquoi} L’app calcule les deux façons : ${l.l1}, ou ${l.l2}. Pour chaque somme, elle verse la plus basse ; l’écart est à confirmer, hors du total. ${estCddMoinsUnMois(c) ? '' : 'Chaque mois aussi (écran Mois).'}`.trim());
+  }
+
+  // Réunit les lectures d'une somme : part sûre = la plus basse, à confirmer = la plus haute moins la part sûre.
+  const reunir = (nom: string, plages: Plage[]): { valeur: number; inconnu?: string; part?: PartAConfirmer } => {
+    const inconnu = plages.find((p) => p.inconnu)?.inconnu;
+    if (inconnu) return { valeur: 0, inconnu };
+    const lo = Math.min(...plages.map((p) => p.lo));
+    const hi = Math.max(...plages.map((p) => p.hi));
+    if (hi <= lo) return { valeur: lo };
+    const raisons = [...new Set(plages.flatMap((p) => p.raisons))];
+    const parLecture = plages.length > 1 && plages.some((p) => p.lo !== plages[0].lo || p.hi !== plages[0].hi)
+      ? ` Selon la façon de calculer le salaire du CDD : ${plages.map((p, i) => `${noms[i]} : ${p.lo === p.hi ? euros(p.lo) : `de ${euros(p.lo)} à ${euros(p.hi)}`}`).join(' ; ')}.`
+      : '';
+    return {
+      valeur: lo,
+      part: {
+        montant: hi - lo,
+        lectures: [hi, lo],
+        message: `${nom} : ${euros(lo)} sûrs, ${euros(hi - lo)} à confirmer, non compris dans le total (de ${euros(lo)} à ${euros(hi)} selon la lecture).${parLecture} ${raisons.join(' ')} Question posée à la DDETS : mets-toi d’accord avec les parents, par écrit.`.replace(/\s+/g, ' ').trim(),
+      },
+    };
+  };
+  const reg = reunir('Régularisation', lectures.map((l) => l.regul));
+  const ifc = reunir('Indemnité de fin de contrat', lectures.map((l) => l.ifc));
+  const iccp = reunir('Indemnité de congés non pris', lectures.map((l) => l.iccp));
+  const brutCdd = Math.min(...lectures.map((l) => l.brutCdd));
+  const due = IFC_DUE[fin];
+  const ifcNet = brutToNet(ifc.valeur, lastDay(monthOf(dernierJour)));
+  const ifcExplication = !due
+    ? IFC_NON_DUE[fin as keyof typeof IFC_NON_DUE]
+    : ifc.inconnu ? 'À confirmer : voir l’encadré plus haut.'
+      : `10 % de ${euros(brutCdd)} de salaires bruts du CDD (code du travail, article L1243-8). Les indemnités d’entretien, de repas et de kilomètres ne comptent pas.`;
+  if (fin === 'employeur') alertes.push(MESSAGE_CDD_DOMMAGES);
+  if (fin === 'suite_cdi') alertes.push('Ton CDD continue en CDI : dans l’app, ne termine pas ce contrat. Ouvre-le et passe-le en CDI. L’app ne sait pas encore si la durée et les salaires du CDD comptent pour le préavis et l’indemnité de rupture du CDI (point à confirmer).');
+  // Messages du contrat (motif « autre », plus de 18 mois) ; la règle des 12 mois concerne les mois, pas la fin.
+  for (const m of messagesCdd(c)) {
+    if (m === MESSAGE_CDD_12_MOIS || (m === MESSAGE_CDD_DEVIENT_CDI && fin === 'suite_cdi') || alertes.includes(m)) continue;
+    alertes.push(m);
+  }
+  alertes.push(MESSAGE_CDD_DOCUMENTS);
+  const regulExpl = reg.inconnu;
+  return {
+    ancienneteMois: anc, preavisLabel: 'Pas de préavis : fin de CDD', preavisFin: dernierJour, dernierJour,
+    indemniteRupture: 0, ruptureExplication: MESSAGE_CDD_PAS_DE_PREAVIS, indemnitePreavis: 0,
+    totalBrut: brutCdd, brutsEstimes: l1.brutsEstimes, manquants: l1.manquants,
+    regularisation: reg.valeur, regulMinutes: l1.regulMinutes,
+    ...(regulExpl ? { regularisationAConfirmer: `${regulExpl} Elle n'est pas comptée dans le total.` } : {}),
+    ...(reg.part ? { regularisationPartAConfirmer: reg.part } : {}),
+    cpJoursRestants: l1.cpJours, cpIndemnite: iccp.valeur, cpDixiemeEnCours: l1.cpDixiemeEnCours,
+    cpExplication: iccp.inconnu ? 'À confirmer : l’app ne donne pas de montant.' : l1.cpExplication,
+    ...(iccp.inconnu ? { cpAConfirmer: iccp.inconnu } : {}),
+    ...(iccp.part ? { cpPartAConfirmer: iccp.part } : {}),
+    alertes,
+    cdd: true, finCdd: fin, ifc: ifc.valeur, ifcNet, ifcExplication, brutCdd,
+    ...(ifc.inconnu ? { ifcAConfirmer: ifc.inconnu } : {}),
+    ...(ifc.part ? { ifcPartAConfirmer: ifc.part } : {}),
+    declaration: due && ifc.valeur > 0 ? [{ champ: 'mntIndPrecarite', libelle: 'Indemnité de précarité', net: ifcNet, hint: 'Montant net. Elle ne correspond à aucune heure : ne l’ajoute ni aux heures ni aux jours.' }] : [],
   };
 }

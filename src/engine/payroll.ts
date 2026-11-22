@@ -10,6 +10,7 @@ import { controleKm, indemniteKmJour } from './km';
 import { euros } from './money';
 import { cpAConfirmerEntre, cpExces, cpExcesAConfirmer, MESSAGE_CP_AU_DELA_A_CONFIRMER } from './conges';
 import { nonGeresPeriode } from './nonGeres';
+import { cddDeuxLectures, estCddMoinsUnMois, estCddSemainesSansAccueil } from './cdd';
 import type { AmAbs, AmLeave, Contract, DayRec, Plage, Planning } from './model';
 
 export interface Ctx {
@@ -27,6 +28,11 @@ export interface Ctx {
    * été contrôlée face au préavis. Le contrôle de la date de fin saisie (controleFinContrat) n'y est pas refait.
    */
   finControlee?: boolean;
+  /**
+   * T-076 : seconde lecture du salaire d'un CDD (points P1 et P2 de regles/t076-cdd.md ; decisions-direction, section 2).
+   * Absent : lecture 1, celle du contrat tel qu'il est saisi. Contexte construit par `ctxLectureCdd2`.
+   */
+  lectureCdd?: 2;
 }
 
 /** Contrat tel qu'il s'applique le jour d (avenants en vigueur compris) */
@@ -1092,6 +1098,39 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   r.complAmount = Math.round((r.complMin * c.rateNet * (100 + (c.majorationCompl ?? 0))) / 100 / 60);
   r.majAmount = Math.round((r.majMin * c.rateNet * (100 + c.majoration)) / 100 / 60);
 
+  // T-076 (P1, lecture 2) : CDD à terme précis de moins d'un mois. DREETS Occitanie (guide CDD, p. 7 ; fiche CDD, p. 3) :
+  // « le salaire dû est déterminé en multipliant la rémunération horaire par le nombre d'heures de travail réellement
+  // effectuées ». Heures réellement faites : heures prévues des jours d'accueil faits ou prévus (art. 99 : le travail
+  // commence et finit aux heures prévues). Les absences payées (art. 105), les fériés chômés et les congés n'en sont pas :
+  // c'est la lecture la plus basse, l'écart reste « à confirmer ». Heures prévues au-delà de 45 h dans la semaine : majorées,
+  // comme dans le salaire mensualisé. Les heures en plus du planning restent payées à part (HC, HM), comme en lecture 1.
+  if (ctx.lectureCdd === 2 && estCddMoinsUnMois(ctx.c)) {
+    const parSemaine = new Map<ISODate, number>();
+    let joursFaits = 0;
+    for (const d of allDays) {
+      if (!inSeg(d)) continue;
+      const di = dayInfo(ctx, d);
+      if ((di.kind === 'present' || di.kind === 'prevu') && di.plannedMin > 0) {
+        parSemaine.set(mondayOf(d), (parSemaine.get(mondayOf(d)) ?? 0) + di.plannedMin);
+        joursFaits++;
+      }
+    }
+    let exact = 0, normales = 0, majorees = 0;
+    for (const w of parSemaine.values()) {
+      exact += Math.min(w, H45) * c.rateNet + Math.max(0, w - H45) * c.rateNet * (1 + c.majoration / 100);
+      normales += Math.min(w, H45);
+      majorees += Math.max(0, w - H45);
+    }
+    r.base = Math.round(exact / 60);
+    r.retenue = 0;
+    r.evenementAConfirmer = 0;
+    r.paidFraction = r.mensuelMin ? Math.min(1, (normales + majorees) / r.mensuelMin) : 0;
+    r.normalesMin = normales;
+    r.heuresNormales = Math.round(normales / 60);
+    r.majContratMin = majorees;
+    r.majContratAmount = Math.round((majorees * c.rateNet * (100 + c.majoration)) / 100 / 60);
+    r.joursActivite = joursFaits + r.extraDays;
+  }
   r.net = r.base + r.complAmount + r.majAmount + r.ferieAmount;
   if (forgotten.length) r.alerts.push(`${forgotten.length} départ${forgotten.length > 1 ? 's' : ''} non pointé${forgotten.length > 1 ? 's' : ''} : l’heure prévue a été retenue.`);
   if (r.sickPaidNotice) r.alerts.push('Des jours d’enfant malade dépassent la limite de l’article 105 : ils restent payés.');
@@ -1106,6 +1145,36 @@ export function monthBrut(ctx: Ctx, m: Month): number {
 
 export function dayCountLabel(n: number): string {
   return `${n} jour${n > 1 ? 's' : ''}`;
+}
+
+/**
+ * T-076 : contexte de la seconde lecture du salaire d'un CDD (decisions-direction, section 2), ou rien si le CDD n'en a pas.
+ * - P1 (CDD à terme précis de moins d'un mois) : même contrat ; le salaire de base de chaque mois devient taux × heures
+ *   réellement faites (computeRange).
+ * - P2 (CDD avec semaines sans accueil) : lecture 2 = formule 52 semaines (CCN 109.1) et déduction de l'art. 111 pour chaque
+ *   semaine sans accueil (DREETS Occitanie, FAQ q. 1.24 : « pour les mois de travail comportant ces semaines d'absences, le
+ *   salaire sera alors minoré et calculé selon la méthode de calcul prévue à l'article 111 »), sans régularisation finale.
+ *   Le contrat devient « toute l'année » ; chaque semaine sans accueil du contrat devient une absence non rémunérée (même
+ *   déduction que le congé sans solde, art. 111, méthode des heures), placée avant les autres absences.
+ * La lecture 1 est le contexte lui-même (contrat tel qu'il est saisi : mensualisé puis art. 111 ; ou 46 semaines ou moins).
+ */
+export function ctxLectureCdd2(ctx: Ctx): Ctx | undefined {
+  const c = ctx.c;
+  if (ctx.lectureCdd === 2 || !cddDeuxLectures(c)) return undefined;
+  return memo(ctx, 'cddL2', () => {
+    if (estCddMoinsUnMois(c) && !estCddSemainesSansAccueil(c)) return { ...ctx, lectureCdd: 2 as const, cache: new Map() };
+    const semaines = [...toutesSemainesSansAccueil(c)].sort();
+    const sansAccueil: AmLeave[] = semaines.map((w) => ({ id: `cdd-sans-accueil-${w}`, type: 'sans_solde', from: w, to: addDays(w, 6) }));
+    const sansType = (ch: Partial<Contract>): Partial<Contract> => {
+      const { yearType: _y, weeks: _w, weeksOff: _o, ...reste } = ch;
+      return reste;
+    };
+    const c2: Contract = {
+      ...c, yearType: 'complete', weeks: 52, weeksOff: [],
+      ...(c.avenants ? { avenants: c.avenants.map((a) => ({ ...a, changes: sansType(a.changes) })) } : {}),
+    };
+    return { ...ctx, c: c2, leaves: [...sansAccueil, ...ctx.leaves], lectureCdd: 2 as const, cache: new Map() };
+  });
 }
 
 export { daysBetween };

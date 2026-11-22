@@ -1,7 +1,8 @@
 // Récapitulatif mensuel par enfant, dans l'ordre de la déclaration Pajemploi.
 import { lastDay, monthLabel, type Month } from './dates';
 import { cpForMonth } from './conges';
-import { libelleSalaireAConfirmer, monthBase, naturesAConfirmer, termsAt, type Ctx, type MonthBase } from './payroll';
+import { ctxLectureCdd2, libelleSalaireAConfirmer, monthBase, naturesAConfirmer, termsAt, type Ctx, type MonthBase } from './payroll';
+import { libelleLecturesCdd } from './cdd';
 import { netToBrut, REDUCTION_HS } from './rates';
 import { euros, hoursLabel } from './money';
 
@@ -24,9 +25,30 @@ export interface MonthResult extends MonthBase {
   hsBrut: number;
   /** Réduction de cotisations salariales de ces heures, versée en plus du net déclaré (estimation) */
   reductionHS: number;
+  /**
+   * T-076 (P1, P2) : CDD dont le salaire a deux lectures. Le mois affiché est la lecture la plus basse (part sûre, dans
+   * `netTotal`) ; `cddAConfirmer` est l'écart, hors du total. `cddLectures` : salaire net du mois, congés compris, lecture 1
+   * puis lecture 2. Absent : une seule lecture, ou les deux donnent le même montant.
+   */
+  cddAConfirmer?: number;
+  cddLectures?: [number, number];
 }
 
+/** T-076 : mois d'un CDD à deux lectures (P1, P2) : part sûre = la plus basse, écart à confirmer (decisions-direction, section 2) */
 export function computeMonth(ctx: Ctx, m: Month, enfants = 0): MonthResult {
+  const r1 = computeMonthLecture(ctx, m, enfants);
+  const ctx2 = ctxLectureCdd2(ctx);
+  if (!ctx2 || r1.nonGere.length || !r1.active || r1.fromHistory) return r1;
+  const r2 = computeMonthLecture(ctx2, m, enfants);
+  if (r2.nonGere.length || r2.netTotal === r1.netTotal) return r1;
+  const bas = r2.netTotal < r1.netTotal ? r2 : r1;
+  const ecart = Math.abs(r1.netTotal - r2.netTotal);
+  const l = libelleLecturesCdd(ctx.c);
+  const message = `Salaire du CDD : ${euros(ecart)} à confirmer, non compris dans le total. ${l.pourquoi} Lecture 1 (${l.l1}) : ${euros(r1.netTotal)} ; lecture 2 (${l.l2}) : ${euros(r2.netTotal)}. L’app verse le plus bas. Mets-toi d’accord avec les parents, par écrit.`;
+  return { ...bas, alerts: [...bas.alerts, message], cddAConfirmer: ecart, cddLectures: [r1.netTotal, r2.netTotal] };
+}
+
+function computeMonthLecture(ctx: Ctx, m: Month, enfants = 0): MonthResult {
   const b = monthBase(ctx, m);
   const cp = cpForMonth(ctx, m, enfants);
   const netTotal = b.net + cp.indemnite + cp.complement;
@@ -84,7 +106,7 @@ export function declarationLines(ctx: Ctx, r: MonthResult, pourParents = false):
       value: hoursLabel(r.majContratMin + r.majMin),
       hint: `Au-delà de 45 h dans la semaine, prévues au contrat ou en plus, +${termsAt(ctx.c, `${r.month}-01`).majoration}\u00a0%`,
     },
-    { label: 'Salaire net', value: `${euros(r.netTotal)}${r.cpAConfirmer ? ' + congés à confirmer' : ''}${r.evenementAConfirmer ? ` + ${euros(r.evenementAConfirmer)} ${pourParents ? 'de salaire' : libelleSalaireAConfirmer(r)} à confirmer` : ''}` },
+    { label: 'Salaire net', value: `${euros(r.netTotal)}${r.cpAConfirmer ? ' + congés à confirmer' : ''}${r.evenementAConfirmer ? ` + ${euros(r.evenementAConfirmer)} ${pourParents ? 'de salaire' : libelleSalaireAConfirmer(r)} à confirmer` : ''}${r.cddAConfirmer ? ` + ${euros(r.cddAConfirmer)} de salaire du CDD à confirmer` : ''}` },
     { label: 'Indemnités d’entretien', value: r.entretienAConfirmer ? `${euros(r.entretien)} + ${euros(r.entretienAConfirmer)} à confirmer` : euros(r.entretien), hint: `${r.presenceDays} jour${r.presenceDays > 1 ? 's' : ''} d’accueil` },
     { label: 'Frais de repas', value: euros(r.repas) },
     { label: 'Frais kilométriques', value: r.kmAConfirmer ? `${euros(r.km)} + ${r.kmAConfirmer} km à confirmer` : euros(r.km) },
@@ -121,6 +143,8 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   if (r.cpAConfirmer) out.push('• Indemnité de congés payés : à confirmer ensemble');
   // Décision du DG du 21/11/2026 : comme le lien des parents, le texte envoyé aux parents ne nomme pas la raison.
   if (r.evenementAConfirmer) out.push(`• Salaire : + ${euros(r.evenementAConfirmer)} de salaire à confirmer ensemble`);
+  // T-076 (P1, P2) : salaire d'un CDD qui dépend de la façon de le calculer.
+  if (r.cddAConfirmer) out.push(`• Salaire du CDD : + ${euros(r.cddAConfirmer)} à confirmer ensemble (deux façons de calculer, question posée à la DDETS)`);
   out.push('');
   if (r.entretienAConfirmer) out.push(`• Indemnité d’entretien : ${euros(r.entretienAConfirmer)} à confirmer ensemble (${raisonsEntretienAConfirmer(r)})`);
   if (r.kmAConfirmer) out.push(`• Frais kilométriques : ${r.kmAConfirmer} km à confirmer ensemble (familles qui ont demandé le trajet, enfants dans la voiture)`);
@@ -147,10 +171,10 @@ export function raisonsEntretienAConfirmer(r: Pick<MonthResult, 'entretienJoursD
  * `pourParents` : l'événement familial devient « une part du salaire » (DG, 21/11/2026 : aucun motif d'absence de l'AM
  * sur le lien des parents).
  */
-export function partsAConfirmer(r: Pick<MonthResult, 'cpAConfirmer' | 'evenementAConfirmer' | 'kmAConfirmer'> & Partial<Pick<MonthResult, 'joursCpAConfirmer' | 'joursEvenementAConfirmer' | 'joursMaladieAConfirmer' | 'entretienAConfirmer'>>, pourParents = false): string[] {
+export function partsAConfirmer(r: Pick<MonthResult, 'cpAConfirmer' | 'evenementAConfirmer' | 'kmAConfirmer'> & Partial<Pick<MonthResult, 'joursCpAConfirmer' | 'joursEvenementAConfirmer' | 'joursMaladieAConfirmer' | 'entretienAConfirmer' | 'cddAConfirmer'>>, pourParents = false): string[] {
   // T-030 : un salaire à confirmer peut venir de congés pris peut-être au-delà des droits (année complète, A-23).
   // T-033 : ou de jours d'enfant malade (art. 105, lectures divergentes).
   const salaire = !r.evenementAConfirmer ? [] : naturesAConfirmer(r).map((n) => ({
     evenement: pourParents ? 'une part du salaire' : 'l’événement familial', cp: 'les congés pris au-delà des droits', maladie: 'les jours d’enfant malade' })[n]);
-  return [r.cpAConfirmer ? 'les congés payés' : '', ...salaire, r.entretienAConfirmer ? 'une part de l’entretien' : '', r.kmAConfirmer ? 'les kilomètres' : ''].filter(Boolean);
+  return [r.cpAConfirmer ? 'les congés payés' : '', ...salaire, r.cddAConfirmer ? 'une part du salaire du CDD' : '', r.entretienAConfirmer ? 'une part de l’entretien' : '', r.kmAConfirmer ? 'les kilomètres' : ''].filter(Boolean);
 }
