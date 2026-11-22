@@ -391,6 +391,14 @@ describe('M2 / D9 : dates de fin face au terme précis', () => {
       expect(r.ifcNet ?? 0).toBe(0);
     });
   }
+  it('revue 2 (r1, r2) : valeur de fin inconnue refusée ; report du terme sans exigence d’écrit (L1243-7)', () => {
+    const f = fin(cdd(), '2026-04-30', 'saisonnier' as never);
+    expect(f.nonGere?.[0]).toMatch(/Fin de CDD inconnue de l’app \(« saisonnier »\)/);
+    expect((f.ifc ?? 0) + f.cpIndemnite).toBe(0);
+    const apres = fin(cdd(), '2026-05-15', 'terme').nonGere?.[0] ?? '';
+    expect(apres).not.toMatch(/par écrit, mets/);
+    expect(apres).toMatch(/retour de la personne remplacée : code du travail, article L1243-7/);
+  });
   it('fin après le terme sans nouveau contrat : refusée (L1243-11)', () => {
     expect(fin(cdd(), '2026-05-15', 'commun_accord').nonGere?.[0]).toMatch(/après la date de fin prévue|Au terme/);
     expect(fin(cdd(), '2026-05-15', 'terme').nonGere?.[0]).toMatch(/L1243-11/);

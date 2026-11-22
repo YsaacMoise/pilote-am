@@ -3,7 +3,7 @@
 import { nonGeresPeriode } from './nonGeres';
 import { pvActif } from './planningVariable';
 import { finPreavis, finsAdmises, preavisEmployeur } from './preavis';
-import { FINS_CDD_NON_GEREES, type DemandeurInexecution, type FinCdd, type FinCddNonGere, type Motif } from './model';
+import { FINS_CDD, FINS_CDD_NON_GEREES, type DemandeurInexecution, type FinCdd, type FinCddNonGere, type Motif } from './model';
 import { libelleLecturesCdd, messagesCdd, MESSAGE_CDD_12_MOIS, MESSAGE_CDD_DEVIENT_CDI } from './cdd';
 import { euros } from './money';
 import {
@@ -876,6 +876,8 @@ export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCdd
   if (motifCdi && motifCdi !== 'fin_cdd') return vide(['Ce contrat est un CDD : les règles de fin d’un CDI (lettre, préavis, indemnité de rupture) ne s’appliquent pas. Dis comment finit le CDD.']);
   if (!finCdd) return vide(['Dis comment finit le CDD : l’indemnité de fin de contrat en dépend.']);
   if ((FINS_CDD_NON_GEREES as string[]).includes(finCdd)) return vide([MESSAGES_FIN_CDD_NON_GEREE[finCdd as FinCddNonGere]]);
+  // Revue 2 (r1) : une valeur de fin que l'app ne connaît pas n'est jamais calculée comme une fin ordinaire.
+  if (!(FINS_CDD as string[]).includes(finCdd)) return vide([`Fin de CDD inconnue de l’app (« ${finCdd} ») : rien n’est calculé. Choisis comment finit le CDD dans la liste.`]);
   const fin = finCdd as FinCdd;
   if (dernierJour < c.start) return vide([`Le dernier jour (${shortDate(dernierJour)}) est avant le début du contrat (${shortDate(c.start)}). Corrige la date.`]);
   const alertes: string[] = [];
@@ -891,7 +893,7 @@ export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCdd
     // C. trav. L1243-11 : « Lorsque la relation contractuelle de travail se poursuit après l'échéance du terme du contrat à
     // durée déterminée, celui-ci devient un contrat à durée indéterminée. » Un report écrit du terme (L1243-7, renouvellement)
     // change la date de fin prévue du contrat.
-    return vide([`Le dernier jour (${shortDate(dernierJour)}) est après la date de fin prévue du CDD (${shortDate(c.cddTerme)}). Si la date a été reportée par écrit, mets la nouvelle date de fin prévue dans le contrat. Sinon, si tu as continué à travailler après la date sans nouveau contrat, ton CDD est devenu un CDI (code du travail, article L1243-11) : l’app ne calcule pas ce cas comme une fin de CDD.`]);
+    return vide([`Le dernier jour (${shortDate(dernierJour)}) est après la date de fin prévue du CDD (${shortDate(c.cddTerme)}). Si la date a été reportée (renouvellement écrit, ou retour de la personne remplacée : code du travail, article L1243-7), mets la nouvelle date de fin prévue dans le contrat. Sinon, si tu as continué à travailler après la date sans nouveau contrat, ton CDD est devenu un CDI (code du travail, article L1243-11) : l’app ne calcule pas ce cas comme une fin de CDD.`]);
   }
   const endCtx: Ctx = { ...ctx, c: { ...c, end: dernierJour }, cache: new Map(), finControlee: true };
   const nonGere = nonGeresPeriode(endCtx.c, ctx.leaves, c.start, dernierJour, 'non');

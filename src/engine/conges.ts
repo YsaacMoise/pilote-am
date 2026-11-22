@@ -3,7 +3,7 @@ import { addDays, addMonths, addMonthsToDate, cpPeriod, cpPeriodStartYear, daysB
 import { holidayName } from './holidays';
 import { euros } from './money';
 import {
-  H45, daysPerWeek, inContract, libelleSalaireAConfirmer, makeCtx, monthBase, plannedPlages, planningBrutMin, salaireMensualise, semainesSansAccueilAnnee, termsAt,
+  H45, absencesL2NonGerees, daysPerWeek, messageAbsenceL2, inContract, libelleSalaireAConfirmer, makeCtx, monthBase, plannedPlages, planningBrutMin, salaireMensualise, semainesSansAccueilAnnee, termsAt,
   toutesSemainesSansAccueil, weeklyMinutes, weeksPerYear, type Ctx,
 } from './payroll';
 import type { AmLeave, Contract } from './model';
@@ -548,6 +548,10 @@ export function acquisition(ctx: Ctx, y: number, enfantsAChargeSaisis = 0): Acqu
     // T-031 : un cas non géré touche la période (Alsace-Moselle, horaires variables, accueil occasionnel, congé maternité,
     // accident du travail…) : les jours acquis ne sont pas calculés. `jours` reste une borne interne, jamais affichée ni payée.
     const ng = nonGeresPeriode(c, ctx.leaves, p.from, p.to, ctx.finControlee ? 'non' : 'connu');
+    // T-076, D2 (revue 2, B4 b) : mois refusé pour une absence retenue en L2 : il n'entre ni dans les jours acquis ni dans le
+    // dixième sans le dire, comme les autres cas non gérés (T-031).
+    const absL2 = absencesL2NonGerees(ctx, p.from > c.start ? p.from : c.start, c.end && c.end < p.to ? c.end : p.to);
+    if (absL2.length) ng.push(messageAbsenceL2(absL2));
     if (ng.length) {
       out.aConfirmer = { message: `Jours de congés acquis à confirmer. ${ng.join(' ')}`, lectures: [], raison: 'un cas non géré par l’app touche la période' };
     }
