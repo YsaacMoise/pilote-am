@@ -1251,7 +1251,11 @@ def situations_t076_d():
            "fin d'un CDI à planning variable, 52 semaines, période entière, décès de l'enfant")
     # Contrats courts du 05/01 au 29/03/2026 (ancre 05/01 : les semaines à cheval sur deux mois sont des semaines B).
     for an, base, hm in (("C52", "L1", 130), ("C52", "L2", 65), ("I36", "L1", 90), ("I36", "L2", 45)):
-        k = contrat_pv(an, AB, hm, debut="2026-01-05", fin="2026-03-29", cycle_ancre="2026-01-05")
+        # Direction T-076 (22/11) : en 46 semaines ou moins, un début le 05/01 laisse les 01-02/01 hors contrat dans une
+        # semaine sans accueil ; A les déduit du premier mois, B non (point ouvert T-076, registre ; même question en
+        # planning fixe). Les contrats I36 commencent donc le 01/01 : la régularisation de fin est comparée sans ce point.
+        k = contrat_pv(an, AB, hm, debut="2026-01-01" if an == "I36" else "2026-01-05", fin="2026-03-29",
+                       cycle_ancre="2026-01-05")
         fin_pv(f"PV-FIN-{an}-AB-{base}-COURT-DECES", k, "2026-03-29", "deces",
                f"fin d'un CDI à planning variable ({an}, {base}), régularisation de fin")
     k = contrat_pv("C52", AB, 130, debut="2026-01-05", fin="2026-02-08", cycle_ancre="2026-01-05")
@@ -1289,6 +1293,8 @@ def situations_t076_d():
     S.append(sit("PV-C52-ABC-L2-D1-MAI-2028", "planning variable",
                  contrat_pv("C52", ABC, 65, cycle_ancre="2028-05-01"), [mois("m", "2028-05")],
                  theme="L2 : 1er mai chômé d'une semaine longue, 8 mai et Ascension (D1)", marques=m))
+    # Direction T-076 (22/11) : mois de mai 2028 passé (sinon A ne compte ni présence ni repas d'un jour futur).
+    S[-1]["aujourdhui"] = "2028-06-30"
     # Fevrier 2027 commence un lundi : semaine du 08/02 = semaine A (ancre du 07/09/2026).
     k27 = contrat_pv("C52", AB, 65)
     S.append(sit("PV-C52-AB-L2-D1-EVENEMENT", "planning variable", k27, [mois("m", "2027-02")],
