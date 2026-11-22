@@ -169,8 +169,11 @@ describe('T-076 : heures complémentaires et majorées (R-PV-04, R-PV-05)', () =
     // la semaine civile du lundi au dimanche pour le seuil (CCN 96.4 « par semaine », semaine non définie : ambiguïté A-11,
     // non tranchée, regles/t021-convention.md) et chaque heure va au mois de son jour. La source (Département du Cher, E-PV-02)
     // rattache toute la semaine à cheval au mois où elle finit (« Les 5 heures seront payées sur février »).
-    // Ce test le montre : les 5 heures faites le lundi 29 janvier vont en janvier (7 + 5 = 12 HC), et non en février.
-    // E-PV-02 n'est donc respecté que si les heures de la semaine à cheval tombent en février ; écart noté au rapport.
+    // Ce test le montre : en lecture 1 (planning remis), les 5 heures faites le lundi 29 janvier vont en janvier (7 + 5 = 12 HC),
+    // et non en février. E-PV-02 n'est donc respecté que si les heures de la semaine à cheval tombent en février.
+    // D16 (planning remis, deux lectures appliquées chacune en entier sur le mois) : lecture 2 (base B = 30 h) : les heures de
+    // la semaine sont rangées dans l'ordre des jours, B est atteinte le jeudi 1er février → 7 HC en janvier. Part sûre
+    // = min(12 ; 7) = 7 HC ; écart 5 h à confirmer.
     const ps: Record<string, Planning> = {};
     for (const l of ['2024-01-01', '2024-01-08', '2024-01-15', '2024-01-22', '2024-01-29']) ps[l] = week('08:00', '14:00');
     const c = contract({ start: '2023-09-04', trackedFrom: '2024-01-01', planningVariable: true, planningsSemaines: ps, heuresMensualisees: 130 });
@@ -180,7 +183,9 @@ describe('T-076 : heures complémentaires et majorées (R-PV-04, R-PV-05)', () =
       rec('2024-01-24', { pres: [{ a: '08:00', d: '16:00' }] }),
       rec('2024-01-29', { pres: [{ a: '08:00', d: '19:00' }] }), // semaine 5, +5 h le lundi 29 janvier
     ];
-    expect(monthBase(makeCtx(c, recs, [], '2024-12-31'), '2024-01').complMin).toBe(12 * 60);
+    const jan = monthBase(makeCtx(c, recs, [], '2024-12-31'), '2024-01');
+    expect(jan.complMin).toBe(7 * 60);
+    expect(jan.complAConfirmerMin).toBe(5 * 60);
   });
 });
 
@@ -456,18 +461,33 @@ describe('T-076 : relecture indépendante (R2, D16)', () => {
   });
   it('D16 : planning remis au-dessus de la durée du contrat : HC en deux lectures, part sûre et écart à confirmer', () => {
     // 130 h par mois, 52 semaines : B = 30 h. Plannings remis de 40 h (5 × 8 h) du 23/02 au 05/04/2026.
-    // Lecture 1 (planning remis) : 0 HC. Lecture 2 (durée du contrat) : 10 HC par semaine. Part sûre 0 ; écart rattaché au
-    // dernier jour de la semaine (mois où elle finit) : semaines finies en mars (01/03, 08/03, 15/03, 22/03, 29/03) = 50 h,
-    // soit 250,00 € à confirmer ; la semaine du 30/03 finit en avril.
+    // Lecture 1 (planning remis) : 0 HC en mars. Lecture 2 (durée du contrat) : 10 HC par semaine, rangées dans l'ordre des
+    // jours (jeudi 2 h, vendredi 8 h) : semaines du 02/03, 09/03, 16/03, 23/03 = 40 h en mars (celle du 23/02 tombe en février,
+    // celle du 30/03 en avril). Part sûre = min(0 ; 40) = 0 ; écart 40 h, soit 200,00 € à confirmer.
     const ps: Record<string, Planning> = {};
     for (const l of ['2026-02-23', '2026-03-02', '2026-03-09', '2026-03-16', '2026-03-23', '2026-03-30']) ps[l] = week('08:00', '16:00');
     const c = contract({ start: '2026-02-23', trackedFrom: '2026-02-23', rateNet: 500, planningVariable: true, planningsSemaines: ps, heuresMensualisees: 130 });
     const b = monthBase(makeCtx(c, [], [], T), '2026-03');
     expect(b.complMin).toBe(0);
-    expect(b.complAConfirmerMin).toBe(50 * 60);
-    expect(b.complAConfirmerAmount).toBe(25000);
+    expect(b.complAConfirmerMin).toBe(40 * 60);
+    expect(b.complAConfirmerAmount).toBe(20000);
     expect(b.net).toBe(65000);
     expect(b.alerts.join(' ')).toMatch(/au-delà du planning remis \(article 98.1.2\) ou au-delà de la durée prévue au contrat \(article 96.4\)/);
+  });
+  it('D16 : chaque lecture s’applique en entier sur le mois (pas de minimum semaine par semaine)', () => {
+    // B = 30 h. Semaine du 02/03 remise à 40 h : lecture 1 = 0, lecture 2 = 10 h. Semaine du 09/03 remise à 25 h, mardi 10 et
+    // mercredi 11 présente 08:00-18:00 (+5 h chacun) : lecture 1 = 10 h, lecture 2 = min(35 ; 45) − 30 = 5 h. Autres semaines
+    // à 25 h, sans heure en plus. Mars : lecture 1 = 10 h, lecture 2 = 15 h. Part sûre = 10 h (50,00 €) ; écart 5 h (25,00 €).
+    // Un minimum semaine par semaine donnerait 0 + 5 = 5 h, moins que chacune des deux lectures (défaut E2).
+    const p25 = week('08:00', '13:00');
+    const ps: Record<string, Planning> = { '2026-02-23': p25, '2026-03-02': week('08:00', '16:00'), '2026-03-09': p25, '2026-03-16': p25, '2026-03-23': p25, '2026-03-30': p25 };
+    const c = contract({ start: '2026-02-23', trackedFrom: '2026-02-23', rateNet: 500, planningVariable: true, planningsSemaines: ps, heuresMensualisees: 130 });
+    const recs = [rec('2026-03-10', { pres: [{ a: '08:00', d: '18:00' }] }), rec('2026-03-11', { pres: [{ a: '08:00', d: '18:00' }] })];
+    const b = monthBase(makeCtx(c, recs, [], T), '2026-03');
+    expect(b.complMin).toBe(10 * 60);
+    expect(b.complAmount).toBe(5000);
+    expect(b.complAConfirmerMin).toBe(5 * 60);
+    expect(b.complAConfirmerAmount).toBe(2500);
   });
 });
 
