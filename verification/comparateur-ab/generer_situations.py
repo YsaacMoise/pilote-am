@@ -839,7 +839,115 @@ def grille():
                    "sorties": ["preavis", "indemnite_rupture"]}], theme="décès de l'enfant après 6 mois"))
     S += situations_t027()
     S += situations_s50b()  # T-050c
+    S += situations_t072()  # T-072 (T-052, T-054, T-055)
+    S += situations_t074()  # T-074
     S += situations_t077()  # T-077 (MB7)
+    return S
+
+
+# ---------------- T-074 : famille S74 (preavis dispense en tout ou partie par les parents)
+MARQUE_T074 = ("T-074 : préavis dispensé par les parents (CCN art. 64, 64.2, 66, 122) ; fin du contrat à la date "
+               "prévue de fin du préavis ; inexécution transmise aux deux moteurs")
+
+
+def situations_t074():
+    """T-074 : preavis dispense par l'employeur (regles/t074-preavis-dispense.md). La date « fin » du contrat est la
+    date prevue de fin du preavis (CCN art. 64), comptee en jours calendaires a partir du jour de la lettre (jour de
+    remise compte comme 1er jour, comme S17 et S18) : c'est un fait de la situation, pas un calcul de reference.
+    Le contrat porte « rupture » (preavis « employeur », dernier jour travaille) et le calcul de fin porte
+    « inexecution ». Sorties : la fin et les mois touches par le preavis. Annee incomplete : semaines sans accueil
+    de chaque annee de contrat toutes saisies (OFF46). Aucun resultat attendu n'est calcule ici."""
+    S = []
+
+    def mois_touches(notif, fin):
+        a, b = date.fromisoformat(notif), date.fromisoformat(fin)
+        m = date(a.year, a.month, 1)
+        out = []
+        while m <= b:
+            out.append(f"{m.year:04d}-{m.month:02d}")
+            m = date(m.year + (m.month // 12), m.month % 12 + 1, 1)
+        return out
+
+    def cas(id_, k, notif, dernier, fin, motif, description, mois_=None):
+        k = dict(k, fin=fin)
+        k["rupture"] = {"motif": motif, "notif": notif, "preavis": "employeur", "dernier_jour_travaille": dernier}
+        debut_mois = min(notif, dernier)
+        calculs = [{"id": "f", "type": "fin", "notification": notif, "motif": motif,
+                    "inexecution": {"demandeur": "employeur", "dernier_jour_travaille": dernier}}]
+        calculs += [mois(f"m{m}", m) for m in (mois_ or mois_touches(debut_mois, fin))]
+        s = sit(id_, "fin de contrat", k, calculs, theme="T-074", marques={"*": MARQUE_T074})
+        s["description"] = description
+        S.append(s)
+
+    def c52(debut):
+        return contrat_grille("C52", "H40", "T420", debut=debut)
+
+    def i46(debut):
+        return contrat_grille("I46", "H40", "T420", debut=debut)
+
+    # Annee complete, 40 h du lundi au vendredi, 4,20 EUR.
+    cas("S74-C52-8J-PART-MILIEU", c52("2026-09-07"), "2026-10-12", "2026-10-14", "2026-10-19", "retrait",
+        "8 jours, dispense partielle (15 au 19/10), fin en cours de mois, moins de 9 mois")
+    cas("S74-C52-8J-TOTALE-MILIEU", c52("2026-09-07"), "2026-10-12", "2026-10-09", "2026-10-19", "retrait",
+        "8 jours, dispense totale, fin en cours de mois, moins de 9 mois")
+    cas("S74-C52-8J-CHEVAL", c52("2026-09-07"), "2026-10-27", "2026-10-28", "2026-11-03", "retrait",
+        "8 jours, dispense partielle, préavis à cheval sur octobre et novembre")
+    cas("S74-C52-8J-TOTALE-1ER", c52("2026-09-07"), "2026-11-02", "2026-10-30", "2026-11-09", "retrait",
+        "8 jours, dispense totale commençant le 1er jour d'accueil du mois")
+    cas("S74-C52-8J-FERIE", c52("2026-09-07"), "2026-11-05", "2026-11-06", "2026-11-12", "retrait",
+        "8 jours, dispense partielle qui couvre le 11 novembre (jour prévu)")
+    cas("S74-C52-15J-PART-MOINS9", c52("2026-03-02"), "2026-09-14", "2026-09-18", "2026-09-28", "retrait",
+        "15 jours, dispense partielle, moins de 9 mois")
+    cas("S74-C52-15J-PART-FINMOIS", c52("2026-03-02"), "2026-09-16", "2026-09-25", "2026-09-30", "retrait",
+        "15 jours, dispense partielle, fin le dernier jour du mois")
+    cas("S74-C52-15J-NEUF-MOIS-A-LA-FIN", c52("2026-01-05"), "2026-09-28", "2026-10-02", "2026-10-12", "retrait",
+        "15 jours, 9 mois d'accueil atteints seulement à la fin du contrat (05/10), à cheval sur deux mois")
+    cas("S74-C52-15J-TOTALE-PLUS9", c52("2025-12-01"), "2026-09-14", "2026-09-11", "2026-09-28", "retrait",
+        "15 jours, dispense totale, plus de 9 mois d'accueil")
+    cas("S74-C52-15J-TOTALE-1ER-MOINS9", c52("2026-06-01"), "2026-10-01", "2026-09-30", "2026-10-15", "retrait",
+        "15 jours, dispense totale commençant le 1er du mois, fin en cours de mois, moins de 9 mois")
+    cas("S74-C52-1M-TOTALE-1ER", c52("2025-09-01"), "2026-10-01", "2026-09-30", "2026-10-31", "retrait",
+        "1 mois, dispense totale sur un mois civil entier, plus de 9 mois")
+    cas("S74-C52-1M-PART-CHEVAL", c52("2025-09-01"), "2026-09-15", "2026-09-30", "2026-10-14", "retrait",
+        "1 mois, préavis à cheval, dispense du 1er au 14/10 seulement")
+    cas("S74-C52-1M-TOTALE-CHEVAL", c52("2025-09-01"), "2026-09-15", "2026-09-14", "2026-10-14", "retrait",
+        "1 mois, dispense totale, préavis à cheval sur deux mois")
+    cas("S74-C52-1M-PART-NOV", c52("2025-09-01"), "2026-10-14", "2026-11-12", "2026-11-13", "retrait",
+        "1 mois, dispense du seul dernier jour (13/11), fin en cours de mois")
+    cas("S74-C52-DEMISSION-1M-TOTALE", c52("2025-09-01"), "2026-10-01", "2026-09-30", "2026-10-31", "demission",
+        "démission, préavis d'1 mois dont les parents dispensent l'AM (CCN art. 64, F33164)")
+    # Periode de reference entiere (01/06/2025 au 31/05/2026), mercredi seul (aucun mercredi ferie de 06/2025 a
+    # 10/2026, comme S50B) : les jours de conges ne dependent pas de la methode ; la paie du preavis dispense est
+    # dans la base du dixieme de l'ICCP.
+    cas("S74-C52-15J-PERIODE-ENTIERE", dict(c52("2025-06-01"), planning=S50B_MER), "2026-05-17", "2026-05-20",
+        "2026-05-31", "retrait", "15 jours, dispense du dernier mercredi (27/05), fin au 31 mai, période de "
+        "référence entière, plus de 9 mois")
+    # Annee incomplete, 46 semaines, 40 h, 4,20 EUR ; semaines sans accueil OFF46.
+    cas("S74-I46-8J-PART-MILIEU", i46("2026-09-07"), "2026-10-12", "2026-10-14", "2026-10-19", "retrait",
+        "année incomplète, 8 jours, dispense partielle, fin en cours de mois")
+    cas("S74-I46-8J-TOTALE-1ER", i46("2026-09-07"), "2026-11-02", "2026-10-30", "2026-11-09", "retrait",
+        "année incomplète, 8 jours, dispense totale commençant le 1er jour d'accueil du mois")
+    cas("S74-I46-15J-TOTALE-CHEVAL", i46("2026-03-02"), "2026-09-28", "2026-09-25", "2026-10-12", "retrait",
+        "année incomplète, 15 jours, dispense totale, à cheval sur deux mois, moins de 9 mois")
+    cas("S74-I46-15J-TOTALE-1ER-MOINS9", i46("2026-06-01"), "2026-10-01", "2026-09-30", "2026-10-15", "retrait",
+        "année incomplète, 15 jours, dispense totale commençant le 1er du mois, moins de 9 mois")
+    cas("S74-I46-15J-NEUF-MOIS-A-LA-FIN", i46("2026-01-05"), "2026-09-28", "2026-10-02", "2026-10-12", "retrait",
+        "année incomplète, 15 jours, 9 mois atteints seulement à la fin du contrat")
+    cas("S74-I46-1M-TOTALE-1ER", i46("2025-09-01"), "2026-10-01", "2026-09-30", "2026-10-31", "retrait",
+        "année incomplète, 1 mois, dispense totale sur un mois civil entier, deuxième année de contrat")
+    cas("S74-I46-15J-SANS-ACCUEIL", i46("2025-09-01"), "2026-07-27", "2026-07-31", "2026-08-10", "retrait",
+        "année incomplète, 15 jours, dispense en août sur des semaines sans accueil seulement")
+    cas("S74-I46-REEL-46S", i46("2026-09-14"), "2026-11-23", "2026-11-26", "2026-11-30", "retrait",
+        "dates du cas réel en année incomplète de 46 semaines (40 h)")
+    # Cas reel (T-073) : debut 14/09/2026, 52 semaines, 45 h du lundi au vendredi (08:00-17:00), 7,45 EUR net,
+    # entretien 4,22 EUR par jour, repas fournis par les parents, aucun conge, retrait, lettre remise en main propre
+    # le 23/11/2026 (presentation = notification), dispense apres le 26/11, fin le 30/11/2026.
+    reel = {"debut": "2026-09-14", "type_annee": "complete", "semaines": 52, "planning": P5x9, "taux": 745,
+            "majoration_hm": 10, "semaines_sans_accueil": [], "entretien_jour": 422, "repas_prix": 0,
+            "repas_par_jour": 0, "cp_mode": "juin", "age_am": 35, "enfants_a_charge": 0}
+    cas("S74-REEL", reel, "2026-11-23", "2026-11-26", "2026-11-30", "retrait",
+        "cas réel : retrait, lettre remise le 23/11/2026, dispense des 27 et 30/11, fin le 30/11/2026",
+        mois_=["2026-09", "2026-10", "2026-11"])
     return S
 
 
@@ -1008,6 +1116,75 @@ def situations_s50b():
                                               [("2026-07-13" if fam == "F2" else "2026-08-03"), "2026-11-09",
                                                "2027-02-15", "2027-02-22", "2027-04-12", "2027-04-19"]),
              "2026-12-27", "deces", "année incomplète, fin en cours de période (décembre)")
+    return S
+
+
+MARQUE_T072_BULLETINS = ("T-072 (T-054) : total des bruts des bulletins saisi (C-008), lu par A seulement ; "
+                         "B ne lit pas cette entrée (refus BULLETINS-NON-GERES)")
+MARQUE_T072_AVENANT = "T-072 (T-052) : avenant vers l'année complète, lu par A seulement ; B ne lit pas les avenants (refus)"
+MARQUE_T072_REGUL = ("T-072 (T-055) : une semaine sans accueil n'est pas saisie : A ne calcule pas la régularisation, "
+                     "B la calcule avec la liste donnée")
+
+
+def situations_t072():
+    """T-072 : situations nouvelles pour les défauts T-052, T-054 et T-055 (registre de direction). Entrées seulement,
+    aucun résultat attendu calculé ici."""
+    S = []
+    # T-052 : contrat de la fiche DDETS 31 « 46 semaines » (Mme Bertrand), absence pour maladie du 13 au 15/10/2021,
+    # avenant vers 52 semaines au 01/06/2022, congés du 01 au 30/06/2022, deux enfants à charge (sonde s4, relecture T-050).
+    for suf, abs_ in (("MALADIE", [conge("am_malade", "2021-10-13", "2021-10-15")]), ("TEMOIN", [])):
+        k = dict(BERTRAND, enfants_a_charge=2,
+                 avenants=[{"du": "2022-06-01", "type_annee": "complete", "semaines": 52, "semaines_sans_accueil": []}])
+        d = sit(f"T072-T052-{suf}", "congés payés", k, [mois("m", "2022-06")],
+                {"absences_am": abs_ + [conge("cp", "2022-06-01", "2022-06-30")]},
+                theme="congés pris au-delà de droits à confirmer", marques={"*": MARQUE_T072_AVENANT})
+        d["aujourdhui"] = "2022-07-15"
+        S.append(d)
+
+    # T-054 : année complète, retrait, préavis de 15 jours (9 mois à 1 an d'ancienneté), total des bulletins saisi
+    # jusqu'au mois de la fin (et une fois jusqu'au mois d'avant). Fins en cours de mois, un vendredi, au dernier jour
+    # d'un mois (dont février), le lendemain étant un jour d'accueil ou un week-end.
+    def fin_bulletins(id_, notif, fin, jusqua, theme):
+        k = dict(contrat_grille("C52", "H32", "T420", debut="2025-04-01", fin=fin), planning=PMaJ9, taux=420,
+                 rupture={"motif": "retrait", "notif": notif, "preavis": "execute"})
+        S.append(sit(id_, "fin de contrat", k,
+                     [{"id": "f", "type": "fin", "notification": notif, "motif": "retrait", "comparer_assiette": True,
+                       "bulletins": {"total": 1000000, "jusqua": jusqua}}],
+                     theme=theme, marques={"*": MARQUE_T072_BULLETINS}))
+    for notif, theme in (("2026-01-17", "fin le samedi 31/01, dernier jour du mois"),
+                         ("2026-02-02", "fin le lundi 16/02, en cours de mois"),
+                         ("2026-02-12", "fin le jeudi 26/02"),
+                         ("2026-02-13", "fin le vendredi 27/02"),
+                         ("2026-02-14", "fin le samedi 28/02, dernier jour de février"),
+                         ("2026-03-06", "fin le vendredi 20/03"),
+                         ("2026-03-17", "fin le mardi 31/03, dernier jour du mois, lendemain jour d'accueil")):
+        fin = (date.fromisoformat(notif) + timedelta(days=14)).isoformat()
+        fin_bulletins(f"T072-T054-{fin}", notif, fin, fin[:7], "bulletins saisis jusqu'au dernier mois, " + theme)
+    fin_bulletins("T072-T054-2026-02-26-MOISAVANT", "2026-02-12", "2026-02-26", "2026-01",
+                  "bulletins saisis jusqu'au mois d'avant la fin (février estimé)")
+
+    # T-055 : année incomplète de 46 semaines (contrats S50B), une semaine sans accueil non saisie.
+    def fin_regul(id_, k, notif, motif, theme):
+        k = dict(k)
+        if motif != "deces":
+            k["rupture"] = {"motif": motif, "notif": notif, "preavis": "execute"}
+        S.append(sit(id_, "fin de contrat", k,
+                     [{"id": "f", "type": "fin", "notification": notif, "motif": motif, "comparer_assiette": True}],
+                     theme=theme, marques={"*": MARQUE_T072_REGUL}))
+    # Contrat des tests t038 (36 semaines, 40 h du lundi au vendredi, 5 EUR), semaine du 16/02/2026 non saisie.
+    # Lettre du 28/10/2026 ; fin du préavis d'un mois le 27/11/2026 (date donnée en entrée, comme le contrat).
+    def lundis(du, n):
+        return [(date.fromisoformat(du) + timedelta(days=7 * i)).isoformat() for i in range(n)]
+    off38 = (lundis("2025-10-20", 2) + lundis("2025-12-22", 2) + ["2026-02-23"] + lundis("2026-04-13", 2)
+             + lundis("2026-07-06", 8) + ["2026-10-19"])
+    for motif, fin in (("deces", "2026-10-28"), ("retrait", "2026-11-27"), ("demission", "2026-11-27")):
+        k1 = incomplet(P5x8, 500, 36, fin=fin, majoration_hm=10, cp_mode="juin", semaines_sans_accueil=off38)
+        fin_regul(f"T072-T055-PASSEE-{motif.upper()}", k1, "2026-10-28", motif, f"semaine passée non saisie, {motif}")
+    # Seconde année sans aucune semaine sans accueil saisie (contrat S50B-I46-F1-2P sans les semaines de 2026-2027).
+    a1b = ["2025-11-17", "2026-03-02", "2026-06-01", "2026-06-08", "2026-07-20", "2026-08-03"]
+    k2 = dict(contrat_grille("I46", "H40", "T420", debut="2025-11-01", fin="2027-05-31"), planning=S50B_MER, taux=420,
+              semaines=46, semaines_sans_accueil=a1b)
+    fin_regul("T072-T055-AN2-DECES", k2, "2027-05-31", "deces", "seconde année sans semaine saisie, décès")
     return S
 
 

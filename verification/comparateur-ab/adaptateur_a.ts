@@ -59,6 +59,10 @@ function contrat(k: any): Contract {
     // T-042c : montant horaire transmis tel quel quand A sait le lire ; sinon rien (refus visible dans « mois »).
     ...(k.entretien_horaire != null && A_ENTRETIEN_HORAIRE ? { entretienHeure: montant(k.entretien_horaire) } : {}),
     // T-042f (M11, T-045b) : réponse enregistrée sur le préavis (Contract.rupture), seulement si la situation la donne.
+    // T-072 (T-052) : avenants de la situation (changement d'année incomplète vers complète), transmis tels quels.
+    ...(k.avenants ? { avenants: k.avenants.map((a: any, i: number) => ({ id: `av${i}`, from: a.du, changes: {
+      ...(a.type_annee ? { yearType: a.type_annee } : {}), ...(a.semaines ? { weeks: a.semaines } : {}),
+      ...(a.semaines_sans_accueil ? { weeksOff: a.semaines_sans_accueil } : {}) } })) } : {}),
     ...(k.rupture ? { rupture: { motif: k.rupture.motif, notif: k.rupture.notif, presentation: k.rupture.presentation,
       preavis: k.rupture.preavis, dernierJourTravaille: k.rupture.dernier_jour_travaille } } : {}),
   } as Contract;
@@ -194,7 +198,9 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
         break;
       }
       const inex = k.inexecution ? { demandeur: k.inexecution.demandeur, dernierJourTravaille: k.inexecution.dernier_jour_travaille } : undefined;
-      const f = (finDeContrat as (...a: unknown[]) => ReturnType<typeof finDeContrat>)(ctx, k.notification, k.motif as Motif, enfants, k.presentation, inex);
+      // T-072 (T-054) : total des bruts des bulletins saisi (C-008), en 7e paramètre, seulement si la situation le donne.
+      const bruts = k.bulletins ? { total: k.bulletins.total, jusqua: k.bulletins.jusqua, parMois: k.bulletins.par_mois } : undefined;
+      const f = (finDeContrat as (...a: unknown[]) => ReturnType<typeof finDeContrat>)(ctx, k.notification, k.motif as Motif, enfants, k.presentation, inex, bruts);
       out.preavis = ok(preavisNormalise(f.preavisLabel));
       out.date_fin_preavis = ok(f.preavisFin);
       out.indemnite_rupture = ok(f.indemniteRupture);
@@ -202,6 +208,12 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       const bloque = f.alertes.some((a) => a.startsWith('Régularisation non calculée'));
       out.regularisation_fin = bloque ? { statut: 'refus', note: 'alerte : semaines sans accueil manquantes' } : ok(f.regularisation);
       out.assiette_rupture = ok(f.totalBrut);
+      // T-074 : indemnité de préavis des jours dispensés par les parents (FinResult.dispense, information comprise dans les
+      // salaires). P-1 : deux lectures de la part du salaire qui est l'indemnité, si elles diffèrent : refus.
+      if (k.inexecution?.demandeur === 'employeur') {
+        const dis = (f as { dispense?: { net: number; autre?: number } }).dispense;
+        out.indemnite_preavis = !dis ? ok(0) : dis.autre != null ? refus(`A : à confirmer (P-1 : ${dis.net} ou ${dis.autre})`) : ok(dis.net);
+      }
       if (f.preavisFinAConfirmer) out.date_fin_preavis = refus(`A : date calculée ${f.preavisFin}, affichée à confirmer (${f.preavisFinAConfirmer})`);
       if (f.ruptureAConfirmer) out.indemnite_rupture = refus(`A : indemnité affichée à confirmer (${f.indemniteRupture} calculés)`);
       // T-050c : l'assiette (totalBrut) n'est pas définitive quand l'indemnité est « à confirmer » (une somme à confirmer n'y est pas).

@@ -59,12 +59,17 @@ describe('T-050d, B-1 : la variante de date de fin ne compte jamais deux fois l�
     expect(l.totalBrut).toBe(ASSIETTE);
     expect(l.indemniteRupture).toBe(RUPTURE);
   });
-  it('total des bulletins saisi jusqu’à juillet (régularisation comprise) : variante du 01/08 = 115,24 €, pas 124,84 €', () => {
+  // Relecture T-072 (B-1), décision de la direction du 22/11/2026 : si la fin passe au 01/08, l'ICCP et la régularisation
+  // seraient sur le bulletin d'août, hors du total saisi jusqu'à juillet. La variante ne peut pas donner 115,24 € comme sûr.
+  // Ici l'ICCP de cette variante est à confirmer : l'indemnité est « à confirmer » (avant : 115,24 € sûr pour les deux dates).
+  it('total des bulletins saisi jusqu’à juillet : fin le 31/07, 115,24 € ; variante du 01/08 à confirmer (B-1, T-072)', () => {
     const r = finDeContrat(ctx(), '2026-07-17', 'retrait', 0, undefined, { total: ASSIETTE, jusqua: '2026-07' });
     expect(r.totalBrut).toBe(ASSIETTE);
     expect(r.indemniteRupture).toBe(RUPTURE);
-    expect(r.ruptureVariantes).toBeUndefined();
-    expect(r.ruptureAConfirmer).toBeFalsy();
+    expect(r.ruptureAConfirmer).toBe(true);
+    expect(r.ruptureVariantes).toContain('Fin le 31/07/2026 : 115,24');
+    expect(r.ruptureVariantes).toContain('Fin le 01/08/2026 : à confirmer');
+    expect(r.ruptureVariantes).not.toContain('124,84');
   });
   it('brut du bulletin de juillet lu (régularisation comprise) : rien n’est compté deux fois dans la variante', () => {
     // Bulletin de juillet lu : 768,25 € de salaire + 768,25 € de régularisation = 1 536,50 € ; assiette inchangée.
@@ -74,7 +79,9 @@ describe('T-050d, B-1 : la variante de date de fin ne compte jamais deux fois l�
     const r = finDeContrat(ctx(), '2026-07-17', 'retrait', 0, undefined, { parMois });
     expect(r.totalBrut).toBe(ASSIETTE);
     expect(r.indemniteRupture).toBe(RUPTURE);
-    expect(r.ruptureVariantes).toBeUndefined();
+    // Relecture T-072 (B-1) : même raison que ci-dessus, la variante du 01/08 est à confirmer (avant : aucune variante).
+    expect(r.ruptureAConfirmer).toBe(true);
+    expect(r.ruptureVariantes).toContain('Fin le 01/08/2026 : à confirmer');
   });
 });
 

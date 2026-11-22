@@ -1,7 +1,7 @@
 // T-031 : cas que l'app ne gère pas (charte, verrou 6 : « tout ce qui n'a pas passé les verrous 1 à 5 affiche non géré »).
 // Le moteur ne calcule pas ces cas : il les nomme et dit quoi faire. Aucune règle de paie n'est écrite ici.
-import { shortDate, type ISODate } from './dates';
-import { controleFinContrat } from './preavis';
+import { addDays, shortDate, type ISODate } from './dates';
+import { controleFinContrat, jourDispense } from './preavis';
 import type { AmLeave, Contract } from './model';
 
 export const NON_GERE_ALSACE =
@@ -69,6 +69,19 @@ export function nonGeresPeriode(c: Contract, leaves: AmLeave[], from: ISODate, t
     if (!estAbsenceNonGeree(l) || l.to < a || l.from > b) continue;
     const m = messageAbsenceNonGeree(l);
     if (!out.includes(m)) out.push(m);
+  }
+  // T-074 (D1) : absence de l'AM (congés, maladie, événement…) un jour du préavis dont les parents l'ont dispensée. Aucun
+  // texte ne dit si ce jour est payé comme préavis (art. 64.2) ou traité comme absence, ni si le préavis est suspendu
+  // (art. 64.1 : congés payés, accident du travail). Rien n'est calculé : jamais une retenue en silence.
+  if (c.rupture?.preavis === 'employeur') {
+    for (const l of leaves) {
+      if (l.to < a || l.from > b) continue;
+      let jour: ISODate | undefined;
+      for (let x = l.from > a ? l.from : a; x <= l.to && x <= b; x = addDays(x, 1)) if (jourDispense(c, x)) { jour = x; break; }
+      if (!jour) continue;
+      const m = `Absence notée le ${shortDate(jour)}, pendant le préavis dont les parents t’ont dispensée : aucun texte ne dit si ce jour est payé comme préavis ou traité comme une absence (convention, articles 64.1 et 64.2). L’app ne calcule pas ce mois. Si l’enfant n’était de toute façon pas confié, retire l’absence ; sinon, fais le calcul avec les parents.`;
+      if (!out.includes(m)) out.push(m);
+    }
   }
   // T-045b (P3-B1, C3-1 de V5) : date de fin saisie qui ne concorde pas avec le préavis, ou préavis sans réponse.
   if (controleFin !== 'non' && (controleFin === 'tout' || c.rupture)) {

@@ -612,6 +612,9 @@ export function cpExces(ctx: Ctx): Set<ISODate> {
       const pris = cpPrisEntre(ctx, debutDecompte(ctx, y), p.to);
       // Un solde fractionnaire (2,5 jours) est arrondi au jour supérieur, en faveur de l'AM.
       const droits = Math.max(0, Math.ceil(droitsAPrendre(ctx, y) - 1e-9));
+      // T-052 : droits de la période précédente à confirmer sans aucune lecture (absence ou cas non géré) : la borne
+      // interne n'est pas un droit sûr. Rien n'est retenu ; ces jours sont à confirmer (cpExcesAConfirmer).
+      if (y > cpPeriodStartYear(ctx.c.trackedFrom) && droitsSansLecture(ctx, y)) continue;
       pris.slice(droits).forEach((d) => out.add(d));
     }
     return out;
@@ -631,10 +634,12 @@ export function cpExcesAConfirmer(ctx: Ctx): Set<ISODate> {
     for (const y of years) {
       if (y <= cpPeriodStartYear(ctx.c.trackedFrom)) continue;
       const prec = acquisition(ctx, y - 1, ctx.enfants ?? 0);
-      if (!prec.aConfirmer || !prec.aConfirmer.lectures.length) continue;
-      const bas = Math.min(...prec.aConfirmer.lectures.map((l) => l.jours), ...(prec.aConfirmer.controles ?? []));
+      if (!prec.aConfirmer) continue;
       const haut = Math.max(0, Math.ceil(droitsAPrendre(ctx, y) - 1e-9));
       const pris = cpPrisEntre(ctx, debutDecompte(ctx, y), cpPeriod(y).to);
+      // T-052 : sans lecture, les jours au-delà de la borne interne ne sont ni payés ni retenus (T-019, T-030).
+      if (!prec.aConfirmer.lectures.length) { pris.slice(haut).forEach((d) => out.add(d)); continue; }
+      const bas = Math.min(...prec.aConfirmer.lectures.map((l) => l.jours), ...(prec.aConfirmer.controles ?? []));
       pris.slice(bas, haut).forEach((d) => out.add(d));
     }
     return out;
@@ -643,6 +648,12 @@ export function cpExcesAConfirmer(ctx: Ctx): Set<ISODate> {
 
 export const MESSAGE_CP_AU_DELA_A_CONFIRMER =
   'Congés pris peut-être au-delà de tes droits : selon la façon de compter tes jours acquis, ces jours sont payés ou pris sans solde. Ils ne sont ni payés ni retenus pour l’instant. Mets-toi d’accord par écrit avec les parents.';
+
+/** T-052 : les droits à prendre en période `y` (acquis en `y - 1`) sont à confirmer sans aucune lecture chiffrée. */
+function droitsSansLecture(ctx: Ctx, y: number): boolean {
+  const a = acquisition(ctx, y - 1, ctx.enfants ?? 0).aConfirmer;
+  return !!a && !a.lectures.length;
+}
 
 /** Début du décompte des congés pris pour la période `y` : le début du suivi si le suivi commence dans cette période */
 export function debutDecompte(ctx: Ctx, y: number): ISODate {

@@ -1,11 +1,26 @@
 import { termsAt } from '../engine/payroll';
 import { useState } from 'preact/hooks';
 import { ctxFor, putContract, toast, useStore } from '../store';
-import { addMonths, monthLabel, monthOf, shortDate, today, type Month } from '../engine/dates';
-import { finDeContrat, MOTIF_LABEL, type DemandeurInexecution, type Motif } from '../engine/fin';
+import { addDays, addMonths, monthLabel, monthOf, shortDate, today, type Month } from '../engine/dates';
+import { finDeContrat, type DemandeurInexecution, type Motif } from '../engine/fin';
 import type { Rupture } from '../engine/model';
-import { euros, eurosArrondis, hoursLabel } from '../engine/money';
+import { euros, eurosArrondis } from '../engine/money';
+import { ligneRegularisation } from './fin-lignes';
 import { Banner, Choices, DateInput, EuroInput, Gommette, Topbar } from '../ui/kit';
+
+/**
+ * T-079 : choix de « Pourquoi le contrat s'arrête-t-il ? », du plus courant au plus rare, chacun dit qui agit.
+ * MOTIF_LABEL (engine/fin.ts) reste le libellé court des messages ; les valeurs v sont inchangées.
+ */
+const CHOIX_MOTIF: { v: Motif; l: string; sub?: string }[] = [
+  { v: 'retrait', l: 'Les parents retirent l’enfant', sub: 'Entrée à l’école, déménagement, autre mode de garde…' },
+  { v: 'demission', l: 'Je démissionne' },
+  { v: 'essai', l: 'Rupture pendant la période d’essai', sub: 'À ton initiative ou à celle des parents.' },
+  { v: 'faute_grave', l: 'Les parents retirent l’enfant pour faute grave', sub: 'Leur lettre te reproche une faute grave.' },
+  { v: 'inaptitude', l: 'Je suis inapte, pour une raison sans lien avec le travail' },
+  { v: 'inaptitude_pro', l: 'Je suis inapte après un accident du travail ou une maladie professionnelle' },
+  { v: 'deces', l: 'Décès de l’enfant' },
+];
 
 /** « de mars », « d’août », « d’octobre » */
 const deMois = (l: string) => (/^[aeiouyéè]/i.test(l) ? `d’${l}` : `de ${l}`);
@@ -52,10 +67,13 @@ export function Fin({ id }: { id?: string }) {
   const enregistre = c.end === f.dernierJour && JSON.stringify(c.rupture) === JSON.stringify(rupture);
   const enregistrer = async () => {
     const prev = await putContract({ ...c, end: f.dernierJour, rupture });
-    toast(`Fin de contrat enregistrée : dernier jour le ${shortDate(f.dernierJour)}`, prev ? async () => { await putContract(prev); } : undefined);
+    toast(`Fin de contrat enregistrée : ${f.dispense ? "fin du contrat" : "dernier jour"} le ${shortDate(f.dernierJour)}`, prev ? async () => { await putContract(prev); } : undefined);
   };
+  // T-074 : préavis dispensé par les parents : la date de fin reste celle du préavis, donc à confirmer comme lui.
+  const finSelonPreavis = !inexecution || inexecution.demandeur === 'employeur';
   const total = (f.ruptureAConfirmer ? 0 : f.indemniteRupture) + f.regularisation + f.cpIndemnite + f.indemnitePreavis;
-  const aConfirmer = !!f.cpAConfirmer || !!f.ruptureAConfirmer || !!f.regularisationAConfirmer || !!f.indemnitePreavisAConfirmer;
+  const aConfirmer = !!f.cpAConfirmer || !!f.ruptureAConfirmer || !!f.regularisationAConfirmer || !!f.regularisationNonCalculee || !!f.indemnitePreavisAConfirmer;
+  const ligneRegul = ligneRegularisation(f, termsAt(c, f.dernierJour).yearType === 'incomplete');
   // L'indemnité de rupture dépend du brut : tant qu'un mois est estimé, elle est affichée arrondie, comme une estimation.
   const surBrut = motif === 'retrait' || motif === 'deces' || motif === 'inaptitude' || motif === 'inaptitude_pro';
   const estime = surBrut && f.brutsEstimes.length > 0;
@@ -75,33 +93,33 @@ export function Fin({ id }: { id?: string }) {
         <section class="card">
           <fieldset>
             <legend>La rupture</legend>
-            <Choices label="Qui arrête et pourquoi" value={motif} onChange={setMotif} options={(Object.keys(MOTIF_LABEL) as Motif[]).map((k) => ({ v: k, l: MOTIF_LABEL[k] }))} />
+            <Choices label="Pourquoi le contrat s’arrête-t-il ?" value={motif} onChange={setMotif} options={CHOIX_MOTIF} />
             {avecPreavis ? (
               <>
-                <Choices label="Comment la lettre est donnée" value={remise} onChange={(v) => { setRemise(v); setPresentation(null); }} options={[
-                  { v: 'recommande', l: 'Lettre recommandée avec accusé de réception' },
-                  { v: 'main_propre', l: 'Lettre remise en main propre contre décharge', sub: 'L’autre signe et date un double' },
+                <Choices label="Comment la lettre est-elle remise ?" value={remise} onChange={(v) => { setRemise(v); setPresentation(null); }} options={[
+                  { v: 'recommande', l: 'En recommandé avec accusé de réception' },
+                  { v: 'main_propre', l: 'En main propre, contre décharge', sub: 'La personne qui la reçoit signe et date un double.' },
                 ]} />
                 {remise === 'recommande' ? (
                   <>
-                    <DateInput label="Date d’envoi de la lettre" hint="Sert à compter l’ancienneté." value={notif} min={c.start} onChange={changeEnvoi} />
-                    <DateInput label="Date de première présentation de la lettre" hint="Le jour où le facteur la présente la première fois (accusé de réception ou avis de passage). Le préavis part de ce jour, pas de l’annonce orale." value={presVue} min={envoi} onChange={(v) => setPresentation(v || null)} />
+                    <DateInput label="Date d’envoi de la lettre" hint="Le jour où elle est postée. Il sert à compter ton ancienneté." value={notif} min={c.start} onChange={changeEnvoi} />
+                    <DateInput label="Date de première présentation de la lettre" hint="Le premier passage du facteur, noté sur l’accusé de réception ou l’avis de passage. Le préavis commence ce jour-là, pas le jour de l’annonce orale." value={presVue} min={envoi} onChange={(v) => setPresentation(v || null)} />
                   </>
                 ) : (
-                  <DateInput label="Date de remise de la lettre contre décharge" hint="Le préavis part de ce jour, pas de l’annonce orale." value={notif} min={c.start} onChange={changeEnvoi} />
+                  <DateInput label="Date de remise en main propre" hint="La date écrite sur la décharge. Le préavis commence ce jour-là, pas le jour de l’annonce orale." value={notif} min={c.start} onChange={changeEnvoi} />
                 )}
-                <Choices label="Le préavis est-il fait en entier ?" value={preavisFait} onChange={setPreavisFait} options={[
-                  { v: 'oui', l: 'Oui, ou il est en cours' },
-                  { v: 'am_acceptee', l: 'Non, à ma demande, et les parents ont accepté', sub: 'Le contrat finit à ton dernier jour travaillé' },
-                  { v: 'employeur', l: 'Non, les parents m’en dispensent', sub: 'Ils te doivent une indemnité égale au préavis' },
-                  { v: 'am_sans_accord', l: 'Non, je pars sans leur accord' },
+                <Choices label="Le préavis est-il effectué en entier ?" value={preavisFait} onChange={setPreavisFait} options={[
+                  { v: 'oui', l: 'Oui, effectué ou en cours' },
+                  { v: 'am_acceptee', l: 'Non : je pars plus tôt, avec l’accord des parents', sub: 'Le contrat finit à ton dernier jour travaillé.' },
+                  { v: 'employeur', l: 'Non : les parents me dispensent de le faire', sub: 'Ils te paient jusqu’à la date prévue de fin du préavis.' },
+                  { v: 'am_sans_accord', l: 'Non : je pars plus tôt, sans l’accord des parents' },
                 ]} />
                 {preavisFait !== 'oui' && (
-                  <DateInput label="Dernier jour travaillé" hint="Le dernier jour où tu as accueilli l’enfant." value={dernierTravaille ?? envoi} min={envoi} onChange={(v) => setDernierTravaille(v || null)} />
+                  <DateInput label="Dernier jour travaillé" hint={preavisFait === 'employeur' ? 'Le dernier jour où tu as accueilli l’enfant. S’ils ne l’ont plus confié dès le jour de la lettre, mets le dernier jour où tu l’as accueilli avant la lettre.' : 'Le dernier jour où tu as accueilli l’enfant.'} value={dernierTravaille ?? envoi} min={preavisFait === 'employeur' ? addDays(envoi, -7) : envoi} onChange={(v) => setDernierTravaille(v || null)} />
                 )}
               </>
             ) : avecLettre ? (
-              <DateInput label="Date d’envoi ou de remise de la lettre" hint="Pas de préavis pour ce motif : le contrat s’arrête à cette date." value={notif} min={c.start} onChange={changeEnvoi} />
+              <DateInput label="Date de la lettre (envoi ou remise)" hint="Ce motif n’a pas de préavis : le contrat s’arrête à cette date." value={notif} min={c.start} onChange={changeEnvoi} />
             ) : (
               <DateInput label="Date du décès" value={notif} min={c.start} onChange={setNotif} />
             )}
@@ -125,7 +143,7 @@ export function Fin({ id }: { id?: string }) {
           </section>
         )}
         {f.alertes.map((a) => <Banner tone="warn">{a} <a href={`#/historique/${c.id}`}>Ouvrir l’historique</a></Banner>)}
-        {f.preavisFinAConfirmer && !inexecution && <Banner tone="warn">{f.preavisFinAConfirmer}</Banner>}
+        {f.preavisFinAConfirmer && finSelonPreavis && <Banner tone="warn">{f.preavisFinAConfirmer}</Banner>}
         {f.cpAConfirmer && <Banner tone="warn">{f.cpAConfirmer}</Banner>}
         {f.regularisationAConfirmer && <Banner tone="warn">{f.regularisationAConfirmer}</Banner>}
         {f.indemnitePreavisAConfirmer && <Banner tone="warn">{f.indemnitePreavisAConfirmer}</Banner>}
@@ -135,16 +153,17 @@ export function Fin({ id }: { id?: string }) {
           <dl class="kv">
             <dt>{avecLettre ? 'Ancienneté à l’envoi de la lettre' : 'Ancienneté'}</dt><dd>{f.ancienneteMois} mois</dd>
             <dt>Préavis</dt><dd>{f.preavisLabel}</dd>
-            <dt>{motif === 'deces' || inexecution ? 'Dernier jour' : 'Dernier jour (préavis inclus)'}</dt><dd>{shortDate(f.dernierJour)}{f.preavisFinAConfirmer && !inexecution ? ' (à confirmer)' : ''}</dd>
+            <dt>{f.dispense ? 'Fin du contrat (date prévue de fin du préavis)' : motif === 'deces' || inexecution ? 'Dernier jour' : 'Dernier jour (préavis inclus)'}</dt><dd>{shortDate(f.dernierJour)}{f.preavisFinAConfirmer && finSelonPreavis ? ' (à confirmer)' : ''}</dd>
           </dl>
           <div class="decl">
             <div class="decl-line"><span class="decl-label"><span>Indemnité de rupture</span><span class="decl-hint">{f.ruptureExplication}</span></span><span class="decl-value">{f.ruptureAConfirmer ? 'à confirmer' : estime && f.indemniteRupture > 0 ? `environ ${eurosArrondis(f.indemniteRupture)}` : euros(f.indemniteRupture)}</span></div>
             {motif === 'deces' && <div class="decl-line"><span class="decl-label"><span>Indemnité égale au préavis</span><span class="decl-hint">{f.indemnitePreavisExplication}</span></span><span class="decl-value">{f.indemnitePreavisAConfirmer ? 'à confirmer' : euros(f.indemnitePreavis)}</span></div>}
-            <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint">{f.regularisationAConfirmer ? 'Montant à confirmer : voir l’encadré plus haut' : f.regularisation > 0 || termsAt(c, f.dernierJour).yearType === 'incomplete' ? (f.regulMinutes ? `${hoursLabel(f.regulMinutes)} accueillies mais non payées par la mensualisation` : 'Pas d’heures accueillies au-delà de ce qui a été payé') : 'Année complète : pas de régularisation'}</span></span><span class="decl-value">{f.regularisationAConfirmer ? 'à confirmer' : euros(f.regularisation)}</span></div>
+            {f.dispense && <div class="decl-line"><span class="decl-label"><span>Indemnité de préavis</span><span class="decl-hint">{`Jours dispensés ${f.dispense.du === f.dispense.au ? `le ${shortDate(f.dispense.du)}` : `du ${shortDate(f.dispense.du)} au ${shortDate(f.dispense.au)}`}. ${f.dispense.autre != null ? `${euros(f.dispense.net)} en proportion du salaire du mois, ou ${euros(f.dispense.autre)} en comptant les heures dispensées au taux horaire : la part du salaire qui est l’indemnité est à confirmer. ` : `Environ ${euros(f.dispense.brut)} brut. `}Comprise dans tes salaires des mois du préavis : elle n’est pas ajoutée au total ci-dessous.`}</span></span><span class="decl-value">{f.dispense.autre != null ? 'à confirmer' : euros(f.dispense.net)}</span></div>}
+            <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint">{ligneRegul.hint}</span></span><span class="decl-value">{ligneRegul.valeur}</span></div>
             <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{f.cpAConfirmer ? 'à confirmer' : euros(f.cpIndemnite)}</span></div>
           </div>
           <div class="spread"><b>{aConfirmer ? 'Total estimé, hors salaire du dernier mois et sommes à confirmer' : 'Total estimé, hors salaire du dernier mois'}</b><span class="decl-value">{estime && f.indemniteRupture > 0 && !f.ruptureAConfirmer ? `environ ${eurosArrondis(total)}` : euros(total)}</span></div>
-          <p class="hint">L’indemnité de rupture est calculée sur {estime ? `environ ${eurosArrondis(f.totalBrut)}` : euros(f.totalBrut)} de salaires bruts, régularisation et indemnité de congés de la fin comprises{finDansBulletins ? ' (elles sont dans tes bulletins)' : f.cpAConfirmer || f.regularisationAConfirmer ? ' (celles qui sont à confirmer n’y sont pas encore comptées)' : ''}{estime ? ', en partie estimés à partir du net : saisis le total de tes bulletins plus haut pour un montant exact' : ''}. Elle n’est pas soumise aux cotisations.{motif === 'deces' ? ' L’indemnité égale au préavis n’y est pas comptée pour l’instant : ce point est en cours d’examen.' : ''}</p>
+          <p class="hint">L’indemnité de rupture est calculée sur {estime ? `environ ${eurosArrondis(f.totalBrut)}` : euros(f.totalBrut)} de salaires bruts, régularisation et indemnité de congés de la fin comprises{f.regularisationNonCalculee ? ' (la régularisation n’est pas calculée : elle n’y est pas encore, l’indemnité est à confirmer)' : finDansBulletins ? ' (elles sont dans tes bulletins)' : f.cpAConfirmer || f.regularisationAConfirmer ? ' (celles qui sont à confirmer n’y sont pas encore comptées)' : ''}{estime ? ', en partie estimés à partir du net : saisis le total de tes bulletins plus haut pour un montant exact' : ''}. Elle n’est pas soumise aux cotisations.{motif === 'deces' ? ' L’indemnité égale au préavis n’y est pas comptée pour l’instant : ce point est en cours d’examen.' : ''}</p>
         </section>
         </>}
         <section class="card stack" aria-labelledby="fin-save">
