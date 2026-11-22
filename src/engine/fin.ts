@@ -114,12 +114,19 @@ function indemniteCompensatricePreavis(c: Ctx['c'], from: ISODate, to: ISODate):
 }
 
 
-/** T-038 suite : total des salaires bruts (salaires et congés versés) du début du contrat au `fin`, comme dans `finDeContrat`. */
-function brutJusqua(endCtx: Ctx, c: Ctx['c'], fin: ISODate, enfants: number): number {
+/**
+ * T-038 suite : total des salaires bruts (salaires et congés versés) du début du contrat au `fin`, comme dans `finDeContrat`.
+ * T-054 : sans les mois couverts par le total saisi des bulletins (`couvert`), et avec le brut lu d'un bulletin contrôlé
+ * (`lus`) : les bruts perçus de ces mois sont ceux des bulletins, quelle que soit la date de fin retenue.
+ */
+function brutJusqua(endCtx: Ctx, c: Ctx['c'], fin: ISODate, enfants: number, couvert: (m: Month) => boolean = () => false, lus?: Partial<Record<Month, number>>): number {
   let total = 0;
   for (const m of monthsBetween(monthOf(c.start), monthOf(fin))) {
+    if (couvert(m)) continue;
     const b = monthBase(endCtx, m);
     if (!b.active || b.missing) continue;
+    const lu = lus?.[m];
+    if (lu != null && lu > 0) { total += lu; continue; }
     total += monthBrut(endCtx, m);
     const cp = cpForMonth(endCtx, m, enfants);
     total += netToBrut(cp.indemnite + cp.complement, lastDay(m));
@@ -541,9 +548,11 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     // T-050d (B-1) : ces sommes sont dans le total retenu une seule fois : ajoutées au dernier mois (ajoutFin), ou déjà dans
     // les bulletins saisis ou lus quand ils couvrent ce mois. Dans une variante, elles quittent le dernier mois pour le mois de
     // la variante : seul l'écart de conversion en brut entre les deux mois s'ajoute, jamais une seconde fois la somme.
-    const brutFin = brutJusqua(endCtx, c, dernierJour, enfants);
+    // T-054 : un mois couvert par les bulletins (total saisi ou brut lu) garde le brut du bulletin dans chaque variante ;
+    // seul le salaire d'un mois non couvert change avec la date de fin.
+    const brutFin = brutJusqua(endCtx, c, dernierJour, enfants, couvert, bruts.parMois);
     const conversionFin = (fin: ISODate) => netToBrut(assietteFinNet, lastDay(monthOf(fin)));
-    const autres = variantes.map((v) => ({ ...v, montant: v.fin === dernierJour ? indemniteRupture : Math.round(((totalBrut + brutJusqua(ctxFin(v.fin), c, v.fin, enfants) - brutFin + conversionFin(v.fin) - conversionFin(dernierJour)) * facteur) / 80) }));
+    const autres = variantes.map((v) => ({ ...v, montant: v.fin === dernierJour ? indemniteRupture : Math.round(((totalBrut + brutJusqua(ctxFin(v.fin), c, v.fin, enfants, couvert, bruts.parMois) - brutFin + conversionFin(v.fin) - conversionFin(dernierJour)) * facteur) / 80) }));
     if (autres.some((v) => v.montant !== indemniteRupture)) {
       ruptureVariantes = `Indemnité de rupture à confirmer : elle dépend de la date de fin du préavis, à confirmer. ${autres.map((v) => `${v.libelle.replace(/^./, (x) => x.toUpperCase())} : ${euros(v.montant)}`).join(' ; ')}. Elle n'est pas comptée dans le total.`;
       ruptureAConfirmer = true;
