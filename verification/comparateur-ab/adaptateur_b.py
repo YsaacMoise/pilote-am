@@ -122,6 +122,18 @@ class Ctx:
         self.jours = {d_(j["date"]): j for j in ev.get("jours", [])}
         self.conges = [dict(l, du=d_(l["du"]), au=d_(l["au"])) for l in ev.get("absences_am", [])]
         self.cache = {}
+        # T-072 (T-052) : types d'annee successifs du contrat (debut, puis chaque avenant), pour les conges.
+        # Rempli par ctx_mois quand la situation a des avenants.
+        self.historique = [(self.debut, self.type)]
+
+    def types_entre(self, a, b):
+        """Types d'annee en vigueur entre a et b (faits du contrat et des avenants)."""
+        out = []
+        for i, (du, t) in enumerate(self.historique):
+            au = self.historique[i + 1][0] - timedelta(days=1) if i + 1 < len(self.historique) else date(9999, 12, 31)
+            if du <= b and au >= a:
+                out.append(t)
+        return out
 
     def dans_contrat(self, d):
         return d >= self.debut and (self.fin is None or d <= self.fin)
@@ -285,6 +297,12 @@ def qualifier_jour(ctx, d):
         return "hors", False, 0
     c = ctx.conge(d)
     if c == "cp":
+        if len(ctx.historique) > 1:
+            # T-072 (T-052) : jours pris dans la periode y, acquis du 1er juin y-1 au 31 mai y (CCN 48.1.1.1).
+            # Type de l'acquisition different du type du jour pris : B refuse (AVENANT-CP-A-CONFIRMER).
+            y = d.year if d.month >= 6 else d.year - 1
+            types = ctx.types_entre(max(date(y - 1, 6, 1), ctx.debut), date(y, 5, 31)) or [ctx.type]
+            appel("conges_apres_changement_type", types, ctx.type)
         if ctx.type == "complete":
             if droits_cp_suffisants(ctx, d):
                 return "cp", False, 0  # R-CP-07 : salaire mensualise maintenu
@@ -344,6 +362,8 @@ def mensualise(ctx):
 
 def mois_b(ctx, m):
     """Sorties d'un mois. Chaque sortie : valeur ou Refus."""
+    if isinstance(ctx, _CtxRefus):
+        return {n: ctx.refus for n in _CLES_MOIS}
     key = ("mois", m)
     if key in ctx.cache:
         return ctx.cache[key]
@@ -929,6 +949,61 @@ def fin_b(ctx, k):
     return out
 
 
+def rupture_bulletins_b(s, ctx, k, res):
+    """T-072 (T-054) : indemnite de rupture avec le total des bulletins saisi. Faits donnes a B : le total et son
+    dernier mois ; pour chaque date de fin possible (B, dates_fin_preavis_possibles, si le preavis est execute et que
+    la date de fin de la situation est l'une d'elles), les salaires de chaque mois, l'ICCP et la regularisation
+    calcules par B pour cette date (convertis en brut comme A, T-050c). B decide de l'assiette."""
+    bl = k["bulletins"]
+    auteur = "am" if k["motif"] == "demission" else "employeur"
+    motif_b = "deces_enfant" if k["motif"] == "deces" else "normal"
+    env = d_(k["notification"])
+    pres = d_(k.get("presentation", k["notification"]))
+    execute = (s["contrat"].get("rupture") or {}).get("preavis") == "execute" and not k.get("inexecution")
+    dates = [ctx.fin]
+    if execute:
+        pv = res.get("preavis")
+        if isinstance(pv, Refus):
+            raise pv
+        if pv:
+            possibles = appel("dates_fin_preavis_possibles", pres, pv)["resultat"]["dates"]
+            if ctx.fin in possibles:
+                dates = possibles
+    variantes = []
+    for f in dates:
+        c2 = ctx if f == ctx.fin else Ctx(dict(s, contrat=dict(s["contrat"], fin=f.isoformat())))
+        o2 = res if f == ctx.fin else fin_b(c2, k)
+        sal = {}
+        for m in mois_entre(c2.debut, f):
+            if not any(c2.dans_contrat(d) for d in jours_entre(premier(m), dernier(m))):
+                continue
+            cle = premier(m).isoformat()[:7]
+            v = mois_b(c2, m)["salaire_mois_hors_cp"]
+            cm = cp_mois_b(c2, m)
+            parts = [v, cm["cp_indemnite_mois"], cm["cp_complement_mois"]]
+            sal[cle] = None if any(isinstance(x, Refus) for x in parts) else \
+                _brut_comme_a(v) + _brut_comme_a(parts[1] + parts[2])
+        iccp_v, reg_v = o2.get("iccp"), o2.get("regularisation_fin")
+        iccp_v = None if isinstance(iccp_v, Refus) else iccp_v
+        reg_v = None if isinstance(reg_v, Refus) else reg_v
+        reg_brut = None if reg_v is None else _brut_comme_a(reg_v)
+        if iccp_v is None:
+            iccp_brut = None
+        elif reg_v is None:
+            iccp_brut = _brut_comme_a(iccp_v)
+        else:
+            iccp_brut = _brut_comme_a(iccp_v + reg_v) - reg_brut
+        variantes.append({"date_fin": f, "salaires_mois_centimes": sal, "iccp_centimes": iccp_brut,
+                          "regularisation_centimes": reg_brut,
+                          # Preavis execute : paye comme salaire des mois. Sinon (deces : indemnite egale au preavis,
+                          # CCN 119.4.2 ; preavis non execute) : montant non calcule ici, a confirmer.
+                          "indemnite_preavis_centimes": 0 if execute else None})
+    r = appel("indemnite_rupture_bulletins", motif_b, auteur, ctx.debut, env, variantes,
+              total_bulletins_centimes=bl.get("total"), total_jusqua=bl.get("jusqua"),
+              bruts_lus_centimes=bl.get("par_mois"))
+    return r["resultat"]
+
+
 # ------------------------------------------------------------------ execution
 
 def _resoudre(v, valeurs):
@@ -1007,6 +1082,46 @@ def controle_km_b(k):
     return Refus("ERREUR-SAISIE", "indemnite_kilometrique", {"message": r.get("message")})
 
 
+_CLES_MOIS = ("salaire_mensualise", "salaire_base_mois", "heures_compl_montant", "heures_maj_montant",
+              "ferie_travaille_montant", "salaire_mois_hors_cp", "entretien", "repas", "km")
+
+
+class _CtxRefus:
+    """Contexte d'un mois que B refuse en entier (avenant en cours de mois)."""
+
+    def __init__(self, refus):
+        self.refus = refus
+
+
+def ctx_mois(s, m, ctx=None):
+    """T-072 (T-052) : contrat en vigueur pour le mois m. Avenants : faits de la situation (date d'effet, type
+    d'annee, semaines, semaines sans accueil). B verifie que chaque avenant du mois prend effet le 1er (CCN 109.1,
+    verifier_date_effet_avenant) ; les conditions du dernier avenant en vigueur s'appliquent au mois entier. Les types
+    d'annee anterieurs servent aux conges (conges_apres_changement_type)."""
+    av = s["contrat"].get("avenants") or []
+    if not av:
+        return ctx or Ctx(s)
+    a0, b0 = premier(m), dernier(m)
+    for a in av:
+        du = d_(a["du"])
+        if a0 <= du <= b0:
+            try:
+                appel("verifier_date_effet_avenant", du)
+            except Refus as e:
+                return _CtxRefus(e)
+    k = dict(s["contrat"])
+    k.pop("avenants")
+    avant = sorted((a for a in av if d_(a["du"]) <= a0), key=lambda a: a["du"])
+    for a in avant:
+        for cle in ("type_annee", "semaines", "semaines_sans_accueil"):
+            if cle in a:
+                k[cle] = a[cle]
+    s2 = dict(s, contrat=k)
+    ctx = Ctx(s2)
+    ctx.historique = [(ctx.debut, s["contrat"]["type_annee"])] + [(d_(a["du"]), a.get("type_annee")) for a in avant]
+    return ctx
+
+
 def composition(s):
     ctx = Ctx(s)
     out = {}
@@ -1014,10 +1129,8 @@ def composition(s):
         pre = f"{k['id']}." if k.get("id") else ""
         t = k["type"]
         if t == "mois":
-            res = {n: v for n, v in mois_b(ctx, k["mois"]).items() if not n.startswith("_") and n != "deduction"}
-            # T-072 (T-052) : B ne lit pas les avenants de la situation. Refus visible, aucune regle ajoutee.
-            if s["contrat"].get("avenants"):
-                res = {n: Refus("AVENANT-NON-GERE", "mois", {"avenants": s["contrat"]["avenants"]}) for n in res}
+            res = {n: v for n, v in mois_b(ctx_mois(s, k["mois"], ctx), k["mois"]).items()
+                   if not n.startswith("_") and n != "deduction"}
         elif t == "cp_acquisition":
             res = acquisition_b(ctx, k["periode"])
         elif t == "cp_indemnite":
@@ -1027,12 +1140,17 @@ def composition(s):
             res = cp_mois_b(ctx, k["mois"])
         elif t == "fin":
             res = fin_b(ctx, k)
-            # T-072 (T-054) : B ne lit pas le total des bruts des bulletins saisi (C-008). L'assiette et l'indemnite de
-            # rupture en dependent : refus visible, aucune regle ajoutee. Les autres sorties n'en dependent pas.
+            # T-072 (T-054) : total des bruts des bulletins saisi (C-008) : B le lit (indemnite_rupture_bulletins).
             if k.get("bulletins"):
-                for cle in ("indemnite_rupture", "assiette_rupture"):
-                    if cle in res:
-                        res[cle] = Refus("BULLETINS-NON-GERES", "fin", {"bulletins": k["bulletins"]})
+                try:
+                    r = rupture_bulletins_b(s, ctx, k, res)
+                    res["indemnite_rupture"] = r["indemnite_centimes"]
+                    if k.get("comparer_assiette") and "assiette_centimes" in r:
+                        res["assiette_rupture"] = r["assiette_centimes"]
+                except Refus as e:
+                    res["indemnite_rupture"] = e
+                    if k.get("comparer_assiette"):
+                        res["assiette_rupture"] = e
         elif t == "cp_decompte":
             try:
                 r = appel("decompte_jours_cp", d_(k["du"]), d_(k["reprise"]), ctx.jours_travailles)
@@ -1055,6 +1173,9 @@ def composition(s):
                 res = {"evt_duree": e}
         else:
             raise ValueError(t)
+        if s["contrat"].get("avenants") and t != "mois":
+            # T-072 : B ne lit les avenants que pour le calcul d'un mois. Autres calculs : refus visible.
+            res = {n: Refus("AVENANT-NON-GERE", t, {"avenants": s["contrat"]["avenants"]}) for n in res}
         for n, v in res.items():
             if k.get("sorties") and n not in k["sorties"]:
                 continue

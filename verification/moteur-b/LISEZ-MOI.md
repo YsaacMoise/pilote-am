@@ -176,9 +176,16 @@ T-050b (MB6, 21/11/2026), d'après regles/t050-trois-regles.md, points 2 et 3 :
 - Dixième de la dernière période (A-50). La régularisation due à l'AM entre dans la base (CCN art. 123.2, 48.1.1.5, 48.1.1.1, 124 ; CASF L423-6). Elle n'est plus testée « avec et sans ». Un solde en faveur de l'employeur compte pour 0 : il ne se retire pas de la base. Contrôle : Bertrand, 2e période, 308,57 € (base sans ICCP précédente) ; la fiche retient 348,57 € avec l'ICCP précédente.
 - Refus gardés : indemnité de préavis dans l'assiette du 1/80 (A-45, art. 64.2 non relu, point rouvert par la direction) ; régularisation négative dans le 1/80 (A-45, aucun texte lu) ; ICCP de la période précédente dans le dixième (A-50, SUS-04 toujours ouvert) ; jours déjà payés sur une période (A-50) ; ICCP ou régularisation non calculée (ASSIETTE-A-CONFIRMER : jamais une assiette incomplète en silence).
 
+T-072 (22/11/2026), voir calculateur-arvela/rapports/T-072-moteur-b.md :
+- `dates_fin_preavis_possibles(date_premiere_presentation, preavis)` : les deux lectures du dernier jour (jour de départ compté ou non ; CCN 64.1, 120 ; PREAVIS-DATE-FIN reste ouvert).
+- `indemnite_rupture_bulletins(motif, auteur, debut, date_reference, variantes, total_bulletins_centimes, total_jusqua, bruts_lus_centimes)` : 1/80 (CCN 121.1) quand le total des bulletins ou des bruts lus sont saisis. Les montants saisis font foi pour leurs mois. Dernier mois couvert : ICCP, régularisation et préavis sont sur ce dernier bulletin (art. 67, 123, 124), rien n'est ajouté ; régularisation inconnue → ASSIETTE-A-CONFIRMER ; régularisation négative ou préavis non nul → A-45. Dernier mois non couvert : salaires des mois non couverts, ICCP et régularisation ajoutés, toute somme inconnue → ASSIETTE-A-CONFIRMER. Une variante par date de fin possible ; assiettes différentes → FIN-DATE-A-CONFIRMER.
+- `conges_apres_changement_type(types_periode_acquisition, type_annee_prise)` : jours acquis sous un type d'année et pris sous l'autre après un avenant → AVENANT-CP-A-CONFIRMER (CCN 102.1.2.1, 102.1.2.2, 48.1.1.5 muets) ; ni payé ni retenu.
+- `verifier_date_effet_avenant(date_effet)` : avenant au 1er du mois seulement, sinon AVENANT-EN-COURS-DE-MOIS (CCN 109.1).
+- `tests/test_t072.py` : 23 tests.
+
 Décès de l'enfant (T-035a) : indemnité au 1/80 due quelle que soit l'ancienneté (CCN 119.4.2, service-public F16842) ; A-47 levée.
 
-Refus : A-02, A-06, A-19, A-21, PREAVIS-DEMISSION-3-12, A-45, ASSIETTE-A-CONFIRMER, A-48, A-49, A-50, A-26, A-28, LIMITE-ANCIENNETE, DATE-MOIS, EXCLU-INAPTITUDE, EXCLU-RETRAITE, EXCLU-DECES-PARTIE, EXCLU-CDD-ANTICIPE, EXCLU-SAISONNIER. La date de fin du préavis n'est pas calculée (méthode non écrite, R-FIN-03).
+Refus : A-02, A-06, A-19, A-21, PREAVIS-DEMISSION-3-12, A-45, ASSIETTE-A-CONFIRMER, FIN-DATE-A-CONFIRMER, AVENANT-CP-A-CONFIRMER, AVENANT-EN-COURS-DE-MOIS, A-48, A-49, A-50, A-26, A-28, LIMITE-ANCIENNETE, DATE-MOIS, EXCLU-INAPTITUDE, EXCLU-RETRAITE, EXCLU-DECES-PARTIE, EXCLU-CDD-ANTICIPE, EXCLU-SAISONNIER. La date de fin du préavis n'est pas calculée (méthode non écrite, R-FIN-03).
 
 ### Périmètre et net (`perimetre.py`)
 
