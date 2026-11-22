@@ -70,7 +70,7 @@ describe('T-054 : variante de date de fin et bulletins saisis jusqu’au dernier
     expect(vus).toBe(178);
     expect(finsDeMois).toBeGreaterThanOrEqual(6);
     expect(fautes).toEqual([]);
-  });
+  }, 60000); // R-2 (relecture T-072) : 356 calculs de fin (toutes les dates gardées), délai explicite de 60 s.
 
   it('B-1 (relecture T-072) : fin le samedi 31/10/2026, total saisi jusqu’à octobre, variante du dimanche 01/11 : indemnité à confirmer', () => {
     const f = finDeContrat(ctx(), '2026-10-17', 'retrait', 0, undefined, { total: T, jusqua: '2026-10' });
