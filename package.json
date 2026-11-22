@@ -28,9 +28,18 @@
   "devDependencies": {
     "@firebase/rules-unit-testing": "6.0.0",
     "@preact/preset-vite": "2.10.6",
+    "@types/node": "26.6.6",
     "firebase-tools": "15.34.2",
     "typescript": "5.9.3",
     "vite": "6.4.5",
-    "vitest": "3.2.7"
+    "vitest": "4.1.12"
+  },
+  "overrides": {
+    "@firebase/firestore": {
+      "@grpc/grpc-js": "1.14.7"
+    },
+    "gaxios": {
+      "uuid": "11.1.1"
+    }
   }
 }
