@@ -8,6 +8,7 @@ import {
 } from './payroll';
 import type { AmLeave, Contract } from './model';
 import { nonGeresContrat, nonGeresPeriode } from './nonGeres';
+import { minutesPlanning, planningSemainePV, pvActif, semainesParAn } from './planningVariable';
 
 /** Jours ouvrables (lundi → samedi, hors fériés) d'un intervalle */
 export function joursOuvrables(from: ISODate, to: ISODate): ISODate[] {
@@ -377,6 +378,9 @@ function lecturesAnneeIncomplete(ctx: Ctx, y: number, enfants: number, moins21: 
     if (lundi >= a && addDays(lundi, 6) <= b) entieres.add(lundi);
     if (d <= upTo) { joursAD++; moisAD.add(monthOf(d)); }
   }
+  // T-076 : planning variable, le nombre de jours d'accueil par semaine change : la formule en semaines et jours
+  // (jours ÷ jours par semaine) n'a pas de diviseur unique. Aucune source ne le tranche : rien n'est calculé.
+  if (pvActif(termsAt(c, a))) return { lectures: [], raison: 'tes horaires changent d’une semaine à l’autre, et la formule en semaines et jours d’accueil a besoin d’un nombre de jours par semaine fixe' };
   const jps = daysPerWeek(termsAt(c, a).planning);
   if (!jps) return { lectures: [] };
   const lecture = (methode: LectureCP['methode'], brut: number, brutAD: number): LectureCP => {
@@ -736,22 +740,75 @@ export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; m
   });
 }
 
-/** Maintien de salaire pour n jours ouvrables de congés */
-export function maintien(ctx: Ctx, jours: number, at: ISODate = ctx.today): number {
+/**
+ * Maintien de salaire pour n jours ouvrables de congés. T-076 (planning variable) : lecture C1 de P-PV-5, heures prévues
+ * moyennes de la période de référence commençant le 1er juin `refY` (défaut : celle qui contient `at`) ; voir `maintienC1`.
+ */
+export function maintien(ctx: Ctx, jours: number, at: ISODate = ctx.today, refY?: number): number {
   const c = termsAt(ctx.c, at);
+  if (pvActif(c)) return maintienC1(ctx, jours, refY ?? cpPeriodStartYear(at), at);
   // Salaire d'une semaine, heures au-delà de 45 h majorées comme dans le salaire mensualisé
   const h = weeklyMinutes(c.planning);
   const semaine = Math.min(h, H45) * c.rateNet + Math.max(0, h - H45) * c.rateNet * (1 + c.majoration / 100);
   return Math.round(((jours / 6) * semaine) / 60);
 }
 
+/**
+ * T-076, P-PV-5 lecture C1 : maintien = taux × (heures prévues de la période de référence ÷ semaines prévues travaillées de
+ * la période) × jours ÷ 6. Jours de la période compris dans le contrat ; heures prévues : planning de la semaine de chaque
+ * jour (congés, absences et fériés compris, hors semaines sans accueil de l'année incomplète) ; semaines prévues travaillées :
+ * nombre de jours des semaines dont le planning n'est pas vide, divisé par 7 (une semaine coupée par la période compte pour
+ * sa part). S2 : un jour dont la semaine n'a pas de planning saisi n'est compté nulle part.
+ */
+export function maintienC1(ctx: Ctx, jours: number, refY: number, at: ISODate): number {
+  const c = ctx.c;
+  const p = cpPeriod(refY);
+  const a = c.start > p.from ? c.start : p.from;
+  const b = c.end && c.end < p.to ? c.end : p.to;
+  const off = toutesSemainesSansAccueil(c);
+  let total = 0, joursSemaines = 0;
+  for (const d of b < a ? [] : eachDay(a, b)) {
+    const t = termsAt(c, d);
+    const l = mondayOf(d);
+    if (t.yearType === 'incomplete' && off.has(l)) continue;
+    const h = minutesPlanning(planningSemainePV(t, l));
+    if (h <= 0) continue;
+    total += planningBrutMin(t, d);
+    joursSemaines++;
+  }
+  const rate = termsAt(c, at).rateNet;
+  return joursSemaines ? Math.round(((jours / 6) * (total / (joursSemaines / 7)) * rate) / 60) : 0;
+}
+
+/**
+ * T-076, P-PV-5 lecture C2 : maintien = taux × heures prévues (planning de la semaine) des jours de congé pris au titre de
+ * la période `y`, c'est-à-dire les `jours` premiers jours décomptés à partir du 1er juin `y + 1`. `complet` faux : tous ces
+ * jours ne sont pas encore saisis, `montant` ne compte que les jours connus (borne basse).
+ */
+export function maintienC2(ctx: Ctx, y: number, jours: number, at: ISODate): { montant: number; complet: boolean; connus: number } {
+  const n = Math.max(0, Math.ceil(jours - 1e-9));
+  const pris = cpPrisEntre(ctx, debutDecompte(ctx, y + 1), cpPeriod(y + 1).to).slice(0, n);
+  let min = 0;
+  for (const d of pris) min += plannedPlages(ctx.c, d).reduce((s, x) => s + Math.max(0, minutesHHMM(x.end) - minutesHHMM(x.start)), 0);
+  const rate = termsAt(ctx.c, at).rateNet;
+  return { montant: Math.round((min * rate) / 60), complet: pris.length >= n, connus: pris.length };
+}
+
+const minutesHHMM = (h: string) => Number(h.slice(0, 2)) * 60 + Number(h.slice(3, 5));
+
 export interface IndemniteCP {
   startYear: number;
   jours: number;
   dixieme: number;
   maintien: number;
-  /** Indemnité retenue : la plus favorable */
+  /** Indemnité retenue : la plus favorable. T-076 (planning variable) : part sûre, max(dixième ; min(C1, C2)). */
   montant: number;
+  /**
+   * T-076, P-PV-5 : planning variable, deux lectures du maintien. `aConfirmer` : max(dixième ; max(C1, C2)) − part sûre,
+   * affiché à part, hors du total. `verseDansSalaire` (année complète) : maintien déjà versé par le salaire mensualisé
+   * pendant les congés (heures mensualisées × 12 ÷ 52 par semaine × jours ÷ 6 × taux).
+   */
+  pv?: { c1: number; c2: number; c2Complet: boolean; aConfirmer: number; verseDansSalaire: number; message?: string };
   methode: 'dixieme' | 'maintien';
   manquants: Month[];
   /** Indemnité à confirmer : ni `jours` ni `montant` ne doivent être affichés ou payés */
@@ -772,19 +829,34 @@ export function indemnite(ctx: Ctx, y: number, enfants = 0): IndemniteCP {
     const { base, manquants, aConfirmer: baseAC, evenementAConfirmer: evAC } = bd;
     const dix = Math.round(base / 10);
     const at = `${y + 1}-06-01`;
-    const mt = maintien(ctx, acq.jours, at);
+    let mt = maintien(ctx, acq.jours, at, y);
+    let pv: IndemniteCP['pv'];
+    if (pvActif(termsAt(ctx.c, at))) {
+      // T-076 (spécification, section 1, P-PV-5) : part sûre = max(dixième ; min(C1, C2)) ; à confirmer = max(dixième ;
+      // max(C1, C2)) − part sûre. C2 pas encore connue en entier (congés pas tous saisis) : borne basse des jours connus.
+      const c1 = mt;
+      const c2 = maintienC2(ctx, y, acq.jours, at);
+      mt = Math.min(c1, c2.montant);
+      const haut = Math.max(dix, c1, c2.montant);
+      const tAt = termsAt(ctx.c, at);
+      const verse = Math.round(((acq.jours / 6) * ((tAt.heuresMensualisees ?? 0) * 60 * 12 / semainesParAn(tAt)) * tAt.rateNet) / 60);
+      pv = { c1, c2: c2.montant, c2Complet: c2.complet, aConfirmer: haut - Math.max(dix, mt), verseDansSalaire: verse };
+      if (pv.aConfirmer > 0) {
+        pv.message = `Congés payés, horaires variables : deux méthodes du maintien de salaire sont possibles. ${euros(c1)} sur tes heures prévues moyennes de la période, ou ${euros(c2.montant)} sur les heures prévues des jours de congé pris${c2.complet ? '' : ` (${c2.connus} jour${c2.connus > 1 ? 's' : ''} saisi${c2.connus > 1 ? 's' : ''} sur ${Math.ceil(acq.jours - 1e-9)} : ce montant augmentera avec les congés suivants)`}. Le dixième vaut ${euros(dix)}. L’app retient la part sûre ; ${euros(pv.aConfirmer)} restent à confirmer, non compris dans le total. La convention (article 48.1.1.5) ne tranche pas ; la question est posée à la DDETS.`;
+      }
+    }
     const out: IndemniteCP = {
       startYear: y, jours: acq.jours, dixieme: dix, maintien: mt, montant: Math.max(dix, mt),
-      methode: dix > mt ? 'dixieme' : 'maintien', manquants,
+      methode: dix > mt ? 'dixieme' : 'maintien', manquants, ...(pv ? { pv } : {}),
     };
     if (acq.aConfirmer) {
-      const montants = acq.aConfirmer.lectures.map((l) => ({ libelle: l.libelle, jours: l.jours, montant: Math.max(dix, maintien(ctx, l.jours, at)) }));
+      const montants = acq.aConfirmer.lectures.map((l) => ({ libelle: l.libelle, jours: l.jours, montant: Math.max(dix, maintien(ctx, l.jours, at, y)) }));
       const vus = new Map<number, string[]>();
       for (const x of montants) vus.set(x.montant, [...(vus.get(x.montant) ?? []), x.libelle]);
       const detail = montants.length && !baseAC
         ? ` Selon la lecture, l’indemnité serait de ${[...vus].map(([v, l]) => `${euros(v)} (${l.join(' ou ')})`).join(', ou de ')}.`
         : '';
-      const tous = [...montants, ...(acq.aConfirmer.controles ?? []).map((j) => ({ jours: j, montant: Math.max(dix, maintien(ctx, j, at)) }))];
+      const tous = [...montants, ...(acq.aConfirmer.controles ?? []).map((j) => ({ jours: j, montant: Math.max(dix, maintien(ctx, j, at, y)) }))];
       out.aConfirmer = { message: `Indemnité de congés payés à confirmer : elle dépend du nombre de jours acquis.${detail} ${acq.aConfirmer.message}`, montants, tous, baseSure: !baseAC };
     } else if (baseAC) {
       out.aConfirmer = { message: 'Indemnité de congés payés à confirmer : la règle du dixième compte l’indemnité de l’an dernier, qui est elle-même à confirmer.', montants: [], tous: [], baseSure: false };
@@ -849,6 +921,9 @@ export interface CpMonth {
   note?: string;
   /** Somme due ce mois mais à confirmer : non comptée dans le salaire du mois (T-019) */
   aConfirmer?: string;
+  /** T-076 (P-PV-5) : part de l'indemnité ou du complément qui dépend de la méthode du maintien (C1 ou C2), hors du total */
+  maintienAConfirmer?: number;
+  maintienMessage?: string;
 }
 
 /** Ce qui est dû ce mois-ci au titre des congés payés */
@@ -868,6 +943,15 @@ export function cpForMonth(ctx: Ctx, m: Month, enfants = 0): CpMonth {
     if (termsAt(c, `${m}-01`).yearType === 'complete') {
       if (m === juin) {
         if (ind.aConfirmer) return aConfirmer();
+        if (ind.pv) {
+          // T-076 : le salaire mensualisé versé pendant les congés paie déjà `verseDansSalaire` ; le complément paie le reste de
+          // la part sûre. L'écart entre les deux méthodes du maintien est à confirmer.
+          out.complement = Math.max(0, ind.montant - ind.pv.verseDansSalaire);
+          const haut = Math.max(0, ind.montant + ind.pv.aConfirmer - ind.pv.verseDansSalaire) - out.complement;
+          if (haut > 0) { out.maintienAConfirmer = haut; out.maintienMessage = ind.pv.message; }
+          if (out.complement) out.note = 'Complément de congés payés (année complète), versé en juin.';
+          return out;
+        }
         out.complement = Math.max(0, ind.dixieme - ind.maintien);
         if (out.complement) out.note = 'Complément du dixième (année complète), versé en juin.';
       }
@@ -879,6 +963,7 @@ export function cpForMonth(ctx: Ctx, m: Month, enfants = 0): CpMonth {
         out.jours = ind.jours;
         out.indemnite = ind.montant;
         out.note = 'Indemnité de congés payés versée en juin.';
+        if (ind.pv?.aConfirmer) { out.maintienAConfirmer = ind.pv.aConfirmer; out.maintienMessage = ind.pv.message; }
       }
     } else if (c.cpMode === 'principale') {
       const p = cpPeriod(y);
@@ -893,6 +978,7 @@ export function cpForMonth(ctx: Ctx, m: Month, enfants = 0): CpMonth {
         out.jours = ind.jours;
         out.indemnite = ind.montant;
         out.note = 'Indemnité de congés payés versée avec la prise principale.';
+        if (ind.pv?.aConfirmer) { out.maintienAConfirmer = ind.pv.aConfirmer; out.maintienMessage = ind.pv.message; }
       }
     } else {
       const p = cpPeriod(y);
@@ -915,6 +1001,10 @@ export function cpForMonth(ctx: Ctx, m: Month, enfants = 0): CpMonth {
         out.jours = r.n;
         out.indemnite = r.montant;
         out.note = 'Indemnité de congés payés versée au fur et à mesure de la prise.';
+        if (ind.pv?.aConfirmer && !ind.aConfirmer) {
+          const ac = part(ind.jours, ind.montant + ind.pv.aConfirmer).montant - r.montant;
+          if (ac > 0) { out.maintienAConfirmer = ac; out.maintienMessage = ind.pv.message; }
+        }
       }
     }
     return out;

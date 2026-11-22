@@ -3,6 +3,7 @@
 import { shortDate, type ISODate } from './dates';
 import { controleFinContrat } from './preavis';
 import type { AmLeave, Contract } from './model';
+import { messagePVACompleter, nonGeresContratPV, nonGeresPeriodePV } from './planningVariable';
 
 export const NON_GERE_ALSACE =
   'Alsace-Moselle (Bas-Rhin, Haut-Rhin, Moselle) : non géré. La paie y suit des règles locales que l’app ne calcule pas. Fais la paie sans l’app.';
@@ -10,6 +11,10 @@ export const NON_GERE_ALSACE =
  * « Au 1er juin 2026 », Mayotte : « Salaire horaire net 3,70 € » (métropole et Drom : 3,28 €) ; majoration de 4 % « Non concerné ». */
 export const NON_GERE_MAYOTTE =
   'Mayotte : non géré. Le SMIC, le salaire minimum et les cotisations y sont différents, l’app ne les a pas. Fais la paie sans l’app.';
+/**
+ * T-076 : plus utilisé par le calcul (le planning variable est calculé quand ses données sont complètes, sinon « à
+ * compléter », planningVariable.ts). Gardé pour les écrans et les tests qui le citent.
+ */
 export const NON_GERE_PLANNING_VARIABLE =
   'Horaires qui changent d’une semaine à l’autre (semaines A et B, planning remis chaque mois) : non géré. L’app ne sait calculer qu’une semaine type qui se répète. Fais la paie sans l’app.';
 export const NON_GERE_OCCASIONNEL =
@@ -35,14 +40,20 @@ export function estAbsenceNonGeree(l: AmLeave): boolean {
 }
 
 /** Cas du contrat lui-même (tous ses mois) */
-export function nonGeresContrat(c: Pick<Contract, 'alsaceMoselle' | 'planningVariable' | 'accueilOccasionnel' | 'cdd'> & Partial<Pick<Contract, 'yearType' | 'weeks' | 'avenants' | 'mayotte'>>): string[] {
+export function nonGeresContrat(c: Pick<Contract, 'alsaceMoselle' | 'planningVariable' | 'accueilOccasionnel' | 'cdd'> & Partial<Contract>): string[] {
   const out: string[] = [];
   // A-01 : conditions de départ ou d'un avenant entre 47 et 51 semaines (saisies anciennes ou importées).
   const conditions = [c, ...(c.avenants ?? []).map((a) => ({ ...c, ...a.changes }))];
   if (conditions.some((t) => semaines4751(t.yearType, t.weeks))) out.push(NON_GERE_47_51);
   if (c.alsaceMoselle) out.push(NON_GERE_ALSACE);
   if (c.mayotte) out.push(NON_GERE_MAYOTTE);
-  if (c.planningVariable) out.push(NON_GERE_PLANNING_VARIABLE);
+  // T-076 : planning variable calculé (spécification regles/t076-decisions-direction.md, section 1). Données incomplètes :
+  // contrat à compléter, avec ce qui manque. Données complètes : seuls les cas du passage 2 restent refusés.
+  if (c.planningVariable) {
+    const m = messagePVACompleter(c);
+    if (m) out.push(m);
+    else out.push(...nonGeresContratPV(c as Contract));
+  }
   if (c.accueilOccasionnel) out.push(NON_GERE_OCCASIONNEL);
   if (c.cdd) out.push(NON_GERE_CDD);
   return out;
@@ -66,6 +77,8 @@ export function nonGeresPeriode(c: Contract, leaves: AmLeave[], from: ISODate, t
   const a = from > c.start ? from : c.start;
   const b = c.end && c.end < to ? c.end : to;
   if (b < a) return out;
+  // T-076 (S2) : semaine sans planning saisi ou prévue au-delà de 45 h, à partir du début du suivi par l'app.
+  out.push(...nonGeresPeriodePV(c, a > c.trackedFrom ? a : c.trackedFrom, b));
   for (const l of [...leaves].sort((x, y) => (x.from < y.from ? -1 : 1))) {
     if (!estAbsenceNonGeree(l) || l.to < a || l.from > b) continue;
     const m = messageAbsenceNonGeree(l);

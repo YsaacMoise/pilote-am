@@ -139,6 +139,23 @@ export interface Contract {
   mayotte?: boolean;
   /** Horaires qui changent d'une semaine à l'autre (semaines A et B, planning remis par écrit, CCN art. 98.1.2) */
   planningVariable?: boolean;
+  /**
+   * T-076 (regles/t076-decisions-direction.md, section 1) : forme du planning variable. `cycle` (S1) : semaines types écrites
+   * au contrat (CCN 98.1.1) ; `remis` (S2) : planning écrit remis par les parents (CCN 98.1.2). Absent : déduit des champs
+   * remplis (`cycle` ou `planningsSemaines`). Sans effet quand `planningVariable` n'est pas vrai.
+   */
+  pvForme?: 'cycle' | 'remis';
+  /** T-076, S1 : 2 à 4 semaines types (planning d'une semaine chacune), dans l'ordre du cycle */
+  cycle?: Planning[];
+  /** T-076, S1 : lundi d'une semaine qui suit la première semaine type du cycle (le cycle suit le calendrier, P-PV-4 lecture Q1) */
+  cycleAncre?: ISODate;
+  /**
+   * T-076, S2 : planning de chaque semaine (clé : lundi, AAAA-MM-JJ). Un planning vide ({}) = semaine sans accueil (0 h).
+   * Une semaine absente = planning non saisi : les mois qu'elle touche ne sont pas calculés.
+   */
+  planningsSemaines?: Record<ISODate, Planning>;
+  /** T-076 : heures payées chaque mois, écrites au contrat (heures, décimal ; CASF D423-5, 14° ; R-PV-03). Obligatoire en planning variable. */
+  heuresMensualisees?: number;
   /** Accueil occasionnel : « de courte durée et n'a pas de caractère régulier » (CCN art. 97.2) */
   accueilOccasionnel?: boolean;
   /** Contrat à durée déterminée (décision du DG du 18/11/2026, T-033) : vrai = non géré ; absent = réponse à donner */

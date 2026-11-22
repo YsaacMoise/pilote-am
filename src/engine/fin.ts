@@ -1,6 +1,7 @@
 // Fin de contrat : préavis (art. 120), indemnité de rupture (art. 121), régularisation (art. 109.2),
 // indemnité de congés non pris. Aucun document officiel n'est produit.
 import { nonGeresPeriode } from './nonGeres';
+import { pvActif } from './planningVariable';
 import { finPreavis, finsAdmises, preavisEmployeur } from './preavis';
 import type { DemandeurInexecution, Motif } from './model';
 import { euros } from './money';
@@ -159,7 +160,7 @@ export function congesNonPris(endCtx: Ctx, c: Ctx['c'], dernierJour: ISODate, en
   if (restantsPrec > 0) {
     if (finTerms.yearType === 'complete') {
       // Les jours pris ont été payés dans le salaire, le complément du dixième en juin : reste le maintien.
-      precMontant = maintien(endCtx, restantsPrec, dernierJour);
+      precMontant = maintien(endCtx, restantsPrec, dernierJour, y - 1);
     } else {
       const indPrev = y - 1 >= cpPeriodStartYear(c.trackedFrom) ? indemnite(endCtx, y - 1, enfants) : null;
       if (indPrev && indPrev.jours) {
@@ -167,7 +168,7 @@ export function congesNonPris(endCtx: Ctx, c: Ctx['c'], dernierJour: ISODate, en
         for (const m of monthsBetween(`${y}-06`, monthOf(dernierJour))) deja += cpForMonth(endCtx, m, enfants).indemnite;
         precMontant = Math.max(0, indPrev.montant - deja);
       } else {
-        precMontant = maintien(endCtx, restantsPrec, dernierJour);
+        precMontant = maintien(endCtx, restantsPrec, dernierJour, y - 1);
       }
     }
   }
@@ -175,6 +176,9 @@ export function congesNonPris(endCtx: Ctx, c: Ctx['c'], dernierJour: ISODate, en
   let cpExplication = `${joursCur} jour${joursCur > 1 ? 's' : ''} acquis depuis le 1er juin (${cpPeriod(y).from.slice(0, 4)})` +
     (restantsPrec ? ` et ${restantsPrec} jour${restantsPrec > 1 ? 's' : ''} de la période précédente non pris` : '') +
     ' : on retient le plus favorable entre le dixième et le maintien de salaire.';
+  // T-076 (R-PV-13, P-PV-5) : les jours non pris n'ont pas de planning ; le maintien suit la lecture C1 (heures prévues
+  // moyennes de la période de référence). La lecture C2 (heures des jours de congé pris) n'a pas d'objet ici.
+  if (pvActif(finTerms)) cpExplication += ' Horaires variables : le maintien de salaire est calculé sur tes heures prévues moyennes de la période, car des jours non pris n’ont pas de planning.';
   // T-019 : jours acquis (année incomplète, SUS-11) ou jours pris (R-CP-09) à confirmer : aucun montant n'est donné.
   let cpAConfirmer: string | undefined;
   const indPrecAC = restantsPrec > 0 && finTerms.yearType !== 'complete' && y - 1 >= cpPeriodStartYear(c.trackedFrom)

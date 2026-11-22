@@ -12,6 +12,8 @@ export interface MonthResult extends MonthBase {
   cpNote?: string;
   /** Congés payés dus ce mois mais à confirmer : non comptés dans le total (T-019) */
   cpAConfirmer?: string;
+  /** T-076 (P-PV-5) : part des congés payés à confirmer (méthode du maintien, horaires variables), hors du total */
+  cpMaintienAConfirmer?: number;
   /** Salaire net à déclarer, congés compris */
   netTotal: number;
   brutEstime: number;
@@ -31,12 +33,14 @@ export function computeMonth(ctx: Ctx, m: Month, enfants = 0): MonthResult {
   const cp = cpForMonth(ctx, m, enfants);
   const netTotal = b.net + cp.indemnite + cp.complement;
   const alerts = cp.aConfirmer ? [...b.alerts, cp.aConfirmer] : [...b.alerts];
+  if (cp.maintienAConfirmer && cp.maintienMessage) alerts.push(cp.maintienMessage);
   const hsNet = b.complAmount + b.majAmount + b.majContratAmount;
   const hsBrut = netToBrut(hsNet, lastDay(m));
   return {
     ...b,
     alerts,
     cpAConfirmer: cp.aConfirmer,
+    ...(cp.maintienAConfirmer ? { cpMaintienAConfirmer: cp.maintienAConfirmer } : {}),
     cpJours: cp.jours,
     cpIndemnite: cp.indemnite,
     cpComplement: cp.complement,
@@ -84,7 +88,7 @@ export function declarationLines(ctx: Ctx, r: MonthResult, pourParents = false):
       value: hoursLabel(r.majContratMin + r.majMin),
       hint: `Au-delà de 45 h dans la semaine, prévues au contrat ou en plus, +${termsAt(ctx.c, `${r.month}-01`).majoration}\u00a0%`,
     },
-    { label: 'Salaire net', value: `${euros(r.netTotal)}${r.cpAConfirmer ? ' + congés à confirmer' : ''}${r.evenementAConfirmer ? ` + ${euros(r.evenementAConfirmer)} ${pourParents ? 'de salaire' : libelleSalaireAConfirmer(r)} à confirmer` : ''}` },
+    { label: 'Salaire net', value: `${euros(r.netTotal)}${r.cpAConfirmer ? ' + congés à confirmer' : ''}${r.cpMaintienAConfirmer ? ` + ${euros(r.cpMaintienAConfirmer)} de congés à confirmer` : ''}${r.complAConfirmerAmount ? ` + ${euros(r.complAConfirmerAmount)} d’heures complémentaires à confirmer` : ''}${r.evenementAConfirmer ? ` + ${euros(r.evenementAConfirmer)} ${pourParents ? 'de salaire' : libelleSalaireAConfirmer(r)} à confirmer` : ''}` },
     { label: 'Indemnités d’entretien', value: r.entretienAConfirmer ? `${euros(r.entretien)} + ${euros(r.entretienAConfirmer)} à confirmer` : euros(r.entretien), hint: `${r.presenceDays} jour${r.presenceDays > 1 ? 's' : ''} d’accueil` },
     { label: 'Frais de repas', value: euros(r.repas) },
     { label: 'Frais kilométriques', value: r.kmAConfirmer ? `${euros(r.km)} + ${r.kmAConfirmer} km à confirmer` : euros(r.km) },
@@ -119,6 +123,8 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   if (r.cpIndemnite) out.push(`• Indemnité de congés payés : ${euros(r.cpIndemnite)}`);
   if (r.cpComplement) out.push(`• Complément de congés payés : ${euros(r.cpComplement)}`);
   if (r.cpAConfirmer) out.push('• Indemnité de congés payés : à confirmer ensemble');
+  if (r.cpMaintienAConfirmer) out.push(`• Congés payés : + ${euros(r.cpMaintienAConfirmer)} à confirmer ensemble`);
+  if (r.complAConfirmerAmount) out.push(`• Heures complémentaires : + ${euros(r.complAConfirmerAmount)} à confirmer ensemble`);
   // Décision du DG du 21/11/2026 : comme le lien des parents, le texte envoyé aux parents ne nomme pas la raison.
   if (r.evenementAConfirmer) out.push(`• Salaire : + ${euros(r.evenementAConfirmer)} de salaire à confirmer ensemble`);
   out.push('');
@@ -147,10 +153,10 @@ export function raisonsEntretienAConfirmer(r: Pick<MonthResult, 'entretienJoursD
  * `pourParents` : l'événement familial devient « une part du salaire » (DG, 21/11/2026 : aucun motif d'absence de l'AM
  * sur le lien des parents).
  */
-export function partsAConfirmer(r: Pick<MonthResult, 'cpAConfirmer' | 'evenementAConfirmer' | 'kmAConfirmer'> & Partial<Pick<MonthResult, 'joursCpAConfirmer' | 'joursEvenementAConfirmer' | 'joursMaladieAConfirmer' | 'entretienAConfirmer'>>, pourParents = false): string[] {
+export function partsAConfirmer(r: Pick<MonthResult, 'cpAConfirmer' | 'evenementAConfirmer' | 'kmAConfirmer'> & Partial<Pick<MonthResult, 'joursCpAConfirmer' | 'joursEvenementAConfirmer' | 'joursMaladieAConfirmer' | 'entretienAConfirmer' | 'cpMaintienAConfirmer' | 'complAConfirmerAmount'>>, pourParents = false): string[] {
   // T-030 : un salaire à confirmer peut venir de congés pris peut-être au-delà des droits (année complète, A-23).
   // T-033 : ou de jours d'enfant malade (art. 105, lectures divergentes).
   const salaire = !r.evenementAConfirmer ? [] : naturesAConfirmer(r).map((n) => ({
     evenement: pourParents ? 'une part du salaire' : 'l’événement familial', cp: 'les congés pris au-delà des droits', maladie: 'les jours d’enfant malade' })[n]);
-  return [r.cpAConfirmer ? 'les congés payés' : '', ...salaire, r.entretienAConfirmer ? 'une part de l’entretien' : '', r.kmAConfirmer ? 'les kilomètres' : ''].filter(Boolean);
+  return [r.cpAConfirmer || r.cpMaintienAConfirmer ? 'les congés payés' : '', r.complAConfirmerAmount ? 'une part des heures complémentaires' : '', ...salaire, r.entretienAConfirmer ? 'une part de l’entretien' : '', r.kmAConfirmer ? 'les kilomètres' : ''].filter(Boolean);
 }
