@@ -179,14 +179,6 @@ export function netToBrut(net: number, d: ISODate): number {
   return Math.round((net * 10000) / (ratesAt(d)?.netSurBrut ?? NET_BRUT));
 }
 
-/**
- * T-076 : net estimé à partir du brut, même rapport fixe que `netToBrut`. Sert à l'indemnité de fin de CDD, calculée sur le
- * brut (C. trav. L1243-8) et déclarée en net (Urssaf, « déclarer la fin de contrat », 14/09/2026 : « La déclaration et le
- * paiement doivent être réalisés sur la base du net »).
- */
-export function brutToNet(brut: number, d: ISODate): number {
-  return Math.round((brut * (ratesAt(d)?.netSurBrut ?? NET_BRUT)) / 10000);
-}
 
 /**
  * Dernier jour couvert par des barèmes vérifiés. Le SMIC, le minimum garanti et les cotisations sont revalorisés

@@ -889,6 +889,13 @@ export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCdd
   if (anticipees.includes(fin) && c.cddTerme && !c.cddTermeImprecis && dernierJour >= c.cddTerme) {
     return vide([`Tu as choisi une fin avant la date, mais le dernier jour (${shortDate(dernierJour)}) est ${dernierJour === c.cddTerme ? 'la' : 'après la'} date de fin prévue (${shortDate(c.cddTerme)}). Au terme, choisis « ${FIN_CDD_LABEL.terme.l} » ; sinon corrige la date.`]);
   }
+  // Décision D19 (section 5) : C. trav. L1242-10, l'essai d'un CDD ne dépasse jamais un mois (« dans la limite de deux
+  // semaines lorsque la durée initialement prévue au contrat est au plus égale à six mois et d'un mois dans les autres cas »).
+  // Un dernier jour à un mois du début ou plus est hors essai à coup sûr : refusé (R-CDD-12 ; l'app ne connaît pas la durée
+  // d'essai écrite au contrat, elle ne contrôle que cette limite sûre).
+  if (fin === 'essai' && dernierJour >= addMonthsToDate(c.start, 1)) {
+    return vide([`Tu as choisi « ${FIN_CDD_LABEL.essai.l} », mais le dernier jour (${shortDate(dernierJour)}) est à un mois ou plus du début du CDD (${shortDate(c.start)}). La période d’essai d’un CDD ne dépasse jamais un mois (code du travail, article L1242-10) : choisis comment le CDD a fini, ou corrige la date. L’indemnité de fin de contrat en dépend.`]);
+  }
   if (fin !== 'suite_cdi' && c.cddTerme && !c.cddTermeImprecis && dernierJour > c.cddTerme) {
     // C. trav. L1243-11 : « Lorsque la relation contractuelle de travail se poursuit après l'échéance du terme du contrat à
     // durée déterminée, celui-ci devient un contrat à durée indéterminée. » Un report écrit du terme (L1243-7, renouvellement)

@@ -2,7 +2,7 @@
 // Spécification : regles/t076-decisions-direction.md, section 2. Règles : regles/t076-cdd.md (R-CDD-xx, P1 à P5).
 // Les attendus sont calculés à la main dans les commentaires, d'après les formules du rapport, avec les conventions de l'app :
 // montants en centimes, arrondi au centime le plus proche, brut estimé = net × 10000 / 7810 (netToBrut), net estimé =
-// brut × 7810 / 10000 (brutToNet). Notation : n2b(x) = arrondi(x × 10000 / 7810) ; b2n(x) = arrondi(x × 7810 / 10000).
+// brut × 7810 / 10000. Notation : n2b(x) = arrondi(x × 10000 / 7810) ; b2n(x) = arrondi(x × 7810 / 10000).
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { AmLeave, Contract, DayRec, Planning } from '../src/engine/model';
@@ -444,5 +444,46 @@ describe('m2 : P1 lecture 2, seuil de 45 h sur la semaine civile entière', () =
     const c = cdd({ start: '2026-03-23', trackedFrom: '2026-03-23', cddTerme: '2026-04-03', planning: week('07:00', '17:00') });
     const r = monthBase({ ...ctxDe({ ...c, end: '2026-04-03' }), lectureCdd: 2 }, '2026-04');
     expect(r.base).toBe(15250);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Corrections après la relecture indépendante (rapports/T-076-relecture.md ; décisions D15, D17, D18, D19, section 5)
+// ---------------------------------------------------------------------------------------------------------------------
+import { NON_GERE_CDD_PV, messageApresTerme } from '../src/engine/cdd';
+
+describe('D15 (R1, R3) : CDD à planning variable refusé en entier', () => {
+  it('CDD de moins d’un mois à planning variable (scénario R1) : refusé, aucun montant', () => {
+    // Cycle A 45 h / B 15 h ancré au 02/03/2026, 65 h payées par mois, CDD du 02/03 au 20/03/2026.
+    const c = cdd({ start: '2026-03-02', trackedFrom: '2026-03-02', cddTerme: '2026-03-20', planningVariable: true, pvForme: 'cycle',
+      cycle: [week('07:00', '16:00'), week('08:00', '11:00')], cycleAncre: '2026-03-02', heuresMensualisees: 65 } as Partial<Contract>);
+    expect(nonGeresContrat(c)).toContain(NON_GERE_CDD_PV);
+    expect(computeMonth(ctxDe({ ...c, end: '2026-03-20' }), '2026-03').nonGere).toContain(NON_GERE_CDD_PV);
+    expect(fin(c, '2026-03-20', 'terme').nonGere).toContain(NON_GERE_CDD_PV);
+  });
+});
+
+describe('D18 (R5) : mois travaillés après le terme d’un CDD, sans fin enregistrée', () => {
+  it('refusés avec le message L1243-11 ; avant le terme, calculés', () => {
+    // CDD du 09/03 au 27/03/2026, aucune fin enregistrée, l'AM continue : avril et mai refusés (avant : 866,67 € et 840,00 €).
+    const c = cdd({ start: '2026-03-09', trackedFrom: '2026-03-09', cddTerme: '2026-03-27' });
+    const ctx = ctxDe(c);
+    expect(computeMonth(ctx, '2026-04').nonGere).toContain(messageApresTerme('2026-03-27'));
+    expect(computeMonth(ctx, '2026-05').nonGere).toContain(messageApresTerme('2026-03-27'));
+    // Mars contient des jours après le terme (30 et 31) : refusé aussi tant que la fin n'est pas enregistrée.
+    expect(computeMonth(ctx, '2026-03').nonGere).toContain(messageApresTerme('2026-03-27'));
+    // Fin enregistrée au terme : mars calculé (P1, 590,91 € sûrs).
+    expect(computeMonth(ctxDe({ ...c, end: '2026-03-27' }), '2026-03').nonGere).toEqual([]);
+    // Terme imprécis (durée minimale) : pas de refus après la date.
+    expect(computeMonth(ctxDe(cdd({ cddTermeImprecis: true })), '2026-05').nonGere).toEqual([]);
+  });
+});
+
+describe('D19 (R7) : fin pendant la période d’essai au-delà d’un mois, refusée', () => {
+  it('CDD du 05/01 au 30/06/2026, fin « essai » le 15/05 : refusée ; le 09/01 : acceptée', () => {
+    const c = cdd({ cddTerme: '2026-06-30' });
+    expect(fin(c, '2026-05-15', 'essai').nonGere?.[0]).toMatch(/L1242-10/);
+    expect(fin(c, '2026-02-05', 'essai').nonGere?.[0]).toMatch(/L1242-10/);
+    expect(fin(c, '2026-01-09', 'essai').nonGere).toBeUndefined();
   });
 });

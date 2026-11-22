@@ -177,7 +177,9 @@ function FinCddEcran({ c }: { c: Contract }) {
   const [finCdd, setFinCdd] = useState<FinCdd | FinCddNonGere | undefined>(r0?.finCdd);
   const jour = dernier < c.start ? c.start : dernier;
   const f = finDeCdd(ctxFor({ ...c, end: undefined }), jour, finCdd, s.settings.enfantsACharge);
-  const rupture: Rupture = { motif: 'fin_cdd', notif: jour, preavis: 'execute', ...(finCdd ? { finCdd } : {}) };
+  // D17 : une fin non gérée n'est jamais enregistrée (le message s'affiche, rien n'est gardé).
+  const finGeree = finCdd && (FINS_CDD as string[]).includes(finCdd) ? finCdd as FinCdd : undefined;
+  const rupture: Rupture = { motif: 'fin_cdd', notif: jour, preavis: 'execute', ...(finGeree ? { finCdd: finGeree } : {}) };
   const enregistre = c.end === jour && JSON.stringify(c.rupture) === JSON.stringify(rupture);
   const enregistrer = async () => {
     const prev = await putContract({ ...c, end: jour, rupture });
@@ -196,7 +198,7 @@ function FinCddEcran({ c }: { c: Contract }) {
         <fieldset>
           <legend>La fin du CDD</legend>
           <p class="hint">{MESSAGE_CDD_PAS_DE_PREAVIS}</p>
-          <DateInput label="Dernier jour du contrat" hint={c.cddTerme ? `${c.cddTermeImprecis ? 'Fin de la durée minimale' : 'Date de fin prévue'} : ${shortDate(c.cddTerme)}. Si la date a été reportée, mets le vrai dernier jour.` : 'Le dernier jour du contrat.'} value={jour} min={c.start} onChange={(v) => setDernier(v || jour)} />
+          <DateInput label="Dernier jour du contrat" hint={c.cddTerme ? `${c.cddTermeImprecis ? 'Fin de la durée minimale' : 'Date de fin prévue'} : ${shortDate(c.cddTerme)}. Si la date a été reportée par écrit, mets d’abord la nouvelle date de fin prévue dans le contrat.` : 'Le dernier jour du contrat.'} value={jour} min={c.start} onChange={(v) => setDernier(v || jour)} />
           <Choices label="Comment finit le CDD ?" value={finCdd} onChange={setFinCdd} options={choix.map((k) => ({ v: k, l: FIN_CDD_LABEL[k].l, sub: FIN_CDD_LABEL[k].sub }))} />
         </fieldset>
       </section>
@@ -226,6 +228,7 @@ function FinCddEcran({ c }: { c: Contract }) {
         {!!f.declaration?.length && (
           <section class="card stack-sm" aria-labelledby="fincdd-decl">
             <h2 id="fincdd-decl">À déclarer à Pajemploi avec le dernier salaire</h2>
+            <p class="hint">L’indemnité de congés non pris et la régularisation se déclarent aussi avec le dernier salaire.</p>
             <div class="decl">
               {f.declaration.map((d) => <div class="decl-line"><span class="decl-label"><span>{d.libelle}</span><span class="decl-hint">{d.hint}</span></span><span class="decl-value">{euros(d.net)}</span></div>)}
             </div>
@@ -239,7 +242,8 @@ function FinCddEcran({ c }: { c: Contract }) {
         {/* D8 : la suite en CDI ne termine pas le contrat : pas d'enregistrement de fin. */}
         {finCdd === 'suite_cdi'
           ? <p class="hint">Ton CDD continue en CDI : ne l’enregistre pas comme une fin. Ouvre le contrat et passe-le en CDI.</p>
-          : enregistre ? <p>Enregistrée.</p> : <button class="btn btn-primary btn-block" onClick={enregistrer} disabled={!finCdd}>Enregistrer la fin du CDD</button>}
+          : finCdd && !finGeree ? <p class="hint">L’app ne calcule pas ce cas : elle n’enregistre pas cette fin, et ne garde pas ta réponse.</p>
+          : enregistre ? <p>Enregistrée.</p> : <button class="btn btn-primary btn-block" onClick={enregistrer} disabled={!finGeree}>Enregistrer la fin du CDD</button>}
       </section>
     </>
   );
