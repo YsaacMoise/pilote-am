@@ -176,9 +176,16 @@ T-050b (MB6, 21/11/2026), d'après regles/t050-trois-regles.md, points 2 et 3 :
 - Dixième de la dernière période (A-50). La régularisation due à l'AM entre dans la base (CCN art. 123.2, 48.1.1.5, 48.1.1.1, 124 ; CASF L423-6). Elle n'est plus testée « avec et sans ». Un solde en faveur de l'employeur compte pour 0 : il ne se retire pas de la base. Contrôle : Bertrand, 2e période, 308,57 € (base sans ICCP précédente) ; la fiche retient 348,57 € avec l'ICCP précédente.
 - Refus gardés : indemnité de préavis dans l'assiette du 1/80 (A-45, art. 64.2 non relu, point rouvert par la direction) ; régularisation négative dans le 1/80 (A-45, aucun texte lu) ; ICCP de la période précédente dans le dixième (A-50, SUS-04 toujours ouvert) ; jours déjà payés sur une période (A-50) ; ICCP ou régularisation non calculée (ASSIETTE-A-CONFIRMER : jamais une assiette incomplète en silence).
 
+T-072 (22/11/2026), voir calculateur-arvela/rapports/T-072-moteur-b.md :
+- `dates_fin_preavis_possibles(date_premiere_presentation, preavis)` : les deux lectures du dernier jour (jour de départ compté ou non ; CCN 64.1, 120 ; PREAVIS-DATE-FIN reste ouvert).
+- `indemnite_rupture_bulletins(motif, auteur, debut, date_reference, variantes, total_bulletins_centimes, total_jusqua, bruts_lus_centimes)` : 1/80 (CCN 121.1) quand le total des bulletins ou des bruts lus sont saisis. Les montants saisis font foi pour leurs mois. Dernier mois couvert : ICCP, régularisation et préavis sont sur ce dernier bulletin (art. 67, 123, 124), rien n'est ajouté ; régularisation inconnue → ASSIETTE-A-CONFIRMER ; régularisation négative ou préavis non nul → A-45. Dernier mois non couvert : salaires des mois non couverts, ICCP et régularisation ajoutés, toute somme inconnue → ASSIETTE-A-CONFIRMER. Une variante par date de fin possible ; assiettes différentes → FIN-DATE-A-CONFIRMER.
+- `conges_apres_changement_type(types_periode_acquisition, type_annee_prise)` : jours acquis sous un type d'année et pris sous l'autre après un avenant → AVENANT-CP-A-CONFIRMER (CCN 102.1.2.1, 102.1.2.2, 48.1.1.5 muets) ; ni payé ni retenu.
+- `verifier_date_effet_avenant(date_effet)` : avenant au 1er du mois seulement, sinon AVENANT-EN-COURS-DE-MOIS (CCN 109.1).
+- `tests/test_t072.py` : 23 tests.
+
 Décès de l'enfant (T-035a) : indemnité au 1/80 due quelle que soit l'ancienneté (CCN 119.4.2, service-public F16842) ; A-47 levée.
 
-Refus : A-02, A-06, A-19, A-21, PREAVIS-DEMISSION-3-12, A-45, ASSIETTE-A-CONFIRMER, A-48, A-49, A-50, A-26, A-28, LIMITE-ANCIENNETE, DATE-MOIS, EXCLU-INAPTITUDE, EXCLU-RETRAITE, EXCLU-DECES-PARTIE, EXCLU-CDD-ANTICIPE, EXCLU-SAISONNIER. La date de fin du préavis n'est pas calculée (méthode non écrite, R-FIN-03).
+Refus : A-02, A-06, A-19, A-21, PREAVIS-DEMISSION-3-12, A-45, ASSIETTE-A-CONFIRMER, FIN-DATE-A-CONFIRMER, AVENANT-CP-A-CONFIRMER, AVENANT-EN-COURS-DE-MOIS, A-48, A-49, A-50, A-26, A-28, LIMITE-ANCIENNETE, DATE-MOIS, EXCLU-INAPTITUDE, EXCLU-RETRAITE, EXCLU-DECES-PARTIE, EXCLU-CDD-ANTICIPE, EXCLU-SAISONNIER. La date de fin du préavis n'est pas calculée (méthode non écrite, R-FIN-03).
 
 ### Périmètre et net (`perimetre.py`)
 
@@ -186,6 +193,19 @@ Refus : A-02, A-06, A-19, A-21, PREAVIS-DEMISSION-3-12, A-45, ASSIETTE-A-CONFIRM
 |---|---|---|
 | `verifier_perimetre(departement, accueil, semaines_alternees, type_contrat, cdd_remplacement, majoration_difficultes_enfant)` | `dans_perimetre` ou refus | hors périmètre, R-MENS-10, R-SAL-07 |
 | `convertir_brut_net(montant)` | toujours refus A-34 | R-PAJ-04, M-01, M-02 |
+
+### Régions (`regions.py`, T-077, MB7)
+
+Spécification : `regles/t077-decisions.md` (R0 à R4) du dépôt calculateur-arvela ; rapport `T-077-MB.md`.
+
+| Fonction | Entrées | Sortie | Règles |
+|---|---|---|---|
+| `brut_depuis_net(net, d, region)` | net en centimes, mois de salaire | `brut_estime_centimes` (estimation, part 7 810 ; Alsace-Moselle 7 660 jusqu'à mars 2022 puis 7 680 ; Mayotte 8 820) | T077-R1 |
+| `repere_net_minimum(d, region)` | date | `repere_net_centimes` (Urssaf) ; avant 2025 : REPERE-NET-ABSENT | T077-R2 |
+| `feries_locaux(annee, region)` | | {date: nom} : 26/12 et Vendredi saint ; 27/04 à Mayotte | T077-R3 |
+| `ferie_local_travaille(d, region, minutes, taux)` | | toujours refus A77-FERIE-LOCAL-TRAVAILLE, majoration de la lecture A dans `details` | T077-R3 |
+
+Paramètre `region` (défaut « metropole ») ajouté à `minimum_horaire_brut`, `verifier_taux_horaire`, `baremes_du_jour` (SMIC de Mayotte), `ferie_chome` (A77-FERIE-LOCAL, A77-FERIE-VOISIN), `decompte_jours_cp` (A77-DECOMPTE-CP), `qualifier_absence` (A77-MAINTIEN-LOCAL). `verifier_perimetre` accepte 57, 67, 68 et 976 et renvoie `region`.
 
 ## Non couvert par la version 0
 
@@ -199,5 +219,39 @@ Engagement réciproque rompu avant l'embauche (R-ESS-04), durée de la période 
 - `tests/test_t050b.py` : 14 tests (assiette du 1/80, régularisation dans le dixième de fin), attendus tirés des fiches DDETS 31 (T-050b).
 - `tests/test_t027.py` : 29 tests (kilomètres, événements familiaux, préavis), attendus tirés des textes.
 - `tests/test_t039.py` : 5 tests (absence de l'enfant « sans solde »), attendus tirés des textes (T-039-MB4.md).
+- `tests/test_t077.py` : 25 tests (régions : R1 à R4), attendus chiffrés à la main depuis les textes (T-077-MB.md).
 - `tests/test_t035.py` : 9 tests (embauche en cours de mois, décès de l'enfant, entretien sous le minimum), attendus tirés des textes (T-035-MB3.md).
 - `ECARTS.md` : cas officiels non passés et leur cause.
+
+## T-076 (22/11/2026, passage 1) : planning variable et CDD
+
+D'après regles/t076-planning-variable.md, regles/t076-cdd.md et regles/t076-decisions-direction.md (sections 1 et 2). Point à confirmer : la fonction donne les deux lectures ; part sûre = la plus petite ; à confirmer = l'écart.
+
+| Fonction (`planning_variable.py`) | Règles |
+|---|---|
+| `semaine_prevue(lundi, cycle, cycle_ancre, plannings_semaines)` | R-PV-02, P-PV-4 (Q1) ; refus PV-SEMAINE-SANS-PLANNING, PV-SEMAINE-PREVUE-PLUS-45H |
+| `mensualisation_planning_variable(semaines, heures_mensualisees, taux, cycle, plannings_semaines)` | R-PV-03 (D423-5 14°), P-PV-1 : lecture L1 ou L2, base B |
+| `heures_en_plus_semaine_planning_variable(lecture, prevu, base, reelles, taux, maj_hm, maj_hc, absence)` | R-PV-04, R-PV-05 (CCN 96.4, 110.1) |
+| `mois_de_rattachement_semaine(lundi)` | E-PV-02 (source secondaire ; A-11) |
+| `prevu_du_mois_planning_variable(annee, mois, plannings_par_lundi, type_annee)` | R-PV-08 (CCN 111) |
+| `ferie_chome_planning_variable(date, jours_prevus, ...)` | R-PV-12, lecture F1 (CCN 47.1, 47.2) |
+| `decompte_jours_cp_planning_variable(du, reprise, jours_prevus)` | R-PV-09 (CCN 48.1.1.3) |
+| `indemnite_cp_planning_variable(jours, taux, h_periode, n_semaines, h_conges, salaires, icp...)` | R-PV-10, P-PV-5 (C1, C2) |
+| `complement_cp_planning_variable(resultat)` | R-CP-07 ; refus A-29, P-PV-5 |
+
+| Fonction (`cdd.py`) | Règles |
+|---|---|
+| `mensualisation_cdd(heures_hebdo, taux)` | R-CDD-04 (CCN 108.1, 109.1, L1242-14) |
+| `cdd_moins_d_un_mois(debut, terme)`, `salaire_mois_cdd_moins_d_un_mois(...)` | P1 |
+| `qualifier_semaine_sans_accueil_cdd(lecture)`, `deux_lectures_cdd(l1, l2, point)` | P2 |
+| `assiette_ifc(salaires, cp, regularisation, autres)` | R-CDD-07 (L1243-8, L3221-3) |
+| `ifc_due(fin_cdd)`, `indemnite_fin_cdd(brut, fin_cdd, iccp)` | R-CDD-08, R-CDD-07, P4 |
+| `iccp_cdd(fin_cdd, periodes, ifc, brut, heures_hebdo, taux)` | R-CDD-10 (L1242-16, CCN 48.1.1.5), P3 |
+| `preavis_et_rupture_cdd(fin_cdd)` | R-CDD-06 (L1243-5) |
+
+Gardés tels quels (tests existants) : `mensualisation(horaires_variables=True)` refuse A-04 et `verifier_perimetre(type_contrat="CDD", cdd_remplacement=True)` refuse R-MENS-10 ; les nouvelles fonctions ci-dessus sont le chemin T-076. Tests : `tests/test_t076.py` (31 tests, dont E-PV-02, E-PV-03, E-CDD-01, E-CDD-02).
+
+Corrections après vérification (T-076, décisions D1 à D11 de regles/t076-decisions-direction.md, section 4) :
+- `heures_en_plus_semaine_planning_variable` : D1 (1er mai chômé compté ; autre jour payé non travaillé en deux lectures), D2 (refus PV-L2-ABSENCE-HC), D4 (base entière ou au prorata), `lectures_montant_complementaires`.
+- `iccp_planning_variable` (R-PV-13, P-PV-5 lecture C1) ; `indemnite_cp_planning_variable(..., jours_supplementaires)` : refus CP-SUPP.
+- `solde_fin_cdd` (D11, D8), `controle_dates_cdd` (D9), `verifier_cas_cdd` (D3) ; `iccp_cdd` : part sûre sur deux périodes (D10), CP-SUPP.

@@ -8,6 +8,7 @@ from .commun import (
     vers_centimes, texte_fraction, type_annee_valide, verifier_date_ccn,
 )
 from .calendrier import jours_du_mois, jours_feries
+from .regions import region_valide, feries_locaux_entre, MESSAGE_FERIE_LOCAL, MESSAGE_MAINTIEN
 
 
 # Qualification de l'absence : (deductible, regles) ou refus.
@@ -51,11 +52,17 @@ _REFUS = {
     "accident_travail": ("EXCLU-AT", []),
     "maladie_professionnelle": ("EXCLU-AT", []),
     "accident_trajet": ("EXCLU-AT", []),
+    # T-074 (signal de la direction, S74-I46-15J-SANS-ACCUEIL) : jour du planning hors du contrat (apres la fin
+    # ou avant l'embauche) qui tombe dans une semaine sans accueil, mois d'entree ou de sortie en annee
+    # incomplete. CCN 111, dernier alinea : les semaines de non-accueil comptent au denominateur (« heures et
+    # jours qui auraient ete travailles »). Aucun texte lu ne dit si ces jours comptent au numerateur (« jours
+    # non travailles dans le mois, donnant lieu a deduction ») : lus deduits ou non, le salaire du mois change.
+    "hors_contrat_semaine_non_accueil": ("SORTIE-SEMAINE-SANS-ACCUEIL", ["R-FIN-12", "R-EMB-01", "R-ABS-08"]),
 }
 
 
 @api("R-ABS-01", "R-ABS-05", "R-ABS-06", "R-ABS-09", "R-MENS-08", "R-CP-05")
-def qualifier_absence(type_absence, type_annee):
+def qualifier_absence(type_absence, type_annee, region="metropole"):
     """Dit si une absence donne lieu a deduction (R-ABS-09 : methode de l'art. 111).
     Types acceptes : enfant_non_prevue, enfant_sans_solde (T-039, remuneree),
     am_maladie, am_enfant_malade,
@@ -65,8 +72,18 @@ def qualifier_absence(type_absence, type_annee):
     non_accueil_programme, conge_complementaire_non_remunere, adaptation.
     Absence de l'enfant malade : utiliser absence_enfant_malade().
     Jour ferie : utiliser ferie_chome().
+    T-077 (R4) : en Alsace-Moselle, am_maladie et am_enfant_malade : maintien du
+    droit local (C. trav. L1226-23) ou retenue (CCN annexe 3 art. 3.1, CASF L423-2) :
+    refus A77-MAINTIEN-LOCAL, les deux lectures dans details.
     Sortie : deductible (bool)."""
     type_annee_valide(type_annee)
+    region = region_valide(region)
+    if region == "alsace_moselle" and type_absence in ("am_maladie", "am_enfant_malade"):
+        raise NonGere("A77-MAINTIEN-LOCAL", ["T077-R4"], details={
+            "lectures": {"A": "salaire maintenu, moins les indemnites journalieres de la securite sociale (montant "
+                              "connu de l'AM seule)",
+                         "B": "retenue (deductible), comme hors Alsace-Moselle"},
+            "message": MESSAGE_MAINTIEN})
     if type_absence in _REFUS:
         code, regles = _REFUS[type_absence]
         raise NonGere(code, regles)
@@ -231,7 +248,7 @@ def _jour_de_travail(depart, pas, jours_travailles, jours_non_accueil):
 
 @api("R-JF-01", "R-JF-02", "R-JF-04", "R-JF-05")
 def ferie_chome(date_ferie, jours_travailles, presence_veille="travaille", presence_lendemain="travaille",
-                jours_non_accueil=()):
+                jours_non_accueil=(), region="metropole"):
     """Jour ferie chome (R-JF-02 ; 1er mai : R-JF-04).
     jours_travailles : jours de la semaine travailles (0 = lundi).
     presence_veille / presence_lendemain : « travaille », « absence_autorisee »,
@@ -242,15 +259,41 @@ def ferie_chome(date_ferie, jours_travailles, presence_veille="travaille", prese
     C. trav. L3133-1, 6°). Aucune journee de solidarite : ni la CCN ni le CASF
     L423-2 ne la prevoient pour l'AM.
     Refus : A-32 (absence du fait de l'enfant ou de l'employeur),
-    R-JF-02-LIMITE (ferie dans une semaine de non-accueil)."""
+    R-JF-02-LIMITE (ferie dans une semaine de non-accueil).
+    T-077 (R3) : region. Ferie local (26/12, Vendredi saint ; 27/04 a Mayotte) un
+    jour habituellement travaille : refus A77-FERIE-LOCAL (lecture A : ferie de
+    l'art. 47.2 ; lecture B : jour ordinaire). Ferie national dont le jour de
+    travail voisin est un ferie local : refus A77-FERIE-VOISIN (lecture A : voisin
+    ferie, A-32 ; lecture B : condition sur ce jour ordinaire)."""
     if not isinstance(date_ferie, date):
         raise ErreurSaisie("date_ferie : date attendue.")
     verifier_date_ccn(date_ferie, ["R-JF-02"])
+    region = region_valide(region)
     feries = jours_feries(date_ferie.year)
-    if date_ferie not in feries:
-        raise ErreurSaisie("Cette date n'est pas un jour ferie ordinaire (R-JF-01).")
+    locaux = feries_locaux_entre(date_ferie, date_ferie, region)
     jt = set(int(j) for j in jours_travailles)
     jna = set(jours_non_accueil)
+    if date_ferie in locaux and date_ferie not in feries:
+        if date_ferie.weekday() not in jt:
+            return resultat_ok(ferie_chome.regles + ["T077-R3"], {
+                "jour_habituellement_travaille": False, "remuneration_maintenue": None,
+                "note": "Ferie local hors jour habituellement travaille : sans effet sur le salaire (deux lectures)."})
+        if date_ferie in jna:
+            lect_a = "R-JF-02-LIMITE (ferie dans une semaine de non-accueil)"
+        else:
+            av = _jour_de_travail(date_ferie, -1, jt, jna)
+            ap = _jour_de_travail(date_ferie, 1, jt, jna)
+            if av in feries or ap in feries or av in locaux or ap in locaux:
+                lect_a = "A-32 (le jour de travail voisin est lui-meme ferie)"
+            else:
+                lect_a = (f"maintenu si l'AM a travaille le {av.isoformat()} et le {ap.isoformat()} "
+                          "(ou absence autorisee), sinon retenu")
+        raise NonGere("A77-FERIE-LOCAL", ["R-JF-02", "T077-R3"], details={
+            "lectures": {"A": lect_a, "B": "jour ordinaire non travaille : paye si les parents n'ont pas confie "
+                                            "l'enfant (CCN 105 al. 1), retenu si l'AM a ferme"},
+            "ferie_local": locaux[date_ferie], "message": MESSAGE_FERIE_LOCAL})
+    if date_ferie not in feries:
+        raise ErreurSaisie("Cette date n'est pas un jour ferie ordinaire (R-JF-01).")
     if date_ferie in jna:
         raise NonGere("R-JF-02-LIMITE", ["R-JF-02"])
     if date_ferie.weekday() not in jt:
@@ -264,10 +307,25 @@ def ferie_chome(date_ferie, jours_travailles, presence_veille="travaille", prese
     avant = _jour_de_travail(date_ferie, -1, jt, jna)
     apres = _jour_de_travail(date_ferie, 1, jt, jna)
     for p in (presence_veille, presence_lendemain):
-        if p not in _PRESENCES:
+        if p not in _PRESENCES + ("inconnu",):
             raise ErreurSaisie(f"Presence inconnue : {p}.")
     if (avant in feries or apres in feries):
         raise NonGere("A-32", ["R-JF-02"], precision="Le jour de travail voisin est lui-meme ferie.")
+    if avant in locaux or apres in locaux:
+        # T-077 (R3.3) : lecture A, le voisin est un ferie (regle existante : A-32) ; lecture B, jour ordinaire.
+        statuts_b = (presence_veille, presence_lendemain)
+        if "inconnu" in statuts_b:
+            lect_b = ("selon qui a decide du ferie local non travaille : A-32 si les parents n'ont pas confie "
+                      "l'enfant, non maintenu si l'AM a ferme")
+        elif any(p in ("absence_enfant", "absence_employeur") for p in statuts_b):
+            lect_b = "A-32 (absence du fait de l'enfant ou de l'employeur)"
+        else:
+            lect_b = ("maintenu" if all(p in ("travaille", "absence_autorisee") for p in statuts_b) else "non maintenu")
+        raise NonGere("A77-FERIE-VOISIN", ["R-JF-02", "T077-R3"], details={
+            "lectures": {"A": "A-32 (le jour de travail voisin est un ferie local)", "B": lect_b},
+            "jours_condition": [avant.isoformat(), apres.isoformat()]})
+    if "inconnu" in (presence_veille, presence_lendemain):
+        raise ErreurSaisie("Presence « inconnu » admise seulement pour un ferie local voisin (T-077).")
     statuts = (presence_veille, presence_lendemain)
     if any(p in ("absence_enfant", "absence_employeur") for p in statuts):
         raise NonGere("A-32", ["R-JF-02"])
@@ -282,3 +340,29 @@ def ferie_travaille(date_ferie):
     """Ferie travaille (R-JF-03, R-JF-04) : refus A-33 dans tous les cas
     (majoration en plus du mensualise ou paiement complet, non tranche)."""
     raise NonGere("A-33", ["R-JF-03", "R-JF-04"])
+
+
+@api("R-JF-03", "T077-R3")
+def ferie_local_travaille(date_ferie, region, minutes_presence, taux_horaire_centimes):
+    """T-077 (R3.2) : ferie local (26/12, Vendredi saint ; 27/04 a Mayotte) travaille.
+    Salaire de base du jour paye dans les deux lectures. Majoration de 10 % des heures
+    de presence (CCN 47.2) en lecture A, aucune en lecture B : refus
+    A77-FERIE-LOCAL-TRAVAILLE, montant de la lecture A dans details
+    (minutes x taux x 10 / 100 / 60, centime le plus proche, ARR-01)."""
+    from .commun import arrondi_arr01
+    region = region_valide(region)
+    if not isinstance(date_ferie, date):
+        raise ErreurSaisie("date_ferie : date attendue.")
+    locaux = feries_locaux_entre(date_ferie, date_ferie, region)
+    if date_ferie not in locaux:
+        raise ErreurSaisie("Cette date n'est pas un ferie local de la region (T-077, R3).")
+    mn = entier(minutes_presence, "minutes_presence")
+    t = positif(taux_horaire_centimes, "taux_horaire_centimes")
+    exact_ = Fraction(mn) * t * 10 / 100 / 60
+    maj = arrondi_arr01(exact_)
+    raise NonGere("A77-FERIE-LOCAL-TRAVAILLE", ["R-JF-03", "T077-R3"], details={
+        "lectures": {"A": maj, "B": 0},
+        "majoration_exacte_centimes": texte_fraction(exact_),
+        "ferie_local": locaux[date_ferie],
+        "message": "Majoration de 10 % a confirmer, non comprise dans le total (lecture A : ferie de l'art. 47.2 ; "
+                   "lecture B : jour ordinaire)."})

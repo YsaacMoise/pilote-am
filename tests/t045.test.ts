@@ -6,8 +6,7 @@
 //   au dernier jour travaillé ». Service-public.fr F33164 et F16842 : l'AM « n'est pas payée pour la partie du préavis non
 //   réalisé ».
 // - Art. 64.2, al. 1, 66 et 122 : inexécution imposée par l'employeur : indemnité compensatrice jusqu'à la date prévue de fin.
-//   Son effet sur la base de l'indemnité de rupture, sur la régularisation et sur la base du dixième n'est fixé par aucun
-//   texte lu : « non géré ».
+//   T-074 : ce cas est calculé (tests/t074-preavis-dispense.test.ts).
 // - Art. 64.2, al. 2, fin : sans accord, l'AM doit une indemnité à l'employeur ; CASF L423-26 : dommages et intérêts. Le solde
 //   dû à l'AM peut en dépendre : « non géré ».
 // Les montants du cas accepté sont comparés au même calcul de l'app pour un contrat qui finit le même jour sans préavis
@@ -70,11 +69,12 @@ describe('T-045 : préavis non exécuté (CCN art. 64 et 64.2)', () => {
     expect(f.indemniteRupture).toBe(Math.round(ref.totalBrut / 80));
   });
 
-  it('dispense à l’initiative de l’employeur : date de fin = fin prévue du préavis, montants non gérés', () => {
+  it('dispense à l’initiative de l’employeur : date de fin = fin prévue du préavis, calculée depuis T-074', () => {
+    // T-074 (regles/t074-preavis-dispense.md) : ce cas n'est plus refusé ; détail dans tests/t074-preavis-dispense.test.ts.
     const f = finDeContrat(ctxDe(contract()), '2026-10-01', 'retrait', 0, undefined, { demandeur: 'employeur', dernierJourTravaille: '2026-10-10' });
     expect(f.dernierJour).toBe('2026-10-31');
-    expect(f.nonGere?.join(' ')).toMatch(/64\.2/);
-    expect(f.totalBrut + f.cpIndemnite + f.regularisation + f.indemniteRupture + f.indemnitePreavis).toBe(0);
+    expect(f.nonGere).toBeUndefined();
+    expect(f.dispense).toMatchObject({ du: '2026-10-11', au: '2026-10-31' });
   });
 
   it('préavis non fait sans l’accord de l’employeur : fin au dernier jour travaillé, montants non gérés', () => {

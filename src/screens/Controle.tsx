@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks';
+import { regionDe } from '../engine/regions';
 import { ctxFor, logUsage, putBulletin, state, toast, uid, useStore } from '../store';
 import { addMonths, monthLabel, monthOf, today, type Month } from '../engine/dates';
 import { computeMonth } from '../engine/month';
@@ -25,7 +26,7 @@ export function Controle({ cid, month }: { cid?: string; month?: string }) {
   const r = computeMonth(ctxFor(c), m, state.settings.enfantsACharge);
   const filled = b.net != null || b.brut != null || b.heures != null;
   // T-031 : mois non calculé (cas non géré) : pas de comparaison avec un calcul que l'app ne sait pas faire.
-  const checks = filled && !r.nonGere.length ? controle({ id: '', cid: c.id, month: m, source: 'manuel', ...b } as Bulletin, r, c.rateNet) : [];
+  const checks = filled && !r.nonGere.length ? controle({ id: '', cid: c.id, month: m, source: 'manuel', ...b } as Bulletin, r, c.rateNet, regionDe(c)) : [];
 
   async function onPdf(f: File | undefined) {
     if (!f) return;

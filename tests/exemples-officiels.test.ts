@@ -264,7 +264,7 @@ describe('[OCC46] DDETS 31, accueil sur 46 semaines ou moins (version du 30/03/2
     // base du dixième de la dernière période. Fiche : (salaires 2 400 + CP d'août 400 + ICCP de la 1re période 400
     // + régularisation 285,71) × 10 % = 348,57 €. Écart attendu = 80 € : 40 € de M-5 (ICCP de la période précédente, non
     // ajoutée, sources contraires) et 40 € des 400 € de CP d'août, « à confirmer » (T-019), absents de la base.
-    ecart(f.cpDixiemeEnCours, 34857, 8000);
+    ecart(f.cpDixiemeEnCours!, 34857, 8000);
   });
 
   it('p. 11 (T-050b, A-50) : avec et sans régularisation, le dixième de fin change de 28,57 € (285,71 × 10 %)', () => {

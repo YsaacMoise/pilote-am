@@ -40,7 +40,7 @@ const bertrand = () => contrat({ yearType: 'incomplete', weeks: 36, weeksOff: [.
 const ctxB = () => makeCtx(bertrand(), [], [conge('am_malade', '2021-10-13', '2021-10-15'), conge('cp', '2022-08-01', '2022-08-13')], '2022-10-15', 2);
 
 describe('T-050d, B-1 : fiche Bertrand, la variante du lendemain ne recompte ni l’ICCP ni la régularisation', () => {
-  it('total des bulletins saisi jusqu’à septembre 2022 (9 000,00 €) : 112,50 € pour les deux dates, pas 130,24 €', () => {
+  it('total des bulletins saisi jusqu’à septembre 2022 (9 000,00 €) : 112,50 € au 30/09, 130,24 € au 01/10 (B-1, T-072)', () => {
     // À la main : 9 000,00 ÷ 80 = 112,50 €. Le 01/10/2022 est un samedi, sans accueil (lundi au vendredi) : aucun salaire
     // en plus ; l'ICCP et la régularisation sont déjà dans le bulletin de septembre. La variante vaut donc 112,50 € aussi.
     const f = finDeContrat(ctxB(), '2022-09-01', 'retrait', 2, undefined, { total: 900000, jusqua: '2022-09' });
@@ -49,8 +49,12 @@ describe('T-050d, B-1 : fiche Bertrand, la variante du lendemain ne recompte ni 
     expect(f.cpIndemnite).toBeGreaterThan(0);
     expect(f.totalBrut).toBe(900000);
     expect(f.indemniteRupture).toBe(11250);
-    expect(f.ruptureVariantes).toBeUndefined();
-    expect(f.ruptureAConfirmer).toBeFalsy();
+    // Relecture T-072 (B-1), décision de la direction du 22/11/2026 : fin le 01/10, l'ICCP (1 133,33 €) et la régularisation
+    // (285,71 €) seraient sur le bulletin d'octobre, hors du total saisi : (9 000,00 + 1 419,04) ÷ 80 = 130,24 €. Les deux
+    // montants sont donnés, l'indemnité est « à confirmer » (avant : 112,50 € sûr pour les deux dates).
+    expect(f.ruptureAConfirmer).toBe(true);
+    expect(f.ruptureVariantes).toContain('Fin le 30/09/2022 : 112,50');
+    expect(f.ruptureVariantes).toContain('Fin le 01/10/2022 : 130,24');
   });
   it('sans bulletins saisis : la variante du 01/10/2022 donne le même montant que la fin au 30/09/2022', () => {
     // Le samedi 01/10/2022 n'ajoute aucun salaire : même assiette (salaires, régularisation et ICCP), même indemnité.

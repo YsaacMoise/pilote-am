@@ -2,7 +2,7 @@
 rupture, ICCP, regularisation d'annee incomplete, indemnite de precarite,
 solde de tout compte (domaine 9 et R-MENS-06 de regles-v0)."""
 
-from datetime import date
+from datetime import date, timedelta
 from fractions import Fraction
 
 from .commun import (
@@ -122,6 +122,126 @@ def indemnite_compensatrice_preavis(type_annee, mois):
                                                                 "detail_centimes": detail})
 
 
+@api("R-FIN-05", "T074-ICP")
+def indemnite_preavis_dispense(type_annee, mois, taux_horaire_centimes):
+    """T-074 : indemnite compensatrice de preavis (ICP) quand le particulier
+    employeur dispense l'AM de tout ou partie du preavis (regles/t074-preavis-
+    dispense.md, points 1 et 11).
+    - CCN art. 64.2 : ICP « jusqu'a la date prevue de fin du contrat de travail »,
+      « egale au montant de la remuneration brute correspondant a la duree du
+      preavis ». Art. 66 : « la remuneration due au salarie jusqu'a la date de fin
+      du contrat de travail ». Art. 122 : « Si le preavis se termine en cours de
+      mois, le particulier employeur tient compte de la deduction d'absence prevue
+      a l'article 111 ». Art. 108.1, 109.1, 109.2 : salaire mensualise.
+    - Mois sans aucun jour paye hors dispense (« non mixte ») : tout ce qui est du
+      pour le mois est de l'ICP. ICP = mensualise x (prevu - non payes) / prevu,
+      c'est-a-dire le mensualise moins la deduction de l'art. 111 pour les jours
+      apres la date de fin (et avant l'embauche). Mois entier : mensualise entier.
+    - Mois « mixte » (jours payes en salaire et jours dispenses) : la part ICP n'est
+      fixee par aucun texte (point 1, « A CONFIRMER », question P-1). Deux lectures :
+      (i) proportion de l'art. 111 : mensualise x prevu dispense / prevu du mois ;
+      (ii) heures dispensees x taux horaire. Si elles different : refus P-1 (les
+      deux totaux sont dans details). Dispense qui couvre une semaine sans accueil
+      dans un mois mixte (annee incomplete) : refus P-1 (aucune lecture ecrite).
+    mois : liste de dicts {"salaire_mensualise_centimes", "prevu_mois" (minutes en
+      annee complete, jours en annee incomplete, denominateur de l'art. 111),
+      "non_payes" (memes unites : jours du mois apres la fin et avant l'embauche,
+      deduits), "mixte" (bool), "prevu_dispense" (memes unites), "minutes_dispense",
+      "semaine_sans_accueil_dans_dispense" (bool)}.
+    Sortie : indemnite_centimes, detail_centimes (par mois)."""
+    regles = ["R-FIN-05", "T074-ICP"]
+    type_annee_valide(type_annee)
+    t = positif(taux_horaire_centimes, "taux_horaire_centimes")
+    lect_i, lect_ii, detail_i, detail_ii = 0, 0, [], []
+    p1 = False
+    for i, mo in enumerate(mois):
+        s = entier(mo.get("salaire_mensualise_centimes"), f"mois[{i}].salaire_mensualise_centimes")
+        pm = positif(mo.get("prevu_mois"), f"mois[{i}].prevu_mois")
+        if pm == 0:
+            raise ErreurSaisie(f"mois[{i}] : prevu du mois nul.")
+        if mo.get("mixte"):
+            pd = positif(mo.get("prevu_dispense"), f"mois[{i}].prevu_dispense")
+            md = positif(mo.get("minutes_dispense"), f"mois[{i}].minutes_dispense")
+            if pd > pm:
+                raise ErreurSaisie(f"mois[{i}] : plus de jours dispenses que prevus.")
+            if mo.get("semaine_sans_accueil_dans_dispense"):
+                raise NonGere("P-1", regles, precision=(
+                    f"Mois {i + 1} : dispense sur une semaine sans accueil dans un mois paye en partie en salaire."))
+            vi = vers_centimes(Fraction(s) * pd / pm, f"ICP mois {i + 1}, proportion art. 111", regles)
+            vii = vers_centimes(md * t / 60, f"ICP mois {i + 1}, heures x taux", regles)
+            if vi != vii:
+                p1 = True
+        else:
+            npay = positif(mo.get("non_payes", 0), f"mois[{i}].non_payes")
+            if npay > pm:
+                raise ErreurSaisie(f"mois[{i}] : plus de jours non payes que prevus.")
+            vi = vii = vers_centimes(Fraction(s) * (pm - npay) / pm, f"ICP mois {i + 1}", regles)
+        lect_i += vi
+        lect_ii += vii
+        detail_i.append(vi)
+        detail_ii.append(vii)
+    if p1:
+        raise NonGere("P-1", regles, precision=(
+            "Repartition salaire / ICP dans un mois paye en partie en salaire : proportion de l'art. 111 ou "
+            "heures x taux, non ecrit (regles/t074-preavis-dispense.md, point 1)."),
+            details={"lectures_centimes": [lect_i, lect_ii],
+                     "detail_proportion_centimes": detail_i, "detail_heures_centimes": detail_ii})
+    return resultat_ok(regles, {"indemnite_centimes": lect_i, "detail_centimes": detail_i})
+
+
+@api("R-FIN-11", "R-MENS-06", "T074-REG")
+def regularisation_finale_preavis_dispense(ecarts_annuels_signes_centimes, salaires_mensualises_verses_centimes,
+                                           taux_horaire_centimes, heures_travaillees_minutes, minutes_dispensees,
+                                           indemnite_preavis_centimes, composantes, nature_taux="brut"):
+    """T-074 (point 6, question D-2) : regularisation definitive de l'annee
+    incomplete (CCN art. 124, « effectuee a la date de fin du contrat de travail »,
+    109.2 « heures reellement effectuees ») quand l'employeur dispense l'AM du
+    preavis. Deux lectures, non tranchees :
+    (a) les jours dispenses comptent comme dus et payes jusqu'a la date prevue de
+        fin : salaires verses (ICP comprise) contre heures travaillees + heures
+        dispensees ;
+    (b) la regularisation s'arrete au dernier jour travaille, l'ICP etant a part :
+        salaires verses moins l'ICP contre heures travaillees seules.
+    La lecture (c) (heures dispensees en trop-percu) est ecartee par le juriste
+    (elle priverait l'AM de l'ICP, contraire a l'art. 64.2).
+    indemnite_preavis_centimes : entier, ou liste d'entiers si l'ICP elle-meme
+    a plusieurs lectures (P-1) ; chaque valeur est testee en lecture (b).
+    Meme versement dans toutes les lectures : resultat. Sinon : refus D-2.
+    Un refus de regularisation_finale (A-06, A-02...) est propage.
+    Sortie : versement_centimes."""
+    regles = ["R-FIN-11", "T074-REG"]
+    icps = indemnite_preavis_centimes if isinstance(indemnite_preavis_centimes, (list, tuple)) \
+        else [indemnite_preavis_centimes]
+    if not icps:
+        raise ErreurSaisie("indemnite_preavis_centimes : au moins une valeur.")
+    verse = entier(salaires_mensualises_verses_centimes, "salaires_mensualises_verses_centimes")
+    trav = entier(heures_travaillees_minutes, "heures_travaillees_minutes")
+    disp = entier(minutes_dispensees, "minutes_dispensees")
+
+    def une(v, h):
+        r = regularisation_finale("incomplete", ecarts_annuels_signes_centimes, v, taux_horaire_centimes, h,
+                                  composantes, nature_taux=nature_taux)
+        if r["statut"] == "non_gere":
+            raise NonGere(r["code"], regles, precision=r.get("precision"), details=r.get("details"))
+        if r["statut"] not in ("ok", "provisoire"):
+            raise ErreurSaisie(r.get("message", "regularisation_finale"), regles)
+        return r["resultat"]["versement_centimes"]
+
+    va = une(verse, trav + disp)
+    vb = []
+    for x in icps:
+        icp = entier(x, "indemnite_preavis_centimes")
+        if icp > verse:
+            raise ErreurSaisie("ICP superieure aux salaires verses.", regles)
+        vb.append(une(verse - icp, trav))
+    if any(v != va for v in vb):
+        raise NonGere("D-2", regles, precision=(
+            "Heures du preavis dispense dans la regularisation de fin (CCN art. 124, 109.2) : comptees comme dues "
+            "et payees (a) ou laissees hors du calcul avec l'ICP a part (b), non tranche."),
+            details={"lecture_a_centimes": va, "lecture_b_centimes": vb})
+    return resultat_ok(regles, {"versement_centimes": va, "lectures": {"a": va, "b": vb}})
+
+
 @api("R-FIN-10")
 def jours_a_indemniser(jours_acquis, jours_deja_payes):
     """R-FIN-10 : jours a indemniser = jours acquis - jours deja payes (les CP
@@ -212,7 +332,7 @@ def iccp(type_annee, motif, periodes, heures_hebdo_minutes, taux_horaire_centime
 @api("R-FIN-06", "R-FIN-07", "R-FIN-08", "R-ESS-03")
 def indemnite_rupture(motif, auteur, date_debut_accueil, date_reference, salaires_bruts_centimes,
                       iccp_centimes=0, icp_centimes=0, indemnite_preavis_centimes=0, regularisation_centimes=0,
-                      sommes_a_confirmer=()):
+                      sommes_a_confirmer=(), date_fin_contrat=None):
     """Indemnite de rupture (R-FIN-06, CCN art. 121.1) : due en cas de retrait
     de l'enfant (auteur « employeur ») apres au moins 9 mois d'accueil ; non due
     en cas de demission, d'essai, de faute grave ou lourde, d'agrement.
@@ -237,11 +357,23 @@ def indemnite_rupture(motif, auteur, date_debut_accueil, date_reference, salaire
     l'art. 121-1 ; service-public F16842 : « cette condition d'anciennete est
     supprimee et l'indemnite est due »). A-47 levee.
     date_reference : date d'envoi de la lettre (ou du deces).
+    T-074 (preavis dispense par l'employeur, regles/t074-preavis-dispense.md,
+    point 5) :
+    - date_fin_contrat (date prevue de fin du preavis, CCN art. 64) : si elle est
+      donnee, les 9 mois sont testes a la date d'envoi (service-public F16842 :
+      « L'anciennete se calcule a la date d'envoi de la lettre ») et a la date de
+      fin (CCN art. 60 et 64.2 : periode dispensee comptee « au titre de
+      l'anciennete »). Si la condition change selon la date : refus D-1.
+    - indemnite de preavis : l'assiette est calculee avec et sans elle (CCN 121.1,
+      « salaires bruts » ; question 4 de l'envoi 1 sans reponse). Si les deux
+      montants different : refus A-45.
     Sortie : indemnite_centimes (non soumise a cotisations)."""
     regles = ["R-FIN-06"]
     _motif_exclu(motif, regles)
     if not (isinstance(date_debut_accueil, date) and isinstance(date_reference, date)):
         raise ErreurSaisie("Dates attendues.")
+    if date_fin_contrat is not None and (not isinstance(date_fin_contrat, date) or date_fin_contrat < date_reference):
+        raise ErreurSaisie("date_fin_contrat : date attendue, posterieure ou egale a la date de reference.")
     verifier_date_ccn(date_reference, regles)
     if motif in ("faute_grave", "faute_lourde", "agrement", "essai") or (motif == "normal" and auteur == "am"):
         return resultat_ok(indemnite_rupture.regles, {"indemnite_centimes": 0, "raison": "non due"})
@@ -252,6 +384,14 @@ def indemnite_rupture(motif, auteur, date_debut_accueil, date_reference, salaire
         neuf_mois = True  # condition de 9 mois sans objet (CCN 119.4.2 ; F16842)
     else:
         neuf_mois = anciennete_atteinte(date_debut_accueil, date_reference, 9, regles)
+        if date_fin_contrat is not None and date_fin_contrat != date_reference:
+            neuf_fin = anciennete_atteinte(date_debut_accueil, date_fin_contrat, 9, regles)
+            if neuf_fin != neuf_mois:
+                raise NonGere("D-1", regles + ["T074-RUPTURE"], precision=(
+                    "9 mois d'accueil atteints a la date de fin du contrat ("
+                    + date_fin_contrat.isoformat() + ") mais pas a la date d'envoi ("
+                    + date_reference.isoformat() + ") : date d'appreciation non tranchee (CCN 121.1, 60, 64.2 ; "
+                    "F16842)."))
     if not neuf_mois:
         return resultat_ok(indemnite_rupture.regles, {"indemnite_centimes": 0, "raison": "moins de 9 mois d'accueil"})
     a_confirmer = sorted(str(x) for x in (sommes_a_confirmer or ()))
@@ -261,10 +401,6 @@ def indemnite_rupture(motif, auteur, date_debut_accueil, date_reference, salaire
             details={"sommes_a_confirmer": a_confirmer})
     base = entier(salaires_bruts_centimes, "salaires_bruts_centimes")
     preavis = entier(indemnite_preavis_centimes, "indemnite_preavis_centimes")
-    if preavis:
-        raise NonGere("A-45", regles, precision=(
-            "Indemnite de preavis dans l'assiette du 1/80 : point rouvert (CCN art. 64.2 non relu, T-050)."),
-            details={"sommes_ambigues_centimes": {"indemnite_preavis_centimes": preavis}})
     if isinstance(regularisation_centimes, int) and not isinstance(regularisation_centimes, bool) \
             and regularisation_centimes < 0:
         raise NonGere("A-45", regles, precision="Regularisation negative : effet sur l'assiette non ecrit.",
@@ -272,9 +408,194 @@ def indemnite_rupture(motif, auteur, date_debut_accueil, date_reference, salaire
     incluses = {n: entier(v, n) for n, v in (("iccp_centimes", iccp_centimes), ("icp_centimes", icp_centimes),
                                               ("regularisation_centimes", regularisation_centimes))}
     assiette = base + sum(incluses.values())
+    montant = vers_centimes(Fraction(assiette, 80), "indemnite de rupture", regles)
+    if preavis:
+        # T-074 (point 5) : avec et sans l'indemnite de preavis (envoi 1, question 4).
+        avec = vers_centimes(Fraction(assiette + preavis, 80), "indemnite de rupture avec preavis", regles)
+        if avec != montant:
+            raise NonGere("A-45", regles + ["T074-RUPTURE"], precision=(
+                "Indemnite de preavis dans l'assiette du 1/80 (CCN 121.1 « salaires bruts », 64.2 « soumise a "
+                "contributions et cotisations sociales ») : question 4 de l'envoi 1 sans reponse."),
+                details={"sommes_ambigues_centimes": {"indemnite_preavis_centimes": preavis},
+                         "sans_preavis_centimes": montant, "avec_preavis_centimes": avec})
+        return resultat_ok(indemnite_rupture.regles, {"indemnite_centimes": montant,
+                                                      "assiette_centimes": assiette,
+                                                      "note": "meme montant avec ou sans l'indemnite de preavis"})
     return resultat_ok(indemnite_rupture.regles,
+                       {"indemnite_centimes": montant, "assiette_centimes": assiette})
+
+
+@api("R-FIN-03")
+def dates_fin_preavis_possibles(date_premiere_presentation, preavis):
+    """T-072 : dates de fin possibles d'un preavis execute.
+    CCN art. 64.1 (socle commun) : le preavis est « un delai prefix commencant a
+    courir a compter de la date de la premiere presentation de la lettre
+    recommandee [...] ou de la date de remise en mains propres ». CCN art. 120 :
+    durees en « jours calendaires » ou « un mois ». Aucun texte ne dit si le jour
+    de depart compte (regles/t021-convention.md 2.4, PREAVIS-DATE-FIN) ; la fiche
+    anciennete de la branche (valeur indicative, non conventionnelle) le compte.
+    B ne tranche pas : il rend les deux lectures, triees.
+    - {"jours": n} : presentation + n - 1 (jour de depart compte) et presentation + n.
+    - {"mois": 1} : meme quantieme le mois suivant, moins un jour, et ce quantieme ;
+      refus DATE-MOIS apres le 28 (fin de mois non ecrite).
+    Sortie : dates (liste de datetime.date)."""
+    regles = ["R-FIN-03"]
+    if not isinstance(date_premiere_presentation, date):
+        raise ErreurSaisie("date_premiere_presentation : date attendue.")
+    if not isinstance(preavis, dict) or len(preavis) != 1:
+        raise ErreurSaisie("preavis : {'jours': n} ou {'mois': 1}.")
+    if "jours" in preavis:
+        n = entier(preavis["jours"], "preavis.jours", 1)
+        dates = [date_premiere_presentation + timedelta(days=n - 1), date_premiere_presentation + timedelta(days=n)]
+    elif preavis.get("mois") == 1:
+        from .calendrier import ajouter_mois
+        quantieme = ajouter_mois(date_premiere_presentation, 1)
+        dates = [quantieme - timedelta(days=1), quantieme]
+    else:
+        raise ErreurSaisie("preavis : {'jours': n} ou {'mois': 1}.")
+    return resultat_ok(dates_fin_preavis_possibles.regles, {"dates": dates},
+                       notes=["Deux lectures : le jour de la premiere presentation compte ou non (CCN 64.1, 120)."])
+
+
+def _mois_cle(d):
+    return f"{d.year:04d}-{d.month:02d}"
+
+
+def _mois_suivant(cle):
+    a, m = int(cle[:4]), int(cle[5:])
+    return f"{a + (m == 12):04d}-{m % 12 + 1:02d}"
+
+
+@api("R-FIN-06", "R-FIN-07")
+def indemnite_rupture_bulletins(motif, auteur, date_debut_accueil, date_reference, variantes,
+                                total_bulletins_centimes=None, total_jusqua=None, bruts_lus_centimes=None):
+    """T-072 (T-054) : indemnite de rupture quand l'utilisatrice a saisi le total
+    reel de ses bulletins (du debut du contrat au mois « total_jusqua » compris,
+    « AAAA-MM ») ou des bruts lus sur des bulletins ({"AAAA-MM": centimes}).
+
+    Texte : CCN art. 121.1 (socle AM) : 1/80 « du total des salaires bruts percus
+    pendant la duree du contrat, hors indemnites non soumises a contributions et
+    cotisations sociales telles que l'indemnite kilometrique, l'indemnite
+    d'entretien et les frais de repas ». Le mot « percus » : les montants des
+    bulletins font foi pour les mois qu'ils couvrent (consigne T-072 ; regles/
+    points-t021.md A-45). Hypothese d'entree, a confirmer par la direction pour
+    l'ecran de saisie : le total ou le brut lu est un total de SALAIRES BRUTS
+    soumis a cotisations (sans entretien, repas, kilometres, ni l'indemnite de
+    rupture elle-meme, exoneree : regles-v0 R-PAJ, declaration de fin).
+
+    Sommes de fin : l'ICCP (CCN art. 67, 123 : conges « non remuneres au jour de
+    la date de fin »), la regularisation (art. 124 : « effectuee a la date de fin
+    du contrat ») et l'indemnite de preavis sont payees sur le dernier bulletin,
+    avec le salaire du dernier mois (regles/t050-trois-regles.md, point 2, 5 ;
+    declaration de fin Pajemploi : le parent y « coche les indemnites dues et
+    leurs montants », regles-v0 R-PAJ). Donc :
+    - dernier mois couvert par les bulletins : ces sommes sont dans le montant
+      saisi ; B n'ajoute rien. Restent a confirmer : une regularisation non
+      calculee (son signe est inconnu) ; refus A-45 : une regularisation negative
+      ou une indemnite de preavis non nulle, dont l'effet sur l'assiette n'est pas
+      tranche et qui seraient deja melees au montant saisi ;
+    - dernier mois non couvert : B ajoute les salaires des mois non couverts, l'ICCP
+      et la regularisation (T-050b) ; une somme non calculee (None) rend
+      l'indemnite « a confirmer » (ASSIETTE-A-CONFIRMER).
+
+    variantes : une par date de fin possible (voir dates_fin_preavis_possibles) :
+    {"date_fin": date, "salaires_mois_centimes": {"AAAA-MM": int ou None},
+     "iccp_centimes": int ou None, "regularisation_centimes": int ou None,
+     "indemnite_preavis_centimes": int ou None}. Les salaires d'un mois sont le
+    salaire brut et les CP payes ce mois (hors indemnites non soumises).
+    B conclut seulement si toutes les variantes donnent la meme assiette ; sinon
+    refus FIN-DATE-A-CONFIRMER (aucun texte ne fixe le dernier jour du preavis).
+    Sortie : indemnite_centimes, assiette_centimes."""
+    regles = ["R-FIN-06"]
+    essai = indemnite_rupture.interne(motif, auteur, date_debut_accueil, date_reference, 0)
+    if essai["resultat"].get("raison"):
+        return resultat_ok(indemnite_rupture_bulletins.regles, essai["resultat"])
+    if motif == "deces_enfant":
+        regles = ["R-FIN-07"]
+    if total_bulletins_centimes is None and not bruts_lus_centimes:
+        raise ErreurSaisie("Donner total_bulletins_centimes (avec total_jusqua) ou bruts_lus_centimes.")
+    lus = {}
+    for cle, v in (bruts_lus_centimes or {}).items():
+        lus[str(cle)] = entier(v, f"bruts_lus_centimes[{cle}]")
+    total = 0
+    if total_bulletins_centimes is not None:
+        total = entier(total_bulletins_centimes, "total_bulletins_centimes")
+        if not (isinstance(total_jusqua, str) and len(total_jusqua) == 7):
+            raise ErreurSaisie("total_jusqua : mois « AAAA-MM » attendu avec le total.")
+        doubles = sorted(c for c in lus if c <= total_jusqua)
+        if doubles:
+            raise ErreurSaisie("Bruts lus pour des mois deja dans le total saisi : " + ", ".join(doubles) + ".")
+    if not variantes:
+        raise ErreurSaisie("variantes : au moins une date de fin.")
+    debut = _mois_cle(date_debut_accueil)
+    assiettes = {}
+    a_confirmer = {}
+    ambigus = {}
+    for v in variantes:
+        fin = v.get("date_fin")
+        if not isinstance(fin, date) or fin < date_debut_accueil:
+            raise ErreurSaisie("variante : date_fin attendue, apres le debut.")
+        dernier = _mois_cle(fin)
+        manque = []
+        if total_bulletins_centimes is not None and total_jusqua > dernier:
+            manque.append(f"bulletins saisis au-dela du mois de fin ({total_jusqua})")
+        hors = sorted(c for c in lus if c < debut or c > dernier)
+        if hors:
+            manque.append("bruts lus hors du contrat (" + ", ".join(hors) + ")")
+
+        def couvert(c):
+            return (total_bulletins_centimes is not None and c <= total_jusqua) or c in lus
+
+        assiette = total + sum(x for c, x in lus.items() if debut <= c <= dernier)
+        sal = v.get("salaires_mois_centimes") or {}
+        c = debut
+        while c <= dernier:
+            if not couvert(c):
+                x = sal.get(c)
+                if x is None:
+                    manque.append(f"salaire {c}")
+                else:
+                    assiette += entier(x, f"salaires_mois_centimes[{c}]")
+            c = _mois_suivant(c)
+        reg = v.get("regularisation_centimes")
+        pre = v.get("indemnite_preavis_centimes")
+        cle_v = fin.isoformat()
+        if pre is None:
+            manque.append("indemnite de preavis")
+        elif entier(pre, "indemnite_preavis_centimes"):
+            ambigus[cle_v] = {"indemnite_preavis_centimes": pre}
+        if reg is None:
+            manque.append("regularisation")
+        elif isinstance(reg, int) and not isinstance(reg, bool) and reg < 0:
+            ambigus.setdefault(cle_v, {})["regularisation_centimes"] = reg
+        if not couvert(dernier):
+            iccp_v = v.get("iccp_centimes")
+            if iccp_v is None:
+                manque.append("iccp")
+            else:
+                assiette += entier(iccp_v, "iccp_centimes")
+            if reg is not None and reg > 0:
+                assiette += entier(reg, "regularisation_centimes")
+        if manque:
+            a_confirmer[cle_v] = manque
+        else:
+            assiettes[cle_v] = assiette
+    if ambigus:
+        raise NonGere("A-45", regles, precision=(
+            "Indemnite de preavis ou regularisation negative dans l'assiette du 1/80 : point non tranche."),
+            details={"sommes_ambigues_centimes": ambigus})
+    if a_confirmer:
+        raise NonGere("ASSIETTE-A-CONFIRMER", regles, precision="Assiette du 1/80 incomplete pour au moins une date de fin.",
+                      details={"sommes_a_confirmer": a_confirmer, "assiettes_connues_centimes": assiettes})
+    valeurs = set(assiettes.values())
+    if len(valeurs) > 1:
+        raise NonGere("FIN-DATE-A-CONFIRMER", regles + ["R-FIN-03"],
+                      precision="L'assiette change selon la date de fin du preavis, que le texte ne fixe pas.",
+                      details={"assiettes_centimes": assiettes})
+    assiette = valeurs.pop()
+    return resultat_ok(indemnite_rupture_bulletins.regles,
                        {"indemnite_centimes": vers_centimes(Fraction(assiette, 80), "indemnite de rupture", regles),
-                        "assiette_centimes": assiette})
+                        "assiette_centimes": assiette, "dates_fin_testees": sorted(assiettes)})
 
 
 _COMPOSANTES = ("feries_chomes_payes", "absences_remunerees", "heures_complementaires")

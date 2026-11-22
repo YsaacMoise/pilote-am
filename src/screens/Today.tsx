@@ -360,7 +360,7 @@ function KidCard({ c, day, onEdit, compact, sautees = [], onNon }: { c: Contract
     tags.push({ tone: 'info', text: CHILD_ABS_LABEL[rec.abs] });
     tags.push({ tone: di.deducted ? 'warn' : 'ok', text: di.deducted ? 'Retenu sur le salaire' : 'Payé' });
   }
-  if (di.kind === 'ferie') tags.push({ tone: 'info', text: `Férié : ${di.ferie} (payé)` });
+  if (di.kind === 'ferie') tags.push(di.ferie ? (di.aConfirmer ? { tone: 'warn', text: `Férié : ${di.ferie} (à confirmer)` } : { tone: 'info', text: `Férié : ${di.ferie} (payé)` }) : { tone: 'warn', text: `Férié local : ${di.ferieLocal} (à confirmer)` });
   if (di.kind === 'am' && di.amLeave) tags.push({ tone: 'info', text: AM_ABS_LABEL[di.amLeave] });
   if (di.kind === 'prevu' && day < t) tags.push({ tone: 'ok', text: 'Comme prévu' });
 
@@ -564,26 +564,68 @@ function AutreHeureSheet({ ch, child, arrivee, pointer, onClose }: { ch: ChoixPo
 }
 
 const CHILD_ABS_OPTIONS: { v: ChildAbs | 'none'; l: string; sub?: string }[] = [
-  { v: 'none', l: 'Présent', sub: 'Accueilli normalement' },
-  { v: 'malade_certif', l: CHILD_ABS_LABEL.malade_certif, sub: 'Retenu dans la limite de 5 jours par an, plus une absence de 14 jours d’affilée' },
-  { v: 'malade', l: CHILD_ABS_LABEL.malade, sub: 'Payé' },
-  { v: 'parents', l: CHILD_ABS_LABEL.parents, sub: 'Payé' },
+  // T-079 : choix rédigés comme réponses à la question ; CHILD_ABS_LABEL reste le libellé court des écrans de lecture.
+  { v: 'none', l: 'Oui, comme prévu' },
+  { v: 'malade_certif', l: 'Non, malade, avec certificat médical', sub: 'Certificat médical ou bulletin d’hospitalisation. Déduit du salaire : 5 jours par année de contrat au plus, plus une absence de 14 jours calendaires consécutifs.' },
+  { v: 'malade', l: 'Non, malade, sans certificat', sub: 'Payé normalement.' },
+  { v: 'parents', l: 'Non, absent à la demande des parents', sub: 'Payé normalement.' },
 ];
 // T-035b : l'absence « sans solde » de l'enfant n'est plus proposée (CCN art. 105 : absence non prévue = payée). Elle reste
 // affichée seulement sur un jour déjà noté ainsi, pour pouvoir le corriger.
-const OPTION_SANS_SOLDE_ENFANT = { v: 'sans_solde_enfant' as const, l: CHILD_ABS_LABEL.sans_solde_enfant, sub: 'Payé : la convention ne permet pas de le retenir (article 105)' };
+const OPTION_SANS_SOLDE_ENFANT = { v: 'sans_solde_enfant' as const, l: 'Non, noté « sans solde » (ancienne saisie)', sub: 'Payé : la convention ne permet pas de le retenir (article 105).' };
 
 /**
  * Heures de départ de la fiche de la journée, plage par plage : celles pointées, sinon celles du planning.
  * T-048 (contrôle de la n° 53) : une plage sans arrivée alors qu'une plage plus loin a déjà une arrivée reste vide
  * (l'AM a répondu « Non » ou n'a pas pointé ce matin-là) : le planning ne la remplit pas, pour ne pas la noter présente.
  */
-export function heuresInitiales(planned: Plage[], pres: Presence[] | undefined, slots: number): Presence[] {
+export function heuresInitiales(planned: Plage[], pres: Presence[] | undefined, slots: number, maintenant?: string): Presence[] {
+  // T-068 (direction T-072) : le jour même (`maintenant`, HH:MM), seules les heures pointées sont reprises. Une plage non
+  // pointée reste vide, même si son heure est passée, et aucun départ non pointé n'est proposé, même après l'heure prévue
+  // (quatrième passe, B-3) : l'AM utilise le bouton Départ ou tape l'heure. « Enregistrer » n'écrit aucune heure sans geste.
   return Array.from({ length: slots }, (_, i) => {
     const vide = !pres?.[i]?.a && (pres ?? []).slice(i + 1).some((x) => !!x?.a);
     if (vide) return { a: '', d: '' };
+    if (maintenant) {
+      return { a: pres?.[i]?.a ?? '', d: pres?.[i]?.d ?? '' };
+    }
     return { a: pres?.[i]?.a ?? planned[i]?.start ?? '', d: pres?.[i]?.d ?? planned[i]?.end ?? '' };
   });
+}
+
+/**
+ * Relecture T-072 (B-2) : un départ saisi sans arrivée serait perdu (seules les plages avec arrivée sont gardées). La fiche
+ * refuse alors « Enregistrer » avec ce message, qui rappelle l'arrivée prévue. Rend '' si chaque départ a son arrivée.
+ */
+export function departSansArrivee(pres: Presence[], planned: Plage[]): string {
+  const i = pres.findIndex((p) => !p.a && !!p.d);
+  if (i < 0) return '';
+  const prevue = planned[i]?.start;
+  return `Départ${pres.length > 1 ? ` (${i + 1})` : ''} sans arrivée : indique aussi l’heure d’arrivée${prevue ? ` (prévue à ${fmtH(prevue)})` : ''}.`;
+}
+
+/**
+ * Contrôles des heures de la fiche avant « Enregistrer » : départ sans arrivée (B-2), départ avant l'arrivée. `heuresVisibles`
+ * faux (absence choisie, jour à venir) : les heures ne sont pas enregistrées, aucun contrôle (sinon refus muet, le message
+ * étant dans le bloc caché). Rend le message, ou ''.
+ */
+export function verifierFiche(pres: Presence[], planned: Plage[], heuresVisibles: boolean): string {
+  if (!heuresVisibles) return '';
+  const sansArrivee = departSansArrivee(pres, planned);
+  if (sansArrivee) return sansArrivee;
+  return pres.some((p) => p.a && p.d && p.d <= p.a) ? 'L’heure de départ doit être après l’arrivée.' : '';
+}
+
+/**
+ * Présences écrites par « Enregistrer » de la fiche de la journée ; `undefined` : aucune présence (journée comme prévu,
+ * ou jour à venir). Jour passé : des heures égales au planning ne sont pas écrites. Le jour même (T-068), seules les
+ * heures saisies ou pointées sont écrites ; une fiche vide ne note rien (journée comme prévu).
+ */
+export function presencesAEnregistrer(planned: Plage[], pres: Presence[], future: boolean, maintenant?: string): Presence[] | undefined {
+  if (future) return undefined;
+  if (maintenant) { const r = presencesAGarder(pres); return r.length ? r : undefined; }
+  const samePlan = pres.length === planned.length && pres.every((p, i) => planned[i] && p.a === planned[i].start && p.d === planned[i].end);
+  return samePlan ? undefined : presencesAGarder(pres);
 }
 
 /**
@@ -600,7 +642,7 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
   const di = dayInfo(ctxFor(c), day);
   const rec = di.rec;
   const slots = Math.max(di.planned.length, rec?.pres?.length ?? 0, 1);
-  const init = heuresInitiales(di.planned, rec?.pres, slots);
+  const init = heuresInitiales(di.planned, rec?.pres, slots, day === today() ? nowHHMM() : undefined);
   const [pres, setPres] = useState<Presence[]>(init);
   const [abs, setAbs] = useState<ChildAbs | 'none'>(rec?.abs ?? 'none');
   const [repas, setRepas] = useState<number>(rec?.repas ?? c.repasParJour);
@@ -611,20 +653,20 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
   const [ferieT, setFerieT] = useState<boolean>(!!rec?.ferieTravaille);
   const [err, setErr] = useState('');
   const future = day > today();
-  useErreurAffichee('depart_avant_arrivee', !!err);
+  useErreurAffichee('depart_avant_arrivee', !!err && !err.includes('sans arrivée'));
+  useErreurAffichee('saisie', !!err && err.includes('sans arrivée'));
 
   async function save() {
-    for (const p of pres) {
-      if (p.a && p.d && p.d <= p.a) { setErr('L’heure de départ doit être après l’arrivée.'); return; }
-    }
-    const samePlan = pres.every((p, i) => di.planned[i] && p.a === di.planned[i].start && p.d === di.planned[i].end) && pres.length === di.planned.length;
+    const erreur = verifierFiche(pres, di.planned, abs === 'none' && !future);
+    if (erreur) { setErr(erreur); return; }
+    const gardees = presencesAEnregistrer(di.planned, pres, future, day === today() ? nowHHMM() : undefined);
     const undo = await updateDay(c.id, day, (r) => {
       const next: DayRec = { ...r };
       if (abs !== 'none') { next.abs = abs; delete next.pres; }
       else {
         delete next.abs;
-        if (samePlan || future) delete next.pres;
-        else next.pres = presencesAGarder(pres);
+        if (!gardees) delete next.pres;
+        else next.pres = gardees;
         if (!di.planned.length && next.pres?.length) next.extra = true;
       }
       if (repas !== c.repasParJour) next.repas = repas; else delete next.repas;
@@ -649,7 +691,9 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
     <Sheet title={`${c.child}, ${dayLabel(day)}`} onClose={onClose}>
       <p class="muted">{planText(di)}</p>
       {di.ferie && <Switch label={`Jour férié (${di.ferie}) travaillé`} hint={day.endsWith('05-01') ? '1er mai : payé double' : 'Majoré de 10 %'} checked={ferieT} onChange={setFerieT} />}
-      <Choices label="Ce jour-là" value={abs} options={rec?.abs === 'sans_solde_enfant' ? [...CHILD_ABS_OPTIONS, OPTION_SANS_SOLDE_ENFANT] : CHILD_ABS_OPTIONS} onChange={setAbs} />
+      {/* T-077 (R3) : férié local d'Alsace-Moselle ou de Mayotte, férié ou non selon la lecture. */}
+      {!di.ferie && di.ferieLocal && <Switch label={`Jour férié local (${di.ferieLocal}) travaillé`} hint="Majoration de 10 % à confirmer : on ne sait pas encore si ce jour est férié pour toi" checked={ferieT} onChange={setFerieT} />}
+      <Choices label="L’enfant est-il accueilli ce jour-là ?" value={abs} options={rec?.abs === 'sans_solde_enfant' ? [...CHILD_ABS_OPTIONS, OPTION_SANS_SOLDE_ENFANT] : CHILD_ABS_OPTIONS} onChange={setAbs} />
       {abs === 'none' && !future && (
         <fieldset>
           <legend>Heures réelles</legend>
@@ -674,9 +718,9 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
       )}
       {abs === 'none' && !future && (
         <>
-          {c.repasPrix > 0 && <Stepper label="Repas fournis" value={repas} onChange={setRepas} max={4} />}
-          {c.kmTaux > 0 && <Stepper label="Kilomètres" value={km} onChange={setKm} max={500} unit="km" />}
-          {c.kmTaux > 0 && km > 0 && <Switch label="Une autre famille a aussi demandé ce trajet" hint="Non : ces km sont dus en entier par cette famille (article 113)." checked={kmPartage} onChange={setKmPartage} />}
+          {c.repasPrix > 0 && <Stepper label="Repas fournis par toi" value={repas} onChange={setRepas} max={4} />}
+          {c.kmTaux > 0 && <Stepper label="Kilomètres parcourus avec l’enfant" value={km} onChange={setKm} max={500} unit="km" />}
+          {c.kmTaux > 0 && km > 0 && <Switch label="Une autre famille a aussi demandé ce trajet" hint="Laisse éteint si cette famille est seule à l’avoir demandé : elle paie alors tous les km (article 113)." checked={kmPartage} onChange={setKmPartage} />}
           {c.kmTaux > 0 && km > 0 && kmPartage && <Stepper label="Enfants dans la voiture" value={kmEnfants} onChange={setKmEnfants} max={8} />}
           {c.kmTaux > 0 && km > 0 && kmPartage && <p class="hint">Compte tous les enfants dans la voiture, les tiens compris si le trajet est aussi pour eux. Chaque famille paie sa part, au prorata des enfants (article 113). À moins de 2, les km restent à confirmer.</p>}
         </>
@@ -687,11 +731,12 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
 }
 
 const AM_OPTIONS: { v: ChoixAbsence; l: string; sub: string }[] = [
-  { v: 'cp', l: AM_ABS_LABEL.cp, sub: 'Décomptés de ton compteur de congés' },
-  { v: 'am_malade', l: AM_ABS_LABEL.am_malade, sub: 'Non payé par les parents (indemnités de la Sécurité sociale)' },
-  { v: 'am_enfant_malade', l: AM_ABS_LABEL.am_enfant_malade, sub: 'Non payé (3 jours par an, 5 dans certains cas)' },
-  { v: 'evenement', l: AM_ABS_LABEL.evenement, sub: 'Mariage, naissance, décès… : payé sur justificatif, selon la durée prévue' },
-  { v: 'sans_solde', l: AM_ABS_LABEL.sans_solde, sub: 'Non payé, avec l’accord des parents' },
+  // T-079 : une seule forme (le nom de l'absence) ; AM_ABS_LABEL reste le libellé des écrans de lecture et du relevé.
+  { v: 'cp', l: 'Congés payés', sub: 'Décomptés de ton compteur de congés.' },
+  { v: 'am_malade', l: 'Maladie', sub: 'Non payé par les parents : la Sécurité sociale te verse des indemnités.' },
+  { v: 'am_enfant_malade', l: 'Enfant malade', sub: 'Ton enfant à toi. Non payé : 3 jours par an, 5 dans certains cas.' },
+  { v: 'evenement', l: 'Événement familial', sub: 'Mariage, naissance, décès… Payé sur justificatif, pour la durée prévue.' },
+  { v: 'sans_solde', l: 'Congé sans solde', sub: 'Non payé, avec l’accord des parents.' },
   // T-031 : absences que l'app ne calcule pas. Les saisir bloque les mois concernés au lieu de les payer comme travaillés.
   ...AM_ABS_NON_GEREES.map((v) => ({ v, l: AM_ABS_NON_GEREE_LABEL[v], sub: 'Non géré par l’app : les mois concernés sont bloqués' })),
 ];
@@ -711,10 +756,10 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
   const visibles = questionsVisibles(questions, reps);
   return (
     <Sheet title="Je serai absente" onClose={onClose}>
-      <p class="muted">Pour tous les enfants. Les parents ne te paient pas les jours non payés : l’app fait la retenue toute seule.</p>
-      <Choices label="Raison" value={type} options={AM_OPTIONS} onChange={setType} />
+      <p class="muted">Pour tous les enfants. Pour une absence non payée, l’app fait seule la retenue sur le salaire.</p>
+      <Choices label="Pourquoi seras-tu absente ?" value={type} options={AM_OPTIONS} onChange={setType} />
       {type === 'evenement' && (
-        <Choices label="Quel événement ?" value={nature} onChange={setNature}
+        <Choices label="Quel événement familial ?" value={nature} onChange={setNature}
           options={(Object.keys(NATURE_EVENEMENT_LABEL) as NatureEvenement[]).map((v) => ({ v, l: NATURE_EVENEMENT_LABEL[v], sub: libelleDureeSaisie(v, from) }))} />
       )}
       {type === 'evenement' && <p class="hint">Déplacement de plus de 600 km aller-retour : le jour en plus est non rémunéré, saisis-le en congé sans solde.</p>}
@@ -722,8 +767,8 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
       {estNonGere(type) && <p class="hint">L’app garde seulement « absence non gérée » et les dates, pas le motif.</p>}
       {type === 'evenement' && <p class="hint">L’app garde seulement « événement familial » et le nombre de jours payés, pas l’événement choisi.</p>}
       <div class="grid2">
-        <DateInput label="Du" value={from} onChange={(v) => { setFrom(v); if (to < v) setTo(v); }} />
-        <DateInput label="Au (inclus)" value={to} min={from} onChange={setTo} />
+        <DateInput label="Premier jour d’absence" value={from} onChange={(v) => { setFrom(v); if (to < v) setTo(v); }} />
+        <DateInput label="Dernier jour d’absence" value={to} min={from} onChange={setTo} />
       </div>
       {visibles.map((q, i) => (
         <Choices key={`${q.sens}|${q.autre.id}`} label={texteQuestionSuite(q)} value={reps[i]}

@@ -138,7 +138,8 @@ def jours_fractionnement(droits_acquis, jours_conge_principal_pris_du_1er_mai_au
 
 
 @api("R-CP-09", "R-JF-01")
-def decompte_jours_cp(premier_jour_absence, jour_reprise, jours_travailles, feries_travailles=()):
+def decompte_jours_cp(premier_jour_absence, jour_reprise, jours_travailles, feries_travailles=(),
+                      region="metropole"):
     """Jours de CP decomptes (R-CP-09) : du premier jour ouvrable qui aurait du
     etre travaille jusqu'a la veille de la reprise ; chaque jour ouvrable compte
     (lundi a samedi), sauf ferie chome. jours_travailles : 0 = lundi.
@@ -153,6 +154,24 @@ def decompte_jours_cp(premier_jour_absence, jour_reprise, jours_travailles, feri
     feries = {}
     for a in range(premier_jour_absence.year, jour_reprise.year + 1):
         feries.update(jours_feries(a))
+    # T-077 (R3.4) : lecture A, le ferie local chome n'est pas decompte ; lecture B, il l'est.
+    from .regions import region_valide, feries_locaux_entre
+    locaux = {d: n for d, n in feries_locaux_entre(premier_jour_absence, jour_reprise, region_valide(region)).items()
+              if d not in feries}
+    if locaux:
+        a = _decompte(premier_jour_absence, jour_reprise, jt, ft, {**feries, **locaux})
+        b = _decompte(premier_jour_absence, jour_reprise, jt, ft, feries)
+        if a != b:
+            raise NonGere("A77-DECOMPTE-CP", ["R-CP-09", "T077-R3"], details={
+                "lectures": {"A": a[0], "B": b[0]},
+                "message": f"Conge a decompte a confirmer : {a[0]} jours si le ferie local est un ferie de l'AM "
+                           f"(lecture A), {b[0]} jours sinon (lecture B)."})
+    n, debut = _decompte(premier_jour_absence, jour_reprise, jt, ft, feries)
+    return resultat_ok(decompte_jours_cp.regles, {"jours_decomptes": n,
+                                                  "premier_jour_decompte": debut.isoformat() if debut < jour_reprise else None})
+
+
+def _decompte(premier_jour_absence, jour_reprise, jt, ft, feries):
 
     def chome(d):
         return d in feries and d not in ft
@@ -168,8 +187,7 @@ def decompte_jours_cp(premier_jour_absence, jour_reprise, jours_travailles, feri
         if d.weekday() <= 5 and not chome(d):
             n += 1
         d += timedelta(days=1)
-    return resultat_ok(decompte_jours_cp.regles, {"jours_decomptes": n,
-                                                  "premier_jour_decompte": debut.isoformat() if debut < jour_reprise else None})
+    return n, debut
 
 
 def _culprit(resultats, dimensions):
@@ -330,3 +348,38 @@ def indemnite_cp_prise_partielle(type_annee):
     annee complete, A-30 en annee incomplete."""
     type_annee_valide(type_annee)
     raise NonGere("A-29" if type_annee == "complete" else "A-30", ["R-CP-06"])
+
+
+@api("R-CP-07", "R-CP-08")
+def conges_apres_changement_type(types_periode_acquisition, type_annee_prise):
+    """T-072 (T-052) : conges pris apres un avenant qui change le type d'annee.
+    types_periode_acquisition : types d'annee en vigueur pendant la periode de
+    reference ou les jours pris ont ete acquis (CCN 48.1.1.1 : 1er juin - 31 mai) ;
+    type_annee_prise : type en vigueur le jour pris.
+    Textes lus (copies citees dans regles/t021-convention.md, regles-v0 R-CP-07, R-CP-08) :
+    - CCN 102.1.2.1 (52 semaines) : « les conges payes sont indemnises au moment de
+      leur prise. Pour la duree des conges payes, l'indemnite brute due au titre de
+      ces derniers se substitue au salaire mensuel brut » ;
+    - CCN 102.1.2.2 (46 semaines ou moins) : l'indemnite s'ajoute au salaire
+      mensualise, versee en une fois en juin, a la prise principale ou au fur et a
+      mesure ;
+    - CCN 48.1.1.5 : comparaison maintien / dixieme.
+    Aucun de ces articles, ni les fiches DREETS lues (Occitanie 1/5 du 05/11/2024,
+    Auvergne-Rhone-Alpes du 25/03/2024), ne dit comment payer des jours acquis sous
+    un type et pris sous l'autre (substitution au salaire, ou indemnite en plus).
+    Un meme type partout : rien a trancher (sortie ok). Sinon refus
+    AVENANT-CP-A-CONFIRMER : le salaire et les conges des jours en cause sont a
+    confirmer ; regle du projet (T-019, T-030) : un montant a confirmer n'est ni
+    paye ni retenu."""
+    types = list(types_periode_acquisition or ())
+    for t in types + [type_annee_prise]:
+        type_annee_valide(t)
+    if not types:
+        raise ErreurSaisie("types_periode_acquisition : au moins un type.")
+    if all(t == type_annee_prise for t in types):
+        return resultat_ok(conges_apres_changement_type.regles, {"meme_regime": True})
+    raise NonGere("AVENANT-CP-A-CONFIRMER", ["R-CP-07", "R-CP-08"],
+                  precision="Jours acquis sous « " + "/".join(sorted(set(types))) + " », pris sous « "
+                  + type_annee_prise + " ».",
+                  details={"types_acquisition": sorted(set(types)), "type_prise": type_annee_prise,
+                           "consigne": "ni paye ni retenu tant que ce n'est pas confirme"})

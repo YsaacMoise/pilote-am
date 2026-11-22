@@ -4,13 +4,15 @@ import { useState } from 'preact/hooks';
 import { logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
 import { addMonths, firstDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, termsAt, weeklyMinutes } from '../engine/payroll';
-import { libelleMinimumBrut, MESSAGE_PERIODE_NON_GEREE, MINIMUM_SANS_TITRE, minimumBrut, ratesAt } from '../engine/rates';
+import { libelleMinimumBrut, MESSAGE_PERIODE_NON_GEREE, minimumBrut, minimumSansTitre, ratesAtRegion } from '../engine/rates';
+import { regionDe } from '../engine/regions';
 import { euros, hoursLabel } from '../engine/money';
 import { TERM_KEYS, type Avenant as Av, type Contract, type Planning, type Terms } from '../engine/model';
 import { EntretienSaisie } from './EntretienSaisie';
 import { Banner, Choices, DateInput, EuroInput, NumberInput, Seg, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { PlanDay, avenantSummary } from './Contrat';
+import { AIDE_ANNEE, AIDE_COMPLEMENTAIRES, AIDE_SEMAINES } from './textes-contrat';
 
 function pickTerms(c: Contract): Terms {
   const t = {} as Terms;
@@ -42,7 +44,9 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
   const set = (p: Partial<Terms>) => { setT({ ...t, ...p }); setErrors([]); };
   const preview: Contract = { ...c, ...t };
   const wk = weeklyMinutes(t.planning);
-  const rates = ratesAt(date);
+  // T-077 (R2) : repère net, minimum légal et texte du titre AM-GE de la région du contrat.
+  const rates = ratesAtRegion(date, regionDe(c));
+  const MINIMUM_SANS_TITRE = minimumSansTitre(regionDe(c));
   const changes: Partial<Terms> = {};
   for (const k of TERM_KEYS) if (!same(t[k], (before as any)[k])) (changes as any)[k] = structuredClone(t[k]);
   const summary = avenantSummary(before, changes);
@@ -98,7 +102,7 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
         <section class="card">
           <fieldset>
             <legend>La rémunération</legend>
-            <EuroInput label="Taux horaire net" hint={!rates ? MESSAGE_PERIODE_NON_GEREE : rates.minConvNet === undefined ? `Minimum en ${monthLabel(month)} : ${libelleMinimumBrut(minimumBrut(date)!)} (pas de repère net dans l’app)` : `Minimum conventionnel en ${monthLabel(month)} : ${euros(rates.minConvNet)} net`} cents={t.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
+            <EuroInput label="Taux horaire net" hint={!rates ? MESSAGE_PERIODE_NON_GEREE : rates.minConvNet === undefined ? `Minimum en ${monthLabel(month)} : ${libelleMinimumBrut(minimumBrut(date, regionDe(c))!)} (pas de repère net dans l’app)` : `Minimum conventionnel en ${monthLabel(month)} : ${euros(rates.minConvNet)} net`} cents={t.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
             {t.rateNet > 0 && rates?.minConvNet !== undefined && t.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel.</Banner>}
             {rates?.minConvNet !== undefined && <p class="hint">{MINIMUM_SANS_TITRE}</p>}
             {/* T-044b (C2-1) : un avenant daté dans le passé recalcule les mois depuis sa date : le dire. */}
@@ -109,32 +113,35 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
             {t.repasParents === false && (
               <div class="grid2">
                 <EuroInput label="Prix d’un repas" cents={t.repasPrix} onChange={(v) => set({ repasPrix: v ?? 0 })} />
-                <NumberInput label="Repas par jour" value={t.repasParJour} max={4} onChange={(v) => set({ repasParJour: v ?? 0 })} />
+                <NumberInput label="Repas fournis par jour" value={t.repasParJour} max={4} onChange={(v) => set({ repasParJour: v ?? 0 })} />
               </div>
             )}
-            <EuroInput label="Indemnité kilométrique (par km)" cents={t.kmTaux} onChange={(v) => set({ kmTaux: v ?? 0 })} />
-            <NumberInput label="Majoration après 45 h par semaine (%)" value={t.majoration} min={10} max={100} onChange={(v) => set({ majoration: v ?? 10 })} />
-            <NumberInput label="Majoration des heures complémentaires (%)" hint="Seulement si le contrat la prévoit, sinon 0." value={t.majorationCompl ?? 0} min={0} max={100} onChange={(v) => set({ majorationCompl: v ?? 0 })} />
+            <EuroInput label="Indemnité kilométrique, par km" cents={t.kmTaux} onChange={(v) => set({ kmTaux: v ?? 0 })} />
+            <NumberInput label="Majoration des heures au-delà de 45 h par semaine (%)" hint="Le taux de ton contrat : 10 % au moins." value={t.majoration} min={10} max={100} onChange={(v) => set({ majoration: v ?? 10 })} />
+            <NumberInput label="Majoration des heures complémentaires (%)" hint={AIDE_COMPLEMENTAIRES} value={t.majorationCompl ?? 0} min={0} max={100} onChange={(v) => set({ majorationCompl: v ?? 0 })} />
           </fieldset>
         </section>
 
         <section class="card">
           <fieldset>
             <legend>Le planning</legend>
-            <Seg label="Accueil sur l’année" value={t.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(t.weeks, 46) || 46 })}
-              options={[{ v: 'complete', l: 'Toute l’année (52 sem.)' }, { v: 'incomplete', l: 'Année incomplète' }]} />
-            {t.yearType === 'incomplete' && <NumberInput label="Semaines d’accueil par an" hint="46 au plus" value={t.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />}
+            {!c.planningVariable && <Seg label="Année complète ou incomplète ?" value={t.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(t.weeks, 46) || 46 })}
+              options={[{ v: 'complete', l: 'Année complète' }, { v: 'incomplete', l: 'Année incomplète' }]} />}
+            {!c.planningVariable && <p class="hint">{AIDE_ANNEE}</p>}
+            {!c.planningVariable && t.yearType === 'incomplete' && <NumberInput label="Semaines d’accueil prévues au contrat" hint={AIDE_SEMAINES} value={t.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />}
             {semaines4751(t.yearType, t.weeks) && <Banner tone="warn">{NON_GERE_47_51}</Banner>}
             {before.yearType === 'incomplete' && t.yearType === 'complete' && <p class="hint">Le contrat passe de l’année incomplète à l’année complète : l’app calcule une régularisation à la date de l’avenant (heures accueillies et pas encore payées), versée avec le salaire de ce mois.</p>}
             {before.yearType === 'incomplete' && t.yearType === 'incomplete' && <p class="hint">Année incomplète : la régularisation se fait en fin de contrat, pas à l’avenant.</p>}
-            {[1, 2, 3, 4, 5, 6, 7].map((d) => <PlanDay d={d} plages={t.planning[d] ?? []} onChange={(p) => set({ planning: { ...t.planning, [d]: p } as Planning })} />)}
-            <div class="banner info" style={{ marginTop: '4px' }}>
+            {/* T-076 : horaires variables, l'app ne sait pas changer un cycle ou des plannings par avenant (refus, planningVariable.ts). */}
+            {c.planningVariable && <Banner tone="warn">Tes horaires changent d’une semaine à l’autre : l’app ne sait pas encore changer le cycle, les plannings, les heures payées chaque mois ni le type d’année par un avenant. Ne change ici que le taux, l’entretien, les repas ou les kilomètres.</Banner>}
+            {!c.planningVariable && [1, 2, 3, 4, 5, 6, 7].map((d) => <PlanDay d={d} plages={t.planning[d] ?? []} onChange={(p) => set({ planning: { ...t.planning, [d]: p } as Planning })} />)}
+            {!c.planningVariable && <div class="banner info" style={{ marginTop: '4px' }}>
               <span class="b-ico"><Icon name="clock" /></span>
               <div class="b-body">
                 <span><b>{hoursLabel(wk)}</b> par semaine sur {daysPerWeek(t.planning)} jours</span>
                 <span>Soit <b>{hoursLabel(Math.round(mensuelMinutes(preview)))}</b> et <b>{joursMensualises(preview)} jours</b> par mois, pour <b>{euros(salaireMensualise(preview))}</b> net.</span>
               </div>
-            </div>
+            </div>}
           </fieldset>
         </section>
 

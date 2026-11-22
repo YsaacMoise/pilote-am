@@ -24,7 +24,20 @@ export function finPreavis(depart: ISODate, p: { jours?: number }): ISODate {
  * moins d'un an, la fin d'un préavis d'un mois et son lendemain (CASF L423-26 contre CCN art. 120). Sans préavis (inaptitude,
  * faute grave, essai, décès) : la date d'envoi ou du décès (CCN art. 64.3, 64.4, 119.4.2).
  */
-export function finsAdmises(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'>): { preavisFin: ISODate; admises: ISODate[] } {
+/**
+ * T-077 (R5) : préavis du droit local d'Alsace-Moselle, lecture B (CT L1234-16 1° : six semaines pour les « personnes employées
+ * chez des particuliers », aussi pour la démission, L1234-17-1). Fin de ce préavis quand il est plus long que celui de la
+ * convention ; sinon `undefined`.
+ */
+export function finPreavisLocal(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'>): ISODate | undefined {
+  if (r.motif !== 'retrait' && r.motif !== 'demission') return undefined;
+  const depart = r.presentation && r.presentation > r.notif ? r.presentation : r.notif;
+  const ccn = finPreavis(depart, preavisEmployeur(fullMonthsBetween(start, r.notif)));
+  const local = finPreavis(depart, { jours: 42 });
+  return local > ccn ? local : undefined;
+}
+
+export function finsAdmises(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'>, alsaceMoselle = false): { preavisFin: ISODate; admises: ISODate[] } {
   if (r.motif !== 'retrait' && r.motif !== 'demission') return { preavisFin: r.notif, admises: [r.notif] };
   const anc = fullMonthsBetween(start, r.notif);
   const depart = r.presentation && r.presentation > r.notif ? r.presentation : r.notif;
@@ -34,8 +47,13 @@ export function finsAdmises(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' |
     const finMois = finPreavis(depart, {});
     admises.push(finMois, addDays(finMois, 1));
   }
+  const local = alsaceMoselle ? finPreavisLocal(start, r) : undefined;
+  if (local) admises.push(local, addDays(local, 1));
   return { preavisFin, admises };
 }
+
+const lo2 = (a: ISODate, b: ISODate) => (a < b ? a : b);
+const hi2 = (a: ISODate, b: ISODate) => (a > b ? a : b);
 
 const REGLE_DISPENSE = 'si les parents t’ont dispensée de tout ou partie du préavis, ils te doivent une indemnité compensatrice égale au salaire jusqu’à la date prévue de fin du préavis (convention, articles 64, 64.2 et 66)';
 
@@ -44,10 +62,22 @@ const REGLE_DISPENSE = 'si les parents t’ont dispensée de tout ou partie du p
  * touchée (`du`, `au`) et le message de refus. Jamais un total silencieux : chaque mois, régularisation ou période de
  * congés qui touche cette période est refusé (nonGeresPeriode).
  */
-export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'>): { du: ISODate; au: ISODate; message: string } | undefined {
+export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'> & Partial<Pick<Contract, 'alsaceMoselle' | 'mayotte' | 'cdd'>>): { du: ISODate; au: ISODate; message: string } | undefined {
   const end = c.end;
   if (!end) return undefined;
   const r = c.rupture;
+  // T-076 (R-CDD-06) : un CDD « cesse de plein droit à l'échéance du terme » (C. trav. L1243-5), sans préavis. Aucun mois ne
+  // dépend d'un préavis : la date de fin saisie n'est pas contrôlée face à un préavis. Seule une fin enregistrée avec les
+  // règles d'un CDI (lettre, préavis) est refusée, ou un dernier jour enregistré qui n'est pas la date de fin.
+  if (c.cdd) {
+    if (r && r.motif !== 'fin_cdd') {
+      return { du: lo2(r.notif, end), au: hi2(r.notif, end), message: 'Ce contrat est un CDD, mais la fin enregistrée suit les règles d’un CDI (lettre, préavis). Refais la fin dans l’écran « Fin de contrat » : dis comment finit le CDD.' };
+    }
+    if (r && r.notif !== end) {
+      return { du: lo2(r.notif, end), au: hi2(r.notif, end), message: `La date de fin du contrat (${shortDate(end)}) n’est pas le dernier jour enregistré dans l’écran « Fin de contrat » (${shortDate(r.notif)}). Corrige l’une des deux.` };
+    }
+    return undefined;
+  }
   if (!r) {
     // Le préavis dure au plus un mois (art. 120) : la période où il a pu ne pas être fait commence un mois avant la fin.
     return {
@@ -55,15 +85,25 @@ export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'
       message: `Fin du contrat le ${shortDate(end)} : l’app ne sait pas si le préavis a été fait. Or ${REGLE_DISPENSE}, et le dernier mois change selon la réponse. Réponds aux questions de l’écran « Fin de contrat » et enregistre-les : les derniers mois seront calculés ensuite.`,
     };
   }
-  const { preavisFin, admises } = finsAdmises(c.start, r);
+  const { preavisFin, admises } = finsAdmises(c.start, r, !!c.alsaceMoselle && !c.mayotte);
   const lo = (...d: ISODate[]) => d.reduce((a, b) => (a < b ? a : b));
   const hi = (...d: ISODate[]) => d.reduce((a, b) => (a > b ? a : b));
   const d = r.dernierJourTravaille;
   if (r.preavis === 'employeur') {
-    return {
-      du: lo(d ?? r.notif, end), au: hi(end, preavisFin),
-      message: `Préavis non fait à la demande des parents : le contrat finit le ${shortDate(preavisFin)}, date prévue de fin du préavis, et ${REGLE_DISPENSE.replace('si les parents t’ont dispensée de tout ou partie du préavis, ', '')}. L’app ne calcule pas ce cas : aucun texte ne dit comment cette indemnité entre dans la régularisation, les congés et l’indemnité de rupture. Fais ces mois avec les parents.`,
-    };
+    // T-074 : préavis dont les parents dispensent l'AM, en tout ou en partie (CCN art. 64, 64.2, 66, 122 ;
+    // regles/t074-preavis-dispense.md). Le contrat finit à la date prévue de fin du préavis (art. 64) : la fin calculée, ou
+    // le lendemain (date de fin à confirmer, comme pour un préavis fait en entier). Les jours dispensés sont payés comme des
+    // jours d'absence voulue par les parents, sans entretien (jourDispense, payroll.ts).
+    if (!d || (d < r.notif && d < addDays(r.notif, -7)) || d > preavisFin || (r.motif !== 'retrait' && r.motif !== 'demission')) {
+      return { du: lo(d ?? r.notif, r.notif, end), au: hi(end, preavisFin), message: 'Préavis non fait à la demande des parents : les dates enregistrées ne concordent pas (dernier jour travaillé manquant, avant la lettre ou après la fin du préavis). Corrige-les dans l’écran « Fin de contrat ».' };
+    }
+    if (!admises.includes(end)) {
+      return {
+        du: lo(d, end), au: hi(end, preavisFin),
+        message: `La date de fin du contrat (${shortDate(end)}) n’est pas la date prévue de fin du préavis (${shortDate(preavisFin)}). Préavis non fait à la demande des parents : le contrat finit à cette date-là, pas à ton dernier jour travaillé, et ${REGLE_DISPENSE.replace('si les parents t’ont dispensée de tout ou partie du préavis, ', '')}. Corrige la date de fin dans l’écran « Fin de contrat ».`,
+      };
+    }
+    return undefined;
   }
   if (r.preavis === 'am_sans_accord') {
     return {
@@ -87,4 +127,15 @@ export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'
     };
   }
   return undefined;
+}
+
+/**
+ * T-074 : jour d'un préavis dont les parents ont dispensé l'AM (CCN art. 64.2 : « inexécution totale ou partielle du préavis
+ * imposée par le particulier employeur »), après son dernier jour travaillé et jusqu'à la fin du contrat. Ce jour est payé
+ * (indemnité compensatrice de préavis, art. 64.2, 66 et 122), compte pour les congés et l'ancienneté (art. 64.2), sans
+ * indemnité d'entretien ni repas (art. 114.1 et 114.2 ; CASF L423-18 : « pas remises en cas d'absence de l'enfant »).
+ */
+export function jourDispense(c: Pick<Contract, 'end' | 'rupture'>, d: ISODate): boolean {
+  const r = c.rupture;
+  return !!r && r.preavis === 'employeur' && !!r.dernierJourTravaille && d > r.dernierJourTravaille && !!c.end && d <= c.end;
 }
