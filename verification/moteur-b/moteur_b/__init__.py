@@ -19,3 +19,11 @@ from .fin_contrat import (duree_preavis, indemnite_compensatrice_preavis, jours_
                           indemnite_precarite_cdd, solde_de_tout_compte)
 from .evenements import EVENEMENTS, conge_evenement_familial, jours_conge_evenement
 from .perimetre import verifier_perimetre, convertir_brut_net
+from .planning_variable import (semaine_prevue, mensualisation_planning_variable,
+                                heures_en_plus_semaine_planning_variable, mois_de_rattachement_semaine,
+                                prevu_du_mois_planning_variable, ferie_chome_planning_variable,
+                                decompte_jours_cp_planning_variable, indemnite_cp_planning_variable,
+                                complement_cp_planning_variable)
+from .cdd import (FINS_CDD, FINS_NON_GEREES, mensualisation_cdd, cdd_moins_d_un_mois,
+                  salaire_mois_cdd_moins_d_un_mois, qualifier_semaine_sans_accueil_cdd, deux_lectures_cdd,
+                  assiette_ifc, ifc_due, indemnite_fin_cdd, iccp_cdd, preavis_et_rupture_cdd)
