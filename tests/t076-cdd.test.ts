@@ -88,35 +88,44 @@ describe('R-CDD-06 : ni préavis ni indemnité de rupture', () => {
   });
   it('finDeContrat avec le motif « fin de CDD » reprend la réponse enregistrée', () => {
     const c = { ...cdd(), rupture: { motif: 'fin_cdd' as const, notif: '2026-04-30', preavis: 'execute' as const, finCdd: 'terme' as const } };
-    expect(finDeContrat(ctxDe(c), '2026-04-30', 'fin_cdd').ifc).toBe(43379);
+    expect(finDeContrat(ctxDe(c), '2026-04-30', 'fin_cdd').ifcNet).toBe(33879);
   });
 });
 
 describe('R-CDD-07, R-CDD-09, R-CDD-10 : IFC puis ICCP, IFC dans la base du dixième', () => {
-  // BrutCDD = n2b(78788) + 3 × n2b(86667) = 100881 + 3 × 110969 = 433788 (4 337,88 €).
-  // IFC = 10 % × 4 337,88 = 433,788 → 433,79 € brut (43379) ; net = b2n(43379) = 33878,999 → 338,79 € (33879).
-  // ICCP (dixième de la période, IFC comprise) : (78788 + 3 × 86667 + 33879) / 10 = 372668 / 10 → 372,67 € (37267).
+  // Direction T-076 : l'IFC est calculée sur le net (Urssaf : « La déclaration et le paiement doivent être réalisés sur la
+  // base du net »). Assiette nette = 78788 + 3 × 86667 = 338789 (3 387,89 €).
+  // IFC nette = arrondi(10 % × 338789) = 33878,9 → 338,79 € (33879) ; brut affiché = n2b(33879) = 43379.
+  // ICCP (dixième de la période, IFC comprise) : (338789 + 33879) / 10 = 372668 / 10 → 372,67 € (37267).
   // Maintien : au plus 11 jours acquis (lecture la plus haute) × 200 € la semaine / 6 = 366,67 € < 372,67 € : pas d'écart P3.
   // Plancher L1242-16 (aucun congé pris) : 10 % × (salaires + IFC), même base : 372,67 €.
-  // P4 : à confirmer = 10 % × n2b(37267) = 10 % × 47717 = 4771,7 → 47,72 € ; lecture 2 : 433,79 + 47,72 = 481,51 €.
+  // P4, lecture 2 : arrondi(10 % × (338789 + 37267)) = 37605,6 → 376,06 € ; à confirmer 376,06 − 338,79 = 37,27 €.
   it('fin au terme : montants du rapport', () => {
     const f = fin(cdd(), '2026-04-30', 'terme');
-    expect(f.brutCdd).toBe(433788);
-    expect(f.totalBrut).toBe(433788);
-    expect(f.ifc).toBe(43379);
+    expect(f.assietteNetteCdd).toBe(338789);
     expect(f.ifcNet).toBe(33879);
+    expect(f.ifc).toBe(43379);
+    expect(f.brutCdd).toBe(433789);
     expect(f.cpIndemnite).toBe(37267);
     expect(f.cpPartAConfirmer).toBeUndefined();
-    expect(f.ifcPartAConfirmer?.montant).toBe(4772);
-    expect(f.ifcPartAConfirmer?.lectures).toEqual([48151, 43379]);
+    expect(f.ifcPartAConfirmer?.montant).toBe(3727);
+    expect(f.ifcPartAConfirmer?.lectures).toEqual([37606, 33879]);
     expect(f.regularisation).toBe(0);
+  });
+  it('IFC nette calculée sur le net, pas reconvertie depuis le brut (direction T-076)', () => {
+    // 4,00 € net de l'heure, du 05/01 au 31/03/2026 : mensualisé 40 × 52 / 12 × 4,00 = 693,33 € ; janvier 69333 × 160 / 176
+    // = 63030,0 → 630,30 €. Assiette nette = 63030 + 2 × 69333 = 201696 ; IFC nette = 20169,6 → 201,70 € (20170).
+    // L'ancienne route par le brut donnait b2n(arrondi(10 % × (n2b(63030) + 2 × n2b(69333)))) = 201,69 € : un centime de moins.
+    const f = fin(cdd({ rateNet: 400, cddTerme: '2026-03-31' }), '2026-03-31', 'terme');
+    expect(f.ifcNet).toBe(20170);
+    expect(f.ifc).toBe(25826);
   });
   it('ordre R-CDD-09 : sans l’IFC dans la base, le dixième serait plus bas (338,79 €) ; l’IFC ne compte pas l’ICCP', () => {
     // Dixième sans IFC : 338789 / 10 = 33878,9 → 338,79 €. Avec : 372,67 €. Écart = 10 % de l'IFC nette (33,88 €).
     const f = fin(cdd(), '2026-04-30', 'terme');
     expect(f.cpIndemnite - 33879).toBe(3388);
-    // IFC = 10 % des seuls salaires (lecture 1 de P4, retenue) : 43379, pas 10 % de (salaires + ICCP).
-    expect(f.ifc).toBe(Math.round(433788 / 10));
+    // IFC = 10 % des seuls salaires (lecture 1 de P4, retenue), pas 10 % de (salaires + ICCP).
+    expect(f.ifcNet).toBe(Math.round(338789 / 10));
   });
   it('déclaration : IFC en net, champ Pajemploi mntIndPrecarite, sans heure', () => {
     const f = fin(cdd(), '2026-04-30', 'terme');
@@ -126,41 +135,41 @@ describe('R-CDD-07, R-CDD-09, R-CDD-10 : IFC puis ICCP, IFC dans la base du dixi
   it('assiette : entretien, repas et kilomètres exclus', () => {
     const recs: DayRec[] = [{ key: 'c1|2026-02-12', cid: 'c1', date: '2026-02-12', km: 30, kmPartage: false }];
     const f = fin(cdd({ entretienJour: 300, repasPrix: 400, repasParJour: 1, kmTaux: 50 }), '2026-04-30', 'terme', recs);
-    // Mêmes salaires qu'au cas de référence : BrutCDD 433788, IFC 43379.
-    expect(f.brutCdd).toBe(433788);
-    expect(f.ifc).toBe(43379);
+    // Mêmes salaires qu'au cas de référence : assiette 338789, IFC nette 33879.
+    expect(f.assietteNetteCdd).toBe(338789);
+    expect(f.ifcNet).toBe(33879);
   });
   it('assiette : heures complémentaires et majorées comprises', () => {
     // Mercredi 11/02 : 7 h - 18 h, 3 h en plus (semaine à 43 h) : 3 h complémentaires.
     // Semaine du 16/02 : 7 h - 18 h chaque jour, 15 h en plus : 5 h complémentaires (jusqu'à 45 h), 10 h majorées (+10 %).
-    // Février : 866,67 + 8 h × 5,00 + 10 h × 5,50 = 866,67 + 40,00 + 55,00 = 961,67 € ; n2b(96167) = 123133.
-    // BrutCDD = 100881 + 123133 + 2 × 110969 = 445952 ; IFC = 44595,2 → 445,95 €.
+    // Février : 866,67 + 8 h × 5,00 + 10 h × 5,50 = 866,67 + 40,00 + 55,00 = 961,67 €.
+    // Assiette = 78788 + 96167 + 2 × 86667 = 348289 ; IFC nette = 34828,9 → 348,29 €.
     const recs: DayRec[] = ['2026-02-11', '2026-02-16', '2026-02-17', '2026-02-18', '2026-02-19', '2026-02-20']
       .map((d) => ({ key: `c1|${d}`, cid: 'c1', date: d, pres: [{ a: '07:00', d: '18:00' }] }));
     const ctx = ctxDe({ ...cdd(), end: '2026-04-30' }, recs);
     expect(computeMonth(ctx, '2026-02').netTotal).toBe(96167);
     const f = fin(cdd(), '2026-04-30', 'terme', recs);
-    expect(f.brutCdd).toBe(445952);
-    expect(f.ifc).toBe(44595);
+    expect(f.assietteNetteCdd).toBe(348289);
+    expect(f.ifcNet).toBe(34829);
   });
   it('assiette : congés payés versés compris (maintien du salaire pendant les congés)', () => {
     // 6 jours de congés de la période précédente (solde de départ), pris du 16 au 21/03 : le salaire de mars est maintenu
-    // (866,67 €) et compte dans BrutCDD, qui reste 433788.
+    // (866,67 €) et compte dans l'assiette, qui reste 338789.
     const leaves: AmLeave[] = [{ id: 'cp1', type: 'cp', from: '2026-03-16', to: '2026-03-21' }];
     const c = cdd({ balances: { cpRestants: 6, cpEnCours: 0, maladieDeduits: 0 } });
     expect(computeMonth(ctxDe({ ...c, end: '2026-04-30' }, [], leaves), '2026-03').netTotal).toBe(86667);
     const f = fin(c, '2026-04-30', 'terme', [], leaves);
-    expect(f.brutCdd).toBe(433788);
-    expect(f.ifc).toBe(43379);
+    expect(f.assietteNetteCdd).toBe(338789);
+    expect(f.ifcNet).toBe(33879);
   });
 });
 
 describe('R-CDD-08 : IFC selon la façon dont le CDD finit', () => {
-  // Fin anticipée le 31/03 : BrutCDD = 100881 + 2 × 110969 = 322819 ; IFC = 32281,9 → 322,82 €.
+  // IFC nette. Fin anticipée le 31/03 : assiette = 78788 + 2 × 86667 = 252122 ; IFC = 25212,2 → 252,12 €.
   const cas: [Parameters<typeof finDeCdd>[2], string, number][] = [
-    ['terme', '2026-04-30', 43379],
-    ['commun_accord', '2026-03-31', 32282],
-    ['employeur', '2026-03-31', 32282],
+    ['terme', '2026-04-30', 33879],
+    ['commun_accord', '2026-03-31', 25212],
+    ['employeur', '2026-03-31', 25212],
     ['suite_cdi', '2026-04-30', 0],
     ['refus_cdi', '2026-04-30', 0],
     ['initiative_am', '2026-03-31', 0],
@@ -171,7 +180,7 @@ describe('R-CDD-08 : IFC selon la façon dont le CDD finit', () => {
     it(`${f} : IFC ${ifc}`, () => {
       const r = fin(cdd(), jour, f);
       expect(r.nonGere).toBeUndefined();
-      expect(r.ifc).toBe(ifc);
+      expect(r.ifcNet).toBe(ifc);
       expect(r.indemniteRupture).toBe(0);
       if (!ifc) expect(r.ifcExplication).toMatch(/Pas d’indemnité de fin de contrat/);
       if (!ifc) expect(r.declaration).toEqual([]);
@@ -208,9 +217,15 @@ describe('R-CDD-08 : IFC selon la façon dont le CDD finit', () => {
 describe('C-FIN-11 (Urssaf, Virginie) : 1 600 € brut, IFC 160 €', () => {
   it('du 1er janvier au 28 février, 800 € brut par mois : IFC 160,00 € brut', () => {
     // Urssaf : « 800 € + 800 € = 1 600 € brut ; la prime de précarité sera alors de 1 600 € × 10 % = 160 € brut ».
-    const c = cdd({ start: '2026-01-01', trackedFrom: '2026-01-01', cddTerme: '2026-02-28' });
-    const f = finDeCdd(ctxDe(c), '2026-02-28', 'terme', 0, { parMois: { '2026-01': 80000, '2026-02': 80000 } });
+    // L'app calcule en net : 800 € brut = 624,80 € net au rapport de l'app (7810 / 10000). Contrat choisi pour un salaire
+    // mensualisé de 624,80 € : 26 h 48 par semaine (4 jours de 8 h à 14 h 42), 5,38 € net : 1608 min × 5,38 × 52 / 12 / 60
+    // = 624,80 €. Du jeudi 01/01 au samedi 28/02 : deux mois complets. Assiette nette 124960 ; IFC nette 12496 ;
+    // brut = n2b(12496) = 16000 (160,00 €) ; assiette brute n2b(124960) = 160000 (1 600,00 €).
+    const c = cdd({ start: '2026-01-01', trackedFrom: '2026-01-01', cddTerme: '2026-02-28', planning: week('08:00', '14:42', [1, 2, 4, 5]), rateNet: 538 });
+    const f = finDeCdd(ctxDe(c), '2026-02-28', 'terme', 0);
+    expect(f.assietteNetteCdd).toBe(124960);
     expect(f.brutCdd).toBe(160000);
+    expect(f.ifcNet).toBe(12496);
     expect(f.ifc).toBe(16000);
   });
 });
@@ -235,17 +250,21 @@ describe('P1 : CDD à terme précis de moins d’un mois, deux lectures', () => 
     expect(declarationLines(ctxDe({ ...c, end: '2026-03-27' }), r).find((l) => l.label === 'Salaire net')?.value).toMatch(/\+ 9,09\s€ de salaire du CDD à confirmer/);
   });
   it('fin : IFC et ICCP dans chaque lecture, part sûre = la plus basse', () => {
-    // IFC : lecture 1 = n2b(59091) / 10 = 75661 / 10 → 75,66 € ; lecture 2 = n2b(60000) / 10 = 76825 / 10 = 7682,5 → 76,83 €.
-    // ICCP lecture 1 : (59091 + b2n(7566) = 5909) / 10 = 65,00 € ; lecture 2 : (60000 + b2n(7683) = 6000) / 10 = 66,00 €.
+    // IFC nette : lecture 1 = 10 % × 59091 → 59,09 € ; lecture 2 = 10 % × 60000 = 60,00 €.
+    // ICCP lecture 1 : (59091 + 5909) / 10 = 65,00 € ; lecture 2 : (60000 + 6000) / 10 = 66,00 €.
     // Maintien (P3) : 2 jours au plus × 200 € / 6 = 66,67 €. ICCP : 65,00 € sûrs, 66,67 − 65,00 = 1,67 € à confirmer.
-    // P4, lecture 2 : 76,83 + 10 % × n2b(6667) = 76,83 + 8536 / 10 → 76,83 + 8,54 = 85,37 €. IFC : 75,66 € sûrs, 9,71 € à confirmer.
+    // P4, lecture 2 : arrondi(10 % × (60000 + 6667)) = 6666,7 → 66,67 €. IFC : 59,09 € sûrs, 7,58 € à confirmer.
     const f = fin(c, '2026-03-27', 'terme');
-    expect(f.ifc).toBe(7566);
-    expect(f.ifcPartAConfirmer?.lectures).toEqual([8537, 7566]);
-    expect(f.ifcPartAConfirmer?.montant).toBe(971);
+    expect(f.ifcNet).toBe(5909);
+    expect(f.ifcPartAConfirmer?.lectures).toEqual([6667, 5909]);
+    expect(f.ifcPartAConfirmer?.montant).toBe(758);
     expect(f.cpIndemnite).toBe(6500);
     expect(f.cpPartAConfirmer?.lectures).toEqual([6667, 6500]);
     expect(f.cpPartAConfirmer?.montant).toBe(167);
+    // Point 1 (direction) : le total versé n'est jamais sous le plus petit des deux totaux. Mars versé : 590,91 € ;
+    // totaux : 590,91 € (lecture 1) et 600,00 € (lecture 2) : rien à compléter, 9,09 € à confirmer.
+    expect(f.regularisation).toBe(0);
+    expect(f.regularisationPartAConfirmer?.lectures).toEqual([909, 0]);
   });
 });
 
@@ -266,23 +285,30 @@ describe('P2 : CDD avec semaines sans accueil, deux lectures', () => {
       expect(r.cddAConfirmer).toBe(Math.abs(l2 - l1));
     }
   });
-  it('fin : régularisation de la lecture 1 à confirmer, IFC et ICCP de chaque lecture', () => {
-    // Régularisation (lecture 1) : jours dus = 20 + 15 + 22 + 17 = 74 jours × 8 h × 5,00 € = 2 960,00 € ; versé 227,27 + 3 × 250
-    //   = 977,27 € ; régularisation 1 982,73 €. Lecture 2 : aucune. Part sûre 0, à confirmer 1 982,73 €.
-    // IFC lecture 1 : (n2b(22727) + 3 × n2b(25000) + n2b(198273)) / 10 = 379001 / 10 → 379,00 € ;
-    //   lecture 2 : (n2b(78788) + n2b(65000) + n2b(86667) + n2b(66970)) / 10 = 380826 / 10 → 380,83 €. Part sûre 379,00 €.
-    // ICCP (dixième) lecture 1 : (97727 + 198273 + b2n(37900) = 29600) / 10 = 325,60 € ;
-    //   lecture 2 : (297425 + b2n(38083) = 29743) / 10 = 32716,8 → 327,17 €. Part sûre 325,60 €.
-    //   Maintien le plus haut (lecture 2, 11 jours) : 366,67 €. À confirmer : 366,67 − 325,60 = 41,07 €.
+  it('fin : total versé = le plus petit des deux totaux ; IFC et ICCP de chaque lecture', () => {
+    // Régularisation (lecture 1) : jours dus = 20 + 15 + 22 + 17 = 74 jours × 8 h × 5,00 € = 2 960,00 € ; versé par la
+    //   mensualisation 227,27 + 3 × 250 = 977,27 € ; régularisation 1 982,73 €. Lecture 2 : aucune.
+    // Totaux du CDD : lecture 1 = 977,27 + 1 982,73 = 2 960,00 € ; lecture 2 = 787,88 + 650,00 + 866,67 + 669,70 = 2 974,25 €.
+    // Versé chaque mois (le plus bas) : 977,27 €. Reste dû à la fin : lecture 1 = 2 960,00 − 977,27 = 1 982,73 € ;
+    //   lecture 2 = 2 974,25 − 977,27 = 1 996,98 €. Part sûre 1 982,73 € ; à confirmer 14,25 €.
+    //   Total versé = 977,27 + 1 982,73 = 2 960,00 € = min(2 960,00 ; 2 974,25) (direction T-076, point bloquant).
+    // IFC nette : lecture 1 = 10 % × 296000 = 296,00 € ; lecture 2 = 10 % × 297425 = 29742,5 → 297,43 €. Part sûre 296,00 €.
+    // ICCP (dixième) lecture 1 : (296000 + 29600) / 10 = 325,60 € ; lecture 2 : (297425 + 29743) / 10 = 32716,8 → 327,17 €.
+    //   Maintien le plus haut (lecture 2, 11 jours) : 366,67 €. Part sûre 325,60 €, à confirmer 41,07 €.
+    // P4, lecture 2 la plus haute : arrondi(10 % × (297425 + 36667)) = 33409,2 → 334,09 €.
     const f = fin(c, '2026-04-30', 'terme');
-    expect(f.regularisation).toBe(0);
-    expect(f.regularisationPartAConfirmer?.lectures).toEqual([198273, 0]);
-    expect(f.ifc).toBe(37900);
+    expect(f.regularisation).toBe(198273);
+    expect(f.regularisationPartAConfirmer?.lectures).toEqual([199698, 198273]);
+    expect(f.regularisationPartAConfirmer?.montant).toBe(1425);
+    expect(f.regularisationParLecture).toEqual([198273, 0]);
+    const ctx = ctxDe({ ...c, end: '2026-04-30' });
+    const verse = ['2026-01', '2026-02', '2026-03', '2026-04'].reduce((t, m) => t + computeMonth(ctx, m).netTotal, 0);
+    expect(verse).toBe(97727);
+    expect(verse + f.regularisation).toBe(Math.min(296000, 297425));
+    expect(f.ifcNet).toBe(29600);
     expect(f.cpIndemnite).toBe(32560);
     expect(f.cpPartAConfirmer?.lectures).toEqual([36667, 32560]);
-    // P4 sur la lecture la plus haute : 380,83 + 10 % × n2b(36667) = 380,83 + 4694,8 → 46,95 = 427,78 €.
-    expect(f.ifcPartAConfirmer?.lectures).toEqual([42778, 37900]);
-    expect(f.alertes.join(' ')).toMatch(/Sur tout le CDD/);
+    expect(f.ifcPartAConfirmer?.lectures).toEqual([33409, 29600]);
   });
   it('P1 et P2 à la fois : non géré', () => {
     const p = cdd({ start: '2026-03-09', trackedFrom: '2026-03-09', cddTerme: '2026-03-27', yearType: 'incomplete', weeks: 2, weeksOff: ['2026-03-16'] });
