@@ -541,6 +541,8 @@ def mois_b(ctx, m):
     garde("salaire_base_mois", base)
 
     # Heures en plus par semaine civile
+    hc_minutes = [0]  # T-076 (N1) : minutes de HC payees dans le mois (part sure), pour la regularisation L2
+
     def heures():
         hc = hm = 0
         hc_haut = 0  # T-076 : plus grande lecture des HC (D1, D4)
@@ -601,6 +603,7 @@ def mois_b(ctx, m):
                 r = appel("heures_en_plus_semaine_planning_variable", ctx.pv_lecture, contrat_min, ctx.pv_base,
                           reelles, ctx.taux, ctx.maj_hm, majoration_hc_pourcent=ctx.maj_hc, **kw)
                 lo, hi = r["resultat"]["lectures_montant_complementaires"]
+                hc_minutes[0] += Fraction(r["resultat"]["minutes_complementaires"])
                 hc += lo
                 hc_haut += hi - lo
                 hm += r["resultat"]["montant_majorees_centimes"]
@@ -618,6 +621,7 @@ def mois_b(ctx, m):
         return hc, hm
 
     garde("_heures", heures)
+    out["_hc_minutes"] = hc_minutes[0]
 
     def partie(i):
         v = out["_heures"]
@@ -757,6 +761,9 @@ def mois_b(ctx, m):
         return r["resultat"]["indemnite_centimes"]
 
     garde("km", km)
+    if isinstance(out["_heures"], Refus) and out["_heures"].code == "PV-L2-ABSENCE-HC":
+        # T-076, D2 (N2) : le mois n'est pas calcule ; aucune sortie partielle « ok ».
+        out = {n: (out["_heures"] if not n.startswith("_") else v) for n, v in out.items()}
     ctx.cache[key] = out
     return out
 
@@ -993,18 +1000,22 @@ def regularisation_b(ctx, fin):
             verse = 0
             eff = fer = absr = hcm = 0
             l2 = ctx.pv and (mensualise(ctx) is not None) and ctx.pv_lecture == "L2"
+            hc_payees = Fraction(0)
             for m in mois_entre(debut_annee, b):
                 v = mois_b(ctx, m)["salaire_base_mois"]
                 if isinstance(v, Refus):
                     raise v
                 verse += v
                 if l2:
-                    # T-076 (B3 ; R-PV-07, CCN 109.2 « salaires mensualises verses ») : en lecture L2, les HC deja
-                    # payees chaque mois (heures prevues au-dela de la base) comptent comme versees.
+                    # T-076 (B3, N1) : CCN 109.2 compare les salaires mensualises verses « aux salaires qui auraient du
+                    # etre verses en application du contrat de travail, au titre des heures reellement effectuees ».
+                    # En L2, les heures prevues au-dela de la base sont payees chaque mois en HC, a leur taux et avec
+                    # leur majoration (CCN 110.2) : elles sortent des deux cotes. Verse = mensualise ; du = heures
+                    # effectuees hors HC deja payees, au taux horaire. La majoration n'est ni comptee ni reprise.
                     h = mois_b(ctx, m)["heures_compl_montant"]
                     if isinstance(h, Refus):
                         raise h
-                    verse += int(h)
+                    hc_payees += mois_b(ctx, m)["_hc_minutes"]
             for d in jours_entre(debut_annee, b):
                 q = qualifier_jour(ctx, d)
                 nature, ded, mt = q
@@ -1019,12 +1030,13 @@ def regularisation_b(ctx, fin):
                 elif nature == "ferie_travaille":
                     eff += pv
             if l2:
-                # Les heures au-dela du prevu, payees en HC et comptees dans le verse, sont aussi dans les heures
-                # effectuees : composante « incluses » (B refuse A-06 si elle change le resultat).
-                eff += hcm
+                # Heures prevues au-dela de la base, deja payees en HC : retirees des heures dues (N1). Les heures
+                # faites au-dela du prevu (hcm) restent la composante habituelle (A-06 si elle change le resultat).
+                eff -= min(eff, hc_payees - hcm) if hc_payees > hcm else 0
+                eff = str(eff) if isinstance(eff, Fraction) else eff
             comp = {"feries_chomes_payes": {"minutes": fer, "incluses": False},
                     "absences_remunerees": {"minutes": absr, "incluses": False},
-                    "heures_complementaires": {"minutes": hcm, "incluses": l2}}
+                    "heures_complementaires": {"minutes": hcm, "incluses": False}}
             if derniere:
                 r = appel("regularisation_finale", "incomplete", ecarts, verse, ctx.taux, eff, comp)
                 return r["resultat"]["versement_centimes"]
@@ -1231,8 +1243,9 @@ def mois_cdd(ctx, m):
         p1 = cdd_p1(ctx)
         appel("verifier_cas_cdd", ctx.pv, p1, cdd_p2(ctx))  # D3 : PV ou P1 avec semaines sans accueil
     except Refus as e:
-        for n in noms:
-            out[n] = e
+        for n in list(out):
+            if not n.startswith("_"):
+                out[n] = e  # N2 : mois refuse, aucune sortie partielle « ok »
         ctx.cache[key] = out
         return out
     if p1:
