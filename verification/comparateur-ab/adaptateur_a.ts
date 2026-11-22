@@ -252,7 +252,9 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
           break;
         }
         const date = finSit?.date ?? k.notification ?? k.date ?? s.contrat.fin;
-        const fc = finSit?.fin_cdd ?? k.fin_cdd;
+        // Direction T-076 : la grille écrit « saisonnier » (CDD saisonnier ou d'usage) ; A l'appelle « saisonnier_usage ».
+        const fcBrut = finSit?.fin_cdd ?? k.fin_cdd;
+        const fc = fcBrut === 'saisonnier' ? 'saisonnier_usage' : fcBrut;
         const f = (FinA as unknown as { finDeCdd: (...a: unknown[]) => ReturnType<typeof finDeContrat> }).finDeCdd(ctx, date, fc, enfants);
         const part = (p: { montant: number; lectures: number[] } | undefined, v: number, ordre: 'p3' | 'p4'): Sortie =>
           // P4 : [lecture 1 sans ICCP, lecture 2 avec] ; P3 : [lecture A comparaison, lecture B dixième seul] (rapport t076-cdd.md).

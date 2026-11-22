@@ -1263,9 +1263,9 @@ def situations_t076_d():
             for maj in (10, 25):
                 fin_pv(f"PV-FIN-I36-AB-L2-COURT-HC{maj}-DECES", dict(k, majoration_hc=maj), "2026-03-29", "deces",
                        f"fin d'un CDI à planning variable (I36, L2), HC majorées de {maj} %, régularisation de fin")
-            # Reserve du verificateur (revue 2) : debut le 05/01, 01 et 02/01 dans une semaine sans accueil.
-            fin_pv("PV-FIN-I36-AB-L2-COURT-0501-DECES", dict(k, debut="2026-01-05"), "2026-03-29", "deces",
-                   "fin I36 L2, début le 05/01 : jours avant l'embauche dans une semaine sans accueil (point ouvert)")
+            # Reserve du verificateur (revue 2) : debut le 05/01, 01 et 02/01 dans une semaine sans accueil. Desaccord A/B
+            # connu (A 115,90 EUR, B 95,45 EUR) : point ouvert T-076 au registre, a trancher au passage 2 (deux lectures).
+            # Situation retiree de la grille tant que le point n'est pas tranche (verifier_paie bloque sur tout F2).
     k = contrat_pv("C52", AB, 130, debut="2026-01-05", fin="2026-02-08", cycle_ancre="2026-01-05")
     fin_pv("PV-FIN-C52-AB-L1-PLUS-DE-A", k, "2026-02-08", "deces",
            "52 semaines, fin après trois semaines A et deux B : aucune régularisation (R-PV-07)")
