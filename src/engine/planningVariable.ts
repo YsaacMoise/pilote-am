@@ -112,7 +112,7 @@ export function messageBasePV(c: Contract): string {
   if (lecturePV(c) === 'L1') {
     return `Horaires variables : ton salaire suit les ${hm} payées chaque mois écrites dans ton contrat. Une semaine plus courte ne réduit pas ton salaire. Les heures complémentaires se comptent semaine par semaine, au-delà des heures prévues pour la semaine.`;
   }
-  return `Horaires variables : ton salaire suit les ${hm} payées chaque mois écrites dans ton contrat, soit une base de ${fmtH(baseHebdoMin(c))} par semaine. Les heures prévues ou faites au-delà de cette base, jusqu’à 45 h, sont payées en heures complémentaires le mois de la semaine. La convention ne tranche pas ce choix ; c’est ton contrat qui l’écrit. La question est posée à la DDETS.`;
+  return `Horaires variables : ton salaire suit les ${hm} payées chaque mois écrites dans ton contrat, soit une base de ${fmtH(baseHebdoMin(c))} par semaine. Les heures prévues ou faites au-delà de cette base, jusqu’à 45 h, sont payées en heures complémentaires, avec le mois du jour où elles tombent. La convention ne tranche pas ce choix ; c’est ton contrat qui l’écrit. La question est posée à la DDETS.`;
 }
 
 export const NON_GERE_PV_AVENANT =
@@ -124,7 +124,7 @@ export function nonGeresContratPV(c: Contract): string[] {
   const out: string[] = [];
   if (formePV(c) === 'cycle') {
     const longues = c.cycle!.map((p, i) => ({ i, m: minutesPlanning(p) })).filter((x) => x.m > H45);
-    if (longues.length) out.push(messageSemaine45(longues.map((x) => `semaine ${x.i + 1} du cycle, ${fmtH(x.m)}`)));
+    if (longues.length) out.push(messageSemaine45(longues.map((x) => `semaine ${x.i + 1} du cycle, ${fmtH(x.m)}`), 'Fais la paie sans l’app.'));
   }
   if (mensuelMinutesPV(c) * 12 / semainesParAn(c) > H45 + 1e-9) {
     out.push('Heures payées chaque mois au-delà de 45 h par semaine en moyenne : non géré. La convention ne dit pas comment majorer ces heures dans le salaire mensualisé. Fais la paie sans l’app.');
@@ -135,8 +135,8 @@ export function nonGeresContratPV(c: Contract): string[] {
   return out;
 }
 
-function messageSemaine45(quoi: string[]): string {
-  return `Semaine prévue au-delà de 45 h (${quoi.join(' ; ')}) : non géré pour l’instant. La convention ne dit pas si la majoration de ces heures prévues se paie dans le salaire mensualisé ou le mois de la semaine (question posée à la DDETS). Fais ces mois sans l’app.`;
+function messageSemaine45(quoi: string[], fin = 'Fais ces mois sans l’app.'): string {
+  return `Semaine prévue au-delà de 45 h (${quoi.join(' ; ')}) : non géré pour l’instant. La convention ne dit pas si la majoration de ces heures prévues se paie dans le salaire mensualisé ou le mois de la semaine (question posée à la DDETS). ${fin}`;
 }
 
 /**
@@ -147,7 +147,9 @@ export function nonGeresPeriodePV(c: Contract, from: ISODate, to: ISODate): stri
   if (!pvActif(c) || formePV(c) !== 'remis' || to < from) return [];
   const lundis = [...new Set(eachDay(from, to).map(mondayOf))];
   const out: string[] = [];
-  const manquants = lundis.filter((l) => !c.planningsSemaines?.[l]);
+  // D6 : une semaine sans accueil du contrat (année incomplète) se traite comme pour un planning fixe : pas de planning à saisir.
+  const off = new Set<ISODate>(c.yearType === 'incomplete' ? c.weeksOff : []);
+  const manquants = lundis.filter((l) => !c.planningsSemaines?.[l] && !off.has(l));
   if (manquants.length) {
     out.push(`Planning ${manquants.length > 1 ? 'des semaines du' : 'de la semaine du'} ${manquants.map(shortDate).join(', du ')} non saisi : l’app ne calcule pas ce mois sans lui. Ouvre le contrat et saisis le planning remis par les parents pour ${manquants.length > 1 ? 'ces semaines' : 'cette semaine'}, ou « sans accueil ». Une semaine de congé ou d’absence a aussi son planning.`);
   }

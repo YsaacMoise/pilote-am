@@ -4,7 +4,7 @@
 import { addDays, addMonthsToDate, shortDate } from './dates';
 import type { Contract } from './model';
 
-type CddChamps = Partial<Pick<Contract, 'cdd' | 'start' | 'cddTerme' | 'cddTermeImprecis' | 'yearType' | 'avenants'>>;
+type CddChamps = Partial<Pick<Contract, 'cdd' | 'start' | 'cddTerme' | 'cddTermeImprecis' | 'yearType' | 'avenants' | 'planningVariable'>>;
 
 /**
  * P1 (regles/t076-cdd.md, partie 3) : CDD « conclu à terme précis pour une durée inférieure à un mois » (DREETS Occitanie,
@@ -33,11 +33,20 @@ export const CDD_A_COMPLETER =
 export const NON_GERE_CDD_P1_P2 =
   'CDD de moins d’un mois avec des semaines sans accueil : non géré. Chacun de ces deux cas a deux façons de calculer le salaire, et l’app ne sait pas les combiner. Fais la paie sans l’app.';
 
+/**
+ * T-076, décision D3 de la direction (regles/t076-decisions-direction.md, section 4) : CDD à horaires variables avec des
+ * semaines sans accueil. La lecture 2 de P2 (52 semaines, CCN 109.1) n'est pas définie pour un planning variable : les
+ * heures payées chaque mois du contrat sont écrites pour l'année incomplète. Refusé au passage 1.
+ */
+export const NON_GERE_CDD_PV_P2 =
+  'CDD avec des horaires qui changent d’une semaine à l’autre et des semaines sans accueil : non géré. Le salaire d’un CDD avec des semaines sans accueil se calcule de deux façons, et l’une d’elles n’est pas définie quand les horaires changent chaque semaine. Fais la paie sans l’app.';
+
 /** Cas du contrat CDD que l'app refuse (tous ses mois) */
 export function nonGeresCdd(c: CddChamps): string[] {
   if (!c.cdd) return [];
   if (!c.cddTerme) return [CDD_A_COMPLETER];
   if (estCddMoinsUnMois(c) && estCddSemainesSansAccueil(c)) return [NON_GERE_CDD_P1_P2];
+  if (c.planningVariable && estCddSemainesSansAccueil(c)) return [NON_GERE_CDD_PV_P2];
   return [];
 }
 

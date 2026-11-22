@@ -41,7 +41,7 @@ export function PlanningVariableSaisie({ c, set }: { c: Contract; set: (p: Parti
         <p class="hint">Les heures complémentaires se comptent semaine par semaine. Une semaine longue ne compense pas une semaine courte. Au-delà de 45 h dans une semaine, les heures sont majorées d’au moins 10 %.</p>
         {c.yearType === 'complete'
           ? <p class="hint">Toute l’année : à la fin du contrat, il n’y a pas de régularisation. Si tu as fait plus d’heures que le salaire lissé n’en paie, la différence n’est pas rattrapée.</p>
-          : <p class="hint">Année incomplète : garde tes plannings et tes heures réelles. Ils servent à la régularisation de fin de contrat.</p>}
+          : <p class="hint">Année incomplète : garde tes plannings et tes heures réelles. Ils servent à la régularisation de chaque date anniversaire et de fin de contrat.</p>}
         <p class="hint">Deux méthodes du maintien de salaire sont possibles pour tes congés payés avec des horaires variables. L’app te montre les deux : elle paie la part sûre et te dit ce qui reste à confirmer.</p>
       </fieldset>
     </section>
