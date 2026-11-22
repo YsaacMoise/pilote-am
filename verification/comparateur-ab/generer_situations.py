@@ -839,6 +839,7 @@ def grille():
                    "sorties": ["preavis", "indemnite_rupture"]}], theme="décès de l'enfant après 6 mois"))
     S += situations_t027()
     S += situations_s50b()  # T-050c
+    S += situations_t076()  # T-076 : planning variable (PV-*) et CDD (CDD-*)
     return S
 
 
@@ -1007,6 +1008,209 @@ def situations_s50b():
                                               [("2026-07-13" if fam == "F2" else "2026-08-03"), "2026-11-09",
                                                "2027-02-15", "2027-02-22", "2027-04-12", "2027-04-19"]),
              "2026-12-27", "deces", "année incomplète, fin en cours de période (décembre)")
+    return S
+
+
+# ---------------- T-076 (passage 1) : planning variable et CDD
+# Format : regles/t076-decisions-direction.md, sections 1 et 2. Aucun resultat attendu n'est calcule ici.
+# Planning variable : contrat `planning_variable: true`, `cycle` + `cycle_ancre` (S1) ou `plannings_semaines` (S2),
+# `heures_mensualisees` (heures ecrites au contrat). `planning` garde la premiere semaine du cycle (S1) ou une semaine
+# moyenne indicative (S2), comme l'ecran ; le calcul ne s'en sert pas.
+PV_A45 = semaine(L5, "08:00", "17:00")            # 45 h
+PV_B15 = semaine(L5, "08:00", "11:00")            # 15 h
+PV_C30 = semaine(L5, "08:00", "14:00")            # 30 h
+PV_B12 = semaine([1, 2, 4, 5], "08:00", "11:00")  # 12 h, sans mercredi
+PV_A50 = semaine(L5, "08:00", "18:00")            # 50 h (semaine prevue au-dela de 45 h)
+PV_B10 = semaine([1, 2], "08:00", "13:00")        # 10 h
+# Ancre : lundi 7 septembre 2026 = premiere semaine type. Les semaines a cheval sur aout-septembre, septembre-octobre
+# et octobre-novembre suivent alors la deuxieme semaine type.
+PV_ANCRE = "2026-09-07"
+# cycle : (semaines types, heures mensualisees L1 et L2 en 52 semaines, puis en 36 semaines). Moyenne x 52 / 12.
+PV_CYCLES = {
+    "AB": ([PV_A45, PV_B15], {"C52": {"L1": 130, "L2": 65}, "I36": {"L1": 90, "L2": 45}}),
+    "ABC": ([PV_A45, PV_B15, PV_C30], {"C52": {"L1": 130, "L2": 65}, "I36": {"L1": 90, "L2": 45}}),
+    "AB12": ([PV_A45, PV_B12], {"C52": {"L1": 123.5, "L2": 52}, "I36": {"L1": 85.5, "L2": 36}}),
+}
+MARQUE_PV = "T-076 : planning variable (decisions de la direction, section 1)"
+MARQUE_CDD = "T-076 : CDD (decisions de la direction, section 2)"
+
+
+def contrat_pv(an, cycle, hm, debut="2025-09-01", **kw):
+    k = contrat_grille(an, "H40", "T500", debut=debut, majoration_hm=25)
+    k.update({"planning": cycle[0], "planning_variable": True, "cycle": cycle, "cycle_ancre": PV_ANCRE,
+              "heures_mensualisees": hm})
+    k.update(kw)
+    return k
+
+
+def contrat_pv_s2(an, plannings, hm, debut="2026-08-31", **kw):
+    k = contrat_grille(an, "H40", "T500", debut=debut, majoration_hm=25)
+    k.update({"planning": PV_C30, "planning_variable": True, "plannings_semaines": plannings,
+              "heures_mensualisees": hm})
+    k.update(kw)
+    return k
+
+
+def situations_t076():
+    S = []
+    m = {"*": MARQUE_PV}
+    # ---- S1 : cycles ancres, 52 semaines et 36 semaines, bases L1 et L2
+    for nom, (cyc, hms) in PV_CYCLES.items():
+        for an in ("C52", "I36"):
+            for base in ("L1", "L2"):
+                k = contrat_pv(an, cyc, hms[an][base])
+                b = f"PV-{an}-{nom}-{base}"
+                # Fevrier 2027 commence un lundi et finit un dimanche : aucune semaine a cheval sur deux mois.
+                S.append(sit(f"{b}-S01", "planning variable", k, [mois("sep", "2026-09"), mois("oct", "2026-10"),
+                                                                  mois("fev27", "2027-02")],
+                             theme="mois ordinaires (cycle ancre)", marques=m))
+                if nom == "ABC" and base == "L2":
+                    continue  # cycle de 3 semaines : les semaines a cheval de septembre portent des HC (refus du comparateur)
+                S.append(sit(f"{b}-S04", "planning variable", k, [mois("m", "2026-09")],
+                             {"jours": [{"date": d, "abs": "parents"} for d in ["2026-09-08", "2026-09-09"]]},
+                             theme="enfant absent à la demande des parents (semaine type 1)", marques=m))
+                S.append(sit(f"{b}-S07A", "planning variable", k, [mois("m", "2026-09")],
+                             {"absences_am": [conge("am_malade", "2026-09-07", "2026-09-08")]},
+                             theme="AM malade 2 jours d'une semaine longue", marques=m))
+                S.append(sit(f"{b}-S07B", "planning variable", k, [mois("m", "2026-09")],
+                             {"absences_am": [conge("am_malade", "2026-09-14", "2026-09-15")]},
+                             theme="AM malade 2 jours d'une semaine courte", marques=m))
+                S.append(sit(f"{b}-S08", "planning variable", k, [mois("m", "2026-09")],
+                             {"absences_am": [conge("sans_solde", "2026-09-14", "2026-09-18")]},
+                             theme="AM en congé sans solde une semaine courte", marques=m))
+                # Heures en plus : semaine courte du 14/09 (+2 h lundi et mardi) ; semaine longue du 21/09 (+2 h lundi).
+                d0 = cyc[1]["1"][0][0]
+                pres = [{"date": "2026-09-14", "pres": [[d0, heure_plus(cyc[1]["1"][0][1], 120)]]},
+                        {"date": "2026-09-15", "pres": [[d0, heure_plus(cyc[1]["2"][0][1], 120)]]},
+                        {"date": "2026-09-21", "pres": [["08:00", "19:00"]]}]
+                S.append(sit(f"{b}-S10", "planning variable", k, [mois("m", "2026-09")], {"jours": pres},
+                             theme="heures complémentaires (semaine courte) et majorées (semaine longue de 47 h)",
+                             marques=m))
+                if base == "L1":
+                    S.append(sit(f"{b}-S02", "planning variable", k, [mois("m", "2026-11")],
+                                 theme="mois avec le 11 novembre (semaine type 2)", marques=m))
+                    S.append(sit(f"{b}-S03", "planning variable", k, [mois("m", "2026-11")],
+                                 {"absences_am": [conge("am_malade", "2026-11-10", "2026-11-10")]},
+                                 theme="11 novembre et AM malade la veille", marques=m))
+            if an == "C52":
+                # Conges : periode de reference 2025 entiere (contrat du 01/06/2025), 30 jours pris du 24/08 au 26/09/2026.
+                kc = contrat_pv(an, cyc, hms[an]["L1"], debut="2025-06-01")
+                ev = {"absences_am": [conge("cp", "2026-08-24", "2026-09-26")]}
+                S.append(sit(f"PV-{an}-{nom}-L1-S14", "planning variable", kc,
+                             [{"id": "acq", "type": "cp_acquisition", "periode": 2025},
+                              {"id": "ind", "type": "cp_indemnite", "periode": 2025, "sorties": ["indemnite_cp"]},
+                              {"id": "juin", "type": "cp_mois", "mois": "2026-06"},
+                              mois("aout", "2026-08"), mois("sep", "2026-09"),
+                              {"id": "d", "type": "cp_decompte", "du": "2026-08-24", "au": "2026-09-26",
+                               "reprise": "2026-09-28"}], ev,
+                             theme="congés payés : maintien en deux lectures C1 et C2 (P-PV-5)", marques=m))
+    # Base a une minute pres (cycle 45 h / 20 h : 140,8333 h ; contrat 140,83 h) : lecture L1.
+    pv_b20 = semaine([1, 2, 3, 4], "08:00", "13:00")
+    S.append(sit("PV-C52-AB20-L1-ARRONDI-S01", "planning variable", contrat_pv("C52", [PV_A45, pv_b20], 140.83),
+                 [mois("m", "2026-09")], theme="heures mensualisées arrondies au centième (L1 à une minute près)",
+                 marques=m))
+    # Semaine prevue au-dela de 45 h (P-PV-3) : contrat refuse.
+    S.append(sit("PV-C52-A50-S01", "planning variable", contrat_pv("C52", [PV_A50, PV_B10], 130),
+                 [mois("m", "2026-09")], theme="cycle avec une semaine prévue de 50 h", marques=m))
+    # ---- S2 : planning remis semaine par semaine (du 31/08 au 30/11/2026)
+    lundis = [(date(2026, 8, 31) + timedelta(weeks=i)).isoformat() for i in range(14)]
+    p25, p35, p20, p40 = (semaine(L5, "08:00", "13:00"), semaine(L5, "08:00", "15:00"),
+                          semaine([1, 2, 3, 4], "08:00", "13:00"), P5x8)
+    rotation = [PV_C30, p25, p35, p20, p40, PV_C30, p25, p35, PV_B12, p40, PV_C30, p25, p35, PV_C30]
+    pl = {l: p for l, p in zip(lundis, rotation)}  # semaine du 09/11 : sans mercredi (11 novembre non prevu)
+    pl_mer = dict(pl, **{"2026-11-09": PV_C30})     # meme contrat, 11 novembre prevu
+    mois3 = [mois("sep", "2026-09"), mois("oct", "2026-10"), mois("nov", "2026-11")]
+    S.append(sit("PV-C52-S2-S01", "planning variable", contrat_pv_s2("C52", pl, 130), mois3,
+                 theme="planning remis semaine par semaine (11 novembre non prévu)", marques=m))
+    S.append(sit("PV-C52-S2-S02", "planning variable", contrat_pv_s2("C52", pl_mer, 130), mois3,
+                 {"absences_am": [conge("am_malade", "2026-11-12", "2026-11-12")]},
+                 theme="planning remis, 11 novembre prévu et AM malade le lendemain", marques=m))
+    S.append(sit("PV-C52-S2-S07", "planning variable", contrat_pv_s2("C52", pl, 130), [mois("m", "2026-09")],
+                 {"absences_am": [conge("am_malade", "2026-09-14", "2026-09-16")]},
+                 theme="planning remis, AM malade 3 jours", marques=m))
+    S.append(sit("PV-C52-S2-S10", "planning variable", contrat_pv_s2("C52", pl, 130), [mois("m", "2026-10")],
+                 {"jours": [{"date": "2026-10-05", "pres": [["08:00", "16:00"]]},
+                            {"date": "2026-10-13", "pres": [["08:00", "18:00"]]},
+                            {"date": "2026-10-14", "pres": [["08:00", "18:00"]]}]},
+                 theme="planning remis, heures complémentaires sur le planning de la semaine", marques=m))
+    sans = dict(pl, **{"2026-10-19": {}})
+    S.append(sit("PV-C52-S2-SANS-ACCUEIL", "planning variable", contrat_pv_s2("C52", sans, 130),
+                 [mois("m", "2026-10")], {"absences_am": [conge("am_malade", "2026-10-06", "2026-10-06")]},
+                 theme="planning remis, semaine « sans accueil » (0 h) et absence dans le mois", marques=m))
+    manque = {l: p for l, p in pl.items() if l != "2026-09-14"}
+    S.append(sit("PV-C52-S2-MANQUE", "planning variable", contrat_pv_s2("C52", manque, 130),
+                 [mois("sep", "2026-09"), mois("oct", "2026-10")],
+                 theme="planning remis, une semaine de septembre sans planning saisi", marques=m))
+    S.append(sit("PV-C52-S2-PLUS45H", "planning variable", contrat_pv_s2("C52", dict(pl, **{"2026-10-12": PV_A50}), 130),
+                 [mois("m", "2026-09")], theme="planning remis, une semaine prévue de 50 h", marques=m))
+    off_s2 = ["2026-10-19", "2026-10-26"]
+    pl_i = dict(pl, **{l: {} for l in off_s2})
+    S.append(sit("PV-I36-S2-S01", "planning variable",
+                 contrat_pv_s2("I36", pl_i, 90, semaines_sans_accueil=off_s2), [mois("m", "2026-10")],
+                 {"absences_am": [conge("am_malade", "2026-10-06", "2026-10-07")]},
+                 theme="planning remis, 36 semaines, mois avec semaines sans accueil et absence", marques=m))
+
+    # ---- CDD
+    mc = {"*": MARQUE_CDD}
+
+    def kcdd(debut, terme, fin=None, an="C52", **kw):
+        k = contrat_grille(an, "H40", "T420", debut=debut, fin=fin or terme)
+        k.update({"cdd": True, "cdd_terme": terme, "cdd_motif": "remplacement"})
+        k.update(kw)
+        return k
+
+    def fin_cdd(fin, fc, mois_=()):
+        return [mois(f"m{i}", x) for i, x in enumerate(mois_)] + [
+            {"id": "f", "type": "fin", "date": fin, "motif": "fin_cdd", "fin_cdd": fc}]
+
+    k = kcdd("2026-01-05", "2026-05-29")
+    S.append(sit("CDD-TERME", "CDD", k, fin_cdd("2026-05-29", "terme", ["2026-01", "2026-05"]),
+                 theme="CDD de 5 mois au terme", marques=mc))
+    for fc in ("suite_cdi", "refus_cdi", "commun_accord", "employeur", "force_majeure", "inaptitude"):
+        S.append(sit(f"CDD-FIN-{fc.upper()}", "CDD", kcdd("2026-01-05", "2026-05-29"),
+                     fin_cdd("2026-05-29", fc), theme=f"CDD, fin « {fc} » (R-CDD-08)", marques=mc))
+    for fc, fin in (("initiative_am", "2026-04-30"), ("faute_grave", "2026-04-15"), ("commun_accord", "2026-04-30"),
+                    ("employeur", "2026-04-30"), ("essai", "2026-01-09")):
+        S.append(sit(f"CDD-ANTICIPE-{fc.upper()}", "CDD", kcdd("2026-01-05", "2026-05-29", fin=fin),
+                     fin_cdd(fin, fc, [fin[:7]]), theme=f"CDD rompu avant le terme, « {fc} » (R-CDD-08)", marques=mc))
+    S.append(sit("CDD-12MOIS", "CDD", kcdd("2025-06-01", "2026-05-31"), fin_cdd("2026-05-31", "terme", ["2026-05"]),
+                 theme="CDD de 12 mois, période de référence entière (P3)", marques=mc))
+    S.append(sit("CDD-DEUX-PERIODES", "CDD", kcdd("2026-03-02", "2026-07-31"), fin_cdd("2026-07-31", "terme"),
+                 theme="CDD à cheval sur le 1er juin (deux périodes de référence)", marques=mc))
+    S.append(sit("CDD-URSSAF-2MOIS", "CDD", kcdd("2026-01-01", "2026-02-28"),
+                 fin_cdd("2026-02-28", "terme", ["2026-01", "2026-02"]),
+                 theme="CDD du 1er janvier au 28 février (forme de l'exemple Urssaf E-CDD-01)", marques=mc))
+    # Moins d'un mois (P1) ; un mois de date a date (pas P1).
+    S.append(sit("CDD-MOINS-1-MOIS", "CDD", kcdd("2026-09-07", "2026-09-25"), fin_cdd("2026-09-25", "terme", ["2026-09"]),
+                 theme="CDD de moins d'un mois (P1)", marques=mc))
+    S.append(sit("CDD-MOINS-1-MOIS-2-MOIS-CIVILS", "CDD", kcdd("2026-09-21", "2026-10-09"),
+                 fin_cdd("2026-10-09", "terme", ["2026-09", "2026-10"]),
+                 theme="CDD de moins d'un mois sur deux mois civils (P1)", marques=mc))
+    S.append(sit("CDD-MOINS-1-MOIS-HC", "CDD", kcdd("2026-09-07", "2026-09-25"), fin_cdd("2026-09-25", "terme", ["2026-09"]),
+                 {"jours": [{"date": "2026-09-08", "pres": [["08:00", "18:00"]]}]},
+                 theme="CDD de moins d'un mois avec 2 h complémentaires (P1)", marques=mc))
+    S.append(sit("CDD-UN-MOIS", "CDD", kcdd("2026-09-01", "2026-09-30"), fin_cdd("2026-09-30", "terme", ["2026-09"]),
+                 theme="CDD d'un mois de date à date (pas P1)", marques=mc))
+    # Semaines sans accueil (P2) : du 05/01 au 29/03/2026, 12 semaines dont 1 sans accueil (16/02) : 11 semaines
+    # programmees ecrites au contrat (sans ferie dans la periode).
+    kp2 = kcdd("2026-01-05", "2026-03-29", an="I36", semaines=11, semaines_sans_accueil=["2026-02-16"])
+    S.append(sit("CDD-SANS-ACCUEIL", "CDD", kp2, fin_cdd("2026-03-29", "terme", ["2026-01", "2026-02", "2026-03"]),
+                 theme="CDD avec une semaine sans accueil (P2)", marques=mc))
+    kp2b = kcdd("2026-01-05", "2026-03-29", an="I36", semaines=10, semaines_sans_accueil=["2026-02-16", "2026-03-02"])
+    S.append(sit("CDD-SANS-ACCUEIL-2", "CDD", kp2b, fin_cdd("2026-03-29", "terme", ["2026-02", "2026-03"]),
+                 theme="CDD avec deux semaines sans accueil (P2)", marques=mc))
+    S.append(sit("CDD-SANS-ACCUEIL-HC", "CDD", kp2, fin_cdd("2026-03-29", "terme", ["2026-01"]),
+                 {"jours": [{"date": "2026-01-13", "pres": [["08:00", "18:00"]]}]},
+                 theme="CDD avec semaine sans accueil et heures complémentaires (P2)", marques=mc))
+    # Heures en plus, entretien et repas (hors assiette de l'IFC).
+    S.append(sit("CDD-HC-HM", "CDD", kcdd("2026-09-01", "2026-10-30"),
+                 fin_cdd("2026-10-30", "terme", ["2026-09", "2026-10"]),
+                 {"jours": [{"date": "2026-09-08", "pres": [["08:00", "18:00"]]}]
+                  + [{"date": d, "pres": [["07:00", "17:00"]]} for d in jours_ouvres("2026-09-14", "2026-09-18")]},
+                 theme="CDD avec heures complémentaires et majorées", marques=mc))
+    S.append(sit("CDD-ENTRETIEN-REPAS", "CDD", kcdd("2026-09-01", "2026-10-30", repas_par_jour=2, entretien_jour=500),
+                 fin_cdd("2026-10-30", "terme", ["2026-09", "2026-10"]),
+                 theme="CDD : entretien et repas hors de l'assiette de l'IFC", marques=mc))
     return S
 
 

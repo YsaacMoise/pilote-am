@@ -57,6 +57,11 @@ class PVCycle(unittest.TestCase):
                          "PV-SEMAINE-PREVUE-PLUS-45H")
         self.assertEqual(m.semaine_prevue(date(2026, 9, 7), plannings_semaines={date(2026, 9, 7): a50})["code"],
                          "PV-SEMAINE-PREVUE-PLUS-45H")
+        # S2 : une autre semaine du contrat prevue a 50 h refuse aussi cette semaine-ci (contrat refuse).
+        pl = {date(2026, 9, 7): B20, date(2026, 10, 12): a50}
+        self.assertEqual(m.semaine_prevue(date(2026, 9, 7), plannings_semaines=pl)["code"], "PV-SEMAINE-PREVUE-PLUS-45H")
+        self.assertEqual(m.mensualisation_planning_variable(52, 130, 500, plannings_semaines=pl)["code"],
+                         "PV-SEMAINE-PREVUE-PLUS-45H")
 
 
 class PVMensualisation(unittest.TestCase):
@@ -104,13 +109,12 @@ class PVHeures(unittest.TestCase):
 
     def test_e_pv_02_sept_heures(self):
         # Base 30 h ; semaines 1 a 4 : 30, 35, 28, 32 h reelles -> +5 et +2 = 7 HC (E-PV-02).
-        total = 0
-        for reel in (30, 35, 28, 32):
-            for lecture in ("L1", "L2"):
+        for lecture in ("L1", "L2"):
+            total = 0
+            for reel in (30, 35, 28, 32):
                 h = m.heures_en_plus_semaine_planning_variable(lecture, 1800, 1800, reel * 60, 1000, 10)
-                hc = Fraction(R(h, "minutes_complementaires"))
-            total += hc
-        self.assertEqual(total, 7 * 60)
+                total += Fraction(R(h, "minutes_complementaires"))
+            self.assertEqual(total, 7 * 60, lecture)
         # Semaine 5 a cheval : payee sur fevrier (mois ou elle finit).
         r = m.mois_de_rattachement_semaine(date(2026, 1, 26))
         self.assertEqual((R(r, "annee"), R(r, "mois")), (2026, 2))
