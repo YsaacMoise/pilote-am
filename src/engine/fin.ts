@@ -2,7 +2,7 @@
 // indemnité de congés non pris. Aucun document officiel n'est produit.
 import { nonGeresPeriode } from './nonGeres';
 import { finPreavis, finsAdmises, preavisEmployeur } from './preavis';
-import type { DemandeurInexecution, Motif } from './model';
+import type { DemandeurInexecution, Motif, Rupture } from './model';
 import { euros } from './money';
 import {
   addDays, addMonthsToDate, cpPeriod, cpPeriodStartYear, fullMonthsBetween, lastDay, monthOf, monthsBetween, shortDate,
@@ -85,6 +85,12 @@ export interface FinResult {
   alertes: string[];
   /** T-031 : cas non gérés pendant le contrat. Rempli : aucun montant n'est donné (tous à 0), le calcul est refusé. */
   nonGere?: string[];
+  /**
+   * T-074 : préavis dont les parents ont dispensé l'AM, en tout ou en partie (CCN art. 64, 64.2, 66, 122). Jours dispensés
+   * (`du` au `au`) et indemnité compensatrice de préavis de ces jours (`net`, `brut` estimé). Elle est comprise dans le salaire
+   * du dernier mois (mensualisation) : information, jamais ajoutée au total de la fin.
+   */
+  dispense?: { du: ISODate; au: ISODate; net: number; brut: number };
 }
 
 /** PREAVIS-DATE-FIN : méthode de l'app sans texte (premier jour compté ; un mois de date à date, du 15/10 au 14/11) */
@@ -113,6 +119,21 @@ function indemniteCompensatricePreavis(c: Ctx['c'], from: ISODate, to: ISODate):
   return total;
 }
 
+
+/**
+ * T-074 : indemnité compensatrice de préavis des jours dispensés, en net et en brut estimé (rapport fixe, mois par mois).
+ * CCN art. 122 : préavis qui finit en cours de mois, déduction de l'art. 111 (proportion des heures ou des jours du mois).
+ */
+function icpDispense(c: Ctx['c'], from: ISODate, to: ISODate): { net: number; brut: number } {
+  const h: Ctx = { ...makeCtx({ ...c, start: from, end: to, trackedFrom: from, history: [], rupture: undefined }, [], [], to), finControlee: true };
+  let net = 0, brut = 0;
+  for (const m of monthsBetween(monthOf(from), monthOf(to))) {
+    const b = monthBase(h, m).base;
+    net += b;
+    brut += netToBrut(b, lastDay(m));
+  }
+  return { net, brut };
+}
 
 /** T-038 suite : total des salaires bruts (salaires et congés versés) du début du contrat au `fin`, comme dans `finDeContrat`. */
 function brutJusqua(endCtx: Ctx, c: Ctx['c'], fin: ISODate, enfants: number): number {
@@ -281,8 +302,10 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // l'initiative de l'employeur, « le dernier jour travaillé » si elle est à l'initiative du salarié. Art. 64.2, al. 2 : avec
   // l'accord de l'employeur, « le contrat de travail prend fin au dernier jour travaillé » ; aucune indemnité n'est prévue
   // pour l'AM (service-public.fr F33164 et F16842 : l'AM « n'est pas payée pour la partie du préavis non réalisé »).
-  // Seul ce cas est calculé. Les deux autres sont refusés, le texte ne fixant pas tous leurs effets (voir T-045-corrections.md).
+  // T-074 : la dispense par les parents est aussi calculée. Seul le départ sans accord reste refusé (T-045-corrections.md).
   const refusFin: string[] = [];
+  let employeurValide = false;
+  let dispense: { du: ISODate; au: ISODate } | undefined;
   let dernierJour = preavisFin;
   let finAuDernierJourTravaille = false;
   if (inexecution) {
@@ -298,7 +321,14 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
       finAuDernierJourTravaille = true;
       alertes.push(`Préavis non fait en entier, à ta demande, accepté par les parents : le contrat finit le ${shortDate(d)}, ton dernier jour travaillé (convention, articles 64 et 64.2). La partie du préavis non faite n’est pas payée. Garde l’accord des parents par écrit.`);
     } else if (inexecution.demandeur === 'employeur') {
-      refusFin.push(`Préavis non fait à la demande des parents : le contrat finit à la date prévue de fin du préavis (${shortDate(preavisFin)}) et les parents te versent une indemnité compensatrice de préavis égale au salaire brut jusqu’à cette date ; la période compte pour tes congés et ton ancienneté (convention, articles 64, 64.2 et 66). L’app ne calcule pas ce cas : aucun texte ne dit comment cette indemnité entre dans l’indemnité de rupture, la régularisation et le dixième des congés. Fais le calcul avec les parents.`);
+      // T-074 (regles/t074-preavis-dispense.md) : art. 64, le contrat finit « à la date prévue de fin du préavis » ; art. 64.2,
+      // al. 1, indemnité compensatrice « jusqu'à la date prévue de fin », égale à la rémunération brute, soumise à cotisations,
+      // et la période « est prise en compte pour la détermination du droit à congés payés et au titre de l'ancienneté » ;
+      // art. 66 et 122. La date de fin reste `preavisFin` ; les jours après le dernier jour travaillé sont payés sans
+      // entretien (jourDispense, payroll.ts). Points ouverts, « à confirmer » plus bas : régularisation (D-2), indemnité de
+      // rupture (envoi 1 question 4 ; D-1).
+      employeurValide = true;
+      if (d < preavisFin) dispense = { du: addDays(d, 1), au: preavisFin };
     } else {
       dernierJour = d;
       refusFin.push(`Préavis non fait sans l’accord des parents : le contrat finit le ${shortDate(d)}, ton dernier jour travaillé (convention, article 64). Les parents peuvent te demander une indemnité égale au salaire net de la partie du préavis non faite (article 64.2) et des dommages et intérêts (code de l’action sociale et des familles, article L423-26). L’app ne calcule pas ce cas. Renseigne-toi avant de partir (relais petite enfance, DREETS).`);
@@ -312,11 +342,26 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   if (!refusFin.length && c.end && c.end > dernierJour && !finAdmise(c.end)) {
     refusFin.push(`La date de fin du contrat (${shortDate(c.end)}) est après ${finAuDernierJourTravaille ? 'le dernier jour travaillé indiqué' : 'la fin du préavis'} (${shortDate(dernierJour)}). L’app ne calcule pas au-delà, ni en deçà : corrige la date de fin du contrat, ou vérifie les dates de la lettre et du préavis.`);
   }
+  if (!refusFin.length && c.end && c.end < dernierJour && employeurValide) {
+    refusFin.push(`La date de fin du contrat (${shortDate(c.end)}) est avant la date prévue de fin du préavis (${shortDate(dernierJour)}). Préavis non fait à la demande des parents : le contrat finit à la date prévue de fin du préavis (convention, article 64), pas à ton dernier jour travaillé. Corrige la date de fin du contrat ou enregistre la fin ci-dessous.`);
+  }
   if (!refusFin.length && c.end && c.end < dernierJour) {
     refusFin.push(`La date de fin du contrat (${shortDate(c.end)}) est avant ${finAuDernierJourTravaille ? 'le dernier jour travaillé indiqué' : 'la fin du préavis'} (${shortDate(dernierJour)}). Si le préavis n’a pas été fait en entier, dis-le dans la question sur le préavis ; sinon corrige la date de fin du contrat. L’app ne calcule rien tant que les deux dates ne concordent pas.`);
   }
   // T-045b : contextes dont la date de fin vient de ce calcul, contrôlée ci-dessus (finControlee).
-  const endCtx: Ctx = { ...ctx, c: { ...c, end: dernierJour }, cache: new Map(), finControlee: true };
+  // T-074 : la réponse sur le préavis vient de ce calcul (une réponse enregistrée plus ancienne ne compte pas) : jours dispensés.
+  const rupturePreavis: Rupture | undefined = employeurValide && inexecution
+    ? { motif, notif, ...(presentation && presentation > notif ? { presentation } : {}), preavis: 'employeur', dernierJourTravaille: inexecution.dernierJourTravaille }
+    : undefined;
+  const cFin: Ctx['c'] = { ...c, rupture: rupturePreavis };
+  const endCtx: Ctx = { ...ctx, c: { ...cFin, end: dernierJour }, cache: new Map(), finControlee: true };
+  let icp: { net: number; brut: number } | undefined;
+  if (dispense) {
+    icp = icpDispense(c, dispense.du, dispense.au);
+    const jours = dispense.du === dispense.au ? `le ${shortDate(dispense.du)}` : `du ${shortDate(dispense.du)} au ${shortDate(dispense.au)}`;
+    alertes.push(`Préavis non fait en entier, à la demande des parents : tu as accueilli l’enfant jusqu’au ${shortDate(inexecution!.dernierJourTravaille)}. Le contrat finit le ${shortDate(dernierJour)}, date prévue de fin du préavis (convention, article 64). Pour les jours dispensés (${jours}), les parents te versent une indemnité compensatrice de préavis égale au salaire de ces jours : ${euros(icp.net)} net, soit environ ${euros(icp.brut)} brut. Elle est comprise dans le salaire du dernier mois et soumise aux cotisations. Ces jours comptent pour tes congés et ton ancienneté (article 64.2). Pas d’indemnité d’entretien ni de repas ces jours-là (article 114). Garde par écrit que ce sont les parents qui t’ont dispensée : si c’est toi qui as demandé à partir, le contrat finit à ton dernier jour travaillé et ces jours ne sont pas payés.`);
+    alertes.push('Déclaration à Pajemploi : la part du dernier salaire à mettre dans la case de l’indemnité de préavis, et les heures et jours à déclarer pour les jours dispensés, sont à confirmer avec le service Pajemploi. Le total à verser, lui, ne change pas.');
+  }
 
   // Salaires bruts depuis le début du contrat
   let totalBrut = 0;
@@ -372,7 +417,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     variantes.push({ fin: finMois, libelle: `préavis d’un mois, fin le ${shortDate(finMois)}` });
     variantes.push({ fin: addDays(finMois, 1), libelle: `préavis d’un mois, fin le ${shortDate(addDays(finMois, 1))}` });
   }
-  const ctxFin = (fin: ISODate): Ctx => (fin === dernierJour ? endCtx : { ...ctx, c: { ...c, end: fin }, cache: new Map(), finControlee: true });
+  const ctxFin = (fin: ISODate): Ctx => (fin === dernierJour ? endCtx : { ...ctx, c: { ...cFin, end: fin }, cache: new Map(), finControlee: true });
   const regPour = (fin: ISODate) => regularisationLectures(ctxFin(fin), regulStart(c, addDays(fin, 1)), fin);
   const reg = regPour(dernierJour);
   const regulMinutes = reg.dus.minutes;
@@ -408,6 +453,21 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
       regularisation_ = 0;
     }
   }
+  // T-074 (D-2, regles/t074-preavis-dispense.md, point 6) : aucun texte ne dit si les heures du préavis dispensé entrent dans
+  // la régularisation de l'art. 124. Lecture (a) : heures dues et payées jusqu'à la date prévue de fin (calcul ci-dessus).
+  // Lecture (b) : régularisation arrêtée au dernier jour travaillé, l'indemnité de préavis versée à part. Si elles diffèrent,
+  // « à confirmer » avec les deux valeurs, ni payée ni retenue.
+  let regulsDispense: number[] = [];
+  if (dispense && finTerms.yearType === 'incomplete' && manque === 0) {
+    const rb = regPour(inexecution!.dernierJourTravaille);
+    if (rb.dus.montant !== reg.dus.montant || rb.retenus.montant !== reg.retenus.montant) {
+      regulsDispense = [rb.dus.montant, rb.retenus.montant];
+      const montant = (r: typeof reg) => (r.sure ? euros(r.dus.montant) : libelleRegulJoursAConfirmer(r.dus.montant, r.retenus.montant));
+      const msg = `Régularisation à confirmer : aucun texte ne dit si les jours du préavis dont les parents t’ont dispensée entrent dans la régularisation (convention, articles 64.2, 109.2 et 124 ; question pour la DDETS). Jours dispensés comptés comme accueillis et payés : ${montant(reg)} ; régularisation arrêtée à ton dernier jour travaillé (${shortDate(inexecution!.dernierJourTravaille)}), l’indemnité de préavis étant versée à part : ${montant(rb)}. Elle n'est pas comptée dans le total.`;
+      regularisationAConfirmer = regularisationAConfirmer ? `${regularisationAConfirmer} ${msg}` : msg;
+      regularisation_ = 0;
+    }
+  }
   if (finTerms.yearType === 'complete' && regulMinutes > 60) {
     alertes.push('Année complète : la régularisation ne s’applique pas en principe, vérifie le planning du contrat.');
   }
@@ -419,7 +479,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   const regulsPour = (fin: ISODate): number[] => {
     if (!regulCalculee) return [0];
     const r = fin === dernierJour ? reg : regPour(fin);
-    return [...new Set([r.dus.montant, r.retenus.montant])];
+    return [...new Set([r.dus.montant, r.retenus.montant, ...(fin === dernierJour ? regulsDispense : [])])];
   };
   const regulFin = regulCalculee ? reg.dus.montant : 0;
   const cpPour = (fin: ISODate, r: number) => congesNonPris(ctxFin(fin), c, fin, enfants, r);
@@ -550,6 +610,28 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     }
   }
 
+  // T-074 : indemnité de rupture quand les parents ont dispensé l'AM d'une partie du préavis. Deux points ouverts
+  // (regles/t074-preavis-dispense.md, point 5) : l'indemnité de préavis entre-t-elle dans les « salaires bruts perçus » du
+  // 1/80 (CCN art. 121.1 ; envoi 1 à la DDETS, question 4) ? les 9 mois se comptent-ils à la remise de la lettre (service-public
+  // F16842) ou à la fin du contrat, préavis compris (CCN art. 60 et 64.2 ; question D-1) ? Si les lectures diffèrent,
+  // « à confirmer » avec leurs valeurs, jamais comptée.
+  if (dispense && icp && motif === 'retrait') {
+    const ancFin = fullMonthsBetween(c.start, addDays(dernierJour, 1));
+    const avec = Math.round(totalBrut / 80);
+    const sans = Math.round((totalBrut - icp.brut) / 80);
+    let msg = '';
+    if (anc >= 9 && avec !== sans) {
+      msg = `Indemnité de rupture à confirmer : aucun texte ne dit si l’indemnité de préavis compte dans les salaires bruts qui servent au calcul (convention, article 121.1 ; question posée à la DDETS). Avec elle : ${euros(avec)} ; sans elle : ${euros(sans)}. Elle n'est pas comptée dans le total.`;
+    } else if (anc < 9 && ancFin >= 9) {
+      msg = `Indemnité de rupture à confirmer : il faut 9 mois d’ancienneté, et aucun texte ne dit s’ils se comptent à la remise de la lettre ou à la fin du contrat, préavis dispensé compris (convention, articles 60, 64.2 et 121.1 ; question pour la DDETS). À la remise de la lettre (${anc} mois) : pas d’indemnité ; à la fin du contrat : ${avec === sans ? euros(avec) : `${euros(avec)} avec l’indemnité de préavis dans les salaires bruts, ${euros(sans)} sans elle`}. Elle n'est pas comptée dans le total.`;
+    }
+    if (msg) {
+      ruptureVariantes = ruptureVariantes ? `${ruptureVariantes} ${msg}` : msg;
+      ruptureAConfirmer = true;
+      if (anc < 9) ruptureExplication = 'À confirmer : l’ancienneté de 9 mois se compte peut-être jusqu’à la fin du contrat (voir l’encadré plus haut).';
+    }
+  }
+
   // T-031 : un cas non géré pendant le contrat (Alsace-Moselle, horaires variables, accueil occasionnel, congé maternité,
   // accident du travail…) fausse les salaires de référence, l'ancienneté retenue ou les congés : aucun montant.
   const nonGere = [...refusFin, ...nonGeresPeriode(c, ctx.leaves, c.start, dernierJour, 'non')];
@@ -564,5 +646,6 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, ruptureVariantes, totalBrut, brutsEstimes,
     indemnitePreavis, indemnitePreavisExplication, indemnitePreavisAConfirmer,
     regularisation: regularisation_, regulMinutes, cpJoursRestants, cpIndemnite, cpDixiemeEnCours, cpExplication, cpAConfirmer, regularisationAConfirmer, manquants, alertes,
+    ...(dispense && icp ? { dispense: { ...dispense, ...icp } } : {}),
   };
 }

@@ -60,10 +60,20 @@ export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'
   const hi = (...d: ISODate[]) => d.reduce((a, b) => (a > b ? a : b));
   const d = r.dernierJourTravaille;
   if (r.preavis === 'employeur') {
-    return {
-      du: lo(d ?? r.notif, end), au: hi(end, preavisFin),
-      message: `Préavis non fait à la demande des parents : le contrat finit le ${shortDate(preavisFin)}, date prévue de fin du préavis, et ${REGLE_DISPENSE.replace('si les parents t’ont dispensée de tout ou partie du préavis, ', '')}. L’app ne calcule pas ce cas : aucun texte ne dit comment cette indemnité entre dans la régularisation, les congés et l’indemnité de rupture. Fais ces mois avec les parents.`,
-    };
+    // T-074 : préavis dont les parents dispensent l'AM, en tout ou en partie (CCN art. 64, 64.2, 66, 122 ;
+    // regles/t074-preavis-dispense.md). Le contrat finit à la date prévue de fin du préavis (art. 64) : la fin calculée, ou
+    // le lendemain (date de fin à confirmer, comme pour un préavis fait en entier). Les jours dispensés sont payés comme des
+    // jours d'absence voulue par les parents, sans entretien (jourDispense, payroll.ts).
+    if (!d || d < r.notif || d > preavisFin || (r.motif !== 'retrait' && r.motif !== 'demission')) {
+      return { du: lo(d ?? r.notif, r.notif, end), au: hi(end, preavisFin), message: 'Préavis non fait à la demande des parents : les dates enregistrées ne concordent pas (dernier jour travaillé manquant, avant la lettre ou après la fin du préavis). Corrige-les dans l’écran « Fin de contrat ».' };
+    }
+    if (!admises.includes(end)) {
+      return {
+        du: lo(d, end), au: hi(end, preavisFin),
+        message: `La date de fin du contrat (${shortDate(end)}) n’est pas la date prévue de fin du préavis (${shortDate(preavisFin)}). Préavis non fait à la demande des parents : le contrat finit à cette date-là, pas à ton dernier jour travaillé, et ${REGLE_DISPENSE.replace('si les parents t’ont dispensée de tout ou partie du préavis, ', '')}. Corrige la date de fin dans l’écran « Fin de contrat ».`,
+      };
+    }
+    return undefined;
   }
   if (r.preavis === 'am_sans_accord') {
     return {
@@ -87,4 +97,15 @@ export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'
     };
   }
   return undefined;
+}
+
+/**
+ * T-074 : jour d'un préavis dont les parents ont dispensé l'AM (CCN art. 64.2 : « inexécution totale ou partielle du préavis
+ * imposée par le particulier employeur »), après son dernier jour travaillé et jusqu'à la fin du contrat. Ce jour est payé
+ * (indemnité compensatrice de préavis, art. 64.2, 66 et 122), compte pour les congés et l'ancienneté (art. 64.2), sans
+ * indemnité d'entretien ni repas (art. 114.1 et 114.2 ; CASF L423-18 : « pas remises en cas d'absence de l'enfant »).
+ */
+export function jourDispense(c: Pick<Contract, 'end' | 'rupture'>, d: ISODate): boolean {
+  const r = c.rupture;
+  return !!r && r.preavis === 'employeur' && !!r.dernierJourTravaille && d > r.dernierJourTravaille && !!c.end && d <= c.end;
 }

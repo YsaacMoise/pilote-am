@@ -41,14 +41,15 @@ describe('T-045b : le mois où finit le contrat connaît le préavis', () => {
     expect(mois(c, '2026-09').nonGere).toEqual([]);
   });
 
-  it('cas B enregistré (dispense voulue par les parents) : les mois du préavis non fait sont refusés avec la règle', () => {
+  it('cas B enregistré (dispense voulue par les parents) : calculé depuis T-074, fin à la date prévue de fin du préavis', () => {
+    // T-074 (regles/t074-preavis-dispense.md ; CCN art. 64 et 64.2) : les mois du préavis dispensé sont calculés.
     const c = contract({ end: '2026-12-04', rupture: R({ motif: 'retrait', preavis: 'employeur', dernierJourTravaille: '2026-11-13' }) });
-    expect(mois(c, '2026-11').nonGere.join(' ')).toMatch(/indemnité compensatrice/);
-    expect(mois(c, '2026-12').nonGere.length).toBeGreaterThan(0);
+    expect(mois(c, '2026-11').nonGere).toEqual([]);
+    expect(mois(c, '2026-12').nonGere).toEqual([]);
     expect(mois(c, '2026-10').nonGere).toEqual([]);
-    // Même réponse, date de fin saisie au dernier jour travaillé (la sonde) : refusé aussi.
+    // Même réponse, date de fin saisie au dernier jour travaillé : refusé, le contrat finit à la date prévue de fin (art. 64).
     const c2 = contract({ end: '2026-11-13', rupture: R({ motif: 'retrait', preavis: 'employeur', dernierJourTravaille: '2026-11-13' }) });
-    expect(mois(c2, '2026-11').nonGere.length).toBeGreaterThan(0);
+    expect(mois(c2, '2026-11').nonGere.join(' ')).toMatch(/date prévue de fin du préavis/);
   });
 
   it('cas C enregistré (départ sans accord) : mois de fin refusé', () => {
