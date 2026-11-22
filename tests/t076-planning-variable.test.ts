@@ -491,6 +491,21 @@ describe('T-076 : relecture indépendante (R2, D16)', () => {
   });
 });
 
+describe('T-076 : revue 4, B5 (D2 dans la lecture 2 du planning remis)', () => {
+  it('planning remis, absence retenue une semaine prévue au-delà de B : mois refusé avec le message D2', () => {
+    // 130 h par mois : B = 30 h. Semaines remises en alternance 45 h (lundi 05/01/2026, rang pair) et 25 h.
+    // Congé sans solde du 02 au 04/03 (semaine du 02/03 : 45 h prévues > 30 h) : mois refusé (D2).
+    const ps: Record<string, Planning> = {};
+    for (let i = 0; i < 60; i++) ps[new Date(Date.UTC(2026, 0, 5 + 7 * i)).toISOString().slice(0, 10)] = i % 2 ? B25 : A45;
+    const c = contract({ planningVariable: true, planningsSemaines: ps, heuresMensualisees: 130 });
+    const lv: AmLeave[] = [{ id: 'a', type: 'sans_solde', from: '2026-03-02', to: '2026-03-04' }];
+    expect(monthBase(makeCtx(c, [], lv, T), '2026-03').nonGere.join(' ')).toMatch(/Absence retenue sur ton salaire les 02\/03, 03\/03, 04\/03, une semaine où tes heures prévues dépassent la base de ton contrat : non géré/);
+    // Même absence une semaine remise à 25 h (09/03 : ≤ 30 h) : mois calculé.
+    const lvB: AmLeave[] = [{ id: 'b', type: 'sans_solde', from: '2026-03-10', to: '2026-03-10' }];
+    expect(monthBase(makeCtx(c, [], lvB, T), '2026-03').nonGere).toEqual([]);
+  });
+});
+
 describe('T-076 : non-régression du contrat fixe', () => {
   it('un contrat fixe donne les mêmes sorties avec ou sans champs de planning variable (non lus quand planningVariable est faux)', () => {
     const recs = [rec('2026-03-10', { pres: [{ a: '08:00', d: '19:00' }] }), rec('2026-03-12', { abs: 'malade_certif' })];

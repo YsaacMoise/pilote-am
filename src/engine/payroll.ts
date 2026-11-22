@@ -645,7 +645,8 @@ function weekOvertimeL2(ctx: Ctx, monday: ISODate, B: number, base: Map<ISODate,
  */
 export function absencesL2NonGerees(ctx: Ctx, from: ISODate, to: ISODate): ISODate[] {
   const t = termsAt(ctx.c, from);
-  if (!pvActif(t) || lecturePV(t) !== 'L2' || to < from) return [];
+  // Revue 4 (B5) : planning remis, la lecture 2 de D16 compte les HC par rapport à B comme la lecture L2 : D2 s'y applique aussi.
+  if (!pvActif(t) || (lecturePV(t) !== 'L2' && formePV(t) !== 'remis') || to < from) return [];
   const B = baseHebdoMin(t);
   // Revue 2 (B4 a) : toutes les semaines qui touchent [from, to], jour retenu dans ou hors de la période : une semaine à
   // cheval range ses HC dans les deux mois, les deux sont refusés.
