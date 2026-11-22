@@ -487,3 +487,54 @@ describe('D19 (R7) : fin pendant la période d’essai au-delà d’un mois, ref
     expect(fin(c, '2026-01-09', 'essai').nonGere).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Relecture 2 (rapports/T-076-relecture.md, N1, N2) et revue 3 (r2 bis)
+// ---------------------------------------------------------------------------------------------------------------------
+import { buildSnapshot } from '../src/partage/snapshot';
+import { finEssaiCdd, messageApresTerme as apresTerme, messageMoisApresTerme, messageTermeAVenir } from '../src/engine/cdd';
+
+describe('N1 : D19, limite de deux semaines pour un CDD de six mois ou moins', () => {
+  it('CDD du 05/01 au 29/05/2026, fin « essai » le 30/01 (26e jour) : refusée (avant : IFC 0)', () => {
+    // 145 jours, six mois ou moins : essai au plus 14 jours (limite de deux semaines), jusqu'au 18/01.
+    expect(finEssaiCdd(cdd({ cddTerme: '2026-05-29' }))).toEqual({ court: '2026-01-18', long: '2026-01-18' });
+    expect(fin(cdd({ cddTerme: '2026-05-29' }), '2026-01-30', 'essai').nonGere?.[0]).toMatch(/L1242-10/);
+    // Sonde de la revue 3 : CDD du 05/01 au 30/04, fin « essai » le 23/01 (19e jour) : refusée.
+    expect(fin(cdd(), '2026-01-23', 'essai').nonGere?.[0]).toMatch(/L1242-10/);
+    expect(fin(cdd(), '2026-01-18', 'essai').nonGere).toBeUndefined();
+  });
+  it('entre les deux façons de compter les semaines : refus avec message', () => {
+    // CDD du 05/01 au 14/02/2026 : 41 jours, 5 semaines entières (essai jusqu'au 09/01) ou 6 commencées (jusqu'au 10/01).
+    const c = cdd({ cddTerme: '2026-02-14' });
+    expect(finEssaiCdd(c)).toEqual({ court: '2026-01-09', long: '2026-01-10' });
+    expect(fin(c, '2026-01-09', 'essai').nonGere).toBeUndefined();
+    expect(fin(c, '2026-01-10', 'essai').nonGere?.[0]).toMatch(/à confirmer/);
+    expect(fin(c, '2026-01-11', 'essai').nonGere?.[0]).toMatch(/après la fin possible/);
+  });
+  it('CDD de plus de six mois : un jour par semaine, au plus un mois', () => {
+    // Du 05/01 au 31/12/2026 : 361 jours, 51 ou 52 semaines : limite d'un mois, jusqu'au 04/02.
+    expect(finEssaiCdd(cdd({ cddTerme: '2026-12-31' }))).toEqual({ court: '2026-02-04', long: '2026-02-04' });
+  });
+});
+
+describe('N2 : mois du terme d’un CDD en cours, avant le terme', () => {
+  // CDD du 02/03 au 15/04/2026, fin pas encore enregistrée.
+  const c = cdd({ start: '2026-03-02', trackedFrom: '2026-03-02', cddTerme: '2026-04-15' });
+  it('aujourd’hui le 10/04 : avril calculé, alerte « enregistre la fin » ; mai refusé avec un message juste', () => {
+    const ctx = makeCtx(c, [], [], '2026-04-10');
+    const avril = computeMonth(ctx, '2026-04');
+    expect(avril.nonGere).toEqual([]);
+    expect(avril.alerts).toContain(messageTermeAVenir('2026-04-15'));
+    expect(computeMonth(ctx, '2026-05').nonGere).toEqual([messageMoisApresTerme('2026-04-15')]);
+    // Page des parents : avril n'est pas « non calculé ».
+    const snap = buildSnapshot({ ctx: makeCtx(c, [], [], '2026-04-10'), journal: [], amName: 'Nina', enfants: 0, now: 0 });
+    expect(snap.mois.find((x) => x.month === '2026-04')?.nonGere).toBeFalsy();
+  });
+  it('aujourd’hui le 20/04, fin non enregistrée : avril refusé (jours après le terme, L1243-11)', () => {
+    expect(computeMonth(makeCtx(c, [], [], '2026-04-20'), '2026-04').nonGere).toEqual([apresTerme('2026-04-15')]);
+  });
+  it('r2 bis : le message ne demande plus un report « par écrit »', () => {
+    expect(apresTerme('2026-04-15')).not.toMatch(/par écrit/);
+    expect(apresTerme('2026-04-15')).toMatch(/L1243-7/);
+  });
+});

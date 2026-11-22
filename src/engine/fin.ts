@@ -4,7 +4,7 @@ import { nonGeresPeriode } from './nonGeres';
 import { pvActif } from './planningVariable';
 import { finPreavis, finsAdmises, preavisEmployeur } from './preavis';
 import { FINS_CDD, FINS_CDD_NON_GEREES, type DemandeurInexecution, type FinCdd, type FinCddNonGere, type Motif } from './model';
-import { libelleLecturesCdd, messagesCdd, MESSAGE_CDD_12_MOIS, MESSAGE_CDD_DEVIENT_CDI } from './cdd';
+import { finEssaiCdd, libelleLecturesCdd, messagesCdd, MESSAGE_CDD_12_MOIS, MESSAGE_CDD_DEVIENT_CDI } from './cdd';
 import { euros } from './money';
 import {
   addDays, addMonthsToDate, cpPeriod, cpPeriodStartYear, fullMonthsBetween, lastDay, monthOf, monthsBetween, shortDate,
@@ -903,8 +903,14 @@ export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCdd
   // semaines lorsque la durée initialement prévue au contrat est au plus égale à six mois et d'un mois dans les autres cas »).
   // Un dernier jour à un mois du début ou plus est hors essai à coup sûr : refusé (R-CDD-12 ; l'app ne connaît pas la durée
   // d'essai écrite au contrat, elle ne contrôle que cette limite sûre).
-  if (fin === 'essai' && dernierJour >= addMonthsToDate(c.start, 1)) {
-    return vide([`Tu as choisi « ${FIN_CDD_LABEL.essai.l} », mais le dernier jour (${shortDate(dernierJour)}) est à un mois ou plus du début du CDD (${shortDate(c.start)}). La période d’essai d’un CDD ne dépasse jamais un mois (code du travail, article L1242-10) : choisis comment le CDD a fini, ou corrige la date. L’indemnité de fin de contrat en dépend.`]);
+  // N1 (relecture 2) : limite de deux semaines pour un CDD de six mois ou moins, d'un mois sinon, et un jour par semaine ;
+  // entre les deux façons de compter les semaines, refus avec message (aucun texte ne tranche).
+  const essai = fin === 'essai' ? finEssaiCdd(c) : undefined;
+  if (fin === 'essai' && (dernierJour >= addMonthsToDate(c.start, 1) || (essai && dernierJour > essai.long))) {
+    return vide([`Tu as choisi « ${FIN_CDD_LABEL.essai.l} », mais le dernier jour (${shortDate(dernierJour)}) est après la fin possible de la période d’essai (au plus tard le ${shortDate(essai && essai.long < addDays(addMonthsToDate(c.start, 1), -1) ? essai.long : addDays(addMonthsToDate(c.start, 1), -1))}). L’essai d’un CDD compte un jour par semaine, au plus deux semaines si le CDD dure six mois ou moins, un mois sinon (code du travail, article L1242-10). Choisis comment le CDD a fini, ou corrige la date : l’indemnité de fin de contrat en dépend.`]);
+  }
+  if (fin === 'essai' && essai && dernierJour > essai.court) {
+    return vide([`Fin pendant la période d’essai à confirmer : le dernier jour (${shortDate(dernierJour)}) est dans l’essai si on compte les semaines commencées (jusqu’au ${shortDate(essai.long)}), après l’essai si on compte les semaines entières (jusqu’au ${shortDate(essai.court)}). Aucun texte ne dit comment compter (code du travail, article L1242-10). L’indemnité de fin de contrat en dépend : l’app ne calcule pas cette fin. Vois avec les parents ce que dit ton contrat sur la durée de l’essai.`]);
   }
   if (fin !== 'suite_cdi' && c.cddTerme && !c.cddTermeImprecis && dernierJour > c.cddTerme) {
     // C. trav. L1243-11 : « Lorsque la relation contractuelle de travail se poursuit après l'échéance du terme du contrat à

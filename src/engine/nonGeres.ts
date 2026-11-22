@@ -2,7 +2,7 @@
 // Le moteur ne calcule pas ces cas : il les nomme et dit quoi faire. Aucune règle de paie n'est écrite ici.
 import { shortDate, type ISODate } from './dates';
 import { controleFinContrat } from './preavis';
-import { messageApresTerme, nonGeresCdd } from './cdd';
+import { nonGeresCdd } from './cdd';
 import type { AmLeave, Contract } from './model';
 import { messagePVACompleter, nonGeresContratPV, nonGeresPeriodePV } from './planningVariable';
 
@@ -80,8 +80,8 @@ export function nonGeresPeriode(c: Contract, leaves: AmLeave[], from: ISODate, t
   if (b < a) return out;
   // T-076 (S2) : semaine sans planning saisi ou prévue au-delà de 45 h, à partir du début du suivi par l'app.
   out.push(...nonGeresPeriodePV(c, a > c.trackedFrom ? a : c.trackedFrom, b));
-  // T-076, D18 : jours après le terme précis d'un CDD, contrat non fini à cette date : devenu CDI (L1243-11), refusés.
-  if (c.cdd && c.cddTerme && !c.cddTermeImprecis && b > c.cddTerme) out.push(messageApresTerme(c.cddTerme));
+  // T-076, D18 : jours après le terme précis d'un CDD (contrat non fini à cette date) : contrôlés dans monthBase (payroll.ts),
+  // qui connaît la date du jour (N2 : refus seulement une fois le terme passé).
   for (const l of [...leaves].sort((x, y) => (x.from < y.from ? -1 : 1))) {
     if (!estAbsenceNonGeree(l) || l.to < a || l.from > b) continue;
     const m = messageAbsenceNonGeree(l);
