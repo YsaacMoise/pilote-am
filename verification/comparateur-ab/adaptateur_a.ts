@@ -155,14 +155,24 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       if (b.kmAConfirmer) out.km = refus(`A : ${b.kmAConfirmer} km à confirmer`);
       // T-076 (L2) : heures complémentaires des semaines de congé à confirmer : part sûre et les deux lectures.
       if (b.complAConfirmerAmount) out.heures_compl_montant = { statut: 'ok', valeur: b.complAmount, lectures: [b.complAmount, b.complAmount + b.complAConfirmerAmount] };
-      // T-076 (P1, P2) : CDD à deux lectures du salaire. Valeur = part sûre (la plus basse), `lectures` = [lecture 1, lecture 2].
+      // T-076 (P1, P2) : CDD à deux lectures du salaire. Le mois sorti est celui que A paie (computeMonth : la lecture dont le
+      // net, congés compris, est le plus bas ; lecture 1 si égal), toutes ses sorties de la même lecture (vérification, m1).
+      // `lectures` = [lecture 1, lecture 2] sur le salaire de base et le salaire hors congés.
       const ctx2 = ctxLectureCdd2?.(ctx);
       if (ctx2 && !b.nonGere.length) {
         const b2 = monthBase(ctx2, k.mois);
         if (!b2.nonGere.length) {
-          for (const [cle, v1, v2] of [['salaire_base_mois', b.base, b2.base], ['salaire_mois_hors_cp', b.net, b2.net]] as [string, number, number][]) {
-            if (v1 !== v2 && out[cle]?.statut === 'ok') out[cle] = { statut: 'ok', valeur: Math.min(v1, v2), lectures: [v1, v2], note: 'A : CDD, deux lectures (part sûre = la plus basse)' };
-          }
+          const cp1 = cpForMonth(ctx, k.mois, enfants), cp2 = cpForMonth(ctx2, k.mois, enfants);
+          const paye = b2.net + cp2.indemnite + cp2.complement < b.net + cp1.indemnite + cp1.complement ? b2 : b;
+          const note = 'A : CDD, deux lectures (mois payé = lecture la plus basse)';
+          const poser = (cle: string, v: Sortie) => { if (out[cle]?.statut === 'ok') out[cle] = v; };
+          poser('salaire_mensualise', ok(paye.salaireMens));
+          poser('deduction', ok(paye.salaireMens - paye.base));
+          poser('heures_compl_montant', ok(paye.complAmount));
+          poser('heures_maj_montant', ok(paye.majAmount));
+          poser('ferie_travaille_montant', ok(paye.ferieAmount));
+          poser('salaire_base_mois', b.base !== b2.base ? { statut: 'ok', valeur: paye.base, lectures: [b.base, b2.base], note } : ok(paye.base));
+          poser('salaire_mois_hors_cp', b.net !== b2.net ? { statut: 'ok', valeur: paye.net, lectures: [b.net, b2.net], note } : ok(paye.net));
         }
       }
       if (b.nonGere.length) for (const cle of Object.keys(out)) if (cle !== 'alertes') out[cle] = refus(`A : non géré (${b.nonGere.join(' ')})`);

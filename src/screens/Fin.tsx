@@ -4,6 +4,7 @@ import { ctxFor, putContract, toast, useStore } from '../store';
 import { addMonths, monthLabel, monthOf, shortDate, today, type Month } from '../engine/dates';
 import { FIN_CDD_LABEL, finDeContrat, finDeCdd, MESSAGE_CDD_IFC, MESSAGE_CDD_PAS_DE_PREAVIS, MOTIF_LABEL, MOTIFS_CDI, type DemandeurInexecution, type FinCdd, type FinCddNonGere, type FinResult, type Motif } from '../engine/fin';
 import { FINS_CDD, FINS_CDD_NON_GEREES, type Contract, type Rupture } from '../engine/model';
+import { cddDeuxLectures } from '../engine/cdd';
 import { euros, eurosArrondis, hoursLabel } from '../engine/money';
 import { Banner, Choices, DateInput, EuroInput, Gommette, Topbar } from '../ui/kit';
 
@@ -186,6 +187,8 @@ function FinCddEcran({ c }: { c: Contract }) {
   const total = ifcNet + (f.regularisationAConfirmer ? 0 : f.regularisation) + (f.cpAConfirmer ? 0 : f.cpIndemnite);
   const aConfirmer = !!(f.ifcAConfirmer || f.ifcPartAConfirmer || f.cpAConfirmer || f.cpPartAConfirmer || f.regularisationAConfirmer || f.regularisationPartAConfirmer);
   const choix = [...FINS_CDD, ...FINS_CDD_NON_GEREES];
+  // m3 : CDD à deux lectures du salaire (P1, P2) : la somme de fin complète le total au plus petit des deux calculs.
+  const deuxLectures = cddDeuxLectures(c) && f.finCdd !== 'suite_cdi';
   return (
     <>
       <p class="muted">Une simulation pour savoir ce qui t’est dû. L’app ne produit pas les documents officiels (certificat de travail, attestation France Travail, reçu pour solde de tout compte) : c’est au parent employeur de les établir.</p>
@@ -214,7 +217,7 @@ function FinCddEcran({ c }: { c: Contract }) {
           </dl>
           <div class="decl">
             <div class="decl-line"><span class="decl-label"><span>Indemnité de fin de contrat</span><span class="decl-hint">{f.ifcExplication}</span></span><span class="decl-value">{f.ifcAConfirmer ? 'à confirmer' : `${euros(ifcNet)} net${partAConfirmer(f.ifcPartAConfirmer)}${ifcNet > 0 ? ` (environ ${eurosArrondis(f.ifc ?? 0)} brut)` : ''}`}</span></div>
-            <div class="decl-line"><span class="decl-label"><span>{f.regularisationPartAConfirmer && /complément/.test(f.regularisationPartAConfirmer.message) ? 'Régularisation et complément de salaire' : 'Régularisation'}</span><span class="decl-hint">{f.regularisationAConfirmer ? 'Montant à confirmer : voir l’encadré plus haut' : termsAt(c, f.dernierJour).yearType === 'incomplete' ? (f.regulMinutes ? `${hoursLabel(f.regulMinutes)} accueillies mais non payées par la mensualisation` : 'Pas d’heures accueillies au-delà de ce qui a été payé') : 'Accueil toute l’année : pas de régularisation'}</span></span><span class="decl-value">{f.regularisationAConfirmer ? 'à confirmer' : `${euros(f.regularisation)}${partAConfirmer(f.regularisationPartAConfirmer)}`}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>{deuxLectures ? 'Régularisation et complément de salaire' : 'Régularisation'}</span><span class="decl-hint">{f.regularisationAConfirmer ? 'Montant à confirmer : voir l’encadré plus haut' : f.finCdd === 'suite_cdi' ? 'Ton contrat continue en CDI : rien n’est dû maintenant' : deuxLectures ? 'Ce qui porte ton total au plus petit des deux calculs du CDD : voir l’encadré plus haut' : termsAt(c, f.dernierJour).yearType === 'incomplete' ? (f.regulMinutes ? `${hoursLabel(f.regulMinutes)} accueillies mais non payées par la mensualisation` : 'Pas d’heures accueillies au-delà de ce qui a été payé') : 'Accueil toute l’année : pas de régularisation'}</span></span><span class="decl-value">{f.regularisationAConfirmer ? 'à confirmer' : `${euros(f.regularisation)}${partAConfirmer(f.regularisationPartAConfirmer)}`}</span></div>
             <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{f.cpAConfirmer ? 'à confirmer' : `${euros(f.cpIndemnite)}${partAConfirmer(f.cpPartAConfirmer)}`}</span></div>
           </div>
           <div class="spread"><b>{aConfirmer ? 'Total net estimé, hors salaire du dernier mois et sommes à confirmer' : 'Total net estimé, hors salaire du dernier mois'}</b><span class="decl-value">{euros(total)}</span></div>
@@ -233,7 +236,10 @@ function FinCddEcran({ c }: { c: Contract }) {
         <h2 id="fincdd-save">Enregistrer cette fin de CDD</h2>
         {c.end && !enregistre && <Banner tone="warn">La date de fin enregistrée ({shortDate(c.end)}) ou ta réponse enregistrée ne correspondent pas à ce calcul.</Banner>}
         <p class="hint">Enregistre le dernier jour ({shortDate(jour)}) et la façon dont le CDD finit : le calcul de chaque mois et de la fin s’en sert.</p>
-        {enregistre ? <p>Enregistrée.</p> : <button class="btn btn-primary btn-block" onClick={enregistrer} disabled={!finCdd}>Enregistrer la fin du CDD</button>}
+        {/* D8 : la suite en CDI ne termine pas le contrat : pas d'enregistrement de fin. */}
+        {finCdd === 'suite_cdi'
+          ? <p class="hint">Ton CDD continue en CDI : ne l’enregistre pas comme une fin. Ouvre le contrat et passe-le en CDI.</p>
+          : enregistre ? <p>Enregistrée.</p> : <button class="btn btn-primary btn-block" onClick={enregistrer} disabled={!finCdd}>Enregistrer la fin du CDD</button>}
       </section>
     </>
   );

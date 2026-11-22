@@ -341,3 +341,100 @@ describe('Non-régression : un CDI donne exactement les mêmes sorties qu’avan
     expect(JSON.parse(JSON.stringify(apres))).toEqual(avant);
   });
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Corrections après vérification (rapports/T-076-verif-cdd.md ; décisions D7 à D10, regles/t076-decisions-direction.md, §4)
+// ---------------------------------------------------------------------------------------------------------------------
+import { fiscalYear } from '../src/engine/fiscal';
+
+describe('B1 / D8 : suite en CDI, rien n’est dû à la fin', () => {
+  it('P2 « je continue en CDI » : ni régularisation, ni solde, ni ICCP, ni IFC', () => {
+    // Même CDD que P2 : avant la correction, 1 982,73 € de régularisation étaient comptés.
+    const c = cdd({ yearType: 'incomplete', weeks: 15, weeksOff: ['2026-02-16', '2026-04-06'] });
+    const f = fin(c, '2026-04-30', 'suite_cdi');
+    expect(f.regularisation).toBe(0);
+    expect(f.regularisationPartAConfirmer).toBeUndefined();
+    expect(f.cpIndemnite).toBe(0);
+    expect(f.ifcNet).toBe(0);
+  });
+});
+
+describe('M1 / D7 : P1, lecture 2, les heures payées par un autre texte comptent', () => {
+  // Du lundi 04/05 au vendredi 22/05/2026 : 15 jours prévus (dont les fériés chômés du 08/05 et du 14/05), 120 h.
+  // Mai 2026 : 21 jours prévus, 168 h. Lecture 1 : 86667 × 120 / 168 = 61904,98 → 619,05 €.
+  // Lecture 2 (D7) : fériés chômés payés (CCN 47) compris : 15 × 8 h × 5,00 € = 600,00 € (avant : 520,00 €).
+  const c = cdd({ start: '2026-05-04', trackedFrom: '2026-05-04', cddTerme: '2026-05-22' });
+  it('fériés chômés comptés', () => {
+    const r = computeMonth(ctxDe({ ...c, end: '2026-05-22' }), '2026-05');
+    expect(r.cddLectures).toEqual([61905, 60000]);
+    expect(r.netTotal).toBe(60000);
+  });
+  it('absence de l’enfant à la demande des parents (payée, CCN 105) comptée', () => {
+    // Avant : 480,00 €. Le 12/05 reste payé : 600,00 €.
+    const recs: DayRec[] = [{ key: 'c1|2026-05-12', cid: 'c1', date: '2026-05-12', abs: 'parents' }];
+    const r = computeMonth(ctxDe({ ...c, end: '2026-05-22' }, recs), '2026-05');
+    expect(r.cddLectures).toEqual([61905, 60000]);
+  });
+  it('congé sans solde de l’AM retiré', () => {
+    // 13/05 sans solde : lecture 2 = 14 × 8 × 5 = 560,00 € ; lecture 1 = 86667 × (120 − 8) / 168 = 57778.
+    const leaves: AmLeave[] = [{ id: 's', type: 'sans_solde', from: '2026-05-13', to: '2026-05-13' }];
+    const r = computeMonth(ctxDe({ ...c, end: '2026-05-22' }, [], leaves), '2026-05');
+    expect(r.cddLectures).toEqual([57778, 56000]);
+  });
+});
+
+describe('M2 / D9 : dates de fin face au terme précis', () => {
+  for (const f of ['initiative_am', 'commun_accord', 'employeur', 'faute_grave', 'essai'] as const) {
+    it(`${f} le jour du terme : refusé, « choisis Terme »`, () => {
+      const r = fin(cdd(), '2026-04-30', f);
+      expect(r.nonGere?.[0]).toMatch(/Au terme, choisis/);
+      expect(r.ifcNet ?? 0).toBe(0);
+    });
+  }
+  it('fin après le terme sans nouveau contrat : refusée (L1243-11)', () => {
+    expect(fin(cdd(), '2026-05-15', 'commun_accord').nonGere?.[0]).toMatch(/après la date de fin prévue|Au terme/);
+    expect(fin(cdd(), '2026-05-15', 'terme').nonGere?.[0]).toMatch(/L1243-11/);
+    expect(fin(cdd(), '2026-05-15', 'refus_cdi').nonGere?.[0]).toMatch(/L1243-11/);
+  });
+  it('terme imprécis : fin après la durée minimale acceptée', () => {
+    expect(fin(cdd({ cddTermeImprecis: true }), '2026-05-15', 'terme').nonGere).toBeUndefined();
+  });
+});
+
+describe('M3 / D10 : CDD à cheval sur le 1er juin, parts sûres de l’IFC et de l’ICCP', () => {
+  // CDD du lundi 02/03 au vendredi 31/07/2026, 52 semaines, aucun congé pris. Mois complets : 5 × 866,67 € = 4 333,35 €.
+  // Le complément de juin (période de mars à mai) est à confirmer (nombre de jours) : il n'est pas versé.
+  // IFC nette = arrondi(10 % × 433335) = 43333,5 → 433,34 €.
+  // ICCP : période en cours (juin, juillet) (173334 + 43334) / 10 = 21666,8 → 216,67 € ; période précédente : dixième
+  //   3 × 86667 / 10 = 26000,1 → 260,00 €, rien de versé : 260,00 €. Total 476,67 €.
+  //   Plancher L1242-16 : (433335 + 43334) / 10 = 47666,9 → 476,67 €. Avant la correction : ni IFC ni ICCP chiffrées.
+  const c = cdd({ start: '2026-03-02', trackedFrom: '2026-03-02', cddTerme: '2026-07-31' });
+  it('montants sûrs donnés', () => {
+    const f = fin(c, '2026-07-31', 'terme');
+    expect(f.ifcAConfirmer).toBeUndefined();
+    expect(f.cpAConfirmer).toBeUndefined();
+    expect(f.ifcNet).toBe(43334);
+    expect(f.cpIndemnite).toBe(47667);
+  });
+});
+
+describe('M4 : compteur fiscal, salaire du CDD à confirmer signalé', () => {
+  it('écart P2 de chaque mois et sommes de fin dites', () => {
+    const c = cdd({ yearType: 'incomplete', weeks: 15, weeksOff: ['2026-02-16', '2026-04-06'], end: '2026-04-30' });
+    const t = fiscalYear(ctxDe(c), 2026).nonGere ?? '';
+    expect(t).toMatch(/Salaire du CDD à confirmer en janvier/);
+    expect(t).toMatch(/Fin du CDD en avril/);
+  });
+});
+
+describe('m2 : P1 lecture 2, seuil de 45 h sur la semaine civile entière', () => {
+  it('semaine à cheval sur deux mois : heures au-delà de 45 h majorées dans le bon mois', () => {
+    // 10 h par jour du lundi au vendredi (50 h), du lundi 23/03 au vendredi 03/04/2026 (moins d'un mois).
+    // Semaine du 30/03 : lundi 30 et mardi 31 en mars (20 h), mercredi 1er à vendredi 3 en avril (30 h). Dans l'ordre des
+    // jours, les heures au-delà de 45 h sont les 5 dernières, le vendredi 03/04 : en avril.
+    // Avril, lecture 2 : 25 h × 5,00 + 5 h × 5,50 = 125,00 + 27,50 = 152,50 € (avant : 30 h × 5,00 = 150,00 €).
+    const c = cdd({ start: '2026-03-23', trackedFrom: '2026-03-23', cddTerme: '2026-04-03', planning: week('07:00', '17:00') });
+    const r = monthBase({ ...ctxDe({ ...c, end: '2026-04-03' }), lectureCdd: 2 }, '2026-04');
+    expect(r.base).toBe(15250);
+  });
+});

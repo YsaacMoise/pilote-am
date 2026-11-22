@@ -1195,30 +1195,37 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
 
   // T-076 (P1, lecture 2) : CDD à terme précis de moins d'un mois. DREETS Occitanie (guide CDD, p. 7 ; fiche CDD, p. 3) :
   // « le salaire dû est déterminé en multipliant la rémunération horaire par le nombre d'heures de travail réellement
-  // effectuées ». Heures réellement faites : heures prévues des jours d'accueil faits ou prévus (art. 99 : le travail
-  // commence et finit aux heures prévues). Les absences payées (art. 105), les fériés chômés et les congés n'en sont pas :
-  // c'est la lecture la plus basse, l'écart reste « à confirmer ». Heures prévues au-delà de 45 h dans la semaine : majorées,
-  // comme dans le salaire mensualisé. Les heures en plus du planning restent payées à part (HC, HM), comme en lecture 1.
+  // effectuées ». Décision D7 de la direction (22/11/2026) : ces heures comprennent aussi les heures payées par un autre
+  // texte, férié chômé (CCN 47) et absence de l'enfant rémunérée (CASF L423-20, CCN 105) ; seules les absences non payées
+  // de l'AM en sont retirées. Heures comptées : jours prévus du contrat, payés, ni retenus ni « à confirmer » (art. 99 : le
+  // travail commence et finit aux heures prévues). Un jour « à confirmer » est chiffré à part au taux horaire, comme en
+  // lecture 1. Heures prévues au-delà de 45 h dans la semaine civile entière (jours des deux mois compris, dans l'ordre) :
+  // majorées, comme dans le salaire mensualisé. Les heures en plus du planning restent payées à part (HC, HM).
   if (ctx.lectureCdd === 2 && estCddMoinsUnMois(ctx.c)) {
-    const parSemaine = new Map<ISODate, number>();
-    let joursFaits = 0;
-    for (const d of allDays) {
-      if (!inSeg(d)) continue;
-      const di = dayInfo(ctx, d);
-      if ((di.kind === 'present' || di.kind === 'prevu') && di.plannedMin > 0) {
-        parSemaine.set(mondayOf(d), (parSemaine.get(mondayOf(d)) ?? 0) + di.plannedMin);
-        joursFaits++;
+    const compte = (di: DayInfo) => di.plannedMin > 0 && di.inDivisor && !di.deducted && !di.aConfirmer;
+    let normales = 0, majorees = 0, joursFaits = 0, aConfMin = 0;
+    for (const mon of new Set(allDays.filter(inSeg).map(mondayOf))) {
+      let cum = 0;
+      for (let i = 0; i < 7; i++) {
+        const d = addDays(mon, i);
+        if (!inContract(c, d)) continue;
+        const di = dayInfo(ctx, d);
+        if (!compte(di)) {
+          if (inSeg(d) && di.aConfirmer && di.plannedMin > 0) aConfMin += di.plannedMin;
+          continue;
+        }
+        const n = Math.max(0, Math.min(di.plannedMin, H45 - cum));
+        cum += di.plannedMin;
+        if (!inSeg(d)) continue;
+        normales += n;
+        majorees += di.plannedMin - n;
+        if (di.kind !== 'ferie' && !(di.kind === 'am' && di.ferie)) joursFaits++;
       }
     }
-    let exact = 0, normales = 0, majorees = 0;
-    for (const w of parSemaine.values()) {
-      exact += Math.min(w, H45) * c.rateNet + Math.max(0, w - H45) * c.rateNet * (1 + c.majoration / 100);
-      normales += Math.min(w, H45);
-      majorees += Math.max(0, w - H45);
-    }
+    const exact = normales * c.rateNet + majorees * c.rateNet * (1 + c.majoration / 100);
     r.base = Math.round(exact / 60);
     r.retenue = 0;
-    r.evenementAConfirmer = 0;
+    r.evenementAConfirmer = Math.round((aConfMin * c.rateNet) / 60);
     r.paidFraction = r.mensuelMin ? Math.min(1, (normales + majorees) / r.mensuelMin) : 0;
     r.normalesMin = normales;
     r.heuresNormales = Math.round(normales / 60);
