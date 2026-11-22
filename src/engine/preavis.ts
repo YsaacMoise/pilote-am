@@ -64,7 +64,7 @@ export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'
     // regles/t074-preavis-dispense.md). Le contrat finit à la date prévue de fin du préavis (art. 64) : la fin calculée, ou
     // le lendemain (date de fin à confirmer, comme pour un préavis fait en entier). Les jours dispensés sont payés comme des
     // jours d'absence voulue par les parents, sans entretien (jourDispense, payroll.ts).
-    if (!d || d < r.notif || d > preavisFin || (r.motif !== 'retrait' && r.motif !== 'demission')) {
+    if (!d || (d < r.notif && d !== addDays(r.notif, -1)) || d > preavisFin || (r.motif !== 'retrait' && r.motif !== 'demission')) {
       return { du: lo(d ?? r.notif, r.notif, end), au: hi(end, preavisFin), message: 'Préavis non fait à la demande des parents : les dates enregistrées ne concordent pas (dernier jour travaillé manquant, avant la lettre ou après la fin du préavis). Corrige-les dans l’écran « Fin de contrat ».' };
     }
     if (!admises.includes(end)) {

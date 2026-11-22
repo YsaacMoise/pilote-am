@@ -53,6 +53,55 @@ describe('T-074 : préavis dispensé par les parents (CCN art. 64, 64.2, 66, 122
     expect(f.cpJoursRestants).toBe(7);
     expect(f.cpIndemnite).toBe(0);
     expect(f.cpAConfirmer).toBeDefined();
+    // D4 (vérificateur) : cas où les jours dispensés changent le nombre de jours. Début le 01/09/2026, lettre le 24/11, 8 jours
+    // jusqu'au 01/12 ; dernier jour travaillé le 27/11. Avec les jours dispensés, 3 mois entiers et 1 jour : 2,5 × 3 = 7,5 plus
+    // le prorata, arrondi à l'entier supérieur (art. 48.1.1.2) ; sans eux (fin au 27/11), 2 mois et 27 jours.
+    const c = contract({ start: '2026-09-01', trackedFrom: '2026-09-01' });
+    const emp = finDeContrat(ctxDe(c), '2026-11-24', 'retrait', 0, undefined, { demandeur: 'employeur', dernierJourTravaille: '2026-11-27' });
+    const am = finDeContrat(ctxDe(c), '2026-11-24', 'retrait', 0, undefined, { demandeur: 'am_acceptee', dernierJourTravaille: '2026-11-27' });
+    expect(emp.dernierJour).toBe('2026-12-01');
+    expect(am.dernierJour).toBe('2026-11-27');
+    expect(emp.cpJoursRestants).toBeGreaterThan(am.cpJoursRestants);
+  });
+
+  it('P-1 : mois travaillé puis dispensé, deux lectures de la part qui est l’indemnité ; total inchangé', () => {
+    const f = finDeContrat(ctxDe(contract()), '2026-11-23', 'retrait', 0, undefined, DISPENSE);
+    // Proportion de l'art. 111 : 1 452,75 × 18 / 189 = 138,36 € ; heures × taux : 18 × 7,45 = 134,10 €.
+    expect(f.dispense!.net).toBe(13836);
+    expect(f.dispense!.autre).toBe(13410);
+    // Dernier mois sans aucun jour travaillé (dispense dès le 1er du mois) : art. 122 et 111, une seule lecture.
+    const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01' });
+    const g = finDeContrat(ctxDe(c), '2026-10-01', 'retrait', 0, undefined, { demandeur: 'employeur', dernierJourTravaille: '2026-09-30' });
+    expect(g.dispense).toMatchObject({ du: '2026-10-01', au: '2026-10-31' });
+    expect(g.dispense!.autre).toBeUndefined();
+    expect(g.dispense!.net).toBe(MENSUALISE);
+  });
+
+  it('D1 : absence de l’AM un jour dispensé : rien n’est calculé (jamais une retenue en silence)', () => {
+    const leave = { id: 'l1', type: 'am_malade' as const, from: '2026-11-27', to: '2026-11-27' };
+    const c = contract({ end: '2026-11-30', rupture: { motif: 'retrait', notif: '2026-11-23', preavis: 'employeur', dernierJourTravaille: '2026-11-26' } });
+    const r = computeMonth(makeCtx(c, [], [leave], '2026-12-31'), '2026-11');
+    expect((r.nonGere ?? []).join(' ')).toMatch(/dispensée/);
+    const f = finDeContrat(makeCtx(contract(), [], [leave], '2026-12-31'), '2026-11-23', 'retrait', 0, undefined, DISPENSE);
+    expect(f.nonGere?.join(' ')).toMatch(/dispensée/);
+    // La même absence avant la dispense (jour travaillé du préavis) n'est pas touchée par cette règle.
+    const g = finDeContrat(makeCtx(contract(), [], [{ ...leave, from: '2026-11-25', to: '2026-11-25' }], '2026-12-31'), '2026-11-23', 'retrait', 0, undefined, DISPENSE);
+    expect((g.nonGere ?? []).join(' ')).not.toMatch(/dispensée/);
+  });
+
+  it('mois avec jours dispensés : alerte sur la déclaration Pajemploi (P-1)', () => {
+    const c = contract({ end: '2026-11-30', rupture: { motif: 'retrait', notif: '2026-11-23', preavis: 'employeur', dernierJourTravaille: '2026-11-26' } });
+    expect(computeMonth(ctxDe(c), '2026-11').alerts.join(' ')).toMatch(/Pajemploi/);
+    expect(computeMonth(ctxDe(c), '2026-10').alerts.join(' ')).not.toMatch(/dispensée/);
+  });
+
+  it('R2 : dispense totale, enfant plus confié dès le jour de la lettre : la veille est admise', () => {
+    const f = finDeContrat(ctxDe(contract()), '2026-11-23', 'retrait', 0, undefined, { demandeur: 'employeur', dernierJourTravaille: '2026-11-22' });
+    expect(f.nonGere).toBeUndefined();
+    expect(f.dispense).toMatchObject({ du: '2026-11-23', au: '2026-11-30' });
+    // Du 23 au 30/11 : 6 jours prévus, 54 h sur 189 h.
+    expect(f.dispense!.net).toBe(Math.round((MENSUALISE * 54) / 189));
+    expect(controleFinContrat({ start: '2026-09-14', end: '2026-11-30', rupture: { motif: 'retrait', notif: '2026-11-23', preavis: 'employeur', dernierJourTravaille: '2026-11-22' } })).toBeUndefined();
   });
 
   it('dernier mois : salaire mensualisé entier, entretien des seuls jours d’accueil réel (art. 114.1)', () => {

@@ -189,6 +189,10 @@ export function naturesAConfirmer(b: Partial<Pick<MonthBase, 'joursCpAConfirmer'
 }
 export const joindre = (l: string[], et = 'et') => (l.length <= 1 ? l.join('') : `${l.slice(0, -1).join(', ')} ${et} ${l.at(-1)}`);
 
+/** T-074 (P-1, regles/t074-preavis-dispense.md, point 9) : déclaration d'un mois avec des jours de préavis dispensés */
+export const MESSAGE_DISPENSE_PAJEMPLOI =
+  'Préavis dont les parents t’ont dispensée : le salaire de ce mois comprend l’indemnité de préavis des jours dispensés, payés sans indemnité d’entretien. Pour la déclaration à Pajemploi, la part à mettre dans la case de l’indemnité de préavis, et les heures et jours à déclarer pour ces jours, sont à confirmer avec le service Pajemploi. Le total à verser ne change pas.';
+
 export function dayInfo(ctx: Ctx, d: ISODate): DayInfo {
   return memo(ctx, 'day' + d, () => computeDay(ctx, d));
 }
@@ -932,6 +936,8 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     if (di.cpSansDroits) cpSansDroits++;
     if (di.sansSoldeEnfantPaye && di.plannedMin > 0) { r.alerts.push(messageSansSoldeEnfant(d)); sansSoldePayes++; }
     if (di.departOublie) forgotten.push(d);
+    // T-074 (P-1) : mois avec des jours de préavis dispensés par les parents : déclaration Pajemploi à confirmer.
+    if (di.dispense && !r.alerts.includes(MESSAGE_DISPENSE_PAJEMPLOI)) r.alerts.push(MESSAGE_DISPENSE_PAJEMPLOI);
     if (di.ferieNonPaye) r.alerts.push(`Férié du ${d.slice(8, 10)}/${d.slice(5, 7)} non payé : tu étais absente le jour prévu juste avant ou juste après (article 47 de la convention).`);
     if (di.rec?.abs === 'malade_certif' && !di.deducted && di.plannedMin > 0) r.sickPaidNotice = true;
     if (di.kind === 'present' || di.kind === 'prevu') {

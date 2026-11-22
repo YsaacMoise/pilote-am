@@ -1,7 +1,7 @@
 import { termsAt } from '../engine/payroll';
 import { useState } from 'preact/hooks';
 import { ctxFor, putContract, toast, useStore } from '../store';
-import { addMonths, monthLabel, monthOf, shortDate, today, type Month } from '../engine/dates';
+import { addDays, addMonths, monthLabel, monthOf, shortDate, today, type Month } from '../engine/dates';
 import { finDeContrat, MOTIF_LABEL, type DemandeurInexecution, type Motif } from '../engine/fin';
 import type { Rupture } from '../engine/model';
 import { euros, eurosArrondis, hoursLabel } from '../engine/money';
@@ -99,7 +99,7 @@ export function Fin({ id }: { id?: string }) {
                   { v: 'am_sans_accord', l: 'Non, je pars sans leur accord' },
                 ]} />
                 {preavisFait !== 'oui' && (
-                  <DateInput label="Dernier jour travaillé" hint="Le dernier jour où tu as accueilli l’enfant." value={dernierTravaille ?? envoi} min={envoi} onChange={(v) => setDernierTravaille(v || null)} />
+                  <DateInput label="Dernier jour travaillé" hint={preavisFait === 'employeur' ? 'Le dernier jour où tu as accueilli l’enfant. Si les parents ne l’ont plus confié dès le jour de la lettre, mets la veille.' : 'Le dernier jour où tu as accueilli l’enfant.'} value={dernierTravaille ?? envoi} min={preavisFait === 'employeur' ? addDays(envoi, -1) : envoi} onChange={(v) => setDernierTravaille(v || null)} />
                 )}
               </>
             ) : avecLettre ? (
@@ -142,7 +142,7 @@ export function Fin({ id }: { id?: string }) {
           <div class="decl">
             <div class="decl-line"><span class="decl-label"><span>Indemnité de rupture</span><span class="decl-hint">{f.ruptureExplication}</span></span><span class="decl-value">{f.ruptureAConfirmer ? 'à confirmer' : estime && f.indemniteRupture > 0 ? `environ ${eurosArrondis(f.indemniteRupture)}` : euros(f.indemniteRupture)}</span></div>
             {motif === 'deces' && <div class="decl-line"><span class="decl-label"><span>Indemnité égale au préavis</span><span class="decl-hint">{f.indemnitePreavisExplication}</span></span><span class="decl-value">{f.indemnitePreavisAConfirmer ? 'à confirmer' : euros(f.indemnitePreavis)}</span></div>}
-            {f.dispense && <div class="decl-line"><span class="decl-label"><span>Indemnité de préavis</span><span class="decl-hint">{`Jours dispensés ${f.dispense.du === f.dispense.au ? `le ${shortDate(f.dispense.du)}` : `du ${shortDate(f.dispense.du)} au ${shortDate(f.dispense.au)}`}, environ ${euros(f.dispense.brut)} brut. Comprise dans le salaire du dernier mois : elle n’est pas ajoutée au total ci-dessous.`}</span></span><span class="decl-value">{euros(f.dispense.net)}</span></div>}
+            {f.dispense && <div class="decl-line"><span class="decl-label"><span>Indemnité de préavis</span><span class="decl-hint">{`Jours dispensés ${f.dispense.du === f.dispense.au ? `le ${shortDate(f.dispense.du)}` : `du ${shortDate(f.dispense.du)} au ${shortDate(f.dispense.au)}`}. ${f.dispense.autre != null ? `${euros(f.dispense.net)} en proportion du salaire du mois, ou ${euros(f.dispense.autre)} en comptant les heures dispensées au taux horaire : la part du salaire qui est l’indemnité est à confirmer. ` : `Environ ${euros(f.dispense.brut)} brut. `}Comprise dans tes salaires des mois du préavis : elle n’est pas ajoutée au total ci-dessous.`}</span></span><span class="decl-value">{f.dispense.autre != null ? 'à confirmer' : euros(f.dispense.net)}</span></div>}
             <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint">{f.regularisationAConfirmer ? 'Montant à confirmer : voir l’encadré plus haut' : f.regularisation > 0 || termsAt(c, f.dernierJour).yearType === 'incomplete' ? (f.regulMinutes ? `${hoursLabel(f.regulMinutes)} accueillies mais non payées par la mensualisation` : 'Pas d’heures accueillies au-delà de ce qui a été payé') : 'Année complète : pas de régularisation'}</span></span><span class="decl-value">{f.regularisationAConfirmer ? 'à confirmer' : euros(f.regularisation)}</span></div>
             <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{f.cpAConfirmer ? 'à confirmer' : euros(f.cpIndemnite)}</span></div>
           </div>
