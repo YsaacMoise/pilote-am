@@ -229,3 +229,8 @@ D'après regles/t076-planning-variable.md, regles/t076-cdd.md et regles/t076-dec
 | `preavis_et_rupture_cdd(fin_cdd)` | R-CDD-06 (L1243-5) |
 
 Gardés tels quels (tests existants) : `mensualisation(horaires_variables=True)` refuse A-04 et `verifier_perimetre(type_contrat="CDD", cdd_remplacement=True)` refuse R-MENS-10 ; les nouvelles fonctions ci-dessus sont le chemin T-076. Tests : `tests/test_t076.py` (31 tests, dont E-PV-02, E-PV-03, E-CDD-01, E-CDD-02).
+
+Corrections après vérification (T-076, décisions D1 à D11 de regles/t076-decisions-direction.md, section 4) :
+- `heures_en_plus_semaine_planning_variable` : D1 (1er mai chômé compté ; autre jour payé non travaillé en deux lectures), D2 (refus PV-L2-ABSENCE-HC), D4 (base entière ou au prorata), `lectures_montant_complementaires`.
+- `iccp_planning_variable` (R-PV-13, P-PV-5 lecture C1) ; `indemnite_cp_planning_variable(..., jours_supplementaires)` : refus CP-SUPP.
+- `solde_fin_cdd` (D11, D8), `controle_dates_cdd` (D9), `verifier_cas_cdd` (D3) ; `iccp_cdd` : part sûre sur deux périodes (D10), CP-SUPP.

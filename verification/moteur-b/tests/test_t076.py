@@ -297,13 +297,78 @@ class CDDFin(unittest.TestCase):
     def test_iccp_suite_cdi_et_refus(self):
         p = [{"salaires_bruts_periode_centimes": 160000, "jours_acquis": 6, "jours_payes": 0}]
         self.assertEqual(R(m.iccp_cdd("suite_cdi", p, 0, 160000, 2400, 461), "iccp_centimes"), 0)
-        self.assertEqual(m.iccp_cdd("terme", p + p, 16000, 320000, 2400, 461)["code"], "A-50")
+        # D10 : deux periodes, part sure donnee = (1 600 + 1 600 + 160) / 10 ; lecture 2 non calculee (A-50).
+        r = m.iccp_cdd("terme", p + p, 16000, 320000, 2400, 461)
+        self.assertEqual(R(r, "iccp_centimes"), 33600)
+        self.assertEqual(R(r, "code_lecture_2"), "A-50")
+        self.assertEqual(m.iccp_cdd("terme", [dict(p[0], jours_supplementaires=2)], 16000, 160000, 2400, 461)["code"],
+                         "CP-SUPP")
         q = [dict(p[0], jours_payes=6)]
         self.assertEqual(m.iccp_cdd("terme", q, 16000, 160000, 2400, 461)["code"], "CDD-PLANCHER-L1242-16")
 
     def test_ni_preavis_ni_rupture(self):
         r = m.preavis_et_rupture_cdd("terme")
         self.assertEqual((R(r, "preavis_centimes"), R(r, "indemnite_rupture_centimes")), (0, 0))
+
+
+
+class T076Corrections(unittest.TestCase):
+    """Decisions de la direction, section 4 (D1 a D11), et rapport T-076-verif-b (B1, B2)."""
+
+    def test_d1_premier_mai_et_autre_ferie(self):
+        # Base 15 h ; semaine A de 45 h ; un jour chome de 9 h, 36 h travaillees.
+        h = m.heures_en_plus_semaine_planning_variable("L2", 2700, 900, 2160, 500, 25, minutes_1er_mai_chome=540)
+        self.assertEqual(R(h, "lectures_montant_complementaires"), [15000, 15000])  # 30 HC, CCN 47.1
+        h = m.heures_en_plus_semaine_planning_variable("L2", 2700, 900, 2160, 500, 25, minutes_payees_non_travaillees=540)
+        self.assertEqual(R(h, "lectures_montant_complementaires"), [10500, 15000])  # 21 HC ou 30 HC (CCN 47.2)
+        self.assertEqual(R(h, "montant_complementaires_centimes"), 10500)
+
+    def test_d2_absence_retenue(self):
+        r = m.heures_en_plus_semaine_planning_variable("L2", 2700, 900, 2160, 500, 25, absence_retenue=True)
+        self.assertEqual(r["code"], "PV-L2-ABSENCE-HC")
+        # Semaine prevue egale a la base : pas de HC prevue touchee, calcul normal.
+        r = m.heures_en_plus_semaine_planning_variable("L2", 900, 900, 720, 500, 25, absence_retenue=True)
+        self.assertEqual(R(r, "montant_complementaires_centimes"), 0)
+
+    def test_d4_semaine_incomplete(self):
+        # Contrat commence un mercredi d'une semaine A : 27 h prevues et faites ; base 15 h ou 15 x 3/5 = 9 h.
+        h = m.heures_en_plus_semaine_planning_variable("L2", 1620, 900, 1620, 500, 25, prorata_base=(3, 5))
+        self.assertEqual(R(h, "lectures_montant_complementaires"), [6000, 9000])
+
+    def test_b2_iccp_fin_planning_variable(self):
+        # Cycle 45 h / 15 h, 130 h mensualisees a 5 EUR, 12 mois, 30 jours non pris.
+        # Dixieme : 12 x 650 / 10 = 780 EUR ; C1 = 30 / 6 x 30 h x 5 EUR = 750 EUR : 780 EUR.
+        p = [{"jours_acquis": 30, "jours_payes": 0, "salaires_bruts_periode_centimes": 780000,
+              "heures_prevues_periode_minutes": 52 * 1800, "semaines_prevues_travaillees": 52}]
+        self.assertEqual(R(m.iccp_planning_variable("complete", "normal", p, 500), "iccp_centimes"), 78000)
+        p[0]["salaires_bruts_periode_centimes"] = 600000  # dixieme 600 EUR < C1 750 EUR
+        self.assertEqual(R(m.iccp_planning_variable("complete", "normal", p, 500), "iccp_centimes"), 75000)
+        p[0]["jours_supplementaires"] = 2
+        self.assertEqual(R(m.iccp_planning_variable("complete", "normal", p, 500), "iccp_centimes"), 75000)
+        p[0]["salaires_bruts_periode_centimes"] = 780000
+        self.assertEqual(m.iccp_planning_variable("complete", "normal", p, 500)["code"], "CP-SUPP")
+
+    def test_cp_supp_planning_variable(self):
+        r = m.indemnite_cp_planning_variable(30, 500, 101400, 52, 10500, 12 * 70417, jours_supplementaires=2)
+        self.assertEqual(r["code"], "CP-SUPP")
+
+    def test_b1_d11_solde_fin_cdd(self):
+        # CDD-SANS-ACCUEIL : lecture 46 : 434 + 1 414 = 1 848 EUR ; lecture 52 : 1 869,64 EUR ; verse 434 EUR.
+        r = m.solde_fin_cdd([184800, 186964], 43400, "terme")
+        self.assertEqual(R(r, "solde_centimes"), 141400)
+        self.assertEqual(R(r, "a_confirmer_centimes"), 2164)
+        self.assertEqual(R(m.solde_fin_cdd([184800, 186964], 43400, "suite_cdi"), "solde_centimes"), 0)  # D8
+
+    def test_d9_dates(self):
+        t = date(2026, 5, 29)
+        self.assertEqual(m.controle_dates_cdd("initiative_am", t, t)["code"], "CDD-DATE-FIN")
+        self.assertEqual(m.controle_dates_cdd("terme", date(2026, 6, 5), t)["code"], "CDD-DEVENU-CDI")
+        self.assertTrue(R(m.controle_dates_cdd("commun_accord", date(2026, 4, 30), t), "dates_coherentes"))
+
+    def test_d3(self):
+        self.assertEqual(m.verifier_cas_cdd(True, False, True)["code"], "CDD-PASSAGE-2")
+        self.assertEqual(m.verifier_cas_cdd(False, True, True)["code"], "CDD-PASSAGE-2")
+        self.assertTrue(R(m.verifier_cas_cdd(True, False, False), "gere"))
 
 
 if __name__ == "__main__":

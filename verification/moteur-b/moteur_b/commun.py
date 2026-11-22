@@ -139,6 +139,10 @@ CODES = {
     "PV-C2-DROIT-NON-PRIS": "Planning variable : lecture C2 du maintien (heures prevues des jours de conge) inconnue tant que le droit n'est pas pris en entier (P-PV-5).",
     "P-PV-5": "Planning variable : base du maintien des CP (C1 moyenne de la periode, C2 heures des jours de conge) ; les deux lectures different ici.",
     "CDD-FIN-NON-GEREE": "Fin de CDD non geree (force majeure, inaptitude, jeune en vacances, saisonnier ou d'usage) : R-CDD-08, R-CDD-13.",
+    "PV-L2-ABSENCE-HC": "Planning variable, base L2 : absence deduite dans une semaine prevue au-dela de la base ; combinaison de la deduction de l'art. 111 et de la perte des HC non ecrite (D2, passage 2).",
+    "CDD-PASSAGE-2": "CDD a planning variable avec semaines sans accueil, ou CDD de moins d'un mois avec semaines sans accueil : passage 2 (D3).",
+    "CDD-DATE-FIN": "Fin anticipee de CDD a la date du terme ou apres : au terme, choisis Terme (D9).",
+    "CDD-DEVENU-CDI": "Travail apres le terme du CDD sans CDI signe : le contrat devient un CDI (C. trav. L1243-11, D9).",
     "CDD-PLANCHER-L1242-16": "CDD avec CP payes pendant le contrat : plancher de C. trav. L1242-16 (dixieme de toute la duree du contrat) non applique tel quel.",
 }
 
