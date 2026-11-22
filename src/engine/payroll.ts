@@ -10,6 +10,7 @@ import { controleKm, indemniteKmJour } from './km';
 import { euros } from './money';
 import { cpAConfirmerEntre, cpExces, cpExcesAConfirmer, MESSAGE_CP_AU_DELA_A_CONFIRMER } from './conges';
 import { nonGeresPeriode } from './nonGeres';
+import { jourDispense } from './preavis';
 import type { AmAbs, AmLeave, Contract, DayRec, Plage, Planning } from './model';
 
 export interface Ctx {
@@ -161,6 +162,8 @@ export interface DayInfo {
   aConfirmer?: string;
   /** T-035b : absence de l'enfant notée « sans solde » (ancienne option), désormais payée */
   sansSoldeEnfantPaye?: boolean;
+  /** T-074 : jour d'un préavis dont les parents ont dispensé l'AM : payé, sans entretien (CCN art. 64.2, 114.1) */
+  dispense?: boolean;
 }
 
 /** T-030 : nature du salaire mis « à confirmer » dans le mois (événement familial, congés au-delà des droits, ou les deux) */
@@ -185,6 +188,10 @@ export function naturesAConfirmer(b: Partial<Pick<MonthBase, 'joursCpAConfirmer'
   return out.length ? out : ['evenement'];
 }
 export const joindre = (l: string[], et = 'et') => (l.length <= 1 ? l.join('') : `${l.slice(0, -1).join(', ')} ${et} ${l.at(-1)}`);
+
+/** T-074 (P-1, regles/t074-preavis-dispense.md, point 9) : déclaration d'un mois avec des jours de préavis dispensés */
+export const MESSAGE_DISPENSE_PAJEMPLOI =
+  'Préavis dont les parents t’ont dispensée : le salaire de ce mois comprend l’indemnité de préavis des jours dispensés, payés sans indemnité d’entretien. Pour la déclaration à Pajemploi, la part à mettre dans la case de l’indemnité de préavis, et les heures et jours à déclarer pour ces jours, sont à confirmer avec le service Pajemploi. Le total à verser ne change pas.';
 
 export function dayInfo(ctx: Ctx, d: ISODate): DayInfo {
   return memo(ctx, 'day' + d, () => computeDay(ctx, d));
@@ -243,6 +250,16 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
     // Art. 47 : payé si l'AM a travaillé le dernier jour prévu avant et le premier jour prévu après,
     // sauf absence autorisée au préalable (congés, événement familial, absence voulue par les parents).
     if (!d.endsWith('-05-01') && ferieNonPaye(ctx, d)) { info.deducted = true; info.ferieNonPaye = true; }
+    return info;
+  }
+
+  // T-074 : jour du préavis dont les parents ont dispensé l'AM (CCN art. 64.2, 66, 122). Absence imposée par l'employeur :
+  // payée, dans le diviseur, jamais retenue (même un jour noté « enfant malade ») ; pas d'entretien (art. 114.1). Une présence
+  // pointée ce jour-là l'emporte : l'enfant a été accueilli.
+  if (plannedMin > 0 && jourDispense(c, d) && !rec?.pres?.some((p) => p.a)) {
+    info.kind = 'absent';
+    info.inDivisor = true;
+    info.dispense = true;
     return info;
   }
 
@@ -919,6 +936,8 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     if (di.cpSansDroits) cpSansDroits++;
     if (di.sansSoldeEnfantPaye && di.plannedMin > 0) { r.alerts.push(messageSansSoldeEnfant(d)); sansSoldePayes++; }
     if (di.departOublie) forgotten.push(d);
+    // T-074 (P-1) : mois avec des jours de préavis dispensés par les parents : déclaration Pajemploi à confirmer.
+    if (di.dispense && !r.alerts.includes(MESSAGE_DISPENSE_PAJEMPLOI)) r.alerts.push(MESSAGE_DISPENSE_PAJEMPLOI);
     if (di.ferieNonPaye) r.alerts.push(`Férié du ${d.slice(8, 10)}/${d.slice(5, 7)} non payé : tu étais absente le jour prévu juste avant ou juste après (article 47 de la convention).`);
     if (di.rec?.abs === 'malade_certif' && !di.deducted && di.plannedMin > 0) r.sickPaidNotice = true;
     if (di.kind === 'present' || di.kind === 'prevu') {

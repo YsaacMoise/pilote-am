@@ -15,7 +15,8 @@ from .conges import (acquisition_cp, jours_enfants_a_charge, jours_fractionnemen
                      indemnite_cp_prise_partielle, conges_apres_changement_type)
 from .indemnites import (minimum_entretien_journalier, verifier_entretien_journalier, indemnite_entretien_mois,
                          indemnite_repas_mois, indemnite_kilometrique, indemnite_kilometrique_mois)
-from .fin_contrat import (duree_preavis, indemnite_compensatrice_preavis, jours_a_indemniser, iccp,
+from .fin_contrat import (duree_preavis, indemnite_compensatrice_preavis, indemnite_preavis_dispense,
+                          regularisation_finale_preavis_dispense, jours_a_indemniser, iccp,
                           indemnite_rupture, indemnite_rupture_bulletins, dates_fin_preavis_possibles,
                           regularisation_annuelle, regularisation_finale,
                           indemnite_precarite_cdd, solde_de_tout_compte)
