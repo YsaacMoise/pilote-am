@@ -47,8 +47,21 @@ export const NON_GERE_CDD_PV_P2 = NON_GERE_CDD_PV;
  * Décision D18 (section 5) : mois travaillés après le terme précis d'un CDD sans fin enregistrée à cette date : le CDD est
  * devenu un CDI (C. trav. L1243-11). Les jours après le terme sont refusés.
  */
+/**
+ * N2 (relecture 2) : seuls les jours après le terme sont refusés, et seulement une fois le terme passé (aujourd'hui après
+ * le terme). Avant, le mois du terme est calculé et une alerte dit d'enregistrer la fin (`messageTermeAVenir`).
+ */
+export function joursApresTermeRefuses(c: CddChamps & Partial<Pick<Contract, 'end'>>, jusqua: string, today: string): boolean {
+  return !!c.cdd && !!c.cddTerme && !c.cddTermeImprecis && (!c.end || c.end > c.cddTerme) && jusqua > c.cddTerme && today > c.cddTerme;
+}
+export function messageTermeAVenir(terme: string): string {
+  return `Ton CDD finit le ${shortDate(terme)}. Ce mois est calculé jusqu’au bout pour l’instant. Le jour venu, enregistre la fin dans l’écran « Fin de contrat » : le mois s’arrêtera à cette date.`;
+}
+export function messageMoisApresTerme(terme: string): string {
+  return `Ce mois est après la date de fin prévue de ton CDD (${shortDate(terme)}) : l’app ne le calcule pas. Si la date a été reportée (renouvellement, ou retour de la personne remplacée : code du travail, article L1243-7), mets la nouvelle date de fin prévue dans le contrat.`;
+}
 export function messageApresTerme(terme: string): string {
-  return `Tu travailles après la date de fin prévue de ton CDD (${shortDate(terme)}), sans fin enregistrée à cette date. Sans nouveau contrat, ton CDD est devenu un CDI (code du travail, article L1243-11). Si la date a été reportée par écrit, mets la nouvelle date de fin prévue dans le contrat ; si le CDD a fini, enregistre la fin dans l’écran « Fin de contrat » ; sinon passe le contrat en CDI. L’app ne calcule pas ces jours avant.`;
+  return `La date de fin prévue de ton CDD (${shortDate(terme)}) est passée, et aucune fin n’est enregistrée à cette date. Si tu as continué à travailler après sans nouveau contrat, ton CDD est devenu un CDI (code du travail, article L1243-11). Si la date a été reportée (renouvellement, ou retour de la personne remplacée : article L1243-7), mets la nouvelle date de fin prévue dans le contrat ; si le CDD a fini, enregistre la fin dans l’écran « Fin de contrat » ; sinon passe le contrat en CDI. L’app ne calcule pas ces jours avant.`;
 }
 
 /** Cas du contrat CDD que l'app refuse (tous ses mois) */
@@ -58,6 +71,28 @@ export function nonGeresCdd(c: CddChamps): string[] {
   if (estCddMoinsUnMois(c) && estCddSemainesSansAccueil(c)) return [NON_GERE_CDD_P1_P2];
   if (c.planningVariable) return [NON_GERE_CDD_PV];
   return [];
+}
+
+/**
+ * N1 (relecture 2), D19 : dernier jour possible de la période d'essai d'un CDD. C. trav. L1242-10 : « une durée calculée à
+ * raison d'un jour par semaine, dans la limite de deux semaines lorsque la durée initialement prévue au contrat est au plus
+ * égale à six mois et d'un mois dans les autres cas. Lorsque le contrat ne comporte pas de terme précis, la période d'essai
+ * est calculée par rapport à la durée minimale du contrat. » Durée : du début à `cddTerme` (terme ou fin de la durée
+ * minimale) ; un renouvellement ne fait qu'allonger le terme, donc un terme à six mois ou moins prouve une durée initiale à
+ * six mois ou moins. Aucun texte ne dit comment compter les semaines (R-CDD-12) : deux lectures, semaines entières
+ * (`court`) ou semaines commencées (`long`). Jours comptés de date à date.
+ */
+export function finEssaiCdd(c: CddChamps): { court: string; long: string } | undefined {
+  if (!c.cdd || !c.start || !c.cddTerme) return undefined;
+  const jours = Math.round((Date.parse(c.cddTerme) - Date.parse(c.start)) / 86400000) + 1;
+  const sixMois = addDays(c.cddTerme, 1) <= addMonthsToDate(c.start, 6);
+  const fin = (semaines: number): string => {
+    if (sixMois) return addDays(c.start!, Math.min(semaines, 14) - 1);
+    const unMois = addDays(addMonthsToDate(c.start!, 1), -1);
+    const parSemaine = addDays(c.start!, semaines - 1);
+    return parSemaine < unMois ? parSemaine : unMois;
+  };
+  return { court: fin(Math.floor(jours / 7)), long: fin(Math.ceil(jours / 7)) };
 }
 
 /** Texte des deux lectures du salaire d'un mois (écran Mois), sans montant */

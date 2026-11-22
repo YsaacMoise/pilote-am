@@ -11,7 +11,7 @@ import { euros } from './money';
 import { cpAConfirmerEntre, cpExces, cpExcesAConfirmer, MESSAGE_CP_AU_DELA_A_CONFIRMER } from './conges';
 import { nonGeresPeriode } from './nonGeres';
 import { baseHebdoMin, formePV, lecturePV, mensuelMinutesPV, messageBasePV, minutesPlanning, plagesDuJour, pvActif } from './planningVariable';
-import { cddDeuxLectures, estCddMoinsUnMois, estCddSemainesSansAccueil } from './cdd';
+import { cddDeuxLectures, estCddMoinsUnMois, estCddSemainesSansAccueil, joursApresTermeRefuses, messageApresTerme, messageMoisApresTerme, messageTermeAVenir } from './cdd';
 import type { AmAbs, AmLeave, Contract, DayRec, Plage, Planning } from './model';
 
 export interface Ctx {
@@ -768,6 +768,14 @@ export function monthBase(ctx: Ctx, m: Month): MonthBase {
     const r = computeMonthBase(ctx, m);
     // T-031 : les mois repris de l'historique gardent les montants du bulletin réel ; les mois calculés sont refusés.
     if (r.active && !r.fromHistory) r.nonGere = nonGeresPeriode(ctx.c, ctx.leaves, firstDay(m), lastDay(m), ctx.finControlee ? 'non' : 'tout');
+    // T-076, D18 et N2 : mois qui va au-delà du terme précis d'un CDD sans fin enregistrée à cette date. Terme passé : les jours
+    // après sont travaillés hors du CDD (L1243-11), le mois est refusé. Terme à venir : mois calculé, alerte.
+    const c0 = ctx.c;
+    if (r.active && !r.fromHistory && c0.cdd && c0.cddTerme && !c0.cddTermeImprecis && (!c0.end || c0.end > c0.cddTerme) && lastDay(m) > c0.cddTerme && firstDay(m) <= (c0.end ?? lastDay(m))) {
+      if (joursApresTermeRefuses(c0, lastDay(m), ctx.today)) r.nonGere.push(messageApresTerme(c0.cddTerme));
+      else if (monthOf(c0.cddTerme) === m) r.alerts.push(messageTermeAVenir(c0.cddTerme));
+      else r.nonGere.push(messageMoisApresTerme(c0.cddTerme));
+    }
     // T-076, D2 : planning variable en lecture L2, absence retenue dans une semaine au-delà de la base.
     if (r.active && !r.fromHistory) { const j = absencesL2NonGerees(ctx, firstDay(m), lastDay(m)); if (j.length) r.nonGere.push(messageAbsenceL2(j)); }
     return r;
