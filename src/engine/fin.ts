@@ -390,10 +390,13 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // T-077 (R5) : Alsace-Moselle, préavis du droit local (six semaines, CT L1234-16 1°) dans la lecture B. L'app garde celui de la
   // convention (lecture A) et chiffre l'écart : salaire des jours en plus, ou indemnité en plus après un décès.
   let preavisLocalAConfirmer: string | undefined;
+  // T-078 (R2 de la relecture 18 h 46) : fin du préavis local (lecture B), gardée pour l'indemnité de rupture (bloc D4).
+  let finLocalRetrait: ISODate | undefined;
   if (regionDe(c) === 'alsaceMoselle') {
     const QUESTION = 'En Alsace-Moselle, le code du travail (article L1234-16) prévoit six semaines de préavis pour les « personnes employées chez des particuliers », aussi en cas de démission. Aucun texte ne dit s’il vaut pour une assistante maternelle, qui travaille chez elle. La question sera posée à la DDETS.';
     const local = finPreavisLocal(c.start, { motif: motif === 'deces' ? 'retrait' : motif, notif: motif === 'deces' ? addDays(notif, 1) : notif, presentation: motif === 'deces' ? undefined : presentation });
     if (local && (motif === 'retrait' || motif === 'demission')) {
+      if (motif === 'retrait') finLocalRetrait = local;
       const ecart = indemniteCompensatricePreavis(c, addDays(preavisFin, 1), local);
       preavisLocalAConfirmer = `Préavis à confirmer. ${QUESTION} L’app applique celui de la convention (${preavisLabel}, fin le ${shortDate(preavisFin)}). Avec six semaines, il finirait le ${shortDate(local)} : ${euros(ecart)} de salaire en plus${motif === 'retrait' ? ', ou d’indemnité si les parents te dispensent de ces jours' : ''}.`;
     } else if (local && motif === 'deces') {
@@ -796,7 +799,12 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     const ancFin = fullMonthsBetween(c.start, addDays(dernierJour, 1));
     const avec = Math.round(totalBrut / 80);
     const sans = Math.round((totalBrut - icpBrutPour(dernierJour)) / 80);
-    const ancVariantes = variantes.map((v) => ({ ...v, anc: fullMonthsBetween(c.start, addDays(v.fin, 1)) }));
+    // T-078 (R2, règle T-038) : en Alsace-Moselle, la fin du préavis local de six semaines (lecture B de T-077, CT L1234-16)
+    // est une date de fin possible de plus : les 9 mois peuvent être atteints à cette date seulement.
+    const finsRupture = finLocalRetrait && !variantes.some((v) => v.fin === finLocalRetrait)
+      ? [...variantes, { fin: finLocalRetrait, libelle: `préavis local de six semaines (Alsace-Moselle, à confirmer), fin le ${shortDate(finLocalRetrait)}` }]
+      : variantes;
+    const ancVariantes = finsRupture.map((v) => ({ ...v, anc: fullMonthsBetween(c.start, addDays(v.fin, 1)) }));
     let msg = '';
     // D4 : valeur de chaque date de fin possible si l'ancienneté se compte à la fin du contrat.
     const valeur = (v: (typeof ancVariantes)[number]) => {
@@ -1056,14 +1064,20 @@ function coeurCdd(endCtx: Ctx, dernierJour: ISODate, finCdd: FinCdd, enfants: nu
       // la durée de son contrat ». Rapport (R-CDD-10) : sans congé pris ni payé pendant le CDD, ce dixième vaut
       // 0,10 × (BrutCDD + IFC). Avec des congés pris ou payés, aucun texte ne dit s'ils comptent : l'écart reste à confirmer.
       const cpPris = cpPayeNet > 0 || endCtx.leaves.some((l) => l.type === 'cp' && l.to >= c.start && l.from <= dernierJour);
+      // T-078 (R1 de la relecture 18 h 46, règle T-038) : CDD suivi par l'app après son début. Les congés pris avant le suivi
+      // (mois en historique, soldes de départ) ne sont pas connus : « aucun congé pris » n'est pas sûr, l'écart au plancher
+      // reste à confirmer, comme avec des congés pris.
+      const suiviTardif = c.trackedFrom > c.start;
       const plancherLo = Math.round((netCdd + ifcNet(ifc.lo)) / 10);
-      if (!cpPris) {
+      if (!cpPris && !suiviTardif) {
         if (plancherLo > iccp.lo) iccp.raisons.push('Le code du travail (article L1242-16) fixe un minimum : le dixième de tous les salaires bruts du CDD, indemnité de fin de contrat comprise.');
         iccp.lo = Math.max(iccp.lo, plancherLo);
         iccp.hi = Math.max(iccp.hi, plancherLo);
       } else if (iccp.lo + cpPayeNet < plancherLo) {
         iccp.hi = Math.max(iccp.hi, plancherLo - cpPayeNet);
-        iccp.raisons.push('Le code du travail (article L1242-16) fixe un minimum : le dixième de tous les salaires bruts du CDD. Tu as eu des congés pendant le CDD, et aucun texte ne dit s’ils comptent dans ce minimum.');
+        iccp.raisons.push(cpPris
+          ? 'Le code du travail (article L1242-16) fixe un minimum : le dixième de tous les salaires bruts du CDD. Tu as eu des congés pendant le CDD, et aucun texte ne dit s’ils comptent dans ce minimum.'
+          : `Le code du travail (article L1242-16) fixe un minimum : le dixième de tous les salaires bruts du CDD. L’app suit ton CDD depuis le ${shortDate(c.trackedFrom)}, pas depuis son début : elle ne sait pas si tu as eu des congés avant. Si tu en as eu, aucun texte ne dit s’ils comptent dans ce minimum.`);
       }
     }
   }

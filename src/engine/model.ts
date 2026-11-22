@@ -147,15 +147,16 @@ export interface Contract {
    */
   pajemploiPlus?: boolean;
   /**
-   * T-031 : cas que l'app ne gère pas, demandés à la création du contrat. Vrai : tous les mois calculés du contrat sont
-   * refusés (« non géré »). Absent (contrats d'avant T-031) : réponse à donner, signalée dans chaque mois.
-   * L'AM travaille dans le Bas-Rhin, le Haut-Rhin ou la Moselle.
+   * L'AM travaille dans le Bas-Rhin, le Haut-Rhin ou la Moselle. Demandé depuis T-031 ; calculé depuis T-077 (engine/regions.ts :
+   * cotisation du régime local, jours fériés et préavis locaux). Avec des horaires variables ou un CDD, les mois sont encore
+   * refusés (NON_GERE_REGION_PV_CDD, nonGeres.ts). Absent (contrats d'avant T-031) : réponse à donner, signalée dans chaque mois.
    */
   alsaceMoselle?: boolean;
   /**
-   * T-038 suite 2 (décision du DG) : l'AM travaille à Mayotte. Vrai : contrat non géré (SMIC, minimum et cotisations propres
-   * à Mayotte ; Urssaf « Rémunérer un salarié à domicile ou un assistant maternel » : minimum net de 3,70 € au 01/06/2026
-   * à Mayotte contre 3,28 € en métropole et Drom). Absent : « Ailleurs en France (hors Mayotte) » ou Alsace-Moselle.
+   * T-038 suite 2 (décision du DG) : l'AM travaille à Mayotte. Calculé depuis T-077 avec le SMIC, le minimum et les
+   * cotisations propres à Mayotte (engine/regions.ts ; Urssaf « Rémunérer un salarié à domicile ou un assistant maternel » :
+   * minimum net de 3,70 € au 01/06/2026 à Mayotte contre 3,28 € en métropole et Drom). Avec des horaires variables ou un CDD,
+   * les mois sont encore refusés (NON_GERE_REGION_PV_CDD). Absent : « Ailleurs en France (hors Mayotte) » ou Alsace-Moselle.
    */
   mayotte?: boolean;
   /**

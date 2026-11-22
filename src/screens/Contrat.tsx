@@ -208,7 +208,7 @@ export function Contrat({ id }: { id?: string }) {
             <Choices label="L’accueil est-il régulier ou occasionnel ?" value={ouiNon(c.accueilOccasionnel === undefined ? undefined : !c.accueilOccasionnel)} onChange={(v) => set({ accueilOccasionnel: v === 'non' })}
               options={[{ v: 'oui', l: 'Régulier', sub: 'L’enfant vient selon le planning du contrat.' }, { v: 'non', l: 'Occasionnel', sub: 'Accueil court, sans rythme fixe (article 97.2 de la convention). Arvela ne calcule pas encore ce cas.' }]} />
             <Choices label="CDI ou CDD ?" value={ouiNon(c.cdd)} onChange={(v) => set({ cdd: v === 'oui' })}
-              options={[{ v: 'non', l: 'CDI', sub: 'Contrat à durée indéterminée : aucune date de fin n’est prévue.' }, { v: 'oui', l: 'CDD', sub: 'Contrat à durée déterminée : la date de fin est écrite au contrat.' }]} />
+              options={[{ v: 'non', l: 'CDI', sub: 'Contrat à durée indéterminée : aucune date de fin n’est prévue.' }, { v: 'oui', l: 'CDD', sub: 'Contrat à durée déterminée : il finit à une date prévue au contrat, ou au retour de la personne remplacée.' }]} />
             {/* T-076 : le CDD est calculé (regles/t076-cdd.md, partie 5.1 : terme et motif). */}
             {c.cdd && (
               <>

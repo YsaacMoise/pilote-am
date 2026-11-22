@@ -14,7 +14,7 @@ export const NON_GERE_MAYOTTE =
   'Mayotte : non géré. Le SMIC, le salaire minimum et les cotisations y sont différents, l’app ne les a pas. Fais la paie sans l’app.';
 /**
  * T-076 : plus utilisé par le calcul (le planning variable est calculé quand ses données sont complètes, sinon « à
- * compléter », planningVariable.ts). Gardé pour les écrans et les tests qui le citent.
+ * compléter », planningVariable.ts). Plus lu par aucun écran ni aucun test ; gardé pour mémoire du texte d'avant.
  */
 export const NON_GERE_PLANNING_VARIABLE =
   'Horaires qui changent d’une semaine à l’autre (semaines A et B, planning remis chaque mois) : non géré. L’app ne sait calculer qu’une semaine type qui se répète. Fais la paie sans l’app.';
