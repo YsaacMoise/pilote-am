@@ -22,7 +22,8 @@ export function ligneRegularisation(f: Pick<FinResult, 'regularisation' | 'regul
  * l'indemnité (P-1, `autre`).
  */
 export function ligneIndemnitePreavis(d: NonNullable<FinResult['dispense']>): { hint: string; valeur: string } {
-  const jours = `Jours dispensés ${d.du === d.au ? `le ${shortDate(d.du)}` : `du ${shortDate(d.du)} au ${shortDate(d.au)}`}. `;
+  const jours = d.du > d.au ? 'Aucun jour dispensé à la date de fin retenue par l’app. '
+    : `Jours dispensés ${d.du === d.au ? `le ${shortDate(d.du)}` : `du ${shortDate(d.du)} au ${shortDate(d.au)}`}. `;
   const detail = d.aConfirmer
     ? `Montant à confirmer : il dépend de la date de fin du préavis (${(d.variantes ?? []).map((v) => `${v.libelle} : ${euros(v.net)}${v.autre != null ? ` ou ${euros(v.autre)}` : ''}`).join(' ; ')}). `
     : d.autre != null

@@ -80,6 +80,28 @@ describe('T-078 D1 : indemnité de préavis des jours dispensés, une valeur par
   });
 });
 
+describe('T-078 D1 bis : dispense déclarée, dernier jour travaillé = date de fin retenue', () => {
+  it('fin le 15/06 (aucun jour dispensé, 0 €) ou le 16/06 (un jour dispensé payé) : indemnité à confirmer avec ses valeurs', () => {
+    const f = finDeContrat(ctx(contrat52('2025-09-01')), '2026-06-01', 'retrait', 0, undefined, dispense('2026-06-15'));
+    expect(f.nonGere).toBeUndefined();
+    expect(f.dernierJour).toBe('2026-06-15');
+    expect(f.dispense).toBeDefined();
+    expect(f.dispense!.net).toBe(0);
+    expect(f.dispense!.aConfirmer).toBeDefined();
+    // Juin 2026 : 198 h prévues ; le mardi 16/06 : 9 h (art. 122 et 111).
+    expect(f.dispense!.variantes?.map((v) => v.net)).toEqual([0, Math.round((145275 * 9) / 198)]);
+    expect(f.dispense!.aConfirmer).toContain(euros(0));
+    expect(f.dispense!.aConfirmer).toContain(euros(Math.round((145275 * 9) / 198)));
+    expect(ligneIndemnitePreavis(f.dispense!).valeur).toBe('à confirmer');
+    expect(f.alertes.some((a) => a.includes('indemnité compensatrice de préavis') && a.includes('à confirmer'))).toBe(true);
+  });
+  it('fin le samedi 20/06, lendemain dimanche : aucun jour dispensé sous les deux dates, rien n’est ajouté', () => {
+    const f = finDeContrat(ctx(contrat52('2025-09-01')), '2026-06-06', 'retrait', 0, undefined, dispense('2026-06-20'));
+    expect(f.nonGere).toBeUndefined();
+    expect(f.dispense).toBeUndefined();
+  });
+});
+
 describe('T-078 D2 : bulletins saisis jusqu’au dernier mois, le texte suit le calcul', () => {
   it('P4 : l’encadré de la rupture ne dit plus « sans l’indemnité de congés non pris ni la régularisation »', () => {
     const f = finDeContrat(ctx(contrat52('2025-09-01')), '2026-10-01', 'retrait', 0, undefined, dispense('2026-09-30'), { total: 2500000, jusqua: '2026-10' });

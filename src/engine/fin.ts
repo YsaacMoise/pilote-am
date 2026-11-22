@@ -96,6 +96,8 @@ export interface FinResult {
    * (proportion de l'art. 111, ou heures dispensées × taux horaire). Présent si les deux lectures diffèrent : montant à confirmer.
    * T-078 (D1) : `aConfirmer` et `variantes` présents si l'indemnité change d'une date de fin possible du préavis à l'autre
    * (règle T-038) : `net` et `brut` sont alors ceux de la date de l'app, à ne pas donner comme dus.
+   * T-078 (D1 bis) : `du` après `au` : aucun jour dispensé à la date de l'app (`net` 0), mais une autre date de fin possible en
+   * donne : toujours avec `aConfirmer`.
    */
   dispense?: { du: ISODate; au: ISODate; net: number; brut: number; autre?: number; aConfirmer?: string; variantes?: { fin: ISODate; libelle: string; net: number; autre?: number }[] };
 }
@@ -412,6 +414,20 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     alertes.push(`Préavis non fait en entier, à la demande des parents : tu as accueilli l’enfant jusqu’au ${shortDate(inexecution!.dernierJourTravaille)}. Le contrat finit le ${shortDate(dernierJour)}, date prévue de fin du préavis (convention, article 64). Pour les jours dispensés (${jours}), les parents te versent une indemnité compensatrice de préavis égale au salaire de ces jours${montantIcp} Elle est comprise dans tes salaires des mois du préavis, pas en plus, et soumise aux cotisations. Ces jours comptent pour tes congés et ton ancienneté (article 64.2). Pas d’indemnité d’entretien ni de repas ces jours-là (article 114). Garde par écrit que ce sont les parents qui t’ont dispensée : si c’est toi qui as demandé à partir, le contrat finit à ton dernier jour travaillé et ces jours ne sont pas payés.`);
     alertes.push('Déclaration à Pajemploi : la part du salaire à mettre dans la case de l’indemnité de préavis, et les heures et jours à déclarer pour les jours dispensés, sont à confirmer avec le service Pajemploi. Le total à verser, lui, ne change pas.');
   }
+  // T-078 (D1 bis, même règle T-038) : dispense déclarée, dernier jour travaillé = date de fin retenue : aucun jour dispensé à
+  // cette date, mais une autre date de fin possible (lendemain, préavis d'un mois) en ferait, payés (art. 64.2 et 66). Si elle
+  // donne une indemnité, celle-ci est « à confirmer » avec ses valeurs (0 € à la date de l'app). `du` > `au` : aucun jour.
+  let sansJourDispense: NonNullable<FinResult['dispense']> | undefined;
+  if (!dispense && employeurValide && inexecution && variantes.length > 1) {
+    const du = addDays(inexecution.dernierJourTravaille, 1);
+    const parFin = variantes.map((v) => ({ ...v, ...(v.fin < du ? { net: 0 } : icpDispense(c, du, v.fin)) as { net: number; autre?: number } }));
+    if (parFin.some((v) => v.net !== 0)) {
+      const valeur = (v: (typeof parFin)[number]) => (v.net === 0 ? `${euros(0)} (aucun jour dispensé)` : `${euros(v.net)} net${v.autre != null ? ` (ou ${euros(v.autre)} en comptant les heures dispensées au taux horaire)` : ''}`);
+      const aConfirmer = `Indemnité de préavis à confirmer : elle court jusqu’à la date prévue de fin du préavis (convention, articles 64.2 et 66), et cette date dépend ${demission312 ? 'de la durée du préavis et de sa date de fin, à confirmer' : 'de la date de fin du préavis, elle-même à confirmer'}. ${parFin.map((v) => `${v.libelle.replace(/^./, (x) => x.toUpperCase())} : ${valeur(v)}`).join(' ; ')}.`;
+      sansJourDispense = { du, au: dernierJour, net: 0, brut: 0, aConfirmer, variantes: parFin.map((v) => ({ fin: v.fin, libelle: v.libelle, net: v.net, ...(v.autre != null ? { autre: v.autre } : {}) })) };
+      alertes.push(`Préavis non fait en entier, à la demande des parents : tu as accueilli l’enfant jusqu’au ${shortDate(inexecution.dernierJourTravaille)}, date de fin du préavis retenue par l’app : aucun jour dispensé à cette date. Si le préavis finit plus tard, les jours suivants sont dispensés et payés par une indemnité compensatrice de préavis : montant à confirmer, ${aConfirmer.replace(/^Indemnité de préavis à confirmer : /, '')} Elle n’est pas comptée dans le total. Garde par écrit que ce sont les parents qui t’ont dispensée.`);
+    }
+  }
 
   // Salaires bruts depuis le début du contrat
   let totalBrut = 0;
@@ -718,6 +734,6 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, ruptureVariantes, totalBrut, brutsEstimes,
     indemnitePreavis, indemnitePreavisExplication, indemnitePreavisAConfirmer,
     regularisation: regularisation_, regulMinutes, cpJoursRestants, cpIndemnite, cpDixiemeEnCours, cpExplication, cpAConfirmer, regularisationAConfirmer, regularisationNonCalculee, manquants, alertes,
-    ...(dispense && icp ? { dispense: { ...dispense, ...icp } } : {}),
+    ...(dispense && icp ? { dispense: { ...dispense, ...icp } } : sansJourDispense ? { dispense: sansJourDispense } : {}),
   };
 }
