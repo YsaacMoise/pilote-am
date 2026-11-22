@@ -254,3 +254,20 @@ describe('T-077 R7 : simulateur en Alsace-Moselle', () => {
     expect(simuler({ ...base, alsaceMoselle: false }, d).feriesLocauxB).toBeUndefined();
   });
 });
+
+describe('T-077 : relecture (D1, D2)', () => {
+  it('relevé et lien des parents : un férié local est dit à confirmer, jamais « undefined »', async () => {
+    const { buildSnapshot } = await import('../src/partage/snapshot');
+    const ctx = makeCtx(contract(AM), [], [], '2026-01-10');
+    const snap = buildSnapshot({ ctx, journal: [], amName: 'Nadia', enfants: 0, now: 0 });
+    const txt = JSON.stringify(snap);
+    expect(txt).not.toMatch(/undefined/);
+    if (txt.includes('2025-12-26')) expect(txt).toMatch(/Jour férié local \(26 décembre\), à confirmer/);
+  });
+  it('dixième des congés : la raison du salaire à confirmer n’est pas « événement familial »', async () => {
+    const { baseDixieme } = await import('../src/engine/conges');
+    const bd = baseDixieme(makeCtx(contract(AM), [], [], '2026-11-22'), 2025);
+    expect(bd.joursFerieLocalAConfirmer).toBeGreaterThan(0);
+    expect(bd.joursEvenementAConfirmer).toBe(0);
+  });
+});

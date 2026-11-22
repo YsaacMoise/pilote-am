@@ -729,17 +729,21 @@ export function compteur(ctx: Ctx, at: ISODate, enfantsACharge = 0): Compteur {
 }
 
 /** Base du dixième : salaires nets (hors frais) de la période, indemnités de congés versées incluses */
-export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; manquants: Month[]; aConfirmer: boolean; evenementAConfirmer: number; joursCpAConfirmer: number; joursEvenementAConfirmer: number; joursMaladieAConfirmer: number } {
+export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; manquants: Month[]; aConfirmer: boolean; evenementAConfirmer: number; joursCpAConfirmer: number; joursEvenementAConfirmer: number; joursMaladieAConfirmer: number; joursFerieLocalAConfirmer: number; joursMaintienAConfirmer: number } {
   return memo(ctx, `b10${y}|${enfants}`, () => {
     const p = cpPeriod(y);
     let base = 0;
     let aConfirmer = false;
     let evenementAConfirmer = 0, joursCpAConfirmer = 0, joursEvenementAConfirmer = 0, joursMaladieAConfirmer = 0;
+    let joursFerieLocalAConfirmer = 0, joursMaintienAConfirmer = 0;
     const manquants: Month[] = [];
     for (const m of monthsBetween(monthOf(p.from), monthOf(p.to))) {
       const b = monthBase(ctx, m);
       if (!b.active) continue;
       if (b.missing) manquants.push(m);
+      // T-077 : jours de férié local et de maintien du droit local à confirmer (R3, R4).
+      joursFerieLocalAConfirmer += b.joursFerieLocalAConfirmer ?? 0;
+      joursMaintienAConfirmer += b.joursMaintienAConfirmer ?? 0;
       base += b.net;
       // T-025 C-5 : salaire d'événement familial à confirmer, hors de `b.net`. CCN 48.1.3.1.1 : ces congés « sont
       // assimilés à du temps de travail effectif pour la détermination du droit à congés payés ».
@@ -756,7 +760,7 @@ export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; m
         if (cp.aConfirmer) aConfirmer = true;
       }
     }
-    return { base, manquants, aConfirmer, evenementAConfirmer, joursCpAConfirmer, joursEvenementAConfirmer, joursMaladieAConfirmer };
+    return { base, manquants, aConfirmer, evenementAConfirmer, joursCpAConfirmer, joursEvenementAConfirmer, joursMaladieAConfirmer, joursFerieLocalAConfirmer, joursMaintienAConfirmer };
   });
 }
 
@@ -852,8 +856,9 @@ export function indemnite(ctx: Ctx, y: number, enfants = 0): IndemniteCP {
           out.aConfirmer = { ...out.aConfirmer, message: `${out.aConfirmer.message} ${msg}`, baseSure: false };
         } else {
           const montants = [
-            { libelle: 'événement familial payé', jours: acq.jours, montant: avec },
-            { libelle: 'événement familial non payé', jours: acq.jours, montant: out.montant },
+            // T-077 : libellé générique quand le salaire à confirmer vient d'autre chose qu'un événement familial.
+            { libelle: bd.joursFerieLocalAConfirmer || bd.joursMaintienAConfirmer ? 'salaire à confirmer payé' : 'événement familial payé', jours: acq.jours, montant: avec },
+            { libelle: bd.joursFerieLocalAConfirmer || bd.joursMaintienAConfirmer ? 'salaire à confirmer non payé' : 'événement familial non payé', jours: acq.jours, montant: out.montant },
           ];
           out.aConfirmer = { message: `Indemnité de congés payés à confirmer. ${msg}`, montants, tous: montants, baseSure: true };
         }
