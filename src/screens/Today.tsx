@@ -564,14 +564,15 @@ function AutreHeureSheet({ ch, child, arrivee, pointer, onClose }: { ch: ChoixPo
 }
 
 const CHILD_ABS_OPTIONS: { v: ChildAbs | 'none'; l: string; sub?: string }[] = [
-  { v: 'none', l: 'Présent', sub: 'Accueilli normalement' },
-  { v: 'malade_certif', l: CHILD_ABS_LABEL.malade_certif, sub: 'Retenu dans la limite de 5 jours par an, plus une absence de 14 jours d’affilée' },
-  { v: 'malade', l: CHILD_ABS_LABEL.malade, sub: 'Payé' },
-  { v: 'parents', l: CHILD_ABS_LABEL.parents, sub: 'Payé' },
+  // T-079 : choix rédigés comme réponses à la question ; CHILD_ABS_LABEL reste le libellé court des écrans de lecture.
+  { v: 'none', l: 'Oui, comme prévu' },
+  { v: 'malade_certif', l: 'Non, malade, avec certificat médical', sub: 'Déduit du salaire : 5 jours par an au plus, plus une absence de 14 jours d’affilée.' },
+  { v: 'malade', l: 'Non, malade, sans certificat', sub: 'Payé normalement.' },
+  { v: 'parents', l: 'Non, absent à la demande des parents', sub: 'Payé normalement.' },
 ];
 // T-035b : l'absence « sans solde » de l'enfant n'est plus proposée (CCN art. 105 : absence non prévue = payée). Elle reste
 // affichée seulement sur un jour déjà noté ainsi, pour pouvoir le corriger.
-const OPTION_SANS_SOLDE_ENFANT = { v: 'sans_solde_enfant' as const, l: CHILD_ABS_LABEL.sans_solde_enfant, sub: 'Payé : la convention ne permet pas de le retenir (article 105)' };
+const OPTION_SANS_SOLDE_ENFANT = { v: 'sans_solde_enfant' as const, l: 'Non, noté « sans solde » (ancienne saisie)', sub: 'Payé : la convention ne permet pas de le retenir (article 105).' };
 
 /**
  * Heures de départ de la fiche de la journée, plage par plage : celles pointées, sinon celles du planning.
@@ -649,7 +650,7 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
     <Sheet title={`${c.child}, ${dayLabel(day)}`} onClose={onClose}>
       <p class="muted">{planText(di)}</p>
       {di.ferie && <Switch label={`Jour férié (${di.ferie}) travaillé`} hint={day.endsWith('05-01') ? '1er mai : payé double' : 'Majoré de 10 %'} checked={ferieT} onChange={setFerieT} />}
-      <Choices label="Ce jour-là" value={abs} options={rec?.abs === 'sans_solde_enfant' ? [...CHILD_ABS_OPTIONS, OPTION_SANS_SOLDE_ENFANT] : CHILD_ABS_OPTIONS} onChange={setAbs} />
+      <Choices label="L’enfant est-il accueilli ce jour-là ?" value={abs} options={rec?.abs === 'sans_solde_enfant' ? [...CHILD_ABS_OPTIONS, OPTION_SANS_SOLDE_ENFANT] : CHILD_ABS_OPTIONS} onChange={setAbs} />
       {abs === 'none' && !future && (
         <fieldset>
           <legend>Heures réelles</legend>
@@ -674,9 +675,9 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
       )}
       {abs === 'none' && !future && (
         <>
-          {c.repasPrix > 0 && <Stepper label="Repas fournis" value={repas} onChange={setRepas} max={4} />}
-          {c.kmTaux > 0 && <Stepper label="Kilomètres" value={km} onChange={setKm} max={500} unit="km" />}
-          {c.kmTaux > 0 && km > 0 && <Switch label="Une autre famille a aussi demandé ce trajet" hint="Non : ces km sont dus en entier par cette famille (article 113)." checked={kmPartage} onChange={setKmPartage} />}
+          {c.repasPrix > 0 && <Stepper label="Repas fournis par toi" value={repas} onChange={setRepas} max={4} />}
+          {c.kmTaux > 0 && <Stepper label="Kilomètres parcourus avec l’enfant" value={km} onChange={setKm} max={500} unit="km" />}
+          {c.kmTaux > 0 && km > 0 && <Switch label="Une autre famille a aussi demandé ce trajet" hint="Laisse éteint si cette famille est seule à l’avoir demandé : elle paie alors tous les km (article 113)." checked={kmPartage} onChange={setKmPartage} />}
           {c.kmTaux > 0 && km > 0 && kmPartage && <Stepper label="Enfants dans la voiture" value={kmEnfants} onChange={setKmEnfants} max={8} />}
           {c.kmTaux > 0 && km > 0 && kmPartage && <p class="hint">Compte tous les enfants dans la voiture, les tiens compris si le trajet est aussi pour eux. Chaque famille paie sa part, au prorata des enfants (article 113). À moins de 2, les km restent à confirmer.</p>}
         </>
@@ -687,11 +688,12 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
 }
 
 const AM_OPTIONS: { v: ChoixAbsence; l: string; sub: string }[] = [
-  { v: 'cp', l: AM_ABS_LABEL.cp, sub: 'Décomptés de ton compteur de congés' },
-  { v: 'am_malade', l: AM_ABS_LABEL.am_malade, sub: 'Non payé par les parents (indemnités de la Sécurité sociale)' },
-  { v: 'am_enfant_malade', l: AM_ABS_LABEL.am_enfant_malade, sub: 'Non payé (3 jours par an, 5 dans certains cas)' },
-  { v: 'evenement', l: AM_ABS_LABEL.evenement, sub: 'Mariage, naissance, décès… : payé sur justificatif, selon la durée prévue' },
-  { v: 'sans_solde', l: AM_ABS_LABEL.sans_solde, sub: 'Non payé, avec l’accord des parents' },
+  // T-079 : une seule forme (le nom de l'absence) ; AM_ABS_LABEL reste le libellé des écrans de lecture et du relevé.
+  { v: 'cp', l: 'Congés payés', sub: 'Décomptés de ton compteur de congés.' },
+  { v: 'am_malade', l: 'Maladie', sub: 'Non payé par les parents : la Sécurité sociale te verse des indemnités.' },
+  { v: 'am_enfant_malade', l: 'Enfant malade', sub: 'Ton enfant à toi. Non payé : 3 jours par an, 5 dans certains cas.' },
+  { v: 'evenement', l: 'Événement familial', sub: 'Mariage, naissance, décès… Payé sur justificatif, pour la durée prévue.' },
+  { v: 'sans_solde', l: 'Congé sans solde', sub: 'Non payé, avec l’accord des parents.' },
   // T-031 : absences que l'app ne calcule pas. Les saisir bloque les mois concernés au lieu de les payer comme travaillés.
   ...AM_ABS_NON_GEREES.map((v) => ({ v, l: AM_ABS_NON_GEREE_LABEL[v], sub: 'Non géré par l’app : les mois concernés sont bloqués' })),
 ];
@@ -712,9 +714,9 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
   return (
     <Sheet title="Je serai absente" onClose={onClose}>
       <p class="muted">Pour tous les enfants. Les parents ne te paient pas les jours non payés : l’app fait la retenue toute seule.</p>
-      <Choices label="Raison" value={type} options={AM_OPTIONS} onChange={setType} />
+      <Choices label="Pourquoi seras-tu absente ?" value={type} options={AM_OPTIONS} onChange={setType} />
       {type === 'evenement' && (
-        <Choices label="Quel événement ?" value={nature} onChange={setNature}
+        <Choices label="Quel événement familial ?" value={nature} onChange={setNature}
           options={(Object.keys(NATURE_EVENEMENT_LABEL) as NatureEvenement[]).map((v) => ({ v, l: NATURE_EVENEMENT_LABEL[v], sub: libelleDureeSaisie(v, from) }))} />
       )}
       {type === 'evenement' && <p class="hint">Déplacement de plus de 600 km aller-retour : le jour en plus est non rémunéré, saisis-le en congé sans solde.</p>}
@@ -722,8 +724,8 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
       {estNonGere(type) && <p class="hint">L’app garde seulement « absence non gérée » et les dates, pas le motif.</p>}
       {type === 'evenement' && <p class="hint">L’app garde seulement « événement familial » et le nombre de jours payés, pas l’événement choisi.</p>}
       <div class="grid2">
-        <DateInput label="Du" value={from} onChange={(v) => { setFrom(v); if (to < v) setTo(v); }} />
-        <DateInput label="Au (inclus)" value={to} min={from} onChange={setTo} />
+        <DateInput label="Premier jour d’absence" value={from} onChange={(v) => { setFrom(v); if (to < v) setTo(v); }} />
+        <DateInput label="Dernier jour d’absence" value={to} min={from} onChange={setTo} />
       </div>
       {visibles.map((q, i) => (
         <Choices key={`${q.sens}|${q.autre.id}`} label={texteQuestionSuite(q)} value={reps[i]}

@@ -2,7 +2,21 @@ import { termsAt } from '../engine/payroll';
 import { useState } from 'preact/hooks';
 import { ctxFor, putContract, toast, useStore } from '../store';
 import { addMonths, monthLabel, monthOf, shortDate, today, type Month } from '../engine/dates';
-import { finDeContrat, MOTIF_LABEL, type DemandeurInexecution, type Motif } from '../engine/fin';
+import { finDeContrat, type DemandeurInexecution, type Motif } from '../engine/fin';
+
+/**
+ * T-079 : choix de « Pourquoi le contrat s'arrête-t-il ? », du plus courant au plus rare, chacun dit qui agit.
+ * MOTIF_LABEL (engine/fin.ts) reste le libellé court des messages ; les valeurs v sont inchangées.
+ */
+const CHOIX_MOTIF: { v: Motif; l: string; sub?: string }[] = [
+  { v: 'retrait', l: 'Les parents retirent l’enfant', sub: 'Entrée à l’école, déménagement, autre mode de garde…' },
+  { v: 'demission', l: 'Je démissionne' },
+  { v: 'essai', l: 'Rupture pendant la période d’essai', sub: 'À ton initiative ou à celle des parents.' },
+  { v: 'faute_grave', l: 'Les parents retirent l’enfant pour faute grave', sub: 'Leur lettre te reproche une faute grave.' },
+  { v: 'inaptitude', l: 'Je suis inapte, pour une raison sans lien avec le travail' },
+  { v: 'inaptitude_pro', l: 'Je suis inapte après un accident du travail ou une maladie professionnelle' },
+  { v: 'deces', l: 'Décès de l’enfant' },
+];
 import type { Rupture } from '../engine/model';
 import { euros, eurosArrondis, hoursLabel } from '../engine/money';
 import { Banner, Choices, DateInput, EuroInput, Gommette, Topbar } from '../ui/kit';
@@ -75,33 +89,33 @@ export function Fin({ id }: { id?: string }) {
         <section class="card">
           <fieldset>
             <legend>La rupture</legend>
-            <Choices label="Qui arrête et pourquoi" value={motif} onChange={setMotif} options={(Object.keys(MOTIF_LABEL) as Motif[]).map((k) => ({ v: k, l: MOTIF_LABEL[k] }))} />
+            <Choices label="Pourquoi le contrat s’arrête-t-il ?" value={motif} onChange={setMotif} options={CHOIX_MOTIF} />
             {avecPreavis ? (
               <>
-                <Choices label="Comment la lettre est donnée" value={remise} onChange={(v) => { setRemise(v); setPresentation(null); }} options={[
-                  { v: 'recommande', l: 'Lettre recommandée avec accusé de réception' },
-                  { v: 'main_propre', l: 'Lettre remise en main propre contre décharge', sub: 'L’autre signe et date un double' },
+                <Choices label="Comment la lettre est-elle remise ?" value={remise} onChange={(v) => { setRemise(v); setPresentation(null); }} options={[
+                  { v: 'recommande', l: 'En recommandé avec accusé de réception' },
+                  { v: 'main_propre', l: 'En main propre, contre décharge', sub: 'La personne qui la reçoit signe et date un double.' },
                 ]} />
                 {remise === 'recommande' ? (
                   <>
-                    <DateInput label="Date d’envoi de la lettre" hint="Sert à compter l’ancienneté." value={notif} min={c.start} onChange={changeEnvoi} />
-                    <DateInput label="Date de première présentation de la lettre" hint="Le jour où le facteur la présente la première fois (accusé de réception ou avis de passage). Le préavis part de ce jour, pas de l’annonce orale." value={presVue} min={envoi} onChange={(v) => setPresentation(v || null)} />
+                    <DateInput label="Date d’envoi de la lettre" hint="Le jour où elle est postée. Il sert à compter ton ancienneté." value={notif} min={c.start} onChange={changeEnvoi} />
+                    <DateInput label="Date de première présentation de la lettre" hint="Le premier passage du facteur, noté sur l’accusé de réception ou l’avis de passage. Le préavis commence ce jour-là, pas le jour de l’annonce orale." value={presVue} min={envoi} onChange={(v) => setPresentation(v || null)} />
                   </>
                 ) : (
-                  <DateInput label="Date de remise de la lettre contre décharge" hint="Le préavis part de ce jour, pas de l’annonce orale." value={notif} min={c.start} onChange={changeEnvoi} />
+                  <DateInput label="Date de remise en main propre" hint="La date écrite sur la décharge. Le préavis commence ce jour-là, pas le jour de l’annonce orale." value={notif} min={c.start} onChange={changeEnvoi} />
                 )}
-                <Choices label="Le préavis est-il fait en entier ?" value={preavisFait} onChange={setPreavisFait} options={[
-                  { v: 'oui', l: 'Oui, ou il est en cours' },
-                  { v: 'am_acceptee', l: 'Non, à ma demande, et les parents ont accepté', sub: 'Le contrat finit à ton dernier jour travaillé' },
-                  { v: 'employeur', l: 'Non, les parents m’en dispensent', sub: 'Ils te doivent une indemnité égale au préavis' },
-                  { v: 'am_sans_accord', l: 'Non, je pars sans leur accord' },
+                <Choices label="Le préavis est-il effectué en entier ?" value={preavisFait} onChange={setPreavisFait} options={[
+                  { v: 'oui', l: 'Oui, effectué ou en cours' },
+                  { v: 'am_acceptee', l: 'Non : je pars plus tôt, avec l’accord des parents', sub: 'Le contrat finit à ton dernier jour travaillé.' },
+                  { v: 'employeur', l: 'Non : les parents me dispensent de le faire', sub: 'Ils te doivent une indemnité égale au préavis.' },
+                  { v: 'am_sans_accord', l: 'Non : je pars plus tôt, sans l’accord des parents' },
                 ]} />
                 {preavisFait !== 'oui' && (
                   <DateInput label="Dernier jour travaillé" hint="Le dernier jour où tu as accueilli l’enfant." value={dernierTravaille ?? envoi} min={envoi} onChange={(v) => setDernierTravaille(v || null)} />
                 )}
               </>
             ) : avecLettre ? (
-              <DateInput label="Date d’envoi ou de remise de la lettre" hint="Pas de préavis pour ce motif : le contrat s’arrête à cette date." value={notif} min={c.start} onChange={changeEnvoi} />
+              <DateInput label="Date de la lettre (envoi ou remise)" hint="Ce motif n’a pas de préavis : le contrat s’arrête à cette date." value={notif} min={c.start} onChange={changeEnvoi} />
             ) : (
               <DateInput label="Date du décès" value={notif} min={c.start} onChange={setNotif} />
             )}
