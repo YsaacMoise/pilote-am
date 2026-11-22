@@ -27,7 +27,8 @@ import * as FinA from '__A_RACINE__/src/engine/fin';
 import * as PayrollA from '__A_RACINE__/src/engine/payroll';
 const A_CDD = typeof (FinA as Record<string, unknown>).finDeCdd === 'function';
 const ctxLectureCdd2 = (PayrollA as Record<string, unknown>).ctxLectureCdd2 as ((ctx: Ctx) => Ctx | undefined) | undefined;
-import { entretienPlancher, netToBrut, ratesAt } from '__A_RACINE__/src/engine/rates';
+import { brutToNet, entretienPlancher, netToBrut, ratesAt } from '__A_RACINE__/src/engine/rates';
+import { lastDay, monthOf } from '__A_RACINE__/src/engine/dates';
 // T-027 : fonctions publiques du moteur A pour les kilomètres et les événements familiaux (signatures seulement).
 import { controleKm } from '__A_RACINE__/src/engine/km';
 import { dureeEvenement } from '__A_RACINE__/src/engine/evenements';
@@ -232,7 +233,7 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       const finSit = k.fin ?? s.fin;
       const estCdd = s.contrat.cdd === true || k.motif === 'fin_cdd' || finSit?.motif === 'fin_cdd';
       if (estCdd) {
-        const cles = ['ifc', 'ifc_net', 'brut_cdd', 'iccp', 'preavis', 'indemnite_rupture', 'regularisation_fin'];
+        const cles = ['ifc', 'ifc_brut', 'ifc_net', 'brut_cdd', 'iccp', 'preavis', 'indemnite_rupture', 'regularisation_fin'];
         if (!A_CDD) {
           for (const cle of cles) out[cle] = refus('A : CDD non géré par cette version de A (pas de finDeCdd)');
           break;
@@ -243,7 +244,12 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
         const part = (p: { montant: number; lectures: number[] } | undefined, v: number, ordre: 'p3' | 'p4'): Sortie =>
           // P4 : [lecture 1 sans ICCP, lecture 2 avec] ; P3 : [lecture A comparaison, lecture B dixième seul] (rapport t076-cdd.md).
           (p ? { statut: 'ok', valeur: v, lectures: ordre === 'p4' ? [v, v + p.montant] : [v + p.montant, v], note: 'A : part sûre, écart à confirmer' } : ok(v));
-        out.ifc = part(f.ifcPartAConfirmer, f.ifc ?? 0, 'p4');
+        // T-076 (direction) : le comparateur compare les montants en net, comme l'ICCP ; l'IFC brute reste dans `brut_cdd`/`ifc_brut`.
+        const enNet = (b: number) => brutToNet(b, lastDay(monthOf(date)));
+        out.ifc_brut = part(f.ifcPartAConfirmer, f.ifc ?? 0, 'p4');
+        out.ifc = f.ifcPartAConfirmer
+          ? { statut: 'ok', valeur: f.ifcNet ?? 0, lectures: [f.ifcNet ?? 0, enNet((f.ifc ?? 0) + f.ifcPartAConfirmer.montant)], note: 'A : part sûre, écart à confirmer (net)' }
+          : ok(f.ifcNet ?? 0);
         out.ifc_net = ok(f.ifcNet ?? 0);
         out.brut_cdd = ok(f.brutCdd ?? 0);
         out.iccp = part(f.cpPartAConfirmer, f.cpIndemnite, 'p3');
