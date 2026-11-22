@@ -595,6 +595,17 @@ export function heuresInitiales(planned: Plage[], pres: Presence[] | undefined, 
 }
 
 /**
+ * Relecture T-072 (B-2) : un départ saisi sans arrivée serait perdu (seules les plages avec arrivée sont gardées). La fiche
+ * refuse alors « Enregistrer » avec ce message, qui rappelle l'arrivée prévue. Rend '' si chaque départ a son arrivée.
+ */
+export function departSansArrivee(pres: Presence[], planned: Plage[]): string {
+  const i = pres.findIndex((p) => !p.a && !!p.d);
+  if (i < 0) return '';
+  const prevue = planned[i]?.start;
+  return `Départ${pres.length > 1 ? ` (${i + 1})` : ''} sans arrivée : indique aussi l’heure d’arrivée${prevue ? ` (prévue à ${fmtH(prevue)})` : ''}.`;
+}
+
+/**
  * Présences écrites par « Enregistrer » de la fiche de la journée ; `undefined` : aucune présence (journée comme prévu,
  * ou jour à venir). Jour passé : des heures égales au planning ne sont pas écrites. Le jour même (T-068), seules les
  * heures saisies ou pointées sont écrites ; une fiche vide ne note rien (journée comme prévu).
@@ -631,9 +642,12 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
   const [ferieT, setFerieT] = useState<boolean>(!!rec?.ferieTravaille);
   const [err, setErr] = useState('');
   const future = day > today();
-  useErreurAffichee('depart_avant_arrivee', !!err);
+  useErreurAffichee('depart_avant_arrivee', !!err && !err.includes('sans arrivée'));
+  useErreurAffichee('saisie', !!err && err.includes('sans arrivée'));
 
   async function save() {
+    const sansArrivee = departSansArrivee(pres, di.planned);
+    if (sansArrivee) { setErr(sansArrivee); return; }
     for (const p of pres) {
       if (p.a && p.d && p.d <= p.a) { setErr('L’heure de départ doit être après l’arrivée.'); return; }
     }

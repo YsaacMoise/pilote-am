@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { Plage } from '../src/engine/model';
-import { heuresInitiales, presencesAEnregistrer } from '../src/screens/Today';
+import { heuresInitiales, presencesAEnregistrer, departSansArrivee } from '../src/screens/Today';
 
 const ADAM: Plage[] = [{ start: '07:30', end: '17:30' }];
 const ROSE: Plage[] = [{ start: '07:30', end: '08:30' }, { start: '16:30', end: '18:30' }];
@@ -73,5 +73,32 @@ describe('T-068 : départ vide tant que son heure n’est pas passée', () => {
   it('la fiche passe l’heure du jour seulement le jour même', () => {
     const src = readFileSync('src/screens/Today.tsx', 'utf8');
     expect(src).toContain('heuresInitiales(di.planned, rec?.pres, slots, day === today() ? nowHHMM() : undefined)');
+  });
+
+  // Relecture T-072, B-2 : un départ saisi sans arrivée était perdu sans message (presencesAGarder ne garde que les plages
+  // avec arrivée). « Enregistrer » est refusé avec un message qui demande l'arrivée et rappelle l'heure prévue.
+  it('B-2 : jour même à 19 h, journée non pointée, départ seul saisi : refusé avec un message, rien de perdu en silence', () => {
+    const form = heuresInitiales(ADAM, undefined, 1, '19:00');
+    const saisi = [{ ...form[0], d: '18:15' }];
+    expect(departSansArrivee(saisi, ADAM)).toBe('Départ sans arrivée : indique aussi l’heure d’arrivée (prévue à 7 h 30).');
+  });
+  it('B-2 : jour même avant l’heure prévue (10 h), départ seul saisi : même refus', () => {
+    expect(departSansArrivee([{ a: '', d: '09:45' }], ADAM)).toContain('Départ sans arrivée');
+  });
+  it('B-2 : deux plages, départ du soir seul saisi : refus qui nomme la plage du soir', () => {
+    expect(departSansArrivee([{ a: '07:35', d: '08:32' }, { a: '', d: '18:45' }], ROSE)).toBe('Départ (2) sans arrivée : indique aussi l’heure d’arrivée (prévue à 16 h 30).');
+  });
+  it('B-2 : jour passé, arrivée effacée et départ gardé : même refus ; plage sans heure prévue : message sans heure', () => {
+    expect(departSansArrivee([{ a: '', d: '17:30' }], ADAM)).toContain('prévue à 7 h 30');
+    expect(departSansArrivee([{ a: '', d: '17:30' }], [])).toBe('Départ sans arrivée : indique aussi l’heure d’arrivée.');
+  });
+  it('B-2 : rien à refuser quand chaque départ a son arrivée, ou sans départ', () => {
+    expect(departSansArrivee([{ a: '07:58', d: '' }], ADAM)).toBe('');
+    expect(departSansArrivee([{ a: '', d: '' }, { a: '16:40', d: '18:45' }], ROSE)).toBe('');
+    expect(departSansArrivee([{ a: '07:30', d: '17:30' }], ADAM)).toBe('');
+  });
+  it('B-2 : la fiche vérifie avant d’écrire', () => {
+    const src = readFileSync('src/screens/Today.tsx', 'utf8');
+    expect(src).toMatch(/const sansArrivee = departSansArrivee\(pres, di\.planned\);\s*if \(sansArrivee\) \{ setErr\(sansArrivee\); return; \}/);
   });
 });
