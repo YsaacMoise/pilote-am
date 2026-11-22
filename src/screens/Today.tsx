@@ -566,7 +566,7 @@ function AutreHeureSheet({ ch, child, arrivee, pointer, onClose }: { ch: ChoixPo
 const CHILD_ABS_OPTIONS: { v: ChildAbs | 'none'; l: string; sub?: string }[] = [
   // T-079 : choix rédigés comme réponses à la question ; CHILD_ABS_LABEL reste le libellé court des écrans de lecture.
   { v: 'none', l: 'Oui, comme prévu' },
-  { v: 'malade_certif', l: 'Non, malade, avec certificat médical', sub: 'Déduit du salaire : 5 jours par an au plus, plus une absence de 14 jours d’affilée.' },
+  { v: 'malade_certif', l: 'Non, malade, avec certificat médical', sub: 'Certificat médical ou bulletin d’hospitalisation. Déduit du salaire : 5 jours par année de contrat au plus, plus une absence de 14 jours calendaires consécutifs.' },
   { v: 'malade', l: 'Non, malade, sans certificat', sub: 'Payé normalement.' },
   { v: 'parents', l: 'Non, absent à la demande des parents', sub: 'Payé normalement.' },
 ];
@@ -713,7 +713,7 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
   const visibles = questionsVisibles(questions, reps);
   return (
     <Sheet title="Je serai absente" onClose={onClose}>
-      <p class="muted">Pour tous les enfants. Les parents ne te paient pas les jours non payés : l’app fait la retenue toute seule.</p>
+      <p class="muted">Pour tous les enfants. Pour une absence non payée, l’app fait seule la retenue sur le salaire.</p>
       <Choices label="Pourquoi seras-tu absente ?" value={type} options={AM_OPTIONS} onChange={setType} />
       {type === 'evenement' && (
         <Choices label="Quel événement familial ?" value={nature} onChange={setNature}

@@ -37,15 +37,37 @@ export function libelleDepartement(code: string): string {
   return d ? `${d.code} – ${d.nom}` : '';
 }
 
-/** Retrouve un département à partir de ce que l'AM a saisi (« 75 », « paris », « 75 – Paris »), sinon undefined */
+/** Forme de comparaison : sans accents, apostrophes et tirets lus comme des espaces, minuscules */
+function norme(x: string): string {
+  return x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\s–’'-]+/g, ' ').trim().toLowerCase();
+}
+
+/**
+ * Retrouve un département à partir de ce que l'AM a saisi (« 75 », « 1 » pour l'Ain, « paris », « isere »,
+ * « cote-d'or », « 75 – Paris »), sinon undefined.
+ */
 export function trouverDepartement(saisie: string): string | undefined {
-  const s = saisie.trim().toLocaleLowerCase('fr-FR');
+  const s = norme(saisie);
   if (!s) return undefined;
-  const exact = DEPARTEMENTS.find((d) => `${d.code} – ${d.nom}`.toLocaleLowerCase('fr-FR') === s || d.code.toLowerCase() === s || d.nom.toLocaleLowerCase('fr-FR') === s);
-  return exact?.code;
+  const code = /^\d$/.test(s) ? `0${s}` : s;
+  return DEPARTEMENTS.find((d) => norme(d.code) === code || norme(d.nom) === s || norme(`${d.code} – ${d.nom}`) === s)?.code;
 }
 
 /** Les deux réponses que le moteur lit déjà, déduites du département (valeurs enregistrées inchangées) */
 export function lieuDuDepartement(code: string): { alsaceMoselle: boolean; mayotte: boolean } {
   return { alsaceMoselle: code === '57' || code === '67' || code === '68', mayotte: code === '976' };
+}
+
+export interface ReponseLieu { departement?: string; alsaceMoselle?: boolean; mayotte?: boolean }
+
+/**
+ * Ce qu'enregistre la saisie de l'AM (vérificateur T-079, D1). Département trouvé : lui et ce qu'on en déduit. Rien de
+ * trouvé : aucun département retenu, le contrat redevient « à compléter » ; un contrat d'avant la T-079 (réponse sans
+ * département) garde sa réponse d'origine.
+ */
+export function reponseSaisie(saisie: string, origine: ReponseLieu): ReponseLieu {
+  const d = trouverDepartement(saisie);
+  if (d) return { departement: d, ...lieuDuDepartement(d) };
+  if (!origine.departement && origine.alsaceMoselle !== undefined) return { departement: undefined, alsaceMoselle: origine.alsaceMoselle, mayotte: origine.mayotte };
+  return { departement: undefined, alsaceMoselle: undefined, mayotte: undefined };
 }

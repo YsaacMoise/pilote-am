@@ -3,6 +3,9 @@ import { useState } from 'preact/hooks';
 import { ctxFor, putContract, toast, useStore } from '../store';
 import { addMonths, monthLabel, monthOf, shortDate, today, type Month } from '../engine/dates';
 import { finDeContrat, type DemandeurInexecution, type Motif } from '../engine/fin';
+import type { Rupture } from '../engine/model';
+import { euros, eurosArrondis, hoursLabel } from '../engine/money';
+import { Banner, Choices, DateInput, EuroInput, Gommette, Topbar } from '../ui/kit';
 
 /**
  * T-079 : choix de « Pourquoi le contrat s'arrête-t-il ? », du plus courant au plus rare, chacun dit qui agit.
@@ -17,9 +20,6 @@ const CHOIX_MOTIF: { v: Motif; l: string; sub?: string }[] = [
   { v: 'inaptitude_pro', l: 'Je suis inapte après un accident du travail ou une maladie professionnelle' },
   { v: 'deces', l: 'Décès de l’enfant' },
 ];
-import type { Rupture } from '../engine/model';
-import { euros, eurosArrondis, hoursLabel } from '../engine/money';
-import { Banner, Choices, DateInput, EuroInput, Gommette, Topbar } from '../ui/kit';
 
 /** « de mars », « d’août », « d’octobre » */
 const deMois = (l: string) => (/^[aeiouyéè]/i.test(l) ? `d’${l}` : `de ${l}`);

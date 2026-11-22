@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEPARTEMENTS, libelleDepartement, lieuDuDepartement, trouverDepartement } from '../src/engine/departements';
+import { DEPARTEMENTS, libelleDepartement, lieuDuDepartement, reponseSaisie, trouverDepartement } from '../src/engine/departements';
 import { nonGeresContrat, NON_GERE_ALSACE, NON_GERE_MAYOTTE } from '../src/engine/nonGeres';
 
 const base = { planningVariable: false, accueilOccasionnel: false, cdd: false } as const;
@@ -27,11 +27,23 @@ describe('T-079 : département du lieu d’accueil', () => {
     expect(trouverDepartement('2a')).toBe('2A');
     expect(trouverDepartement(libelleDepartement('976'))).toBe('976');
     expect(trouverDepartement('Côte-d’Or')).toBe('21');
-    expect(trouverDepartement('7')).toBeUndefined();
+    expect(trouverDepartement('1')).toBe('01');
+    expect(trouverDepartement('Isere')).toBe('38');
+    expect(trouverDepartement("cote-d'or")).toBe('21');
+    expect(trouverDepartement('val d oise')).toBe('95');
+    expect(trouverDepartement('Mos')).toBeUndefined();
+    expect(trouverDepartement('100')).toBeUndefined();
     expect(trouverDepartement('')).toBeUndefined();
   });
   it('ancien contrat sans département : sa réponse d’avant reste lue', () => {
     expect(nonGeresContrat({ ...base, alsaceMoselle: true })).toContain(NON_GERE_ALSACE);
     expect(nonGeresContrat({ ...base, alsaceMoselle: false, mayotte: true })).toContain(NON_GERE_MAYOTTE);
+  });
+  it('saisie inconnue (vérificateur D1) : aucun département retenu, sauf la réponse d’un contrat d’avant', () => {
+    const neuf = {};
+    expect(reponseSaisie('Meuse', neuf)).toEqual({ departement: '55', alsaceMoselle: false, mayotte: false });
+    expect(reponseSaisie('Mos', neuf)).toEqual({ departement: undefined, alsaceMoselle: undefined, mayotte: undefined });
+    expect(reponseSaisie('', { departement: '57', alsaceMoselle: true, mayotte: false })).toEqual({ departement: undefined, alsaceMoselle: undefined, mayotte: undefined });
+    expect(reponseSaisie('xx', { alsaceMoselle: true, mayotte: false })).toEqual({ departement: undefined, alsaceMoselle: true, mayotte: false });
   });
 });

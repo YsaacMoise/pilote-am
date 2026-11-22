@@ -14,7 +14,7 @@ import { PartageCard } from './PartageCard';
 import { de } from '../engine/texte';
 import { PAJEMPLOI_PLUS_AIDE } from '../legal';
 import { NON_GERE_47_51, nonGeresContrat, semaines4751 } from '../engine/nonGeres';
-import { DEPARTEMENTS, libelleDepartement, lieuDuDepartement, trouverDepartement } from '../engine/departements';
+import { DEPARTEMENTS, libelleDepartement, reponseSaisie, trouverDepartement } from '../engine/departements';
 import { AIDE_ANNEE, AIDE_COMPLEMENTAIRES, AIDE_SEMAINES } from './textes-contrat';
 
 const ouiNon = (b: boolean | undefined): 'oui' | 'non' | undefined => (b === undefined ? undefined : b ? 'oui' : 'non');
@@ -246,11 +246,11 @@ export function Contrat({ id }: { id?: string }) {
             )}
             <EuroInput label="Indemnité kilométrique, par km" hint="Laisse 0 si tu ne transportes pas l’enfant en voiture." cents={c.kmTaux} onChange={(v) => set({ kmTaux: v ?? 0 })} />
             {c.kmTaux > 0 && <NumberInput label="Puissance fiscale de ta voiture (CV)" hint="Sur la carte grise (case P.6). L’app vérifie que ton tarif est compris entre le barème de l’administration et le barème fiscal (article 57 de la convention)." value={c.kmCv} min={1} max={30} onChange={(v) => set({ kmCv: v || undefined })} />}
-            <NumberInput label="Heures majorées, au-delà de 45 h par semaine (%)" hint="Le taux de ton contrat : 10 % au moins." value={c.majoration} min={10} max={100} onChange={(v) => set({ majoration: v ?? 10 })} />
-            <NumberInput label="Heures complémentaires, jusqu’à 45 h par semaine (%)" hint={AIDE_COMPLEMENTAIRES} value={c.majorationCompl ?? 0} min={0} max={100} onChange={(v) => set({ majorationCompl: v ?? 0 })} />
+            <NumberInput label="Majoration des heures au-delà de 45 h par semaine (%)" hint="Le taux de ton contrat : 10 % au moins." value={c.majoration} min={10} max={100} onChange={(v) => set({ majoration: v ?? 10 })} />
+            <NumberInput label="Majoration des heures complémentaires (%)" hint={AIDE_COMPLEMENTAIRES} value={c.majorationCompl ?? 0} min={0} max={100} onChange={(v) => set({ majorationCompl: v ?? 0 })} />
             {c.yearType === 'incomplete' && (
               <Seg label="Quand tes congés payés te sont-ils versés ?" value={c.cpMode} onChange={(v) => set({ cpMode: v })}
-                options={[{ v: 'juin', l: 'En juin' }, { v: 'principale', l: 'Au congé principal' }, { v: 'fur', l: 'À chaque congé pris' }]} />
+                options={[{ v: 'juin', l: 'En juin' }, { v: 'principale', l: 'Lors du congé principal' }, { v: 'fur', l: 'Au fur et à mesure des congés pris' }]} />
             )}
             <Switch label="Enfant en situation de handicap ou de maladie" hint="Pour tes impôts : abattement majoré de 4 SMIC horaires par jour d’accueil, au lieu de 3." checked={c.majoreFiscal} onChange={(v) => set({ majoreFiscal: v })} />
             <Switch label="Les parents ont adhéré à Pajemploi+" hint={PAJEMPLOI_PLUS_AIDE} checked={!!c.pajemploiPlus} onChange={(v) => set({ pajemploiPlus: v })} />
@@ -275,7 +275,7 @@ export function Contrat({ id }: { id?: string }) {
                   <NumberInput label="Congés en cours d’acquisition (jours)" hint="Acquis depuis le 1er juin, avant le suivi par l’app" value={c.balances.cpEnCours} step={0.5} max={30} onChange={(v) => set({ balances: { ...c.balances, cpEnCours: v ?? 0 } })} />
                 </>
               )}
-              <NumberInput label="Jours d’absence de l’enfant malade déjà déduits" hint="Avec certificat médical, retenus sur ton salaire depuis le début de l’année de contrat en cours (5 au plus)" value={c.balances.maladieDeduits} max={14} onChange={(v) => set({ balances: { ...c.balances, maladieDeduits: v ?? 0 } })} />
+              <NumberInput label="Jours d’absence de l’enfant malade déjà déduits" hint="Avec certificat médical, retenus sur ton salaire depuis le début de l’année de contrat en cours" value={c.balances.maladieDeduits} max={14} onChange={(v) => set({ balances: { ...c.balances, maladieDeduits: v ?? 0 } })} />
               {!isNew && <a class="btn btn-outline" href={`#/historique/${c.id}`}><Icon name="file" />Bulletins passés ({c.history.length})</a>}
             </fieldset>
           </section>
@@ -306,6 +306,8 @@ export function Contrat({ id }: { id?: string }) {
  * réponse : l'écran propose de préciser le département sans bloquer le calcul.
  */
 function ChoixDepartement({ c, set }: { c: Contract; set: (p: Partial<Contract>) => void }) {
+  // Réponse trouvée à l'ouverture : un contrat d'avant la T-079 la retrouve si la saisie ne mène à aucun département.
+  const [origine] = useState(() => ({ departement: c.departement, alsaceMoselle: c.alsaceMoselle, mayotte: c.mayotte }));
   const [saisie, setSaisie] = useState(c.departement ? libelleDepartement(c.departement) : '');
   const inconnu = saisie.trim() !== '' && !trouverDepartement(saisie);
   const ancien = !c.departement && c.alsaceMoselle !== undefined;
@@ -317,11 +319,10 @@ function ChoixDepartement({ c, set }: { c: Contract; set: (p: Partial<Contract>)
         onInput={(e) => {
           const v = (e.target as HTMLInputElement).value;
           setSaisie(v);
-          const d = trouverDepartement(v);
-          if (d) set({ departement: d, ...lieuDuDepartement(d) });
+          set(reponseSaisie(v, origine));
         }} />
       <datalist id="departements-liste">{DEPARTEMENTS.map((d) => <option value={`${d.code} – ${d.nom}`} />)}</datalist>
-      <span class="hint" id="departement-h">{inconnu ? 'Choisis un département dans la liste.' : ancien ? 'Précise ton département quand tu peux. En attendant, le calcul garde ta réponse d’avant.' : 'Tape le numéro ou le nom, puis choisis dans la liste.'}</span>
+      <span class={inconnu ? 'err' : 'hint'} id="departement-h" aria-live="polite">{inconnu ? 'Choisis un département dans la liste.' : ancien ? 'Précise ton département quand tu peux. En attendant, le calcul garde ta réponse d’avant.' : 'Tape le numéro ou le nom, puis choisis dans la liste.'}</span>
     </div>
   );
 }
