@@ -360,7 +360,7 @@ function KidCard({ c, day, onEdit, compact, sautees = [], onNon }: { c: Contract
     tags.push({ tone: 'info', text: CHILD_ABS_LABEL[rec.abs] });
     tags.push({ tone: di.deducted ? 'warn' : 'ok', text: di.deducted ? 'Retenu sur le salaire' : 'Payé' });
   }
-  if (di.kind === 'ferie') tags.push(di.ferie ? { tone: 'info', text: `Férié : ${di.ferie} (payé)` } : { tone: 'warn', text: `Férié local : ${di.ferieLocal} (à confirmer)` });
+  if (di.kind === 'ferie') tags.push(di.ferie ? (di.aConfirmer ? { tone: 'warn', text: `Férié : ${di.ferie} (à confirmer)` } : { tone: 'info', text: `Férié : ${di.ferie} (payé)` }) : { tone: 'warn', text: `Férié local : ${di.ferieLocal} (à confirmer)` });
   if (di.kind === 'am' && di.amLeave) tags.push({ tone: 'info', text: AM_ABS_LABEL[di.amLeave] });
   if (di.kind === 'prevu' && day < t) tags.push({ tone: 'ok', text: 'Comme prévu' });
 

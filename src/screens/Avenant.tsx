@@ -4,7 +4,8 @@ import { useState } from 'preact/hooks';
 import { logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
 import { addMonths, firstDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, termsAt, weeklyMinutes } from '../engine/payroll';
-import { libelleMinimumBrut, MESSAGE_PERIODE_NON_GEREE, MINIMUM_SANS_TITRE, minimumBrut, ratesAt } from '../engine/rates';
+import { libelleMinimumBrut, MESSAGE_PERIODE_NON_GEREE, minimumBrut, minimumSansTitre, ratesAtRegion } from '../engine/rates';
+import { regionDe } from '../engine/regions';
 import { euros, hoursLabel } from '../engine/money';
 import { TERM_KEYS, type Avenant as Av, type Contract, type Planning, type Terms } from '../engine/model';
 import { EntretienSaisie } from './EntretienSaisie';
@@ -42,7 +43,9 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
   const set = (p: Partial<Terms>) => { setT({ ...t, ...p }); setErrors([]); };
   const preview: Contract = { ...c, ...t };
   const wk = weeklyMinutes(t.planning);
-  const rates = ratesAt(date);
+  // T-077 (R2) : repère net, minimum légal et texte du titre AM-GE de la région du contrat.
+  const rates = ratesAtRegion(date, regionDe(c));
+  const MINIMUM_SANS_TITRE = minimumSansTitre(regionDe(c));
   const changes: Partial<Terms> = {};
   for (const k of TERM_KEYS) if (!same(t[k], (before as any)[k])) (changes as any)[k] = structuredClone(t[k]);
   const summary = avenantSummary(before, changes);
@@ -98,7 +101,7 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
         <section class="card">
           <fieldset>
             <legend>La rémunération</legend>
-            <EuroInput label="Taux horaire net" hint={!rates ? MESSAGE_PERIODE_NON_GEREE : rates.minConvNet === undefined ? `Minimum en ${monthLabel(month)} : ${libelleMinimumBrut(minimumBrut(date)!)} (pas de repère net dans l’app)` : `Minimum conventionnel en ${monthLabel(month)} : ${euros(rates.minConvNet)} net`} cents={t.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
+            <EuroInput label="Taux horaire net" hint={!rates ? MESSAGE_PERIODE_NON_GEREE : rates.minConvNet === undefined ? `Minimum en ${monthLabel(month)} : ${libelleMinimumBrut(minimumBrut(date, regionDe(c))!)} (pas de repère net dans l’app)` : `Minimum conventionnel en ${monthLabel(month)} : ${euros(rates.minConvNet)} net`} cents={t.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
             {t.rateNet > 0 && rates?.minConvNet !== undefined && t.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel.</Banner>}
             {rates?.minConvNet !== undefined && <p class="hint">{MINIMUM_SANS_TITRE}</p>}
             {/* T-044b (C2-1) : un avenant daté dans le passé recalcule les mois depuis sa date : le dire. */}

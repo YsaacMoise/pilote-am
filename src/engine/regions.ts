@@ -101,14 +101,14 @@ export function ferieLocal(region: Region, d: ISODate): string | undefined {
 /** Texte de la question, commun aux messages des jours fériés locaux. */
 export function pourquoiFerieLocal(region: Region, nom: string): string {
   if (region === 'alsaceMoselle') {
-    return `Le ${nom} est férié en Alsace-Moselle (code du travail, article L3134-13${nom === 'Vendredi saint' ? ', dans les communes qui ont un temple protestant ou une église mixte' : ''}). Aucun texte ne dit s’il l’est pour une assistante maternelle : le même code exclut « l’éducation des enfants » et « les emplois à domicile » de ces règles locales. La question est posée à la DDETS.`;
+    return `Le ${nom} est férié en Alsace-Moselle (code du travail, article L3134-13${nom === 'Vendredi saint' ? ', dans les communes qui ont un temple protestant ou une église mixte' : ''}). Aucun texte ne dit s’il l’est pour une assistante maternelle : le même code exclut « l’éducation des enfants » et « les emplois à domicile » de ces règles locales. La question sera posée à la DDETS.`;
   }
-  return `Le ${nom} est férié à Mayotte (code du travail, article L3422-2). Aucun texte ne dit si la convention le compte parmi les fériés de l’assistante maternelle (article 47.2). La question est posée à la DDETS.`;
+  return `Le ${nom} est férié à Mayotte (code du travail, article L3422-2). Aucun texte ne dit si la convention le compte parmi les fériés de l’assistante maternelle (article 47.2). La question sera posée à la DDETS.`;
 }
 
 /** R4 : maintien de salaire du droit local (Alsace-Moselle, CT L1226-23), deux lectures (question DDETS). */
 export const MESSAGE_MAINTIEN_LOCAL =
-  'Absence pour ta maladie ou celle de ton enfant : ces jours ne sont ni payés ni retenus. En Alsace-Moselle, le code du travail (article L1226-23) maintient le salaire d’une courte absence subie, moins les indemnités journalières de la sécurité sociale. Aucun texte ne dit s’il vaut pour l’assistante maternelle d’un particulier : la convention (annexe 3, article 3.1) l’écarte. Selon la lecture, les parents te doivent le salaire de ces jours moins tes indemnités journalières (ton relevé de la CPAM), ou rien. La question est posée à la DDETS. Mets-toi d’accord avec les parents, par écrit.';
+  'Absence pour ta maladie ou celle de ton enfant : ces jours ne sont ni payés ni retenus. En Alsace-Moselle, le code du travail (article L1226-23) maintient le salaire d’une courte absence subie, moins les indemnités journalières de la sécurité sociale. Aucun texte ne dit s’il vaut pour l’assistante maternelle d’un particulier : la convention (annexe 3, article 3.1) l’écarte. Selon la lecture, les parents te doivent le salaire de ces jours moins tes indemnités journalières (ton relevé de la CPAM), ou rien. La question sera posée à la DDETS. Mets-toi d’accord avec les parents, par écrit.';
 
 /** R6 : CSG et CRDS. Aucune ligne CSG ou CRDS dans les taux de l'AM à Mayotte (Urssaf, au 01/01/2026). */
 export function partNonDeductibleRegion(region: Region, metropole: number): number {
@@ -117,4 +117,4 @@ export function partNonDeductibleRegion(region: Region, metropole: number): numb
 
 /** R2 : majoration de 4 % du titre AM-GE à Mayotte. */
 export const MINIMUM_SANS_TITRE_MAYOTTE =
-  'À Mayotte, l’Urssaf écrit que la majoration de 4 % du titre « Assistant maternel - garde d’enfants » ne s’applique pas. Aucun texte lu ne l’écarte (la convention vaut aussi à Mayotte) : la question est posée à la DDETS. Ce minimum ne la compte pas.';
+  'À Mayotte, l’Urssaf écrit que la majoration de 4 % du titre « Assistant maternel - garde d’enfants » ne s’applique pas. Aucun texte lu ne l’écarte (la convention vaut aussi à Mayotte) : la question sera posée à la DDETS. Ce minimum ne la compte pas.';

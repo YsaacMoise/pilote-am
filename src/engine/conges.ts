@@ -109,8 +109,9 @@ export function decomptesCP(ctx: Ctx): DecompteCP[] {
         const joursA = premierA && premierA <= veilleA
           ? eachDay(premierA, veilleA).filter((d) => ouvrable(d) && !ferieLocal(region, d) && inContract(c, d)) : [];
         if (joursA.length !== jours.length || joursA.some((d) => !jours.includes(d))) {
-          const locaux = [...new Set([...jours, ...joursA].filter((d) => !(jours.includes(d) && joursA.includes(d))))];
-          localAConfirmer = `Le décompte dépend d’un jour férié local (${locaux.map(jjmm).join(', ')}) : ${joursA.length} jour${joursA.length > 1 ? 's' : ''} si c’est un férié pour toi, ${jours.length} sinon. Aucun texte ne le dit, la question est posée à la DDETS.`;
+          // Le ou les fériés locaux en cause (entre le début du congé et la plus tardive des deux reprises).
+          const locaux = eachDay(from, veilleA > veille ? veilleA : veille).filter((d) => !!ferieLocal(region, d));
+          localAConfirmer = `Le décompte dépend d’un jour férié local (${locaux.map(jjmm).join(', ')}) : ${joursA.length} jour${joursA.length > 1 ? 's' : ''} si c’est un férié pour toi, ${jours.length} sinon. Aucun texte ne le dit, la question sera posée à la DDETS.`;
           jours = jours.filter((d) => joursA.includes(d));
         }
       }

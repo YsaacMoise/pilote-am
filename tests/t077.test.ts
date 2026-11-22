@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AmLeave, Bulletin, Contract, DayRec, Planning } from '../src/engine/model';
 import { makeCtx, monthBase } from '../src/engine/payroll';
-import { computeMonth } from '../src/engine/month';
+import { computeMonth, partsAConfirmer } from '../src/engine/month';
 import { decompteConge } from '../src/engine/conges';
 import { finDeContrat } from '../src/engine/fin';
 import { fiscalYear } from '../src/engine/fiscal';
@@ -190,6 +190,37 @@ describe('T-077 R5 : préavis du droit local (Alsace-Moselle)', () => {
     expect(als.preavisLocalAConfirmer).toMatch(/11\/11\/2026/);
     expect(als.preavisLocalAConfirmer).toMatch(/de salaire en plus/);
     expect(als.alertes).toContain(als.preavisLocalAConfirmer);
+  });
+});
+
+describe('T-077 R5 : autres motifs', () => {
+  it('démission après un an : même écart ; ancienneté de moins de 3 mois : 8 jours ou six semaines', () => {
+    const dem = finDeContrat(makeCtx(contract(AM), [], [], '2026-12-31'), '2026-10-01', 'demission');
+    expect(dem.preavisLocalAConfirmer).toMatch(/11\/11\/2026/);
+    expect(dem.preavisLocalAConfirmer).not.toMatch(/dispensent/);
+    const court = finDeContrat(makeCtx(contract({ ...AM, start: '2026-09-01', trackedFrom: '2026-09-01' }), [], [], '2026-12-31'), '2026-10-01', 'retrait');
+    expect(court.preavisFin).toBe('2026-10-08');
+    expect(court.preavisLocalAConfirmer).toMatch(/11\/11\/2026/);
+  });
+  it('décès de l’enfant : indemnité égale au préavis, écart de six semaines chiffré', () => {
+    const f = finDeContrat(makeCtx(contract(AM), [], [], '2026-12-31'), '2026-10-01', 'deces');
+    expect(f.preavisLocalAConfirmer).toMatch(/Indemnité égale au préavis à confirmer/);
+  });
+  it('Mayotte et métropole : aucun préavis local', () => {
+    expect(finDeContrat(makeCtx(contract(MY), [], [], '2026-12-31'), '2026-10-01', 'retrait').preavisLocalAConfirmer).toBeUndefined();
+  });
+});
+
+describe('T-077 : textes', () => {
+  it('lien des parents : aucun motif d’absence de l’AM (décision du DG du 21/11/2026)', () => {
+    const r = { cpAConfirmer: undefined, evenementAConfirmer: 1000, kmAConfirmer: 0, joursMaintienAConfirmer: 2 };
+    expect(partsAConfirmer(r, true).join(' ')).not.toMatch(/maladie/);
+    expect(partsAConfirmer(r).join(' ')).toMatch(/maladie/);
+  });
+  it('congé qui finit la veille du 26/12 : seul le férié local est nommé', () => {
+    const cp = leave('cp', '2025-12-22', '2025-12-25');
+    const d = decompteConge(makeCtx(contract(AM), [], [cp], '2026-11-22'), cp);
+    expect(d.aConfirmer ?? '').not.toMatch(/27\/12/);
   });
 });
 

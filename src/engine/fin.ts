@@ -284,7 +284,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // convention (lecture A) et chiffre l'écart : salaire des jours en plus, ou indemnité en plus après un décès.
   let preavisLocalAConfirmer: string | undefined;
   if (regionDe(c) === 'alsaceMoselle') {
-    const QUESTION = 'En Alsace-Moselle, le code du travail (article L1234-16) prévoit six semaines de préavis pour les « personnes employées chez des particuliers », aussi en cas de démission. Aucun texte ne dit s’il vaut pour une assistante maternelle, qui travaille chez elle. La question est posée à la DDETS.';
+    const QUESTION = 'En Alsace-Moselle, le code du travail (article L1234-16) prévoit six semaines de préavis pour les « personnes employées chez des particuliers », aussi en cas de démission. Aucun texte ne dit s’il vaut pour une assistante maternelle, qui travaille chez elle. La question sera posée à la DDETS.';
     const local = finPreavisLocal(c.start, { motif: motif === 'deces' ? 'retrait' : motif, notif: motif === 'deces' ? addDays(notif, 1) : notif, presentation: motif === 'deces' ? undefined : presentation });
     if (local && (motif === 'retrait' || motif === 'demission')) {
       const ecart = indemniteCompensatricePreavis(c, addDays(preavisFin, 1), local);

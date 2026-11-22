@@ -355,7 +355,7 @@ export function messageFerieLocalTravaille(region: ReturnType<typeof regionDe>, 
   return `${nom.replace(/^./, (x) => x.toUpperCase())} (${jjmmD(d)}) travaillé : majoration de 10 % à confirmer, ${euros(maj)}, non comprise dans le total. ${pourquoiFerieLocal(region, nom)} Si c’est un férié, la convention (article 47.2) majore ces heures de 10 % ; sinon, rien. Mets-toi d’accord avec les parents, par écrit.`;
 }
 export function messageFerieVoisin(region: ReturnType<typeof regionDe>, d: ISODate): string {
-  return `Férié du ${jjmmD(d)} : ni payé ni retenu. La convention (article 47.2) le paie si tu as travaillé le jour prévu juste avant et le jour prévu juste après. ${region === 'alsaceMoselle' ? 'Le 26 décembre ou le Vendredi saint' : 'Le 27 avril'} compte, ou non, comme ce jour selon qu’il est férié pour toi : aucun texte ne le dit, la question est posée à la DDETS. Selon la lecture, ce férié est payé ou retenu. Mets-toi d’accord avec les parents, par écrit.`;
+  return `Férié du ${jjmmD(d)} : ni payé ni retenu. La convention (article 47.2) le paie si tu as travaillé le jour prévu juste avant et le jour prévu juste après. ${region === 'alsaceMoselle' ? 'Le 26 décembre ou le Vendredi saint' : 'Le 27 avril'} compte, ou non, comme ce jour selon qu’il est férié pour toi : aucun texte ne le dit, la question sera posée à la DDETS. Selon la lecture, ce férié est payé ou retenu. Mets-toi d’accord avec les parents, par écrit.`;
 }
 
 function jourPrevuVoisin(ctx: Ctx, d: ISODate, sens: 1 | -1, avecLocaux = false): ISODate | undefined {

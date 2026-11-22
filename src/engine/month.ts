@@ -158,6 +158,8 @@ export function partsAConfirmer(r: Pick<MonthResult, 'cpAConfirmer' | 'evenement
   // T-030 : un salaire à confirmer peut venir de congés pris peut-être au-delà des droits (année complète, A-23).
   // T-033 : ou de jours d'enfant malade (art. 105, lectures divergentes).
   const salaire = !r.evenementAConfirmer ? [] : naturesAConfirmer(r).map((n) => ({
-    evenement: pourParents ? 'une part du salaire' : 'l’événement familial', cp: 'les congés pris au-delà des droits', maladie: 'les jours d’enfant malade', ferieLocal: 'les jours fériés locaux', maintien: 'les jours d’absence pour maladie' })[n]);
+    evenement: pourParents ? 'une part du salaire' : 'l’événement familial', cp: 'les congés pris au-delà des droits', maladie: 'les jours d’enfant malade', ferieLocal: 'les jours fériés locaux',
+    // Lien des parents (décision du DG du 21/11/2026) : aucun motif d'absence de l'AM, et pas de donnée de santé.
+    maintien: pourParents ? 'une part du salaire' : 'les jours d’absence pour maladie' })[n]).filter((x, i, a) => a.indexOf(x) === i);
   return [r.cpAConfirmer ? 'les congés payés' : '', ...salaire, r.entretienAConfirmer ? 'une part de l’entretien' : '', r.ferieLocalAConfirmer ? 'la majoration d’un férié local' : '', r.kmAConfirmer ? 'les kilomètres' : ''].filter(Boolean);
 }
