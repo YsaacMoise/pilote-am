@@ -27,4 +27,4 @@ from .planning_variable import (semaine_prevue, mensualisation_planning_variable
 from .cdd import (FINS_CDD, FINS_NON_GEREES, mensualisation_cdd, cdd_moins_d_un_mois,
                   salaire_mois_cdd_moins_d_un_mois, qualifier_semaine_sans_accueil_cdd, deux_lectures_cdd,
                   assiette_ifc, ifc_due, indemnite_fin_cdd, iccp_cdd, preavis_et_rupture_cdd,
-                  solde_fin_cdd, controle_dates_cdd, verifier_cas_cdd)
+                  solde_fin_cdd, controle_dates_cdd, verifier_cas_cdd, controle_essai_cdd)

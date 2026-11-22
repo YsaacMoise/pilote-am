@@ -151,8 +151,11 @@ def mensualisation_planning_variable(semaines_programmees, heures_mensualisees, 
         lecture, base = "L1", None
     else:
         lecture, base = "L2", hm_min * 12 / semaines_programmees
+    # D16 (S2) : duree hebdomadaire du contrat B = heures mensualisees x 12 / (52 ou N), seconde reference des HC.
+    base_contrat = hm_min * 12 / semaines_programmees if cycle is None else None
     res = {"type_annee": ta, "heures_mensualisees": texte_fraction(hm), "lecture": lecture,
            "base_hebdo_minutes": None if base is None else texte_fraction(base),
+           "base_contrat_minutes": None if base_contrat is None else texte_fraction(base_contrat),
            "total_prevu_mensuel_minutes": texte_fraction(total_mensuel),
            "salaire_mensualise_centimes": vers_centimes(hm * t, "salaire mensualise", regles),
            "note": MESSAGE_BASE}
@@ -164,7 +167,7 @@ def heures_en_plus_semaine_planning_variable(lecture, heures_prevues_semaine_min
                                              heures_reelles_minutes, taux_horaire_centimes, majoration_hm_pourcent,
                                              majoration_hc_pourcent=0, absence_dans_semaine=False,
                                              minutes_1er_mai_chome=0, minutes_payees_non_travaillees=0,
-                                             absence_retenue=False, prorata_base=None):
+                                             absence_retenue=False, prorata_base=None, base_contrat_minutes=None):
     """Heures complementaires et majorees d'une semaine (planning variable).
     - CCN 96.4 : HC « au-dela de la duree de travail hebdomadaire prevue au
       contrat et jusqu'a 45 heures par semaine incluses » ; une semaine ne
@@ -186,6 +189,10 @@ def heures_en_plus_semaine_planning_variable(lecture, heures_prevues_semaine_min
     - D4 : premiere ou derniere semaine incomplete du contrat
       (prorata_base = (jours prevus dans le contrat, jours prevus de la semaine)) :
       deux lectures, base entiere ou base x prorata.
+    D16 (planning remis S2, lecture L1) : base_contrat_minutes = B = heures
+    mensualisees x 12 / (52 ou N) ; lecture 1 par rapport au planning remis de la
+    semaine (CCN 98.1.2, al. 3), lecture 2 par rapport a B (CCN 96.4 : « au-dela de
+    la duree de travail hebdomadaire prevue au contrat ») ; part sure = la plus basse.
     Refus : A-09 (absence dans la semaine et heures en plus, comme pour un
     planning fixe), PV-SEMAINE-PREVUE-PLUS-45H, PV-L2-ABSENCE-HC.
     Sortie : minutes et montants (centimes, part sure) des HC et des HM ;
@@ -206,6 +213,8 @@ def heures_en_plus_semaine_planning_variable(lecture, heures_prevues_semaine_min
     payees = positif(minutes_payees_non_travaillees, "minutes_payees_non_travaillees")
     if lecture == "L1":
         refs = [prevu]
+        if base_contrat_minutes is not None:
+            refs.append(positif(base_contrat_minutes, "base_contrat_minutes"))  # D16
         reels = [reelles]
     else:
         base = positif(base_hebdo_minutes, "base_hebdo_minutes")
@@ -226,7 +235,14 @@ def heures_en_plus_semaine_planning_variable(lecture, heures_prevues_semaine_min
         raise NonGere("A-09", regles + ["R-MENS-05"])
     montants = [vers_centimes(h / 60 * t * (1 + maj_hc / 100), "heures complementaires", regles) for h in hcs]
     mhm = hm / 60 * t * (1 + maj_hm / 100)
-    return resultat_ok(heures_en_plus_semaine_planning_variable.regles, {
+    extra = {}
+    if lecture == "L1" and len(refs) == 2:
+        # D16 : une lecture par reference, a sommer lecture par lecture sur le mois (jamais semaine par semaine
+        # au plus bas : la part sure se prend sur le total de chaque lecture).
+        extra["montants_par_lecture"] = [vers_centimes(max(Fraction(0), min(reelles, SEUIL_45H) - ref) / 60 * t
+                                                       * (1 + maj_hc / 100), "heures complementaires", regles)
+                                         for ref in refs]
+    return resultat_ok(heures_en_plus_semaine_planning_variable.regles, {**extra,
         "reference_minutes": texte_fraction(refs[0]),
         "minutes_complementaires": texte_fraction(hcs[0]), "minutes_majorees": texte_fraction(hm),
         "montant_complementaires_centimes": montants[0],

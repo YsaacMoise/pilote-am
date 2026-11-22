@@ -849,6 +849,7 @@ def grille():
     S += situations_s50b()  # T-050c
     S += situations_t076()  # T-076 : planning variable (PV-*) et CDD (CDD-*)
     S += situations_t076_d()  # T-076 : decisions D1 a D11, fins de contrat a planning variable (verification B)
+    S += situations_t076_e()  # T-076 : decisions D15 a D19 et R2 (relecteur independant)
     return S
 
 
@@ -1377,6 +1378,59 @@ def situations_t076_d():
     S.append(sit("CDD-D10-1ER-JUIN-COMMUN-ACCORD", "CDD", kcdd("2026-03-02", "2026-07-31", fin="2026-06-30"),
                  fin_cdd("2026-06-30", "commun_accord"), theme="CDD à cheval sur le 1er juin, rompu d'un commun accord (D10)",
                  marques=mc))
+    return S
+
+
+def situations_t076_e():
+    """T-076, decisions D15 a D19 (regles/t076-decisions-direction.md, section 5) et R2. Aucun attendu calcule."""
+    S = []
+    m = {"*": MARQUE_PV}
+    mc = {"*": MARQUE_CDD}
+    # D16 : planning remis au-dessus de la moyenne ecrite (130 h, soit 30 h par semaine) ; fevrier 2027 : aucune
+    # semaine a cheval sur deux mois.
+    p35 = semaine(L5, "08:00", "15:00")
+    pl = {"2027-02-01": p35, "2027-02-08": P5x8, "2027-02-15": PV_B15, "2027-02-22": p35}
+    k = contrat_pv_s2("C52", pl, 130, debut="2027-02-01")
+    S.append(sit("PV-C52-S2-D16-AU-DESSUS", "planning variable", k, [mois("m", "2027-02")],
+                 theme="planning remis au-dessus de la durée hebdomadaire du contrat (D16)", marques=m))
+    S.append(sit("PV-C52-S2-D16-HC", "planning variable", k, [mois("m", "2027-02")],
+                 {"jours": [{"date": "2027-02-17", "pres": [["08:00", "13:00"]]}]},
+                 theme="planning remis, heures en plus dans une semaine sous la moyenne (D16)", marques=m))
+
+    def kcdd(debut, terme, fin=None, **kw):
+        k = contrat_grille("C52", "H40", "T420", debut=debut, fin=fin or terme)
+        k.update({"cdd": True, "cdd_terme": terme, "cdd_motif": "remplacement"})
+        k.update(kw)
+        return k
+
+    # D18 : mois travailles apres le terme sans CDI enregistre.
+    S.append(sit("CDD-D18-MOIS-APRES-TERME", "CDD", kcdd("2026-01-05", "2026-03-31", fin="2026-04-30"),
+                 [mois("mar", "2026-03"), mois("avr", "2026-04")],
+                 theme="CDD : mois travaillé après le terme, sans CDI (D18, L1243-11)", marques=mc))
+    # D19 : fin pendant l'essai apres la duree maximale (14 jours pour un CDD de moins de 6 mois).
+    S.append(sit("CDD-D19-ESSAI-DEPASSE", "CDD", kcdd("2026-01-05", "2026-05-29", fin="2026-01-30"),
+                 [mois("m", "2026-01"), {"id": "f", "type": "fin", "date": "2026-01-30", "motif": "fin_cdd",
+                                         "fin_cdd": "essai"}],
+                 theme="CDD : fin « pendant l'essai » après 26 jours (D19, L1242-10)", marques=mc))
+    S.append(sit("CDD-D19-ESSAI-LIMITE", "CDD", kcdd("2026-01-05", "2026-03-04", fin="2026-01-13"),
+                 [{"id": "f", "type": "fin", "date": "2026-01-13", "motif": "fin_cdd", "fin_cdd": "essai"}],
+                 theme="CDD de 8 semaines et 3 jours : fin d'essai au 9e jour (D19, semaines entières ou entamées)",
+                 marques=mc))
+    # D15 : CDD a planning variable, 52 semaines.
+    kpv = dict(kcdd("2026-01-05", "2026-03-29"), planning=PV_A45, planning_variable=True, cycle=[PV_A45, PV_B15],
+               cycle_ancre="2026-01-05", heures_mensualisees=130)
+    S.append(sit("CDD-D15-PV", "CDD", kpv, [mois("m", "2026-02"), {"id": "f", "type": "fin", "date": "2026-03-29",
+                                                                  "motif": "fin_cdd", "fin_cdd": "terme"}],
+                 theme="CDD à planning variable : refusé en entier (D15)", marques=mc))
+    # R2 : fin d'un CDI a planning variable avec les jours non pris de la periode precedente.
+    for fin, notif in (("2026-06-30", "2026-06-01"), ("2026-05-31", "2026-05-01")):
+        k = dict(contrat_pv("C52", [PV_A45, PV_B15], 130, debut="2025-06-01", fin=fin),
+                 rupture={"motif": "retrait", "notif": notif, "preavis": "execute"})
+        S.append(sit(f"PV-FIN-C52-AB-L1-R2-{fin[5:7]}", "planning variable", k,
+                     [{"id": "f", "type": "fin", "notification": notif, "motif": "retrait"},
+                      {"id": "ind", "type": "cp_indemnite", "periode": 2025, "sorties": ["indemnite_cp"]}],
+                     theme="fin d'un CDI à planning variable, jours non pris de la période précédente (R2, R-PV-13)",
+                     marques=m))
     return S
 
 
