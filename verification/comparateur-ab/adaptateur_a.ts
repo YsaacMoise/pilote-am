@@ -154,7 +154,10 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       }
       if (b.kmAConfirmer) out.km = refus(`A : ${b.kmAConfirmer} km à confirmer`);
       // T-076 (L2) : heures complémentaires des semaines de congé à confirmer : part sûre et les deux lectures.
-      if (b.complAConfirmerAmount) out.heures_compl_montant = { statut: 'ok', valeur: b.complAmount, lectures: [b.complAmount, b.complAmount + b.complAConfirmerAmount] };
+      if (b.complAConfirmerAmount) {
+        out.heures_compl_montant = { statut: 'ok', valeur: b.complAmount, lectures: [b.complAmount, b.complAmount + b.complAConfirmerAmount] };
+        out.salaire_mois_hors_cp = { statut: 'ok', valeur: b.net, lectures: [b.net, b.net + b.complAConfirmerAmount] };
+      }
       // T-076 (P1, P2) : CDD à deux lectures du salaire. Le mois sorti est celui que A paie (computeMonth : la lecture dont le
       // net, congés compris, est le plus bas ; lecture 1 si égal), toutes ses sorties de la même lecture (vérification, m1).
       // `lectures` = [lecture 1, lecture 2] sur le salaire de base et le salaire hors congés.

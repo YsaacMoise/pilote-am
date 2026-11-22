@@ -363,6 +363,55 @@ describe('T-076 : corrections après vérification (décisions D1 à D6)', () =>
   });
 });
 
+describe('T-076 : corrections du comparateur (D13, D6, fin courte)', () => {
+  const l2 = (over: Partial<Contract> = {}) => s1({ cycle: [A45, B25], heuresMensualisees: 130, ...over });
+  it('D13 : L2, absence de l’enfant payée une semaine au-delà de la base : part sûre sans ses HC prévues, écart à confirmer', () => {
+    // Mardi 03/03 (semaine A, 9 h) : enfant absent à la demande des parents, jour payé (CCN 105).
+    // Semaine du 02/03 : sûr 36 h → 6 HC ; lecture « jour payé compté » 45 h → 15 HC : écart 9 h (36,00 €).
+    // Semaine du 16/03 : 15 HC. Mars : sûr 21 HC = 84,00 € ; net 520,00 + 84,00 = 604,00 €.
+    const b = monthBase(makeCtx(l2(), [rec('2026-03-03', { abs: 'parents' })], [], T), '2026-03');
+    expect(b.complMin).toBe(21 * 60);
+    expect(b.complAConfirmerMin).toBe(9 * 60);
+    expect(b.complAConfirmerAmount).toBe(3600);
+    expect(b.net).toBe(60400);
+  });
+  it('D6 : planning remis, 36 semaines, semaines sans accueil au diviseur de l’art. 111 avec la semaine type du contrat', () => {
+    // Cas PV-I36-S2-S01 : octobre 2026, taux 5,00 €, 90 h → 450,00 €. Semaines du 19/10 et du 26/10 sans accueil.
+    // Diviseur (jours) : 1er-2 octobre (2) + semaine du 05/10 (5) + du 12/10 (5) + du 19/10 et du 26/10, semaine type
+    // lundi-vendredi (5 + 5) = 22 jours. AM malade 06-07/10 : 2 jours retenus. Base = 450 × 20 ÷ 22 = 409,09 €.
+    const sem = (d: string) => week('08:00', d);
+    const ps: Record<string, Planning> = { '2026-09-28': sem('16:00'), '2026-10-05': sem('14:00'), '2026-10-12': sem('13:00'), '2026-10-19': {}, '2026-10-26': {} };
+    const c = contract({ start: '2026-08-31', trackedFrom: '2026-08-31', yearType: 'incomplete', weeks: 36, weeksOff: ['2026-10-19', '2026-10-26'], rateNet: 500,
+      planning: sem('14:00'), planningVariable: true, planningsSemaines: ps, heuresMensualisees: 90 });
+    const leaves: AmLeave[] = [{ id: 'm', type: 'am_malade', from: '2026-10-06', to: '2026-10-07' }];
+    const b = monthBase(makeCtx(c, [], leaves, T), '2026-10');
+    expect(b.nonGere).toEqual([]);
+    expect(b.divisorDays).toBe(22);
+    expect(b.deductedDays).toBe(2);
+    expect(b.base).toBe(40909);
+    // Ces semaines ne sont jamais accueillies.
+    expect(dayInfo(makeCtx(c, [], leaves, T), '2026-10-20').plannedMin).toBe(0);
+  });
+  it('R-PV-07 : fin courte en 36 semaines (décès le 29/03/2026), régularisation de fin calculée à la main', () => {
+    // Cycle A 45 h / B 15 h ancré le 05/01/2026, taux 5,00 €, semaines sans accueil du 16/02 et du 23/02.
+    // Dû (CCN 109.2, 124 ; heures prévues des jours accueillis du 05/01 au 29/03) : 5 semaines A × 45 h + 5 semaines B × 15 h
+    // = 300 h × 5,00 € = 1 500,00 €.
+    // L1 (90 h, 450,00 € par mois). Versé : janvier, entrée le 05/01 : 450 × 20 ÷ 22 = 409,09 € (diviseur : 1er et 2 janvier
+    // de la semaine B d'avant compris) ; février : 450,00 € ; mars, fin le dimanche 29/03 : les lundi 30 et mardi 31 prévus
+    // sont hors contrat (déduction de fin en cours de mois, art. 111) : 450 × 20 ÷ 22 = 409,09 €. Total 1 268,18 €.
+    // Régularisation = 1 500,00 − 1 268,18 = 231,82 €.
+    const off = ['2026-02-16', '2026-02-23'];
+    const c = s1({ cycle: [A45, week('08:00', '11:00')], heuresMensualisees: 90, yearType: 'incomplete', weeks: 36, weeksOff: off, rateNet: 500, end: '2026-03-29' });
+    const ctx = makeCtx(c, [], [], T);
+    expect(monthBase(ctx, '2026-03').base).toBe(40909);
+    expect(regularisation(ctx, '2026-01-05', '2026-03-29').montant).toBe(23182);
+    // L2 (45 h, B = 45 × 12 ÷ 36 = 15 h) : versé 204,55 + 225,00 + 204,55 = 634,10 € ; HC prévues payées : 5 semaines A
+    // × 30 h = 150 h × 5,00 € = 750,00 €. Régularisation = 1 500,00 − 1 384,10 = 115,90 €.
+    const c2 = { ...c, heuresMensualisees: 45 };
+    expect(regularisation(makeCtx(c2, [], [], T), '2026-01-05', '2026-03-29').montant).toBe(11590);
+  });
+});
+
 describe('T-076 : non-régression du contrat fixe', () => {
   it('un contrat fixe donne les mêmes sorties avec ou sans champs de planning variable (non lus quand planningVariable est faux)', () => {
     const recs = [rec('2026-03-10', { pres: [{ a: '08:00', d: '19:00' }] }), rec('2026-03-12', { abs: 'malade_certif' })];

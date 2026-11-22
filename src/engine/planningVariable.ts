@@ -66,7 +66,13 @@ export function planningSemainePV(c: ChampsPV, lundi: ISODate): Planning | undef
  * planning de la semaine (S2) ; le champ `planning` n'est plus lu (spécification, section 1).
  */
 export function plagesDuJour(t: Contract, d: ISODate): Plage[] {
-  const pl = pvActif(t) ? planningSemainePV(t, mondayOf(d)) : t.planning;
+  let pl = pvActif(t) ? planningSemainePV(t, mondayOf(d)) : t.planning;
+  // D6 : planning remis, année incomplète, semaine sans accueil (du contrat ou saisie « sans accueil ») : traitée comme la
+  // semaine sans accueil d'un planning fixe, qui compte au diviseur de l'art. 111 avec la semaine type (règle existante,
+  // A-19). La semaine type est ici le planning indicatif du contrat (`planning`). Elle n'est jamais accueillie
+  // (plannedPlages la vide, toutesSemainesSansAccueil).
+  if (pvActif(t) && formePV(t) === 'remis' && t.yearType === 'incomplete' && minutesPlanning(pl) === 0
+    && (t.weeksOff.includes(mondayOf(d)) || pl !== undefined)) pl = t.planning;
   return (pl?.[weekday(d)] ?? []).filter((p) => minPlage(p) > 0);
 }
 
