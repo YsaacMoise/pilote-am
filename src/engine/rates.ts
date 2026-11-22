@@ -1,6 +1,7 @@
 // Taux réglementaires datés. Une revalorisation = une ligne ajoutée en bas.
 // Montants en centimes entiers. Sources dans le README.
 import { MOIS_NOMS, type ISODate } from './dates';
+import { minConvNetRegion, MINIMUM_SANS_TITRE_MAYOTTE, netSurBrutRegion, smicMayotte, type Region } from './regions';
 
 export interface Rates {
   from: ISODate;
@@ -119,6 +120,23 @@ export function ratesAt(d: ISODate): Rates | undefined {
   return r;
 }
 
+/** T-077 (R2) : barèmes du jour `d` avec le repère net du minimum de la région (Urssaf). */
+export function ratesAtRegion(d: ISODate, region: Region): Rates | undefined {
+  const r = ratesAt(d);
+  if (!r || region === 'metropole') return r;
+  return { ...r, minConvNet: minConvNetRegion(region, d, r.minConvNet) };
+}
+
+/** T-077 (R2) : texte sur la majoration du titre AM-GE, selon la région. */
+export function minimumSansTitre(region: Region): string {
+  return region === 'mayotte' ? MINIMUM_SANS_TITRE_MAYOTTE : MINIMUM_SANS_TITRE;
+}
+
+/** T-077 (R1) : part du net dans le brut de la région, en fraction (0,781 en métropole). */
+export function partNetBrut(d: ISODate, region: Region = 'metropole'): number {
+  return netSurBrutRegion(region, d, ratesAt(d)?.netSurBrut ?? NET_BRUT) / 10000;
+}
+
 /** Barèmes d'une date qui ne peut pas être antérieure à 2022 (aujourd'hui, simulation d'un futur accueil). */
 export function ratesConnus(d: ISODate): Rates {
   const r = ratesAt(d);
@@ -137,10 +155,12 @@ export function ratesConnus(d: ISODate): Rates {
  * `certain` ; un taux entre les deux est « à confirmer ». `legal` : valeur exacte, en centimes non arrondis.
  */
 export interface MinimumBrut { certain: number; doute?: number; legal: number; conv: number; source: 'grille' | 'legal' }
-export function minimumBrut(d: ISODate): MinimumBrut | undefined {
+export function minimumBrut(d: ISODate, region: Region = 'metropole'): MinimumBrut | undefined {
   const r = ratesAt(d);
   if (!r) return undefined;
-  const legal = (281 * r.smic) / 1000;
+  // T-077 (R2) : CASF R544-2 XV, à Mayotte le minimum légal se calcule sur le « salaire minimum interprofessionnel en vigueur à Mayotte ».
+  const smic = region === 'mayotte' ? smicMayotte(d) ?? r.smic : r.smic;
+  const legal = (281 * smic) / 1000;
   const certain = Math.max(r.minConvBrut, Math.round(legal));
   const haut = Math.ceil(legal - 1e-9);
   return { certain, doute: haut > certain ? haut : undefined, legal, conv: r.minConvBrut, source: Math.round(legal) > r.minConvBrut ? 'legal' : 'grille' };
@@ -174,9 +194,10 @@ export function entretienPlancher(d: ISODate, min: number): number | undefined {
 }
 
 /** Brut estimé à partir du net */
-export function netToBrut(net: number, d: ISODate): number {
+export function netToBrut(net: number, d: ISODate, region: Region = 'metropole'): number {
   // Estimation, pas un barème : même part net/brut pour toutes les périodes (choix signalé dans correctifs-t023.md).
-  return Math.round((net * 10000) / (ratesAt(d)?.netSurBrut ?? NET_BRUT));
+  // T-077 (R1) : part propre à l'Alsace-Moselle et à Mayotte (regions.ts).
+  return Math.round((net * 10000) / netSurBrutRegion(region, d, ratesAt(d)?.netSurBrut ?? NET_BRUT));
 }
 
 /**

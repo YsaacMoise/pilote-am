@@ -50,7 +50,8 @@ const leave = (type: AbsenceLue['type'], from: string, to: string): AmLeave => n
 
 describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
   for (const [nom, over, motif] of [
-    ['Alsace-Moselle', { alsaceMoselle: true }, /Alsace-Moselle .* non géré/],
+    // T-077 : l'Alsace-Moselle est calculée ; l'accueil de 47 à 51 semaines reste refusé (A-01).
+    ['47 à 51 semaines (A-01)', { yearType: 'incomplete', weeks: 48 }, /47 à 51 semaines par an : non géré/],
     ['horaires qui changent (semaines A et B)', { planningVariable: true }, /semaines A et B.*non géré/],
     ['accueil occasionnel (CCN art. 97.2)', { accueilOccasionnel: true }, /Accueil occasionnel : non géré/],
   ] as [string, Partial<Contract>, RegExp][]) {
@@ -80,22 +81,22 @@ describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
     expect(r.nonGere.join(' ')).toMatch(/Contrat à compléter/);
   });
   it('mois repris d’un bulletin réel : pas refusé (le bulletin fait foi)', () => {
-    const c = ok({ alsaceMoselle: true, trackedFrom: '2026-01-01', history: [{ month: '2025-12', net: 50000, source: 'manuel' }] });
+    const c = ok({ yearType: 'incomplete', weeks: 48, trackedFrom: '2026-01-01', history: [{ month: '2025-12', net: 50000, source: 'manuel' }] });
     const b = monthBase(makeCtx(c, [], [], '2026-10-31'), '2025-12');
     expect(b.fromHistory).toBe(true);
     expect(b.nonGere).toEqual([]);
   });
   it('congés : jours acquis et indemnité à confirmer, juin sans complément versé', () => {
-    const ctx = makeCtx(ok({ alsaceMoselle: true }), [], [], '2026-10-31');
-    expect(acquisition(ctx, 2025).aConfirmer?.message).toMatch(/Alsace-Moselle/);
+    const ctx = makeCtx(ok({ yearType: 'incomplete', weeks: 48 }), [], [], '2026-10-31');
+    expect(acquisition(ctx, 2025).aConfirmer?.message).toMatch(/47 à 51 semaines/);
     expect(indemnite(ctx, 2025).aConfirmer).toBeDefined();
     const juin = cpForMonth(ctx, '2026-06');
     expect(juin.complement).toBe(0);
     expect(juin.aConfirmer).toBeDefined();
   });
   it('soldes de départ (reprise) : pas proposés', () => {
-    const s = soldesDeDepart(ok({ alsaceMoselle: true, start: '2024-09-01' }), '2026-10-01', 0);
-    expect(s.aConfirmer).toMatch(/Alsace-Moselle/);
+    const s = soldesDeDepart(ok({ yearType: 'incomplete', weeks: 48, start: '2024-09-01' }), '2026-10-01', 0);
+    expect(s.aConfirmer).toMatch(/47 à 51 semaines/);
   });
   it('fin de contrat : aucun montant', () => {
     const f = finDeContrat(makeCtx(ok({ planningVariable: true }), [], [], '2026-10-31'), '2026-10-15', 'retrait');
@@ -109,7 +110,7 @@ describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
     expect(f.nonGere).toMatch(/Mars 2026 n’est pas calculé \(cas non géré\)/);
   });
   it('page des parents : mois marqué non calculé, sans montant ni case', () => {
-    const snap = buildSnapshot({ ctx: makeCtx(ok({ alsaceMoselle: true }), [], [], '2026-10-20'), journal: [], amName: 'Nadia', enfants: 0, now: 0 });
+    const snap = buildSnapshot({ ctx: makeCtx(ok({ yearType: 'incomplete', weeks: 48 }), [], [], '2026-10-20'), journal: [], amName: 'Nadia', enfants: 0, now: 0 });
     expect(snap.mois.length).toBeGreaterThan(0);
     for (const m of snap.mois) { expect(m.nonGere).toBe(true); expect(m.total).toBe(0); expect(m.lignes).toEqual([]); }
   });

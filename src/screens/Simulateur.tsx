@@ -273,7 +273,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
             <legend>Le tarif</legend>
             <EuroInput label="Salaire horaire brut" hint={`Soit ${euros(r.tauxNet)} net. Minimum : ${euros(r.minimumBrut)} brut${minimumAmAp !== undefined ? ` (${euros(minimumAmAp)} avec le titre « Assistant maternel - garde d’enfants »)` : ''}.`} cents={i.tauxBrut} onChange={(v) => set({ tauxBrut: v ?? 0 })} />
             {r.sousMinimum && <Banner tone="warn">Ce taux est sous le minimum de la convention collective : {euros(r.minimumBrut)} brut de l’heure depuis le {dateLongue(minConvDepuis(d)!)}. {MINIMUM_SANS_TITRE}</Banner>}
-            <Switch label="L’assistante maternelle travaille en Alsace-Moselle" hint="Bas-Rhin, Haut-Rhin ou Moselle : non géré par l’app, aucun résultat n’est donné." checked={i.alsaceMoselle} onChange={(v) => set({ alsaceMoselle: v })} />
+            <Switch label="L’assistante maternelle travaille en Alsace-Moselle" hint="Bas-Rhin, Haut-Rhin ou Moselle : cotisation maladie du régime local en plus." checked={i.alsaceMoselle} onChange={(v) => set({ alsaceMoselle: v })} />
             <Seg label="Comment l’indemnité d’entretien est-elle fixée ?" value={i.entretienMode} options={[{ v: 'heure', l: 'Par heure d’accueil' }, { v: 'jour', l: 'Par jour d’accueil' }]} onChange={(v) => set({ entretienMode: v, entretien: 0 })} />
             <EuroInput label={i.entretienMode === 'jour' ? 'Montant par jour d’accueil' : 'Montant par heure d’accueil'} allowEmpty cents={i.entretien || undefined} onChange={(v) => set({ entretien: v ?? 0 })}
               hint={`Minimum légal chaque jour : ${eurosTexte(entretienHoraireMin(d)!)} par heure d’accueil, jamais moins de ${eurosTexte(ratesConnus(d).entretienPlancherJour)}.${joursAuMinimum.length ? ` Il s’applique le ${listeJours(joursAuMinimum)}.` : ''}`} />
@@ -416,14 +416,11 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
 
         </div>
         <div class="sim-result">
-        {/* T-031 : Alsace-Moselle non géré (charte, verrou 6) : aucun résultat chiffré. */}
-        {i.alsaceMoselle ? (
-          <section class="card stack" aria-labelledby="sim-ng" aria-live="polite">
-            <h2 id="sim-ng">Alsace-Moselle : non géré</h2>
-            <p>La paie y suit des règles locales que l’app ne calcule pas encore. Cette simulation ne donnerait pas des montants sûrs.</p>
-            <p class="hint">Décochez « Alsace-Moselle » pour une assistante maternelle qui travaille ailleurs en France.</p>
-          </section>
-        ) : <>
+        {/* T-077 (R7) : Alsace-Moselle calculée ; le Vendredi saint et le 26 décembre sont à confirmer (deux lectures). */}
+        {<>
+        {r.feriesLocauxB && (
+          <Banner tone="info">Le Vendredi saint et le 26 décembre sont fériés en Alsace-Moselle, mais aucun texte ne dit s’ils le sont pour une assistante maternelle (question à poser à la DDETS). Cette simulation les compte comme fériés. Sans eux, le coût réel serait de {euros(r.feriesLocauxB.reel)} par mois{r.feriesLocauxB.reel !== r.reel ? `, soit ${euros(Math.abs(r.feriesLocauxB.reel - r.reel))} de ${r.feriesLocauxB.reel > r.reel ? 'plus' : 'moins'}` : ', le même montant'}.</Banner>
+        )}
         {/* Rappel du résultat collé en bas de l'écran pendant la saisie ; il s'efface quand le résultat complet est visible. */}
         <button type="button" class={`sim-sticky ${resultVisible ? 'is-hidden' : ''} ${connecte ? 'with-tabbar' : ''}`} aria-hidden={resultVisible} tabIndex={resultVisible ? -1 : 0}
           onClick={() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>

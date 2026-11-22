@@ -13,6 +13,10 @@ Deux modes :
 Le moteur B n'est pas modifie. Montants en centimes entiers.
 T-050b : la regularisation de fin est calculee avant l'ICCP et l'indemnite de rupture (elle entre dans les deux bases).
 T-027 : kilometres (km_cv, km_partage, km_enfants), evenements nommes (nature), km_controle, evt_duree.
+T-077 (MB7) : region du contrat (contrat.region : « alsace_moselle », « mayotte », absent = metropole). Feries
+locaux (R3), maintien du droit local (R4), brut estime par region (R1), minimum et repere net (R2). Un jour « a
+confirmer » (code A77-xxx de B) n'est ni paye ni retenu par B : les sorties qui en dependent sont refusees avec le
+code et la liste des valeurs possibles (details.lectures_valeurs, une liste par sortie).
 """
 
 import os
@@ -24,6 +28,8 @@ ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.environ.get("ARVELA_B_RACINE", "/home/claude/projet/moteur/B"))  # M6 : copie hors du projet
 import moteur_b as B  # noqa: E402
 from moteur_b.calendrier import jours_feries  # noqa: E402  (liste des feries R-JF-01, sans regle de paie)
+from moteur_b.regions import region_valide, feries_locaux_entre  # noqa: E402  (liste des feries locaux, R3)
+from itertools import combinations  # noqa: E402
 
 
 # ------------------------------------------------------------------ outils
@@ -122,6 +128,8 @@ class Ctx:
         self.jours = {d_(j["date"]): j for j in ev.get("jours", [])}
         self.conges = [dict(l, du=d_(l["du"]), au=d_(l["au"])) for l in ev.get("absences_am", [])]
         self.cache = {}
+        self.region = region_valide(k.get("region"))
+        self.locaux = feries_locaux_entre(self.debut, self.fin or date(self.debut.year + 6, 12, 31), self.region)
         # T-072 (T-052) : types d'annee successifs du contrat (debut, puis chaque avenant), pour les conges.
         # Rempli par ctx_mois quand la situation a des avenants.
         self.historique = [(self.debut, self.type)]
@@ -141,6 +149,10 @@ class Ctx:
                 self.dernier_travaille = dj
         if self.dernier_travaille is not None and (self.fin is None or not self.debut <= self.dernier_travaille < self.fin):
             self.dernier_travaille = "incoherent"
+
+    def ferie_local(self, d):
+        """Fait du calendrier : d est-il un des feries locaux de la region (R3) ? Sans regle de paie."""
+        return d in self.locaux
 
     def types_entre(self, a, b):
         """Types d'annee en vigueur entre a et b (faits du contrat et des avenants)."""
@@ -231,6 +243,10 @@ def statut_presence(ctx, d):
     j = ctx.jours.get(d)
     if j and j.get("abs"):
         return "absence_enfant"
+    if ctx.ferie_local(d) and not (j and (j.get("pres") or j.get("ferie_travaille"))):
+        # T-077 (R3.3) : ferie local non travaille, voisin d'un ferie national : fait inconnu en lecture B
+        # (parents ou fermeture de l'AM), ferie en lecture A. B decide (ferie_chome, A77-FERIE-VOISIN).
+        return "inconnu"
     return "travaille"
 
 
@@ -251,16 +267,40 @@ def droits_cp_suffisants(ctx, d):
             raise acq
         droits = acq
     p0, p1 = date(y, 6, 1), date(y + 1, 5, 31)
-    total = 0
+    total_a = total_b = 0
     for l in sorted([x for x in ctx.conges if x["type"] == "cp" and p0 <= x["du"] <= p1], key=lambda x: x["du"]):
-        reprise = l["au"] + timedelta(days=1)
-        while ctx.prevu(reprise) == 0 or est_ferie(reprise):
-            reprise += timedelta(days=1)
-        r = appel("decompte_jours_cp", l["du"], reprise, ctx.jours_travailles)
-        total += r["resultat"]["jours_decomptes"]
+        na, nb = decompte_conge(ctx, l)
+        total_a += na
+        total_b += nb
         if l["du"] <= d <= l["au"]:
-            return total <= droits
+            va, vb = total_a <= droits, total_b <= droits
+            if va != vb:
+                # T-077 (R3.4) : les droits suffisent dans une lecture et pas dans l'autre.
+                raise Refus("A77-DECOMPTE-CP", "decompte_jours_cp",
+                            {"lectures": {"A": total_a, "B": total_b}, "droits": droits})
+            return va
     return True
+
+
+def decompte_conge(ctx, l, borne=None):
+    """Jours decomptes d'un conge, dans les deux lectures de R3.4 (B les donne ; egales hors region a feries
+    locaux). La reprise est le premier jour prevu qui n'est pas ferie (fait du calendrier) ; si ce jour est un
+    ferie local, la reprise elle-meme depend de la lecture : refus visible."""
+    reprise = l["au"] + timedelta(days=1)
+    while ctx.prevu(reprise) == 0 or est_ferie(reprise):
+        reprise += timedelta(days=1)
+        if borne and reprise > borne:
+            break
+    if ctx.ferie_local(reprise):
+        raise Refus("A77-DECOMPTE-CP", "decompte_jours_cp", {"motif": "jour de reprise ferie local : reprise selon la lecture"})
+    try:
+        r = appel("decompte_jours_cp", l["du"], reprise, ctx.jours_travailles, region=ctx.region)
+        n = r["resultat"]["jours_decomptes"]
+        return n, n
+    except Refus as e:
+        if e.code == "A77-DECOMPTE-CP":
+            return e.details["lectures"]["A"], e.details["lectures"]["B"]
+        raise
 
 
 def episodes_maladie(ctx):
@@ -302,9 +342,23 @@ def episodes_maladie(ctx):
     return res
 
 
+A_CONFIRMER = ("A77-FERIE-LOCAL", "A77-FERIE-VOISIN", "A77-MAINTIEN-LOCAL")
+
+
 def qualifier_jour(ctx, d):
     """Renvoie (nature, deductible, minutes_travaillees) ou leve Refus.
-    nature : hors, travaille, absence, ferie_chome, ferie_travaille, cp."""
+    nature : hors, travaille, absence, ferie_chome, ferie_travaille, cp,
+    ferie_local_travaille (T-077 : comme un jour travaille, majoration a confirmer),
+    a_confirmer (T-077 : B ne dit ni paye ni retenu ; deductible porte alors le refus de B)."""
+    try:
+        return _qualifier_jour(ctx, d)
+    except Refus as e:
+        if e.code in A_CONFIRMER:
+            return "a_confirmer", e, 0
+        raise
+
+
+def _qualifier_jour(ctx, d):
     prevu = ctx.prevu(d)
     j = ctx.jours.get(d) or {}
     if not ctx.dans_contrat(d):
@@ -325,6 +379,8 @@ def qualifier_jour(ctx, d):
         if j.get("pres"):
             if est_ferie(d):
                 return "ferie_travaille", False, ctx.travail_jour(d)
+            if ctx.ferie_local(d):
+                return "ferie_local_travaille", False, ctx.travail_jour(d)
             return "travaille", False, ctx.travail_jour(d)
         return "hors", False, 0
     c = ctx.conge(d)
@@ -344,16 +400,28 @@ def qualifier_jour(ctx, d):
     if c == "evenement":
         return "absence", jour_evenement(ctx, d), 0
     if c:
-        r = appel("qualifier_absence", _TYPE_AM[c], ctx.type)
+        r = appel("qualifier_absence", _TYPE_AM[c], ctx.type, region=ctx.region)
         return "absence", r["resultat"]["deductible"], 0
+    jna = [x + timedelta(days=i) for x in ctx.sans_accueil for i in range(7)] if ctx.type == "incomplete" else []
+    if ctx.ferie_local(d):
+        if j.get("ferie_travaille") or j.get("pres"):
+            return "ferie_local_travaille", False, ctx.travail_jour(d)
+        # T-077 (R3.1) : B refuse (A77-FERIE-LOCAL) ; sinon le jour n'est pas un jour habituellement travaille.
+        r = appel("ferie_chome", d, ctx.jours_travailles, jours_non_accueil=jna, region=ctx.region)
+        return "hors", False, 0
     if est_ferie(d) and not (j.get("ferie_travaille") or j.get("pres")):
-        jna = [x + timedelta(days=i) for x in ctx.sans_accueil for i in range(7)] if ctx.type == "incomplete" else []
-        r = appel("ferie_chome", d, ctx.jours_travailles, jours_non_accueil=jna)
-        res = r["resultat"]
-        if res.get("jours_condition"):
-            av, ap = (d_(x) for x in res["jours_condition"])
+        try:
+            r = appel("ferie_chome", d, ctx.jours_travailles, jours_non_accueil=jna, region=ctx.region)
+            cond = r["resultat"].get("jours_condition")
+        except Refus as e:
+            if e.code != "A77-FERIE-VOISIN":
+                raise
+            cond = e.details["jours_condition"]
+        res = r["resultat"] if not cond else None
+        if cond:
+            av, ap = (d_(x) for x in cond)
             r = appel("ferie_chome", d, ctx.jours_travailles, presence_veille=statut_presence(ctx, av),
-                      presence_lendemain=statut_presence(ctx, ap), jours_non_accueil=jna)
+                      presence_lendemain=statut_presence(ctx, ap), jours_non_accueil=jna, region=ctx.region)
             res = r["resultat"]
         return "ferie_chome", not res["remuneration_maintenue"], 0
     if est_ferie(d):
@@ -392,6 +460,14 @@ def mensualise(ctx):
     return v
 
 
+def derive(e, f):
+    """Refus derive d'un refus a lectures : memes code et details, valeurs transformees par f."""
+    det = dict(e.details)
+    if "lectures_valeurs" in det:
+        det["lectures_valeurs"] = sorted({f(x) for x in det["lectures_valeurs"]})
+    return Refus(e.code, e.etape, det)
+
+
 def mois_b(ctx, m):
     """Sorties d'un mois. Chaque sortie : valeur ou Refus."""
     if isinstance(ctx, _CtxRefus):
@@ -421,6 +497,8 @@ def mois_b(ctx, m):
 
     garde("salaire_mensualise", lambda: mensualise(ctx))
 
+    a_conf = []  # T-077 : jours a confirmer du mois [(date, unites, Refus)]
+
     def deduction():
         mens = mensualise(ctx)
         unites = 0
@@ -445,6 +523,9 @@ def mois_b(ctx, m):
             if isinstance(q, Refus):
                 raise q
             nature, ded, _ = q
+            if nature == "a_confirmer":
+                a_conf.append((d, ctx.prevu(d) if ctx.type == "complete" else 1, ded))
+                continue
             if nature == "absence" and ded or nature == "ferie_chome" and ded:
                 unites += ctx.prevu(d) if ctx.type == "complete" else 1
         if sortie:
@@ -460,21 +541,46 @@ def mois_b(ctx, m):
         # T-074 : jour du planning hors du contrat dans une semaine sans accueil (mois d'entree ou de sortie) :
         # B dit s'il se deduit (aujourd'hui : refus SORTIE-SEMAINE-SANS-ACCUEIL, a confirmer).
         _hors_contrat_sans_accueil(ctx, jours)
-        if unites == 0:
-            return 0
-        plan0 = {j: v for j, v in ctx.plan_min.items()}
-        contient = ctx.type == "incomplete" and any(lundi(d) in ctx.sans_accueil for d in jours)
-        p = appel("prevu_du_mois", a.year, a.month, plan0, ctx.type, contient_semaine_non_accueil=contient)
-        prevu = p["resultat"]["prevu_minutes"] if ctx.type == "complete" else p["resultat"]["prevu_jours"]
-        r = appel("deduction_absence", ctx.type, mens, unites, prevu)
-        return r["resultat"]["deduction_centimes"]
+        def ded_de(u):
+            if u == 0:
+                return 0
+            plan0 = {j: v for j, v in ctx.plan_min.items()}
+            contient = ctx.type == "incomplete" and any(lundi(d) in ctx.sans_accueil for d in jours)
+            p = appel("prevu_du_mois", a.year, a.month, plan0, ctx.type, contient_semaine_non_accueil=contient)
+            prevu = p["resultat"]["prevu_minutes"] if ctx.type == "complete" else p["resultat"]["prevu_jours"]
+            r = appel("deduction_absence", ctx.type, mens, u, prevu)
+            return r["resultat"]["deduction_centimes"]
+
+        if not a_conf:
+            return ded_de(unites)
+        # T-077 (R3.1, R3.3, R4) : chaque jour a confirmer est paye ou retenu selon la lecture. Valeurs possibles de la
+        # deduction : toutes les combinaisons par code de B (meme lecture pour tous les jours d'un meme code).
+        groupes = {}
+        for d, u, e in a_conf:
+            groupes.setdefault(e.code, []).append((d, u))
+        codes = list(groupes)
+        valeurs = set()
+        for n in range(len(codes) + 1):
+            for sel in combinations(codes, n):
+                valeurs.add(ded_de(unites + sum(u for c in sel for _, u in groupes[c])))
+        if len(valeurs) == 1:
+            return valeurs.pop()
+        premier_refus = a_conf[0][2]
+        sans = ded_de(unites)
+        details = {"lectures_valeurs": sorted(valeurs), "codes": codes,
+                   "jours_a_confirmer": [{"date": d.isoformat(), "code": e.code, "lectures": e.details.get("lectures")}
+                                         for d, _, e in a_conf],
+                   "montant_a_confirmer_centimes": ded_de(unites + sum(u for _, u, _ in a_conf)) - sans,
+                   "note": "Deduction de l'art. 111 sans les jours a confirmer, puis avec. Pour A77-MAINTIEN-LOCAL, la "
+                           "valeur sans retenue est avant deduction des IJ (lecture A)."}
+        raise Refus(premier_refus.code, "deduction", dict(details, deduction_certaine_centimes=sans))
 
     garde("deduction", deduction)
 
     def base():
         ded = out["deduction"]
         if isinstance(ded, Refus):
-            raise ded
+            raise derive(ded, lambda x: mensualise(ctx) - x)
         return mensualise(ctx) - ded
 
     garde("salaire_base_mois", base)
@@ -502,7 +608,7 @@ def mois_b(ctx, m):
                     # Jour non travaille dont la paie est refusee par B : c'est bien une absence dans la semaine.
                     q = ("absence", None, 0)
                 nature, ded, mt = q
-                if nature in ("travaille", "ferie_travaille"):
+                if nature in ("travaille", "ferie_travaille", "ferie_local_travaille"):
                     reelles += mt
                     extra += max(0, mt - pv)
                 elif pv > 0:
@@ -528,23 +634,62 @@ def mois_b(ctx, m):
     garde("heures_compl_montant", lambda: partie(0))
     garde("heures_maj_montant", lambda: partie(1))
 
+    def accueil(d):
+        """T-042f : duree d'accueil reelle du jour (presence de l'enfant), en minutes : la presence saisie dans la
+        situation, sinon les heures prevues (l'enfant est la comme prevu). Meme presence que celle donnee a A."""
+        j = ctx.jours.get(d) or {}
+        if j.get("pres"):
+            return sum(minutes(b) - minutes(a_) for a_, b in j["pres"])
+        return ctx.prevu(d)
+
     def ferie_trav():
+        maj = 0
+        dernier_refus = None
         for d in jours:
             q = qual[d]
             if isinstance(q, Refus):
                 continue
             if q[0] == "ferie_travaille":
                 appel("ferie_travaille", d)
+        for d in jours:
+            q = qual[d]
+            if isinstance(q, Refus) or q[0] != "ferie_local_travaille":
+                continue
+            # T-077 (R3.2) : B refuse toujours (A77-FERIE-LOCAL-TRAVAILLE) et donne la majoration de la lecture A.
+            try:
+                appel("ferie_local_travaille", d, ctx.region, accueil(d), ctx.taux)
+            except Refus as e:
+                if e.code != "A77-FERIE-LOCAL-TRAVAILLE":
+                    raise
+                maj += e.details["lectures"]["A"]
+                dernier_refus = e
+        if dernier_refus is not None:
+            raise Refus(dernier_refus.code, "ferie_local_travaille",
+                        dict(dernier_refus.details, lectures_valeurs=sorted({0, maj})))
         return 0
 
     garde("ferie_travaille_montant", ferie_trav)
 
     def total():
-        for n in ("salaire_base_mois", "_heures", "ferie_travaille_montant"):
+        for n in ("_heures",):
             if isinstance(out[n], Refus):
                 raise out[n]
-        r = appel("salaire_du_mois", mensualise(ctx), list(out["_heures"]), out["deduction"])
-        return r["resultat"]["salaire_brut_mois_centimes"]
+        # T-077 : deduction ou majoration a confirmer -> refus avec les valeurs possibles du total.
+        ded, ft = out["deduction"], out["ferie_travaille_montant"]
+        for v in (ded, ft):
+            if isinstance(v, Refus) and "lectures_valeurs" not in v.details:
+                raise v
+        deds = ded.details["lectures_valeurs"] if isinstance(ded, Refus) else [ded]
+        majs = ft.details["lectures_valeurs"] if isinstance(ft, Refus) else [0]
+        tot = set()
+        for x in deds:
+            r = appel("salaire_du_mois", mensualise(ctx), list(out["_heures"]), x)
+            for mj in majs:
+                tot.add(r["resultat"]["salaire_brut_mois_centimes"] + mj)
+        if len(tot) == 1:
+            return tot.pop()
+        e = ded if isinstance(ded, Refus) else ft
+        raise Refus(e.code, e.etape, dict(e.details, lectures_valeurs=sorted(tot)))
 
     garde("salaire_mois_hors_cp", total)
 
@@ -557,17 +702,9 @@ def mois_b(ctx, m):
                 if q.code == "HORS-COMPARATEUR":
                     raise q
                 continue  # jour d'absence ou ferie chome : pas de travail effectif (R-ABS-10)
-            if q[0] in ("travaille", "ferie_travaille") and q[2] > 0:
+            if q[0] in ("travaille", "ferie_travaille", "ferie_local_travaille") and q[2] > 0:
                 res.append((d, q[2]))
         return res
-
-    def accueil(d):
-        """T-042f : duree d'accueil reelle du jour (presence de l'enfant), en minutes : la presence saisie dans la
-        situation, sinon les heures prevues (l'enfant est la comme prevu). Meme presence que celle donnee a A."""
-        j = ctx.jours.get(d) or {}
-        if j.get("pres"):
-            return sum(minutes(b) - minutes(a_) for a_, b in j["pres"])
-        return ctx.prevu(d)
 
     def jour_b(d, mt):
         # T-042f (MB5, T-040e) : duree_minutes = temps de travail (art. 99) ; duree_accueil_minutes = presence reelle.
@@ -801,12 +938,14 @@ def cp_mois_b(ctx, m):
 
 # T-050c : part du net dans le brut utilisee par A pour estimer le brut (src/engine/rates.ts, NET_BRUT = 7810, la meme
 # pour toutes les periodes). Arrondi de Math.round (demi vers le haut). Sert seulement a l'assiette du 1/80.
-NET_SUR_BRUT_A = 7810
+NET_SUR_BRUT_A = 7810  # metropole ; T-077 (R1) : part par region et par mois, donnee par B (brut_depuis_net).
 
 
-def _brut_comme_a(net):
-    x = Fraction(net * 10000, NET_SUR_BRUT_A) + Fraction(1, 2)
-    return x.numerator // x.denominator
+def _brut_comme_a(net, ctx=None, mois=None):
+    """Brut estime depuis le net (R1), mois de salaire « mois » (AAAA-MM). La part vient de B (regions.py)."""
+    region = ctx.region if ctx else "metropole"
+    d = premier(mois) if mois else date(2026, 1, 1)
+    return appel("brut_depuis_net", net, d, region)["resultat"]["brut_estime_centimes"]
 
 
 def _unite(ctx, d):
@@ -1013,12 +1152,11 @@ def _iccp_b(ctx, out, motif_b, fin):
                 if ctx.type == "complete":
                     for l in ctx.conges:
                         if l["type"] == "cp" and l["du"] >= date(y, 6, 1) and l["du"] <= fin:
-                            reprise = l["au"] + timedelta(days=1)
-                            while ctx.prevu(reprise) == 0 or est_ferie(reprise):
-                                reprise += timedelta(days=1)
-                                if reprise > fin + timedelta(days=60):
-                                    break
-                            payes += appel("decompte_jours_cp", l["du"], reprise, ctx.jours_travailles)["resultat"]["jours_decomptes"]
+                            # T-077 (R3.4) : decompte dans les deux lectures (feries locaux) ; egales hors region.
+                            na, nb = decompte_conge(ctx, l, borne=fin + timedelta(days=60))
+                            if na != nb:
+                                raise Refus("A77-DECOMPTE-CP", "decompte_jours_cp", {"lectures": {"A": na, "B": nb}})
+                            payes += na
                     payes = min(payes, ja)
                 else:
                     if ctx.k.get("cp_mode", "juin") == "juin" and fin >= date(y, 6, 1):
@@ -1092,8 +1230,10 @@ def fin_b(ctx, k):
                 for d in jours_entre(debut_annee, b):
                     q = qualifier_jour(ctx, d)
                     nature, ded, mt = q
+                    if nature == "a_confirmer":
+                        raise ded  # T-077 : jour ni paye ni retenu, composantes de la regularisation inconnues
                     pv = ctx.prevu(d)
-                    if nature == "travaille":
+                    if nature in ("travaille", "ferie_local_travaille"):
                         eff += min(mt, pv) if pv else 0
                         hcm += max(0, mt - pv)
                     elif nature == "ferie_chome" and not ded:
@@ -1139,14 +1279,14 @@ def fin_b(ctx, k):
             v = mois_b(ctx, m)["salaire_mois_hors_cp"]
             if isinstance(v, Refus):
                 raise v
-            sal += _brut_comme_a(v)
+            sal += _brut_comme_a(v, ctx, m)
             # CP payes dans le mois (annee incomplete) et complement de juin (annee complete), comme A
             # (cpForMonth : indemnite + complement, convertis le dernier jour du mois).
             cm = cp_mois_b(ctx, m)
             for cle in ("cp_indemnite_mois", "cp_complement_mois"):
                 if isinstance(cm[cle], Refus):
                     raise cm[cle]
-            icp += _brut_comme_a(cm["cp_indemnite_mois"] + cm["cp_complement_mois"])
+            icp += _brut_comme_a(cm["cp_indemnite_mois"] + cm["cp_complement_mois"], ctx, m)
         iccp_v = out["iccp"] if not isinstance(out["iccp"], Refus) else None
         # T-050b (A-45) : ICCP, CP payes et regularisation de fin entrent dans l'assiette (CCN art. 121.1, 124).
         # Une somme que B ne calcule pas est passee « a confirmer » : B refuse au lieu d'une assiette incomplete.
@@ -1159,8 +1299,9 @@ def fin_b(ctx, k):
             a_confirmer.append("regularisation (" + reg_v.code + ")")
             reg_v = 0
         # A convertit l'ICCP et la regularisation ensemble, au dernier jour du dernier mois (assietteFinNet).
-        reg_brut = _brut_comme_a(reg_v)
-        iccp_brut = _brut_comme_a(iccp_v + reg_v) - reg_brut
+        mf = mois_de(fin)
+        reg_brut = _brut_comme_a(reg_v, ctx, mf)
+        iccp_brut = _brut_comme_a(iccp_v + reg_v, ctx, mf) - reg_brut
         r = appel("indemnite_rupture", motif_b, auteur, ctx.debut, env, sal, iccp_centimes=iccp_brut, icp_centimes=icp,
                   regularisation_centimes=reg_brut, sommes_a_confirmer=a_confirmer)
         out["indemnite_rupture"] = r["resultat"]["indemnite_centimes"]
@@ -1377,16 +1518,39 @@ def composition(s):
                         res["assiette_rupture"] = e
         elif t == "cp_decompte":
             try:
-                r = appel("decompte_jours_cp", d_(k["du"]), d_(k["reprise"]), ctx.jours_travailles)
+                r = appel("decompte_jours_cp", d_(k["du"]), d_(k["reprise"]), ctx.jours_travailles, region=ctx.region)
                 res = {"jours_decomptes": r["resultat"]["jours_decomptes"]}
             except Refus as e:
+                if e.code == "A77-DECOMPTE-CP":
+                    l = e.details["lectures"]
+                    e = Refus(e.code, e.etape, dict(e.details, lectures_valeurs=sorted({l["A"], l["B"]})))
                 res = {"jours_decomptes": e}
         elif t == "ferie":
             try:
                 nature, ded, _ = qualifier_jour(ctx, d_(k["date"]))
-                res = {"ferie_paye": not ded} if nature == "ferie_chome" else {"ferie_paye": Refus("HORS-COMPARATEUR", "ferie")}
+                if nature == "a_confirmer":
+                    res = {"ferie_paye": Refus(ded.code, ded.etape, dict(ded.details, lectures_valeurs=[False, True]))}
+                else:
+                    res = {"ferie_paye": not ded} if nature == "ferie_chome" else {"ferie_paye": Refus("HORS-COMPARATEUR", "ferie")}
             except Refus as e:
                 res = {"ferie_paye": e}
+        elif t == "brut_depuis_net":
+            # T-077 (R1) : brut estime depuis le net, part de la region et du mois (B).
+            try:
+                res = {"brut_estime": appel("brut_depuis_net", k["net"], d_(k["date"]), ctx.region)["resultat"]["brut_estime_centimes"]}
+            except Refus as e:
+                res = {"brut_estime": e}
+        elif t == "minimum_conventionnel":
+            # T-077 (R2) : minimum brut (grille ; 0,281 x SMIC de la region) et repere net Urssaf de la region.
+            res = {}
+            try:
+                res["minimum_brut"] = appel("minimum_horaire_brut", d_(k["date"]), region=ctx.region)["resultat"]["minimum_centimes"]
+            except Refus as e:
+                res["minimum_brut"] = e
+            try:
+                res["minimum_net"] = appel("repere_net_minimum", d_(k["date"]), ctx.region)["resultat"]["repere_net_centimes"]
+            except Refus as e:
+                res["minimum_net"] = e
         elif t == "km_controle":
             res = {"km_controle": controle_km_b(k)}
         elif t == "evt_duree":

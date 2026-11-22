@@ -207,7 +207,8 @@ class Refus(unittest.TestCase):
 
     # Perimetre et net
     def test_perimetre(self):
-        self.refus(m.verifier_perimetre("67"), "EXCLU-ALSACE-MOSELLE")
+        # T-077 : Alsace-Moselle et Mayotte ouvertes (EXCLU-ALSACE-MOSELLE leve) ; autres outre-mer exclus.
+        self.assertEqual(m.verifier_perimetre("67")["resultat"]["region"], "alsace_moselle")
         self.refus(m.verifier_perimetre("974"), "EXCLU-HORS-METROPOLE")
         self.refus(m.verifier_perimetre("76", accueil="occasionnel"), "EXCLU-OCCASIONNEL")
         self.refus(m.verifier_perimetre("76", semaines_alternees=True), "EXCLU-ALTERNEES")

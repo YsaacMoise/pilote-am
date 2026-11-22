@@ -92,7 +92,9 @@ export function releveDonnees(
     let reel = '';
     let absence = '';
     if (di.kind === 'am' && di.amLeave) { absence = AM_ABS_LABEL[di.amLeave]; if (di.plannedMin > 0) absAm++; }
-    else if (di.kind === 'ferie') { absence = `Férié : ${di.ferie}`; feries++; }
+    // T-077 (R3) : un férié local ou un férié qui en dépend est à confirmer, jamais compté comme férié chômé certain.
+    else if (di.kind === 'ferie' && !di.ferie) absence = `Férié local à confirmer : ${di.ferieLocal}`;
+    else if (di.kind === 'ferie') { absence = `Férié : ${di.ferie}${di.aConfirmer ? ' (à confirmer)' : ''}`; if (!di.aConfirmer) feries++; }
     else if (di.kind === 'absent' && di.rec?.abs) {
       absence = CHILD_ABS_LABEL[di.rec.abs] + (di.deducted ? ', retenu' : ', payé');
       if (di.plannedMin > 0) absEnfant++;

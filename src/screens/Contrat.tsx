@@ -2,7 +2,8 @@ import { useEffect, useState } from 'preact/hooks';
 import { deleteContract, logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
 import { addMonthsToDate, deMois, firstDay, mondayOf, monthOf, shortDate, today, JOUR_NOMS, type Month } from '../engine/dates';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, semainesSansAccueilAnnee, termsAt, weeklyMinutes } from '../engine/payroll';
-import { entretienPlancher, MINIMUM_SANS_TITRE, ratesConnus, repasAvantageAu } from '../engine/rates';
+import { entretienPlancher, minimumSansTitre, ratesAtRegion, ratesConnus, repasAvantageAu } from '../engine/rates';
+import { regionDe } from '../engine/regions';
 import { soldesDeDepart } from '../engine/conges';
 import { euros, eurosTexte, hoursLabel } from '../engine/money';
 import type { Avenant, Contract, Plage, Planning, Terms } from '../engine/model';
@@ -71,7 +72,9 @@ export function Contrat({ id }: { id?: string }) {
   const curMonthStart = firstDay(monthOf(today()));
   const reprise = c.start < curMonthStart;
   const wk = weeklyMinutes(c.planning);
-  const rates = ratesConnus(today());
+  // T-077 (R2) : repère net du minimum et texte du titre AM-GE de la région choisie.
+  const rates = ratesAtRegion(today(), regionDe(c)) ?? ratesConnus(today());
+  const MINIMUM_SANS_TITRE = minimumSansTitre(regionDe(c));
   useEffect(() => {
     if (!existing || montrerLienDe !== existing.id) return;
     montrerLienDe = undefined;

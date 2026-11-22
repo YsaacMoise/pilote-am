@@ -194,6 +194,19 @@ Refus : A-02, A-06, A-19, A-21, PREAVIS-DEMISSION-3-12, A-45, ASSIETTE-A-CONFIRM
 | `verifier_perimetre(departement, accueil, semaines_alternees, type_contrat, cdd_remplacement, majoration_difficultes_enfant)` | `dans_perimetre` ou refus | hors périmètre, R-MENS-10, R-SAL-07 |
 | `convertir_brut_net(montant)` | toujours refus A-34 | R-PAJ-04, M-01, M-02 |
 
+### Régions (`regions.py`, T-077, MB7)
+
+Spécification : `regles/t077-decisions.md` (R0 à R4) du dépôt calculateur-arvela ; rapport `T-077-MB.md`.
+
+| Fonction | Entrées | Sortie | Règles |
+|---|---|---|---|
+| `brut_depuis_net(net, d, region)` | net en centimes, mois de salaire | `brut_estime_centimes` (estimation, part 7 810 ; Alsace-Moselle 7 660 jusqu'à mars 2022 puis 7 680 ; Mayotte 8 820) | T077-R1 |
+| `repere_net_minimum(d, region)` | date | `repere_net_centimes` (Urssaf) ; avant 2025 : REPERE-NET-ABSENT | T077-R2 |
+| `feries_locaux(annee, region)` | | {date: nom} : 26/12 et Vendredi saint ; 27/04 à Mayotte | T077-R3 |
+| `ferie_local_travaille(d, region, minutes, taux)` | | toujours refus A77-FERIE-LOCAL-TRAVAILLE, majoration de la lecture A dans `details` | T077-R3 |
+
+Paramètre `region` (défaut « metropole ») ajouté à `minimum_horaire_brut`, `verifier_taux_horaire`, `baremes_du_jour` (SMIC de Mayotte), `ferie_chome` (A77-FERIE-LOCAL, A77-FERIE-VOISIN), `decompte_jours_cp` (A77-DECOMPTE-CP), `qualifier_absence` (A77-MAINTIEN-LOCAL). `verifier_perimetre` accepte 57, 67, 68 et 976 et renvoie `region`.
+
 ## Non couvert par la version 0
 
 Engagement réciproque rompu avant l'embauche (R-ESS-04), durée de la période d'essai (R-ESS-02), déclaration Pajemploi (R-PAJ-01 à 10 : heures et jours déclarés, arrondis A-03), cotisations, CMG, frais de transport (R-IND-05), contrôle des durées maximales avec plusieurs employeurs (R-HC-01).
@@ -206,5 +219,6 @@ Engagement réciproque rompu avant l'embauche (R-ESS-04), durée de la période 
 - `tests/test_t050b.py` : 14 tests (assiette du 1/80, régularisation dans le dixième de fin), attendus tirés des fiches DDETS 31 (T-050b).
 - `tests/test_t027.py` : 29 tests (kilomètres, événements familiaux, préavis), attendus tirés des textes.
 - `tests/test_t039.py` : 5 tests (absence de l'enfant « sans solde »), attendus tirés des textes (T-039-MB4.md).
+- `tests/test_t077.py` : 25 tests (régions : R1 à R4), attendus chiffrés à la main depuis les textes (T-077-MB.md).
 - `tests/test_t035.py` : 9 tests (embauche en cours de mois, décès de l'enfant, entretien sous le minimum), attendus tirés des textes (T-035-MB3.md).
 - `ECARTS.md` : cas officiels non passés et leur cause.

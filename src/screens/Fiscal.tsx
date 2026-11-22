@@ -60,6 +60,7 @@ export function Fiscal() {
               <dt>Abattement ({f.facteur} × SMIC {f.smics.length > 1 ? f.smics.map(euros).join(' puis ') : euros(f.smic)} par jour)</dt><dd>−{eurosArrondis(f.abattement)}</dd>
               <dt>Reste après abattement</dt><dd>{reste(f) < 0 ? `−${eurosArrondis(-reste(f))}` : eurosArrondis(reste(f))}</dd>
             </dl>
+            {f.aConfirmer && <Banner tone="warn">{f.aConfirmer}</Banner>}
             {(f.abattement < f.abattementBrut || (negatif && reste(f) < 0)) && <p class="hint">L’abattement est plafonné au total des sommes reçues pour tous les enfants, pas enfant par enfant : le reste d’un enfant peut être négatif, seul le total compte.</p>}
           </section>
         ))}

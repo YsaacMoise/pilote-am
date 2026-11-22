@@ -360,7 +360,7 @@ function KidCard({ c, day, onEdit, compact, sautees = [], onNon }: { c: Contract
     tags.push({ tone: 'info', text: CHILD_ABS_LABEL[rec.abs] });
     tags.push({ tone: di.deducted ? 'warn' : 'ok', text: di.deducted ? 'Retenu sur le salaire' : 'Payé' });
   }
-  if (di.kind === 'ferie') tags.push({ tone: 'info', text: `Férié : ${di.ferie} (payé)` });
+  if (di.kind === 'ferie') tags.push(di.ferie ? (di.aConfirmer ? { tone: 'warn', text: `Férié : ${di.ferie} (à confirmer)` } : { tone: 'info', text: `Férié : ${di.ferie} (payé)` }) : { tone: 'warn', text: `Férié local : ${di.ferieLocal} (à confirmer)` });
   if (di.kind === 'am' && di.amLeave) tags.push({ tone: 'info', text: AM_ABS_LABEL[di.amLeave] });
   if (di.kind === 'prevu' && day < t) tags.push({ tone: 'ok', text: 'Comme prévu' });
 
@@ -691,6 +691,8 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
     <Sheet title={`${c.child}, ${dayLabel(day)}`} onClose={onClose}>
       <p class="muted">{planText(di)}</p>
       {di.ferie && <Switch label={`Jour férié (${di.ferie}) travaillé`} hint={day.endsWith('05-01') ? '1er mai : payé double' : 'Majoré de 10 %'} checked={ferieT} onChange={setFerieT} />}
+      {/* T-077 (R3) : férié local d'Alsace-Moselle ou de Mayotte, férié ou non selon la lecture. */}
+      {!di.ferie && di.ferieLocal && <Switch label={`Jour férié local (${di.ferieLocal}) travaillé`} hint="Majoration de 10 % à confirmer : on ne sait pas encore si ce jour est férié pour toi" checked={ferieT} onChange={setFerieT} />}
       <Choices label="L’enfant est-il accueilli ce jour-là ?" value={abs} options={rec?.abs === 'sans_solde_enfant' ? [...CHILD_ABS_OPTIONS, OPTION_SANS_SOLDE_ENFANT] : CHILD_ABS_OPTIONS} onChange={setAbs} />
       {abs === 'none' && !future && (
         <fieldset>

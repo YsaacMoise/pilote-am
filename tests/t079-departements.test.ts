@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEPARTEMENTS, libelleDepartement, lieuDuDepartement, reponseSaisie, trouverDepartement } from '../src/engine/departements';
-import { nonGeresContrat, NON_GERE_ALSACE, NON_GERE_MAYOTTE } from '../src/engine/nonGeres';
+import { nonGeresContrat } from '../src/engine/nonGeres';
+import { regionDe } from '../src/engine/regions';
 
 const base = { planningVariable: false, accueilOccasionnel: false, cdd: false } as const;
 
@@ -16,9 +17,13 @@ describe('T-079 : département du lieu d’accueil', () => {
   it('autres départements : ni l’un ni l’autre (dont 54, 88, 971, 974, 2A)', () => {
     for (const c of ['75', '54', '88', '971', '974', '2A']) expect(lieuDuDepartement(c)).toEqual({ alsaceMoselle: false, mayotte: false });
   });
-  it('même effet qu’avant sur le calcul : contrat refusé seulement pour 57, 67, 68 et 976', () => {
-    expect(nonGeresContrat({ ...base, ...lieuDuDepartement('67') })).toContain(NON_GERE_ALSACE);
-    expect(nonGeresContrat({ ...base, ...lieuDuDepartement('976') })).toContain(NON_GERE_MAYOTTE);
+  // T-077 : l'Alsace-Moselle et Mayotte sont calculées ; le département choisit les règles de la région.
+  it('même effet qu’avant sur le calcul : région Alsace-Moselle pour 57, 67, 68, Mayotte pour 976 (T-077 : plus de refus)', () => {
+    expect(regionDe({ ...base, ...lieuDuDepartement('67') })).toBe('alsaceMoselle');
+    expect(regionDe({ ...base, ...lieuDuDepartement('976') })).toBe('mayotte');
+    expect(regionDe({ ...base, ...lieuDuDepartement('75') })).toBe('metropole');
+    expect(nonGeresContrat({ ...base, ...lieuDuDepartement('67') })).toEqual([]);
+    expect(nonGeresContrat({ ...base, ...lieuDuDepartement('976') })).toEqual([]);
     expect(nonGeresContrat({ ...base, ...lieuDuDepartement('75') })).toEqual([]);
   });
   it('saisie retrouvée par numéro, nom ou libellé de la liste', () => {
@@ -36,8 +41,8 @@ describe('T-079 : département du lieu d’accueil', () => {
     expect(trouverDepartement('')).toBeUndefined();
   });
   it('ancien contrat sans département : sa réponse d’avant reste lue', () => {
-    expect(nonGeresContrat({ ...base, alsaceMoselle: true })).toContain(NON_GERE_ALSACE);
-    expect(nonGeresContrat({ ...base, alsaceMoselle: false, mayotte: true })).toContain(NON_GERE_MAYOTTE);
+    expect(regionDe({ ...base, alsaceMoselle: true })).toBe('alsaceMoselle');
+    expect(regionDe({ ...base, alsaceMoselle: false, mayotte: true })).toBe('mayotte');
   });
   it('saisie inconnue (vérificateur D1) : aucun département retenu, sauf la réponse d’un contrat d’avant', () => {
     const neuf = {};

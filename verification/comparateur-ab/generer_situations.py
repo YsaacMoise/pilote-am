@@ -841,6 +841,7 @@ def grille():
     S += situations_s50b()  # T-050c
     S += situations_t072()  # T-072 (T-052, T-054, T-055)
     S += situations_t074()  # T-074
+    S += situations_t077()  # T-077 (MB7)
     return S
 
 
@@ -1184,6 +1185,122 @@ def situations_t072():
     k2 = dict(contrat_grille("I46", "H40", "T420", debut="2025-11-01", fin="2027-05-31"), planning=S50B_MER, taux=420,
               semaines=46, semaines_sans_accueil=a1b)
     fin_regul("T072-T055-AN2-DECES", k2, "2027-05-31", "deces", "seconde année sans semaine saisie, décès")
+    return S
+
+
+# ============================================================ T-077 : regions (Alsace-Moselle, Mayotte)
+
+P_LMJ = semaine([1, 2, 3, 4], "08:00", "17:00")  # lundi a jeudi, 36 h : ni Vendredi saint ni 26/12/2025 prevus
+
+
+def situations_t077():
+    """T-077 (MB7) : region du contrat (champ contrat.region : « alsace_moselle », « mayotte » ; absent = metropole).
+    Regles : regles/t077-decisions.md R1 a R4. Chaque situation regionale a un temoin en metropole (meme contrat,
+    memes evenements, sans le champ region). Aucun resultat attendu n'est calcule ici."""
+    S = []
+    REG = {"AM": "alsace_moselle", "MY": "mayotte", "ME": None}
+
+    def kr(base, reg, **kw):
+        k = dict(base, **kw)
+        if REG[reg]:
+            k["region"] = REG[reg]
+        return k
+
+    def ajoute(id_, theme, k, calculs, ev=None, domaine="régions"):
+        S.append(sit(id_, domaine, k, calculs, ev, theme=theme))
+
+    c52 = contrat_grille("C52", "H40", "T500", debut="2025-09-01")
+    c52_mav = dict(c52, planning=PMaJ9)           # mardi a vendredi
+    c52_lmj = dict(c52, planning=P_LMJ)           # lundi a jeudi
+    i36 = contrat_grille("I36", "H40", "T500", debut="2025-09-01")
+    i46 = contrat_grille("I46", "H40", "T500", debut="2025-09-01")
+    fer = lambda id_, d: {"id": id_, "type": "ferie", "date": d}  # noqa: E731
+
+    # R3.1 et R3.3 : decembre 2025, 26/12 (vendredi) jour prevu non travaille ; 25/12 voisin.
+    for r in ("AM", "ME"):
+        ajoute(f"S77-DEC25-C52-{r}", "décembre 2025, 26/12 prévu non travaillé", kr(c52, r),
+               [mois("m", "2025-12"), fer("f25", "2025-12-25"), fer("f26", "2025-12-26")])
+        ajoute(f"S77-DEC25-TRAV-C52-{r}", "décembre 2025, 26/12 travaillé", kr(c52, r), [mois("m", "2025-12")],
+               {"jours": [{"date": "2025-12-26", "pres": [["08:00", "16:00"]]}]})
+    # R3.1 : Vendredi saint (2025-04-18, 2026-04-03), lundi a vendredi (lundi de Paques voisin) et mardi a vendredi.
+    for r in ("AM", "ME"):
+        ajoute(f"S77-VS25-C52-{r}", "avril 2025, Vendredi saint prévu non travaillé", kr(c52, r, debut="2024-09-02"),
+               [mois("m", "2025-04"), fer("vs", "2025-04-18"), fer("lp", "2025-04-21")])
+        ajoute(f"S77-VS26-C52-{r}", "avril 2026, Vendredi saint et 27 avril prévus non travaillés", kr(c52, r),
+               [mois("m", "2026-04"), fer("vs", "2026-04-03"), fer("lp", "2026-04-06"), fer("a27", "2026-04-27")])
+        ajoute(f"S77-VS26-TRAV-MAV-{r}", "avril 2026, Vendredi saint travaillé (mardi à vendredi)", kr(c52_mav, r),
+               [mois("m", "2026-04")], {"jours": [{"date": "2026-04-03", "pres": [["09:00", "17:00"]]}]})
+    ajoute("S77-VS26-MAV-AM", "avril 2026, Vendredi saint non travaillé, lundi non prévu", kr(c52_mav, "AM"),
+           [mois("m", "2026-04"), fer("vs", "2026-04-03")])
+    # R3.1 : 27 avril a Mayotte (lundi en 2026, dimanche en 2025).
+    ajoute("S77-VS26-C52-MY", "avril 2026 à Mayotte, 27 avril prévu non travaillé", kr(c52, "MY"),
+           [mois("m", "2026-04"), fer("vs", "2026-04-03"), fer("lp", "2026-04-06"), fer("a27", "2026-04-27")])
+    for r in ("MY", "ME"):
+        ajoute(f"S77-A27-TRAV-C52-{r}", "27 avril 2026 travaillé", kr(c52, r), [mois("m", "2026-04")],
+               {"jours": [{"date": "2026-04-27", "pres": [["08:00", "16:00"]]}]})
+    ajoute("S77-A27-2025-C52-MY", "avril 2025 à Mayotte, 27 avril un dimanche", kr(c52, "MY", debut="2024-09-02"),
+           [mois("m", "2025-04")])
+    # Absence de l'AM malade la veille d'un ferie local et la veille du 25/12.
+    ajoute("S77-VEILLE-VS26-AM", "AM malade la veille du Vendredi saint", kr(c52, "AM"), [mois("m", "2026-04")],
+           {"absences_am": [conge("am_malade", "2026-04-02", "2026-04-02")]})
+    ajoute("S77-VEILLE-A27-MY", "AM malade la veille du 27 avril (vendredi 24/04)", kr(c52, "MY"), [mois("m", "2026-04")],
+           {"absences_am": [conge("am_malade", "2026-04-24", "2026-04-24")]})
+    for r, k in (("AM", c52_lmj), ("MY", c52), ("ME", c52)):
+        ajoute(f"S77-VEILLE-NOEL-{r}", "AM malade la veille du 25/12/2025", kr(k, r),
+               [mois("m", "2025-12"), fer("f25", "2025-12-25")],
+               {"absences_am": [conge("am_malade", "2025-12-24", "2025-12-24")]})
+    # R3.4 : conge paye qui couvre le 26/12 (ou le 27/04 a Mayotte).
+    for r in ("AM", "ME"):
+        ajoute(f"S77-CP-NOEL-{r}", "congé payé du 22/12/2025 au 02/01/2026", kr(c52, r, soldes={"cp_restants": 15}),
+               [mois("m", "2025-12"),
+                {"id": "d", "type": "cp_decompte", "du": "2025-12-22", "au": "2026-01-02", "reprise": "2026-01-05"}],
+               {"absences_am": [conge("cp", "2025-12-22", "2026-01-02")]})
+    ajoute("S77-CP-A27-MY", "congé payé du 20/04 au 01/05/2026 à Mayotte", kr(c52, "MY"),
+           [{"id": "d", "type": "cp_decompte", "du": "2026-04-20", "au": "2026-05-01", "reprise": "2026-05-04"}])
+    # R4 : maladie de l'AM et enfant de l'AM malade (Alsace-Moselle : a confirmer ; Mayotte : retenue normale).
+    for t, nom in (("am_malade", "MAL"), ("am_enfant_malade", "ENF")):
+        for r in ("AM", "MY", "ME"):
+            ajoute(f"S77-{nom}-C52-{r}", f"{t}, 2 jours en septembre 2026", kr(c52, r), [mois("m", "2026-09")],
+                   {"absences_am": [conge(t, "2026-09-14", "2026-09-15")]})
+    for r in ("AM", "MY"):
+        ajoute(f"S77-MAL-I46-{r}", "am_malade, 2 jours, année incomplète", kr(i46, r), [mois("m", "2026-09")],
+               {"absences_am": [conge("am_malade", "2026-09-14", "2026-09-15")]})
+    # Annee incomplete et feries locaux.
+    for r in ("AM", "MY", "ME"):
+        ajoute(f"S77-AVR26-I36-{r}", "année incomplète, avril 2026 (Vendredi saint, 27 avril)", kr(i36, r),
+               [mois("m", "2026-04")])
+    ajoute("S77-DEC25-I46-AM", "année incomplète, 25 et 26/12/2025 en semaine sans accueil", kr(i46, "AM"),
+           [mois("m", "2025-12")])
+    # R1 : fin de contrat, brut estime par region (deces de l'enfant : pas de preavis, CCN art. 119.4.2).
+    def fin_(id_, k, notif, theme):
+        S.append(sit(id_, "fin de contrat", k,
+                     [{"id": "f", "type": "fin", "notification": notif, "motif": "deces", "comparer_assiette": True}],
+                     theme=theme, marques={"indemnite_rupture": MARQUE_S50B, "assiette_rupture": MARQUE_S50B}))
+    kf = dict(contrat_grille("C52", "H32", "T420", debut="2025-06-01", fin="2026-05-31"), taux=420)
+    for r, pl in (("AM", P_LMJ), ("MY", PMaJ9), ("ME", P_LMJ)):
+        fin_(f"S77-FIN-C52-{r}", kr(dict(kf, planning=pl), r), "2026-05-31", "fin, année complète, une période")
+    fin_("S77-FIN-C52-MAV-ME", dict(kf, planning=PMaJ9), "2026-05-31", "fin, année complète, témoin mardi à vendredi")
+    # Periode de reference entiere 2022-2023 (mardi a jeudi : ni 26/12/2022, un lundi, ni Vendredi saint prevus).
+    # Le passage de 1,50 % a 1,30 % (avril 2022) est teste par S77-BRUT et les tests du moteur B.
+    k22 = dict(contrat_grille("C52", "H32", "T420", debut="2022-06-01", fin="2023-05-31"),
+               planning=semaine([2, 3, 4], "08:00", "18:00"), taux=420)
+    for r in ("AM", "ME"):
+        fin_(f"S77-FIN-2022-{r}", kr(k22, r), "2023-05-31", "fin, période 2022-2023 (part du régime local 1,30 %)")
+    off = ["2025-08-04", "2025-10-27", "2025-12-22", "2026-02-16", "2026-04-13", "2026-06-01"]
+    ki = dict(contrat_grille("I46", "H40", "T420", debut="2025-06-02", fin="2026-05-31"), planning=S50B_MER, taux=420,
+              semaines=46, semaines_sans_accueil=off)
+    for r in ("AM", "MY", "ME"):
+        fin_(f"S77-FIN-I46-{r}", kr(ki, r), "2026-05-31", "fin, année incomplète (mercredi)")
+    # R1 et R2 : brut estime et minimum par region et par date.
+    for r in ("AM", "MY", "ME"):
+        ajoute(f"S77-BRUT-{r}", "brut estimé depuis le net", kr(c52, r),
+               [{"id": f"b{i}", "type": "brut_depuis_net", "net": n, "date": d}
+                for i, (n, d) in enumerate([(391, "2022-03-15"), (391, "2022-04-15"), (328, "2026-06-15"),
+                                            (1000, "2026-01-15")])], domaine="brut et net")
+        ajoute(f"S77-MIN-{r}", "minimum conventionnel et repère net", kr(c52, r),
+               [{"id": f"m{i}", "type": "minimum_conventionnel", "date": d}
+                for i, d in enumerate(["2022-01-01", "2024-06-01", "2025-01-15", "2025-04-01", "2026-06-15"])],
+               domaine="brut et net")
     return S
 
 
