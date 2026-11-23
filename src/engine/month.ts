@@ -1,7 +1,7 @@
 // Récapitulatif mensuel par enfant, dans l'ordre de la déclaration Pajemploi.
 import { lastDay, monthLabel, type Month } from './dates';
 import { cpForMonth } from './conges';
-import { MESSAGE_MOIS_DEJA_DECLARE, ctxLectureCdd2, libelleSalaireAConfirmer, monthBase, naturesAConfirmer, termsAt, type Ctx, type MonthBase } from './payroll';
+import { MESSAGE_MOIS_DEJA_DECLARE, ctxLectureCdd2, messageCpDroitAConfirmer, type DayInfo, libelleSalaireAConfirmer, monthBase, naturesAConfirmer, termsAt, type Ctx, type MonthBase } from './payroll';
 import { libelleLecturesCdd } from './cdd';
 import { netToBrut, REDUCTION_HS } from './rates';
 import { regionDe } from './regions';
@@ -58,6 +58,8 @@ function computeMonthLecture(ctx: Ctx, m: Month, enfants = 0): MonthResult {
   const cp = cpForMonth(ctx, m, enfants);
   const netTotal = b.net + cp.indemnite + cp.complement;
   const alerts = cp.aConfirmer ? [...b.alerts, cp.aConfirmer] : [...b.alerts];
+  // T-082 : jours de congés payés, payés, dont le droit est à confirmer (une seule alerte pour le mois entier).
+  if (b.joursCpDroitAConfirmer) alerts.push(messageCpDroitAConfirmer(b.joursCpDroitAConfirmer, b.cpDroitRaisons ?? []));
   // T-077 : à Mayotte, la réduction de cotisations des heures complémentaires et majorées (CSS L241-17) n'est pas estimée :
   // en métropole, ses 11,31 % sont les cotisations vieillesse de l'AM, qui sont différentes à Mayotte (Urssaf : 5,54 %).
   const mayotte = regionDe(ctx.c) === 'mayotte';
@@ -94,6 +96,23 @@ export function totalAVerser(r: MonthResult): number {
 export interface DeclLine { label: string; value: string; hint?: string }
 
 /**
+ * T-082 : mention d'un jour de congé payé dont le droit est à confirmer (écran Mois, relevé). `pourParents` : sans la
+ * raison, qui peut nommer une absence de l'AM (décision du DG du 21/11/2026 : aucun motif d'absence sur le lien des parents).
+ */
+export function mentionDroitAConfirmer(di: Pick<DayInfo, 'cpDroitAConfirmer'>, pourParents = false): string {
+  if (!di.cpDroitAConfirmer) return '';
+  return pourParents ? ', droit à confirmer' : `, droit à confirmer : ${di.cpDroitAConfirmer}`;
+}
+
+/** T-082 : note de la case « Salaire net » quand il comprend des jours de congés payés dont le droit est à confirmer */
+function noteCpDroit(r: MonthResult, pourParents: boolean): string | undefined {
+  const n = r.joursCpDroitAConfirmer;
+  if (!n) return undefined;
+  const raison = pourParents || !r.cpDroitRaisons?.length ? 'le nombre de jours acquis l’an dernier n’est pas tranché' : r.cpDroitRaisons.join(' ; ');
+  return `Comprend ${n} jour${n > 1 ? 's' : ''} de congés payés : droit à confirmer (${raison}). Ils sont payés.`;
+}
+
+/**
  * Les cases de la déclaration Pajemploi, dans l'ordre. `pourParents` (lien des parents) : le salaire à confirmer ne nomme
  * pas sa raison (décision du DG du 21/11/2026 : aucun motif d'absence de l'AM sur le lien des parents).
  */
@@ -121,7 +140,7 @@ export function declarationLines(ctx: Ctx, r: MonthResult, pourParents = false):
       value: hoursLabel(r.majContratMin + r.majMin),
       hint: `Au-delà de 45 h dans la semaine, prévues au contrat ou en plus, +${termsAt(ctx.c, `${r.month}-01`).majoration}\u00a0%`,
     },
-    { label: 'Salaire net', value: `${euros(r.netTotal)}${r.cpAConfirmer ? ' + congés à confirmer' : ''}${r.cpMaintienAConfirmer ? ` + ${euros(r.cpMaintienAConfirmer)} de congés à confirmer` : ''}${r.complAConfirmerAmount ? ` + ${euros(r.complAConfirmerAmount)} d’heures complémentaires à confirmer` : ''}${r.evenementAConfirmer ? ` + ${euros(r.evenementAConfirmer)} ${pourParents ? 'de salaire' : libelleSalaireAConfirmer(r)} à confirmer` : ''}${r.cddAConfirmer ? ` + ${euros(r.cddAConfirmer)} de salaire du CDD à confirmer` : ''}` },
+    { label: 'Salaire net', value: `${euros(r.netTotal)}${r.cpAConfirmer ? ' + congés à confirmer' : ''}${r.cpMaintienAConfirmer ? ` + ${euros(r.cpMaintienAConfirmer)} de congés à confirmer` : ''}${r.complAConfirmerAmount ? ` + ${euros(r.complAConfirmerAmount)} d’heures complémentaires à confirmer` : ''}${r.evenementAConfirmer ? ` + ${euros(r.evenementAConfirmer)} ${pourParents ? 'de salaire' : libelleSalaireAConfirmer(r)} à confirmer` : ''}${r.cddAConfirmer ? ` + ${euros(r.cddAConfirmer)} de salaire du CDD à confirmer` : ''}`, ...(noteCpDroit(r, pourParents) ? { hint: noteCpDroit(r, pourParents) } : {}) },
     { label: 'Indemnités d’entretien', value: r.entretienAConfirmer ? `${euros(r.entretien)} + ${euros(r.entretienAConfirmer)} à confirmer` : euros(r.entretien), hint: `${r.presenceDays} jour${r.presenceDays > 1 ? 's' : ''} d’accueil` },
     { label: 'Frais de repas', value: euros(r.repas) },
     { label: 'Frais kilométriques', value: r.kmAConfirmer ? `${euros(r.km)} + ${r.kmAConfirmer} km à confirmer` : euros(r.km) },
@@ -156,6 +175,8 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   if (r.cpIndemnite) out.push(`• Indemnité de congés payés : ${euros(r.cpIndemnite)}`);
   if (r.cpComplement) out.push(`• Complément de congés payés : ${euros(r.cpComplement)}`);
   if (r.cpAConfirmer) out.push('• Indemnité de congés payés : à confirmer ensemble');
+  // T-082 : jours payés, dans le total, dont le droit est à confirmer (sans motif d'absence de l'AM).
+  if (r.joursCpDroitAConfirmer) out.push(`• Congés payés : ${r.joursCpDroitAConfirmer} jour${r.joursCpDroitAConfirmer > 1 ? 's' : ''} payé${r.joursCpDroitAConfirmer > 1 ? 's' : ''}, droit à confirmer ensemble (le nombre de jours acquis l’an dernier n’est pas tranché)`);
   if (r.cpMaintienAConfirmer) out.push(`• Congés payés : + ${euros(r.cpMaintienAConfirmer)} à confirmer ensemble`);
   if (r.complAConfirmerAmount) out.push(`• Heures complémentaires : + ${euros(r.complAConfirmerAmount)} à confirmer ensemble`);
   // Décision du DG du 21/11/2026 : comme le lien des parents, le texte envoyé aux parents ne nomme pas la raison.

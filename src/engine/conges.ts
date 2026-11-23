@@ -654,6 +654,29 @@ export function cpExcesAConfirmer(ctx: Ctx): Set<ISODate> {
   });
 }
 
+/**
+ * T-082 (relecture T-072, R-1 ; décision du DG du 22/11/2026) : droits de la période précédente à confirmer sans aucune
+ * lecture chiffrée. Les jours pris sous la borne interne restent payés, dans le total : c'est une exception écrite à la
+ * règle T-019 et T-030, pour ces seuls jours. Chaque jour porte la mention « droit à confirmer » ; la valeur est la raison.
+ * Les jours au-delà de la borne restent à confirmer, hors du total (`cpExcesAConfirmer`), et rien n'est retenu (T-052).
+ */
+export function cpDroitAConfirmer(ctx: Ctx): Map<ISODate, string> {
+  return memo(ctx, `cpdac|${ctx.enfants ?? 0}`, () => {
+    const out = new Map<ISODate, string>();
+    if (!ctx.leaves.some((l) => l.type === 'cp')) return out;
+    const years = new Set<number>();
+    for (const b of decomptesCP(ctx)) for (const d of b.jours) years.add(cpPeriodStartYear(d));
+    for (const y of years) {
+      if (y <= cpPeriodStartYear(ctx.c.trackedFrom) || !droitsSansLecture(ctx, y)) continue;
+      const a = acquisition(ctx, y - 1, ctx.enfants ?? 0).aConfirmer!;
+      const raison = a.raison ?? 'le nombre de jours acquis l’an dernier n’est pas tranché';
+      const haut = Math.max(0, Math.ceil(droitsAPrendre(ctx, y) - 1e-9));
+      cpPrisEntre(ctx, debutDecompte(ctx, y), cpPeriod(y).to).slice(0, haut).forEach((d) => out.set(d, raison));
+    }
+    return out;
+  });
+}
+
 export const MESSAGE_CP_AU_DELA_A_CONFIRMER =
   'Congés pris peut-être au-delà de tes droits : selon la façon de compter tes jours acquis, ces jours sont payés ou pris sans solde. Ils ne sont ni payés ni retenus pour l’instant. Mets-toi d’accord par écrit avec les parents.';
 

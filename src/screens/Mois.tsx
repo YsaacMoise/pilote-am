@@ -2,7 +2,7 @@ import { AVERTISSEMENT_CALCUL, PAJEMPLOI_PLUS_DATE, PAJEMPLOI_PLUS_RAPPEL } from
 import { useState } from 'preact/hooks';
 import { ctxFor, logUsage, toast, useStore, state } from '../store';
 import { addMonths, dayLabel, eachDay, firstDay, lastDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
-import { computeMonth, declarationLines, declarationText, totalAVerser } from '../engine/month';
+import { computeMonth, declarationLines, declarationText, mentionDroitAConfirmer, totalAVerser } from '../engine/month';
 import { dayInfo, termsAt } from '../engine/payroll';
 import { euros, eurosArrondis, hoursLabel } from '../engine/money';
 import { MESSAGE_BAREMES_PROVISOIRES, baremesProvisoires } from '../engine/rates';
@@ -231,7 +231,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
           <div class="list">
             {exceptions.map((di) => {
               let sub = '';
-              if (di.kind === 'am' && di.amLeave) sub = AM_ABS_LABEL[di.amLeave];
+              if (di.kind === 'am' && di.amLeave) sub = AM_ABS_LABEL[di.amLeave] + mentionDroitAConfirmer(di);
               else if (di.kind === 'ferie') sub = di.ferie ? `Férié : ${di.ferie}` : `Férié local à confirmer : ${di.ferieLocal}`;
               else if (di.rec?.abs) sub = CHILD_ABS_LABEL[di.rec.abs] + (di.deducted ? ', retenu' : ', payé');
               else if (di.departOublie) sub = 'Départ non pointé';

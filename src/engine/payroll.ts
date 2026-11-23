@@ -8,7 +8,7 @@ import { entretienPlancher, MESSAGE_PERIODE_NON_GEREE, netToBrut } from './rates
 import { statutJourEvenement } from './evenements';
 import { controleKm, indemniteKmJour } from './km';
 import { euros } from './money';
-import { cpAConfirmerEntre, cpExces, cpExcesAConfirmer, MESSAGE_CP_AU_DELA_A_CONFIRMER } from './conges';
+import { cpAConfirmerEntre, cpDroitAConfirmer, cpExces, cpExcesAConfirmer, MESSAGE_CP_AU_DELA_A_CONFIRMER } from './conges';
 import { nonGeresPeriode } from './nonGeres';
 import { ferieLocal, MESSAGE_MAINTIEN_LOCAL, pourquoiFerieLocal, regionDe } from './regions';
 import { jourDispense } from './preavis';
@@ -170,6 +170,11 @@ export interface DayInfo {
   cpSansDroits?: boolean;
   /** Jour de congé payé peut-être au-delà des droits, selon la lecture de l'acquisition (T-030, A-23) : à confirmer */
   cpAConfirmer?: boolean;
+  /**
+   * T-082 (décision du DG du 22/11/2026) : jour de congé payé pris sous la borne interne alors que les droits de la période
+   * précédente sont à confirmer sans lecture chiffrée. Payé, dans le total ; la valeur est la raison du « droit à confirmer ».
+   */
+  cpDroitAConfirmer?: string;
   /** T-033 : jour d'enfant malade (certificat) que les lectures de l'art. 105 retiennent ou paient selon le cas */
   maladieAConfirmer?: boolean;
   /**
@@ -190,6 +195,10 @@ export interface DayInfo {
 }
 
 /** T-030 : nature du salaire mis « à confirmer » dans le mois (événement familial, congés au-delà des droits, ou les deux) */
+/** T-082 : alerte du mois, jours de congés payés payés dont le droit est à confirmer (décision du DG du 22/11/2026). */
+export const messageCpDroitAConfirmer = (n: number, raisons: string[]): string =>
+  `${dayCountLabel(n)} de congés payés ce mois : droit à confirmer. Ils sont payés et comptés dans le total. Ton nombre de jours acquis l’an dernier n’est pas tranché${raisons.length ? ` : ${raisons.join(' ; ')}` : ''}. Si le droit est plus bas, une régularisation avec les parents sera à faire. Mets-toi d’accord par écrit avec eux.`;
+
 /** T-035b : alerte du jour noté « sans solde » avant la correction (CCN art. 105 ; CASF L423-20). */
 export const messageSansSoldeEnfant = (d: ISODate): string =>
   `Absence du ${d.slice(8, 10)}/${d.slice(5, 7)} notée « sans solde » : elle est payée. La convention (article 105) ne permet de retenir une absence de l’enfant qu’en cas de maladie avec certificat. Pour ne plus payer ces jours, il faut un avenant signé qui change le planning.`;
@@ -256,6 +265,9 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
         info.inDivisor = true;
         info.aConfirmer = MESSAGE_CP_AU_DELA_A_CONFIRMER;
         info.cpAConfirmer = true;
+      } else if (amLeave === 'cp' && termsAt(c, d).yearType === 'complete' && cpDroitAConfirmer(ctx).has(d)) {
+        // T-082 : payé comme un congé ordinaire (aucun montant ne change), avec la mention « droit à confirmer ».
+        info.cpDroitAConfirmer = cpDroitAConfirmer(ctx).get(d);
       } else if (region === 'alsaceMoselle' && (amLeave === 'am_malade' || amLeave === 'am_enfant_malade')) {
         // T-077 (R4) : maintien de salaire du droit local (CT L1226-23) dans une lecture, retenue dans l'autre : à confirmer.
         info.inDivisor = true;
@@ -815,6 +827,9 @@ export interface MonthBase {
   joursFerieLocalAConfirmer: number;
   /** T-077 (R4) : jours compris dans `evenementAConfirmer` d'absence de l'AM pour maladie, en Alsace-Moselle (L1226-23) */
   joursMaintienAConfirmer: number;
+  /** T-082 : jours de congés payés compris dans `net` (payés) dont le droit est à confirmer ; raisons dans `cpDroitRaisons` */
+  joursCpDroitAConfirmer?: number;
+  cpDroitRaisons?: string[];
   /** T-077 (R3) : majoration de 10 % d'un férié local travaillé (lecture A), hors du total */
   ferieLocalAConfirmer: number;
   /** Kilomètres saisis sans le nombre d'enfants transportés (CCN art. 113) : non payés, à confirmer (T-017) */
@@ -1062,6 +1077,11 @@ function mergeParts(m: Month, parts: MonthBase[], cuts: ISODate[]): MonthBase {
     r.ferieDays.push(...p.ferieDays);
     r.forgotten.push(...p.forgotten);
     for (const a of p.alerts) if (!r.alerts.includes(a)) r.alerts.push(a);
+    // T-082 : champs absents quand aucun jour n'est concerné (les sorties des autres mois restent identiques).
+    if (p.joursCpDroitAConfirmer) {
+      r.joursCpDroitAConfirmer = (r.joursCpDroitAConfirmer ?? 0) + p.joursCpDroitAConfirmer;
+      r.cpDroitRaisons = [...(r.cpDroitRaisons ?? []), ...(p.cpDroitRaisons ?? []).filter((x) => !r.cpDroitRaisons?.includes(x))];
+    }
     r.sickPaidNotice ||= p.sickPaidNotice;
     // Heures payées par la mensualisation (sert à la régularisation)
     r.mensuelMin += p.mensuelMin * p.paidFraction;
@@ -1146,6 +1166,11 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
       else if (di.ferieLocalAConfirmer) r.joursFerieLocalAConfirmer++; else if (di.maintienAConfirmer) r.joursMaintienAConfirmer++;
       else r.joursEvenementAConfirmer++;
       if (!suspRaisons.includes(di.aConfirmer)) suspRaisons.push(di.aConfirmer);
+    }
+    if (di.cpDroitAConfirmer && di.plannedMin > 0) {
+      r.joursCpDroitAConfirmer = (r.joursCpDroitAConfirmer ?? 0) + 1;
+      r.cpDroitRaisons ??= [];
+      if (!r.cpDroitRaisons.includes(di.cpDroitAConfirmer)) r.cpDroitRaisons.push(di.cpDroitAConfirmer);
     }
     // Jours d'activité (Pajemploi) : jours prévus et payés, sans les fériés chômés ni les jours à confirmer.
     // T-025 C-4 : un férié pendant un congé pour événement familial reste un férié chômé (art. 47) : payé, pas compté.

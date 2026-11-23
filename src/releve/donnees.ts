@@ -2,7 +2,7 @@
 // Aucun nouveau calcul : tout vient de computeMonth, declarationLines et dayInfo, comme l'écran Mois.
 // Ce n'est pas un bulletin de salaire : ni brut, ni cotisations, ni net imposable.
 import { eachDay, firstDay, lastDay, monthLabel, monthOf, shortDate, type ISODate, type Month } from '../engine/dates';
-import { computeMonth, declarationLines, totalAVerser, type DeclLine } from '../engine/month';
+import { computeMonth, declarationLines, mentionDroitAConfirmer, totalAVerser, type DeclLine } from '../engine/month';
 import { dayInfo, inContract, type Ctx } from '../engine/payroll';
 import { euros, hoursLabel } from '../engine/money';
 import { AM_ABS_LABEL, CHILD_ABS_LABEL } from '../engine/model';
@@ -91,7 +91,7 @@ export function releveDonnees(
     reelMin += di.presentMin;
     let reel = '';
     let absence = '';
-    if (di.kind === 'am' && di.amLeave) { absence = AM_ABS_LABEL[di.amLeave]; if (di.plannedMin > 0) absAm++; }
+    if (di.kind === 'am' && di.amLeave) { absence = AM_ABS_LABEL[di.amLeave] + mentionDroitAConfirmer(di, true); if (di.plannedMin > 0) absAm++; }
     // T-077 (R3) : un férié local ou un férié qui en dépend est à confirmer, jamais compté comme férié chômé certain.
     else if (di.kind === 'ferie' && !di.ferie) absence = `Férié local à confirmer : ${di.ferieLocal}`;
     else if (di.kind === 'ferie') { absence = `Férié : ${di.ferie}${di.aConfirmer ? ' (à confirmer)' : ''}`; if (!di.aConfirmer) feries++; }
