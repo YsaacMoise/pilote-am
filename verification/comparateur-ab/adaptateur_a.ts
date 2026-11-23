@@ -157,6 +157,8 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       out.repas = ok(b.repas);
       out.km = ok(b.km);
       out.alertes = ok(b.alerts);
+      // T-082 : jours de congés payés payés (dans le total) dont le droit est à confirmer ; 0 si aucun.
+      out.jours_cp_droit_a_confirmer = ok((b as any).joursCpDroitAConfirmer ?? 0);
       if (b.evenementAConfirmer) {
         const n = `A : ${b.evenementAConfirmer} centimes de salaire à confirmer (jours ni payés ni retenus)`;
         for (const cle of ['salaire_base_mois', 'deduction', 'salaire_mois_hors_cp']) out[cle] = refus(n);

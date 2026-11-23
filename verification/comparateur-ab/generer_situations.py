@@ -848,6 +848,7 @@ def grille():
     S += situations_t027()
     S += situations_s50b()  # T-050c
     S += situations_t072()  # T-072 (T-052, T-054, T-055)
+    S += situations_t082()  # T-082 (jours de congés payés dont le droit est à confirmer)
     S += situations_t074()  # T-074
     S += situations_t077()  # T-077 (MB7)
     S += situations_t076()  # T-076 : planning variable (PV-*) et CDD (CDD-*)
@@ -1135,6 +1136,28 @@ MARQUE_T072_BULLETINS = ("T-072 (T-054) : total des bruts des bulletins saisi (C
 MARQUE_T072_AVENANT = "T-072 (T-052) : avenant vers l'année complète, lu par A seulement ; B ne lit pas les avenants (refus)"
 MARQUE_T072_REGUL = ("T-072 (T-055) : une semaine sans accueil n'est pas saisie : A ne calcule pas la régularisation, "
                      "B la calcule avec la liste donnée")
+
+
+MARQUE_T082 = ("T-082 : droits de la période précédente à confirmer sans lecture chiffrée ; jours de congés pris sous la "
+               "borne payés avec la mention « droit à confirmer » (décision du DG du 22/11/2026)")
+
+
+def situations_t082():
+    """T-082 : même contrat que T072-T052 (fiche DDETS 31 « 46 semaines », avenant vers 52 semaines au 01/06/2022, deux
+    enfants à charge). Entrées seulement, aucun résultat attendu calculé ici. Variantes : maladie en année incomplète
+    (droits à confirmer sans lecture) ou non (témoin), congés courts (tous sous la borne) ou longs (un jour au-delà)."""
+    S = []
+    for suf, abs_, fin_cp in (("MALADIE-COURT", [conge("am_malade", "2021-10-13", "2021-10-15")], "2022-06-17"),
+                              ("MALADIE-LONG", [conge("am_malade", "2021-10-13", "2021-10-15")], "2022-06-30"),
+                              ("TEMOIN-COURT", [], "2022-06-17")):
+        k = dict(BERTRAND, enfants_a_charge=2,
+                 avenants=[{"du": "2022-06-01", "type_annee": "complete", "semaines": 52, "semaines_sans_accueil": []}])
+        d = sit(f"T082-{suf}", "congés payés", k, [mois("m", "2022-06")],
+                {"absences_am": abs_ + [conge("cp", "2022-06-01", fin_cp)]},
+                theme="congés pris, droits de l'an dernier à confirmer", marques={"*": MARQUE_T082})
+        d["aujourdhui"] = "2022-07-15"
+        S.append(d)
+    return S
 
 
 def situations_t072():
