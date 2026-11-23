@@ -109,7 +109,7 @@ function noteCpDroit(r: MonthResult, pourParents: boolean): string | undefined {
   const n = r.joursCpDroitAConfirmer;
   if (!n) return undefined;
   const raison = pourParents || !r.cpDroitRaisons?.length ? 'le nombre de jours acquis l’an dernier n’est pas tranché' : r.cpDroitRaisons.join(' ; ');
-  return `Comprend ${n} jour${n > 1 ? 's' : ''} de congés payés : droit à confirmer (${raison}). Ils sont payés.`;
+  return `Comprend ${n} jour${n > 1 ? 's' : ''} de congés payés : droit à confirmer (${raison}). ${n > 1 ? 'Ils sont payés' : 'Il est payé'}.`;
 }
 
 /**

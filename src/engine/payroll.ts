@@ -194,11 +194,11 @@ export interface DayInfo {
   dispense?: boolean;
 }
 
-/** T-030 : nature du salaire mis « à confirmer » dans le mois (événement familial, congés au-delà des droits, ou les deux) */
 /** T-082 : alerte du mois, jours de congés payés payés dont le droit est à confirmer (décision du DG du 22/11/2026). */
 export const messageCpDroitAConfirmer = (n: number, raisons: string[]): string =>
-  `${dayCountLabel(n)} de congés payés ce mois : droit à confirmer. Ils sont payés et comptés dans le total. Ton nombre de jours acquis l’an dernier n’est pas tranché${raisons.length ? ` : ${raisons.join(' ; ')}` : ''}. Si le droit est plus bas, une régularisation avec les parents sera à faire. Mets-toi d’accord par écrit avec eux.`;
+  `${dayCountLabel(n)} de congés payés ce mois : droit à confirmer. ${n > 1 ? 'Ils sont payés et comptés' : 'Il est payé et compté'} dans le total. Ton nombre de jours acquis l’an dernier n’est pas tranché${raisons.length ? ` : ${raisons.join(' ; ')}` : ''}. Si le droit est plus bas, une régularisation avec les parents sera à faire. Mets-toi d’accord par écrit avec eux.`;
 
+/** T-030 : nature du salaire mis « à confirmer » dans le mois (événement familial, congés au-delà des droits, ou les deux) */
 /** T-035b : alerte du jour noté « sans solde » avant la correction (CCN art. 105 ; CASF L423-20). */
 export const messageSansSoldeEnfant = (d: ISODate): string =>
   `Absence du ${d.slice(8, 10)}/${d.slice(5, 7)} notée « sans solde » : elle est payée. La convention (article 105) ne permet de retenir une absence de l’enfant qu’en cas de maladie avec certificat. Pour ne plus payer ces jours, il faut un avenant signé qui change le planning.`;

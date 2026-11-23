@@ -669,7 +669,7 @@ export function cpDroitAConfirmer(ctx: Ctx): Map<ISODate, string> {
     for (const y of years) {
       if (y <= cpPeriodStartYear(ctx.c.trackedFrom) || !droitsSansLecture(ctx, y)) continue;
       const a = acquisition(ctx, y - 1, ctx.enfants ?? 0).aConfirmer!;
-      const raison = a.raison ?? 'le nombre de jours acquis l’an dernier n’est pas tranché';
+      const raison = a.raison ?? 'aucune lecture chiffrée n’est possible';
       const haut = Math.max(0, Math.ceil(droitsAPrendre(ctx, y) - 1e-9));
       cpPrisEntre(ctx, debutDecompte(ctx, y), cpPeriod(y).to).slice(0, haut).forEach((d) => out.set(d, raison));
     }
