@@ -124,6 +124,8 @@ CODES = {
     "KM-SOUS-PLANCHER": "Taux kilometrique contractuel inferieur au bareme de l'administration : le contrat doit etre corrige.",
     "FIN-DATE-A-CONFIRMER": "T-072 : l'assiette du 1/80 change selon la date de fin du preavis (jour de depart compte ou non, CCN 64.1 et 120, non ecrit) : indemnite a confirmer.",
     "AVENANT-CP-A-CONFIRMER": "T-072 : conges acquis sous un type d'annee (complete ou incomplete) et pris apres un avenant qui change ce type : aucun texte ne dit comment les payer (CCN 102.1.2.1, 102.1.2.2, 48.1.1.5). Montant a confirmer : ni paye ni retenu.",
+    "T082-BORNE-AVENANT": "T-082 : avenant qui change le type d'annee pendant la periode d'acquisition : unites de la periode (mois, semaines, jours) non definies sous deux mensualisations ; borne haute des droits non etablie.",
+    "T082-JOUR-NON-ETABLI": "T-082 : rang du jour de conge non etabli (decompte des jours ouvrables a confirmer) : statut « droit a confirmer » du jour non etabli.",
     "AVENANT-EN-COURS-DE-MOIS": "T-072 : avenant qui prend effet apres le 1er du mois : partage du salaire mensualise du mois non ecrit (CCN 109.1).",
     "PREAVIS-DATE-FIN": "Date de fin du preavis : methode de calcul non ecrite (R-FIN-03).",
     "LIMITE-ANCIENNETE": "Anciennete exactement a un seuil (3 mois, 9 mois, 1 an) : cas limite non tranche par le texte.",

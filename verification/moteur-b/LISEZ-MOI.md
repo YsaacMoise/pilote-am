@@ -183,6 +183,8 @@ T-072 (22/11/2026), voir calculateur-arvela/rapports/T-072-moteur-b.md :
 - `verifier_date_effet_avenant(date_effet)` : avenant au 1er du mois seulement, sinon AVENANT-EN-COURS-DE-MOIS (CCN 109.1).
 - `tests/test_t072.py` : 23 tests.
 
+T-082 (23/11/2026), voir `T-082-MB.md` : `borne_haute_droits_cp` (borne des droits à confirmer sans lecture chiffrée ; refus EXCLU-AT, CP-REPORT, T082-BORNE-AVENANT), `statut_jours_cp_pris` (refus T082-JOUR-NON-ETABLI), clé du mois `jours_cp_droit_a_confirmer`, `tests/test_t082.py` (16 tests).
+
 Décès de l'enfant (T-035a) : indemnité au 1/80 due quelle que soit l'ancienneté (CCN 119.4.2, service-public F16842) ; A-47 levée.
 
 Refus : A-02, A-06, A-19, A-21, PREAVIS-DEMISSION-3-12, A-45, ASSIETTE-A-CONFIRMER, FIN-DATE-A-CONFIRMER, AVENANT-CP-A-CONFIRMER, AVENANT-EN-COURS-DE-MOIS, A-48, A-49, A-50, A-26, A-28, LIMITE-ANCIENNETE, DATE-MOIS, EXCLU-INAPTITUDE, EXCLU-RETRAITE, EXCLU-DECES-PARTIE, EXCLU-CDD-ANTICIPE, EXCLU-SAISONNIER. La date de fin du préavis n'est pas calculée (méthode non écrite, R-FIN-03).

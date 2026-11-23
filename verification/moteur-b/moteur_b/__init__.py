@@ -12,7 +12,8 @@ from .absences import (qualifier_absence, absence_enfant_malade, deduction_absen
                        ferie_chome, ferie_travaille, ferie_local_travaille)
 from .conges import (acquisition_cp, jours_enfants_a_charge, jours_fractionnement, decompte_jours_cp,
                      indemnite_cp, complement_cp_annee_complete, paiement_cp_annee_incomplete,
-                     indemnite_cp_prise_partielle, conges_apres_changement_type)
+                     indemnite_cp_prise_partielle, conges_apres_changement_type,
+                     CODES_DROIT_A_CONFIRMER, STATUTS_JOUR_CP, borne_haute_droits_cp, statut_jours_cp_pris)
 from .indemnites import (minimum_entretien_journalier, verifier_entretien_journalier, indemnite_entretien_mois,
                          indemnite_repas_mois, indemnite_kilometrique, indemnite_kilometrique_mois)
 from .fin_contrat import (duree_preavis, indemnite_compensatrice_preavis, indemnite_preavis_dispense,

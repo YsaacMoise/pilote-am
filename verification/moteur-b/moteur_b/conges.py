@@ -383,3 +383,92 @@ def conges_apres_changement_type(types_periode_acquisition, type_annee_prise):
                   + type_annee_prise + " ».",
                   details={"types_acquisition": sorted(set(types)), "type_prise": type_annee_prise,
                            "consigne": "ni paye ni retenu tant que ce n'est pas confirme"})
+
+
+# T-082 (decision du DG du 22/11/2026) : droits de la periode precedente a confirmer sans lecture chiffree.
+# Codes de refus de acquisition_cp qui laissent le droit a confirmer. Sans `resultats_par_methode` dans les
+# details, aucune lecture n'est chiffree : la borne haute (borne_haute_droits_cp) s'applique.
+CODES_DROIT_A_CONFIRMER = ("SUS-11", "A-23", "R-CP-02-DATE", "CP-ARRONDI-PARTS")
+
+
+@api("R-CP-01", "R-CP-02", "R-CP-03", "T082")
+def borne_haute_droits_cp(type_annee, mois, semaines, jours=None, jours_par_semaine=None,
+                          age_am_au_30_avril=35, nombre_enfants_a_charge=0, periode_atteint_31_mai=True,
+                          accident_travail=False, report=False, types_periode_acquisition=None):
+    """T-082 : borne haute des jours de CP acquis sur une periode de reference dont le droit est a confirmer.
+    Entrees : mois, semaines et jours de travail effectif ou assimile, comptes EN TRAITANT chaque jour d'arret
+    maladie non professionnel comme du travail effectif.
+    Textes : CCN 48.1.1.2 et L3141-3 (2,5 jours par mois de travail ou periode equivalente, L3141-4) ; un jour
+    d'arret ouvre 0 jour (CCN 49) ou 2 jours par mois (L3141-5-1), jamais plus de 2,5 : aucune lecture de la
+    maladie ne depasse ce calcul. Arrondi a l'entier superieur sur le droit total (48.1.1.2, L3141-7), plafond
+    30 (L3141-3). Chaque methode est calculee ; la borne est la plus haute (pas de concordance exigee).
+    Jours pour enfants a charge ajoutes (CCN 48.1.3.3, L3141-8, R-CP-03 ; croissants avec le droit).
+    types_periode_acquisition : types d'annee en vigueur pendant la periode (avenants) ; plus d'un type : refus
+    T082-BORNE-AVENANT (unites de la periode non definies sous deux mensualisations, CCN 109.1 muet).
+    Refus : EXCLU-AT, CP-REPORT, T082-BORNE-AVENANT.
+    Sortie : borne_haute_hors_enfants, jours_enfants, borne_haute, resultats_par_methode."""
+    type_annee_valide(type_annee)
+    regles = ["R-CP-01", "R-CP-02", "R-CP-03"]
+    if accident_travail:
+        raise NonGere("EXCLU-AT", regles)
+    if report:
+        raise NonGere("CP-REPORT", regles)
+    types = list(types_periode_acquisition or [type_annee])
+    for t in types:
+        type_annee_valide(t)
+    if len(set(types)) > 1:
+        raise NonGere("T082-BORNE-AVENANT", regles, details={"types_acquisition": sorted(set(types))})
+    if mois is None or semaines is None:
+        raise ErreurSaisie("mois et semaines obligatoires.", regles)
+    deux_et_demi = Fraction(5, 2)
+    res = {"mois": min(30, _ceil(deux_et_demi * positif(mois, "mois"))),
+           "semaines": min(30, _ceil(positif(semaines, "semaines") / 4 * deux_et_demi))}
+    if jours is not None:
+        jps = positif(jours_par_semaine, "jours_par_semaine")
+        if jps == 0:
+            raise ErreurSaisie("jours_par_semaine nul.")
+        res["jours"] = min(30, _ceil(positif(jours, "jours") * deux_et_demi / (4 * jps)))
+    borne = max(res.values())
+    e = jours_enfants_a_charge.interne(borne, age_am_au_30_avril, nombre_enfants_a_charge, periode_atteint_31_mai)
+    sup = e["resultat"]["jours_supplementaires"]
+    return resultat_ok(borne_haute_droits_cp.regles, {"borne_haute_hors_enfants": borne, "jours_enfants": sup,
+                                                       "borne_haute": borne + sup, "resultats_par_methode": res})
+
+
+STATUTS_JOUR_CP = ("paye", "paye_droit_a_confirmer", "a_confirmer", "au_dela_des_droits")
+
+
+@api("R-CP-09", "R-CP-01", "T082")
+def statut_jours_cp_pris(rangs, droit=None, lectures=None, borne_haute=None):
+    """Statut de chaque jour de CP pris, selon les droits de la periode d'acquisition.
+    rangs : rang de chaque jour = jours ouvrables decomptes (R-CP-09, CCN 48.1.1.3) depuis le premier conge de la
+    periode de prise, jusqu'a ce jour inclus ; None si le decompte n'est pas etabli (statut None ; refus
+    T082-JOUR-NON-ETABLI quand la mention en depend, forme borne_haute). Donner une seule des trois formes de droit :
+    - droit (entier certain) : rang <= droit -> paye ; sinon au_dela_des_droits (CCN 102.2) ;
+    - lectures (au moins une lecture chiffree, regle T-030) : rang <= plus basse -> paye ; <= plus haute ->
+      a_confirmer ; sinon au_dela_des_droits. Aucune mention « droit a confirmer » ;
+    - borne_haute (droit a confirmer sans lecture chiffree, decision du DG du 22/11/2026, T-082) :
+      rang <= borne -> paye_droit_a_confirmer (paye, mention « droit a confirmer ») ; sinon a_confirmer (ni
+      paye ni retenu, T-052, T-019).
+    Sortie : statuts (liste alignee sur rangs), jours_droit_a_confirmer (nombre de paye_droit_a_confirmer)."""
+    formes = [x is not None for x in (droit, lectures, borne_haute)]
+    if sum(formes) != 1:
+        raise ErreurSaisie("Donner exactement un de : droit, lectures, borne_haute.")
+    rs = [None if r is None else entier(r, "rang", 1) for r in rangs]
+    if borne_haute is not None and None in rs:
+        raise NonGere("T082-JOUR-NON-ETABLI", ["R-CP-09"], details={"rangs": rs})
+    if droit is not None:
+        n = entier(droit, "droit")
+        st = [None if r is None else "paye" if r <= n else "au_dela_des_droits" for r in rs]
+    elif lectures is not None:
+        ls = [entier(x, "lecture") for x in lectures]
+        if not ls:
+            raise ErreurSaisie("lectures : au moins une lecture chiffree (sinon borne_haute).")
+        lo, hi = min(ls), max(ls)
+        st = [None if r is None else "paye" if r <= lo else "a_confirmer" if r <= hi else "au_dela_des_droits"
+              for r in rs]
+    else:
+        b = entier(borne_haute, "borne_haute")
+        st = ["paye_droit_a_confirmer" if r <= b else "a_confirmer" for r in rs]
+    return resultat_ok(statut_jours_cp_pris.regles, {"statuts": st,
+                                                      "jours_droit_a_confirmer": st.count("paye_droit_a_confirmer")})

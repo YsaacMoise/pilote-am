@@ -125,6 +125,7 @@ class Ctx:
         k = s["contrat"]
         self.s = s
         self.k = k
+        self.s_origine = s  # T-082 : situation avec ses avenants (remplace par ctx_mois)
         self.debut = d_(k["debut"])
         self.fin = d_(k["fin"]) if k.get("fin") else None
         self.type = k["type_annee"]
@@ -971,11 +972,144 @@ def mois_b(ctx, m):
         return r["resultat"]["indemnite_centimes"]
 
     garde("km", km)
+    # T-082 : sortie produite seulement si le mois contient un jour de CP sur un jour prevu du contrat.
+    try:
+        avec_cp = bool(jours_cp_mois(ctx, jours))
+    except Refus:
+        avec_cp = any(ctx.dans_contrat(d) and ctx.conge(d) == "cp" for d in jours)  # planning refuse par B
+    if avec_cp:
+        garde("jours_cp_droit_a_confirmer", lambda: cp_droit_a_confirmer_mois(ctx, jours))
     if isinstance(out["_heures"], Refus) and out["_heures"].code == "PV-L2-ABSENCE-HC":
         # T-076, D2 (N2) : le mois n'est pas calcule ; aucune sortie partielle « ok ».
         out = {n: (out["_heures"] if not n.startswith("_") else v) for n, v in out.items()}
     ctx.cache[key] = out
     return out
+
+
+# ------------------------------------------------------------------ T-082 : droit a confirmer
+
+def jours_cp_mois(ctx, jours):
+    """Faits : jours du mois en conge paye, prevus au planning, dans le contrat, hors ferie national."""
+    return [d for d in jours if ctx.dans_contrat(d) and ctx.prevu(d) > 0 and ctx.conge(d) == "cp" and not est_ferie(d)]
+
+
+def ctx_acquisition(ctx, y):
+    """Contrat en vigueur pendant la periode d'acquisition y (1er juin y - 31 mai y+1, CCN 48.1.1.1).
+    Plus d'un type d'annee : B refuse (borne_haute_droits_cp, T082-BORNE-AVENANT). Avenant de meme type dans la
+    periode : comptage des unites hors comparateur."""
+    key = ("t082ctx", y)
+    if key in ctx.cache:
+        return ctx.cache[key]
+    p0, p1 = periode(y)
+    a = max(p0, ctx.debut)
+    b = min(p1, ctx.fin) if ctx.fin else p1
+    s = ctx.s_origine
+    av = [d_(x["du"]) for x in s["contrat"].get("avenants") or []]
+    types = ctx.types_entre(a, b) or [ctx.type]
+    if len(set(types)) > 1:
+        appel("borne_haute_droits_cp", types[-1], 0, 0, types_periode_acquisition=types)
+    if any(a < x <= b for x in av):
+        raise Refus("HORS-COMPARATEUR", "ctx_acquisition", {"motif": "avenant de meme type pendant la periode"})
+    c = ctx_mois(s, mois_de(a)) if av else Ctx(s)
+    if isinstance(c, _CtxRefus):
+        raise c.refus
+    ctx.cache[key] = c
+    return c
+
+
+def unites_borne(c, y):
+    """Faits du calendrier pour la borne haute : comme acquisition_b, chaque jour d'arret maladie non
+    professionnel compte comme un jour de travail (borne_haute_droits_cp de B). Absences non assimilees retirees."""
+    p0, p1 = periode(y)
+    a = max(p0, c.debut)
+    b = min(p1, c.fin) if c.fin else p1
+    if a > b:
+        return {"mois": 0, "semaines": 0}, b == p1
+    non_assimile = [d for d in jours_entre(a, b) if c.conge(d) in ("sans_solde", "am_enfant_malade")]
+    if c.type == "complete":
+        mois_n = sum(1 for m in mois_entre(a, b) if premier(m) >= a and dernier(m) <= b
+                     and not any(premier(m) <= d <= dernier(m) for d in non_assimile))
+        sem = Fraction((b - a).days + 1 - len(non_assimile), 7)
+    else:
+        lundis = {lundi(d) for d in jours_entre(a, b) if c.prevu(d) > 0}
+        sem = Fraction(len([x for x in lundis if x >= a and x + timedelta(days=6) <= b]))
+        mois_n = sum(1 for m in mois_entre(a, b) if any(c.prevu(d) > 0 for d in jours_entre(premier(m), dernier(m))))
+    u = {"mois": mois_n, "semaines": str(sem)}
+    if not c.pv:
+        u["jours"] = sum(1 for d in jours_entre(a, b) if c.prevu(d) > 0 and c.conge(d) not in ("sans_solde", "am_enfant_malade"))
+        u["jours_par_semaine"] = len(c.jours_travailles)
+    return u, b == p1
+
+
+def droits_prise(ctx, y):
+    """Droits pour la periode de prise y, sous une des trois formes de statut_jours_cp_pris (B) :
+    droit certain, lectures chiffrees (T-030) ou borne haute (T-082, droit a confirmer sans lecture)."""
+    suivi = d_(ctx.k.get("suivi_depuis", ctx.k["debut"]))
+    ys = suivi.year if suivi.month >= 6 else suivi.year - 1
+    if y == ys:
+        return {"droit": ctx.k.get("soldes", {}).get("cp_restants", 0)}  # fait de la situation
+    c = ctx_acquisition(ctx, y - 1)
+    acq = acquisition_b(c, y - 1)["jours_acquis"]
+    if not isinstance(acq, Refus):
+        return {"droit": acq}
+    if acq.code not in B.CODES_DROIT_A_CONFIRMER:
+        raise acq
+    age, n = c.k.get("age_am", 35), c.k.get("enfants_a_charge", 0)
+    u, au_31_mai = unites_borne(c, y - 1)
+    rpm = (acq.details or {}).get("resultats_par_methode")
+    if rpm:
+        lect = sorted({appel("jours_enfants_a_charge", v, age, n, periode_atteint_31_mai=au_31_mai)["resultat"]["total"]
+                       for v in rpm.values()})
+        return {"lectures": lect}
+    r = appel("borne_haute_droits_cp", c.type, age_am_au_30_avril=age, nombre_enfants_a_charge=n,
+              periode_atteint_31_mai=au_31_mai, **u)
+    return {"borne_haute": r["resultat"]["borne_haute"]}
+
+
+def rang_jour_cp(ctx, d):
+    """Rang du jour d : jours ouvrables decomptes par B (R-CP-09) depuis le premier conge de la periode de prise
+    jusqu'a d inclus. None si le decompte depend de la lecture (A77-DECOMPTE-CP)."""
+    y = d.year if d.month >= 6 else d.year - 1
+    p0, p1 = periode(y)
+    total = 0
+    try:
+        for l in sorted([x for x in ctx.conges if x["type"] == "cp" and p0 <= x["du"] <= p1], key=lambda x: x["du"]):
+            if l["du"] <= d <= l["au"]:
+                if ctx.pv:
+                    return total + decompte_b(ctx, l["du"], d + timedelta(days=1))
+                r = appel("decompte_jours_cp", l["du"], d + timedelta(days=1), ctx.jours_travailles, region=ctx.region)
+                return total + r["resultat"]["jours_decomptes"]
+            cl = ctx_mois(ctx.s_origine, mois_de(l["au"])) if ctx.s_origine["contrat"].get("avenants") else ctx
+            if isinstance(cl, _CtxRefus):
+                raise cl.refus
+            na, nb = decompte_conge(cl, l)
+            if na != nb:
+                return None
+            total += na
+    except Refus as e:
+        if e.code == "A77-DECOMPTE-CP":
+            return None
+        raise
+    raise Refus("HORS-COMPARATEUR", "rang_jour_cp", {"motif": "conge pris avant la periode de prise"})
+
+
+def cp_droit_a_confirmer_mois(ctx, jours):
+    """T-082 : nombre de jours de CP du mois, prevus au planning, payes avec la mention « droit a confirmer »
+    (statut_jours_cp_pris de B). Annee incomplete : paiement d'un CP sur un jour prevu sans regle
+    (SANS-REGLE-CP-SEMAINE-PROGRAMMEE) des qu'un jour porterait la mention."""
+    par_periode = {}
+    for d in jours_cp_mois(ctx, jours):
+        if ctx.ferie_local(d):
+            par_periode.setdefault(d.year if d.month >= 6 else d.year - 1, []).append(None)
+            continue
+        par_periode.setdefault(d.year if d.month >= 6 else d.year - 1, []).append(rang_jour_cp(ctx, d))
+    n = 0
+    for y, rangs in par_periode.items():
+        r = appel("statut_jours_cp_pris", rangs, **droits_prise(ctx, y))
+        n += r["resultat"]["jours_droit_a_confirmer"]
+    if n and ctx.type == "incomplete":
+        raise Refus("SANS-REGLE-CP-SEMAINE-PROGRAMMEE", "jours_cp_droit_a_confirmer")
+    return n
 
 
 # ------------------------------------------------------------------ conges payes
@@ -1996,6 +2130,7 @@ def ctx_mois(s, m, ctx=None):
                 k[cle] = a[cle]
     s2 = dict(s, contrat=k)
     ctx = Ctx(s2)
+    ctx.s_origine = s
     ctx.historique = [(ctx.debut, s["contrat"]["type_annee"])] + [(d_(a["du"]), a.get("type_annee")) for a in avant]
     return ctx
 
