@@ -3,7 +3,6 @@ import { eachDay, lastDay, monthLabel, monthOf, monthsBetween, type Month } from
 import { computeMonth } from './month';
 import { dayInfo, termsAt, type Ctx } from './payroll';
 import { MESSAGE_PERIODE_NON_GEREE, plafondHS, ratesAt } from './rates';
-import { euros } from './money';
 import { partNonDeductibleRegion, regionDe, smicMayotte } from './regions';
 
 export interface FiscalChild {
@@ -38,13 +37,9 @@ export interface FiscalChild {
   smics: number[];
   facteur: number;
   partiel: boolean;
-  /**
-   * T-077 (R6) : Mayotte. L'abattement retenu est celui du SMIC de Mayotte (le plus bas) ; `abattementSmicNational` donne
-   * l'autre lecture (SMIC national) et `aConfirmer` le message, avec l'écart.
-   */
-  abattementSmicNational?: number;
-  aConfirmer?: string;
-  /** T-023 : barème absent pour une partie de l'année (SMIC ou avantage repas) : estimation incomplète, à confirmer */
+  /** T-103 (D1) : un mois calculé n'a pas de brut connu (taux horaire brut du contrat à saisir) : revenu imposable demandé */
+  brutInconnu: boolean;
+  /** T-023 : barème absent pour une partie de l'année (SMIC ou avantage repas) : sommes non comptées, dit tel quel */
   nonGere?: string;
   /** Mois repris d'un bulletin : heures exonérées et kilomètres inconnus, comptés comme imposables ou absents */
   moisHistorique: number;
@@ -65,7 +60,8 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
   const smicAt = (d: string): number => {
     const national = ratesAt(d)?.smic;
     if (national !== undefined) abatNationalJour = national;
-    // T-077 (R6) : à Mayotte, lecture A (retenue) : SMIC de Mayotte ; lecture B : SMIC national (question au service des impôts).
+    // T-103 (R6) : BOI-RSA-CHAMP-10-20-10 § 480 et suivants, SMIC « en vigueur pendant la période de garde » : à Mayotte, celui
+    // de Mayotte (C. trav. L3423-1 et suivants).
     const v = region === 'mayotte' && national !== undefined ? smicMayotte(d) ?? national : national;
     if (v === undefined) { nonGere.add(`${MESSAGE_PERIODE_NON_GEREE} L’abattement de ces jours n’est pas calculé.`); return 0; }
     if (smics[smics.length - 1] !== v) smics.push(v);
@@ -80,6 +76,7 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
   const facteur = c.majoreFiscal ? 4 : 3;
   let net = 0, hs = 0, er = 0, km = 0, rp = 0, jours = 0, courts = 0, abat = 0;
   let partiel = false;
+  let brutInconnu = false;
   let moisHistorique = 0;
   const last = upTo && upTo < `${year}-12` ? upTo : (`${year}-12` as Month);
   // T-076 (vérification CDD, M4) : les sommes de la fin d'un CDD (régularisation et complément de salaire, indemnité de fin
@@ -90,6 +87,8 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
   for (const m of monthsBetween(`${year}-01`, last)) {
     const r = computeMonth(ctx, m, enfants);
     if (!r.active) continue;
+    // T-103 (D1) : le net imposable compte la CSG non déductible et la CRDS, sur le brut : un brut inconnu est demandé.
+    if (!r.missing && !r.nonGere.length && !r.brutConnu) brutInconnu = true;
     if (r.missing) { partiel = true; continue; }
     // T-031 : mois refusé (cas non géré) : ni ses sommes ni ses jours ne sont comptés, et c'est dit.
     if (r.nonGere.length) {
@@ -126,19 +125,9 @@ export function fiscalYear(ctx: Ctx, year: number, enfants = 0, upTo?: Month): F
   const recu = net + er + km + rp;
   const abattementBrut = Math.round(abat);
   const abattement = Math.min(abattementBrut, recu);
-  let lectureMayotte: Pick<FiscalChild, 'abattementSmicNational' | 'aConfirmer'> = {};
-  if (region === 'mayotte' && jours > 0) {
-    const national = Math.min(Math.round(abatNational), recu);
-    const repas = rp > 0 ? ' Repas fournis par les parents : l’app les compte au barème national de l’Urssaf ; aucun texte lu ne dit s’il vaut à Mayotte, sinon c’est leur valeur réelle.' : '';
-    lectureMayotte = {
-      abattementSmicNational: national,
-      aConfirmer: `Mayotte : abattement à confirmer. L’app le calcule avec le SMIC de Mayotte (${euros(abattement)}). Avec le SMIC national, il serait de ${euros(national)}, soit ${euros(national - abattement)} de plus. L’article 80 sexies dit « SMIC » sans préciser lequel : demande à ton centre des impôts.${repas}`,
-    };
-  }
   return {
-    ...lectureMayotte,
     cid: c.id, recu, netImposable: net, hsValeur: hs, hsExonere: hs, hsImposable: 0, entretienRepas: er, km, repasParents: rp, jours, joursCourts: courts, abattementBrut, abattement,
-    imposable: recu - abattement, smic: smics[smics.length - 1] ?? ratesAt(`${year}-01-01`)?.smic ?? 0, smics, facteur, partiel, moisHistorique,
+    imposable: recu - abattement, smic: smics[smics.length - 1] ?? ratesAt(`${year}-01-01`)?.smic ?? 0, smics, facteur, partiel, brutInconnu, moisHistorique,
     nonGere: nonGere.size ? [...nonGere].join(' ') : undefined,
   };
 }

@@ -36,8 +36,8 @@ export interface StartBalances {
 }
 
 /** Conditions du contrat qu'un avenant peut changer */
-export type Terms = Pick<Contract, 'planning' | 'rateNet' | 'majoration' | 'majorationCompl' | 'entretienJour' | 'entretienHeure' | 'entretienMode' | 'repasPrix' | 'repasParJour' | 'repasParents' | 'kmTaux' | 'yearType' | 'weeks' | 'weeksOff'>;
-export const TERM_KEYS: (keyof Terms)[] = ['planning', 'rateNet', 'majoration', 'majorationCompl', 'entretienJour', 'entretienHeure', 'entretienMode', 'repasPrix', 'repasParJour', 'repasParents', 'kmTaux', 'yearType', 'weeks', 'weeksOff'];
+export type Terms = Pick<Contract, 'planning' | 'rateNet' | 'rateBrut' | 'majoration' | 'majorationCompl' | 'entretienJour' | 'entretienHeure' | 'entretienMode' | 'repasPrix' | 'repasParJour' | 'repasParents' | 'kmTaux' | 'yearType' | 'weeks' | 'weeksOff'>;
+export const TERM_KEYS: (keyof Terms)[] = ['planning', 'rateNet', 'rateBrut', 'majoration', 'majorationCompl', 'entretienJour', 'entretienHeure', 'entretienMode', 'repasPrix', 'repasParJour', 'repasParents', 'kmTaux', 'yearType', 'weeks', 'weeksOff'];
 
 /** Avenant : nouvelles conditions à partir d'une date */
 export interface Avenant {
@@ -112,6 +112,12 @@ export interface Contract {
   planning: Planning;
   /** Taux horaire net (centimes) */
   rateNet: number;
+  /**
+   * T-103 (D1) : taux horaire brut écrit au contrat (centimes). CCN 41.1 : la rémunération, « incluant le salaire horaire »,
+   * figure au contrat ; CCN 107 et 109 : le salaire se calcule sur le salaire horaire brut. Connu, le brut est exact
+   * (net × brut ÷ net du contrat) ; absent, l'app le demande au lieu d'afficher une estimation.
+   */
+  rateBrut?: number;
   /** Majoration des heures au-delà de 45 h (pour cent, ≥ 10) */
   majoration: number;
   /**

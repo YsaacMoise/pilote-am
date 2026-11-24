@@ -1,11 +1,10 @@
-import { termsAt } from '../engine/payroll';
+import { MESSAGE_TAUX_BRUT, termsAt } from '../engine/payroll';
 import { useState } from 'preact/hooks';
 import { ctxFor, putContract, toast, useStore } from '../store';
 import { addDays, addMonths, monthLabel, monthOf, shortDate, today, type Month } from '../engine/dates';
-import { FIN_CDD_LABEL, finDeContrat, finDeCdd, MESSAGE_CDD_IFC, MESSAGE_CDD_PAS_DE_PREAVIS, type DemandeurInexecution, type FinCdd, type FinCddNonGere, type FinResult, type Motif } from '../engine/fin';
+import { FIN_CDD_LABEL, finDeContrat, finDeCdd, MESSAGE_CDD_IFC, MESSAGE_CDD_PAS_DE_PREAVIS, type DemandeurInexecution, type FinCdd, type FinCddNonGere, type Motif } from '../engine/fin';
 import { FINS_CDD, FINS_CDD_NON_GEREES, type Contract, type Rupture } from '../engine/model';
-import { cddDeuxLectures } from '../engine/cdd';
-import { euros, eurosArrondis, hoursLabel } from '../engine/money';
+import { euros, hoursLabel } from '../engine/money';
 import { ligneIndemnitePreavis, ligneRegularisation } from './fin-lignes';
 import { Banner, Choices, DateInput, EuroInput, Gommette, Topbar } from '../ui/kit';
 
@@ -79,16 +78,15 @@ export function Fin({ id }: { id?: string }) {
     const prev = await putContract({ ...c, end: f.dernierJour, rupture });
     toast(`Fin de contrat enregistrée : ${f.dispense ? "fin du contrat" : "dernier jour"} le ${shortDate(f.dernierJour)}`, prev ? async () => { await putContract(prev); } : undefined);
   };
-  // T-074 : préavis dispensé par les parents : la date de fin reste celle du préavis, donc à confirmer comme lui.
-  const finSelonPreavis = !inexecution || inexecution.demandeur === 'employeur';
-  const total = (f.ruptureAConfirmer ? 0 : f.indemniteRupture) + f.regularisation + f.cpIndemnite + f.indemnitePreavis;
-  const aConfirmer = !!f.cpAConfirmer || !!f.ruptureAConfirmer || !!f.regularisationAConfirmer || !!f.regularisationNonCalculee || !!f.indemnitePreavisAConfirmer;
   const ligneRegul = ligneRegularisation(f, termsAt(c, f.dernierJour).yearType === 'incomplete');
-  // T-078 (D1) : indemnité de préavis des jours dispensés, « à confirmer » si elle change avec la date de fin du préavis.
   const ligneDispense = f.dispense ? ligneIndemnitePreavis(f.dispense) : undefined;
-  // L'indemnité de rupture dépend du brut : tant qu'un mois est estimé, elle est affichée arrondie, comme une estimation.
+  // T-103 (D1) : l'indemnité de rupture se calcule sur les salaires bruts. Un mois dont le brut n'est pas connu (ni bulletin,
+  // ni taux horaire brut au contrat) : l'indemnité n'est pas donnée, l'écran demande la donnée (jamais « environ »).
   const surBrut = motif === 'retrait' || motif === 'deces' || motif === 'inaptitude' || motif === 'inaptitude_pro';
-  const estime = surBrut && f.brutsEstimes.length > 0;
+  const estime = surBrut && f.brutsEstimes.length > 0 && f.indemniteRupture > 0;
+  const ruptureNonCalculee = !!f.ruptureAConfirmer || estime;
+  const total = (ruptureNonCalculee ? 0 : f.indemniteRupture) + f.regularisation + f.cpIndemnite + f.indemnitePreavis;
+  const nonCalcule = !!f.cpAConfirmer || ruptureNonCalculee || !!f.regularisationNonCalculee;
   const periode = f.brutsEstimes.length === 1 ? monthLabel(f.brutsEstimes[0]) : `${f.brutsEstimes.length} mois, ${deMois(monthLabel(f.brutsEstimes[0] ?? '2026-01'))} à ${monthLabel(f.brutsEstimes[f.brutsEstimes.length - 1] ?? '2026-01')}`;
   return (
     <>
@@ -141,35 +139,32 @@ export function Fin({ id }: { id?: string }) {
         {surBrut && (f.brutsEstimes.length > 0 || brutTotal != null) && (
           <section class="card stack-sm" aria-labelledby="fin-brut">
             <h2 id="fin-brut">Salaires bruts de tes bulletins</h2>
-            <p>L’indemnité de rupture se calcule sur les salaires bruts. {brutTotal == null && f.brutsEstimes.length > 0 ? <>Le brut n’est pas connu pour {periode} : l’app l’estime à partir du net, ce qui peut être faux de quelques euros.</> : 'Le total saisi est utilisé.'}</p>
+            <p>L’indemnité de rupture se calcule sur les salaires bruts (convention, article 121.1). {f.brutsEstimes.length > 0 ? <>Le brut n’est pas connu pour {periode}. Indique ton salaire horaire brut dans le contrat (<a href={`#/contrat/${c.id}`}>ouvrir le contrat</a>), ou le total brut de tes bulletins ci-dessous.</> : 'Le total saisi est utilisé.'}</p>
             <EuroInput label="Total des salaires bruts de tes bulletins" hint="Additionne la ligne « salaire brut » de chaque bulletin Pajemploi de ce contrat, du premier jusqu’au mois indiqué ci-dessous, congés payés compris." cents={brutTotal} allowEmpty onChange={setBrutTotal} />
             <label class="label" for="fin-jusqua">Dernier bulletin compris dans ce total</label>
             <input id="fin-jusqua" class="input" type="month" value={brutJusqua} min={c.start.slice(0, 7)} max={monthOf(f.dernierJour)} onChange={(e) => { const v = (e.target as HTMLInputElement).value; if (v) setBrutJusqua(v as Month); }} />
-            {brutTotal != null && f.brutsEstimes.length > 0 && <p class="hint">Les mois suivants ({periode}) n’ont pas encore de bulletin : leur brut reste estimé.</p>}
+            {brutTotal != null && f.brutsEstimes.length > 0 && <p class="hint">Les mois suivants ({periode}) n’ont pas encore de bulletin : indique ton salaire horaire brut dans le contrat pour les calculer.</p>}
           </section>
         )}
         {f.alertes.map((a) => <Banner tone="warn">{a} <a href={`#/historique/${c.id}`}>Ouvrir l’historique</a></Banner>)}
-        {f.preavisFinAConfirmer && finSelonPreavis && <Banner tone="warn">{f.preavisFinAConfirmer}</Banner>}
         {f.cpAConfirmer && <Banner tone="warn">{f.cpAConfirmer}</Banner>}
-        {f.regularisationAConfirmer && <Banner tone="warn">{f.regularisationAConfirmer}</Banner>}
-        {f.indemnitePreavisAConfirmer && <Banner tone="warn">{f.indemnitePreavisAConfirmer}</Banner>}
-        {f.ruptureVariantes && <Banner tone="warn">{f.ruptureVariantes}</Banner>}
+        {estime && <Banner tone="warn">Indemnité de rupture non calculée : le brut de {periode} n’est pas connu. {MESSAGE_TAUX_BRUT} Tu peux aussi saisir le total brut de tes bulletins plus haut.</Banner>}
         <section class="card stack" aria-labelledby="fin-res" aria-live="polite">
           <h2 id="fin-res">Ce qui t’est dû</h2>
           <dl class="kv">
             <dt>{avecLettre ? 'Ancienneté à l’envoi de la lettre' : 'Ancienneté'}</dt><dd>{f.ancienneteMois} mois</dd>
             <dt>Préavis</dt><dd>{f.preavisLabel}</dd>
-            <dt>{f.dispense ? 'Fin du contrat (date prévue de fin du préavis)' : motif === 'deces' || inexecution ? 'Dernier jour' : 'Dernier jour (préavis inclus)'}</dt><dd>{shortDate(f.dernierJour)}{f.preavisFinAConfirmer && finSelonPreavis ? ' (à confirmer)' : ''}</dd>
+            <dt>{f.dispense ? 'Fin du contrat (date prévue de fin du préavis)' : motif === 'deces' || inexecution ? 'Dernier jour' : 'Dernier jour (préavis inclus)'}</dt><dd>{shortDate(f.dernierJour)}</dd>
           </dl>
           <div class="decl">
-            <div class="decl-line"><span class="decl-label"><span>Indemnité de rupture</span><span class="decl-hint">{f.ruptureExplication}</span></span><span class="decl-value">{f.ruptureAConfirmer ? 'à confirmer' : estime && f.indemniteRupture > 0 ? `environ ${eurosArrondis(f.indemniteRupture)}` : euros(f.indemniteRupture)}</span></div>
-            {motif === 'deces' && <div class="decl-line"><span class="decl-label"><span>Indemnité égale au préavis</span><span class="decl-hint">{f.indemnitePreavisExplication}</span></span><span class="decl-value">{f.indemnitePreavisAConfirmer ? 'à confirmer' : euros(f.indemnitePreavis)}</span></div>}
+            <div class="decl-line"><span class="decl-label"><span>Indemnité de rupture</span><span class="decl-hint">{f.ruptureExplication}</span></span><span class="decl-value">{ruptureNonCalculee ? 'non calculée' : euros(f.indemniteRupture)}</span></div>
+            {motif === 'deces' && <div class="decl-line"><span class="decl-label"><span>Indemnité égale au préavis</span><span class="decl-hint">{f.indemnitePreavisExplication}</span></span><span class="decl-value">{euros(f.indemnitePreavis)}</span></div>}
             {ligneDispense && <div class="decl-line"><span class="decl-label"><span>Indemnité de préavis</span><span class="decl-hint">{ligneDispense.hint}</span></span><span class="decl-value">{ligneDispense.valeur}</span></div>}
             <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint">{ligneRegul.hint}</span></span><span class="decl-value">{ligneRegul.valeur}</span></div>
-            <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{f.cpAConfirmer ? 'à confirmer' : euros(f.cpIndemnite)}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{f.cpAConfirmer ? 'non calculée' : euros(f.cpIndemnite)}</span></div>
           </div>
-          <div class="spread"><b>{aConfirmer ? 'Total estimé, hors salaire du dernier mois et sommes à confirmer' : 'Total estimé, hors salaire du dernier mois'}</b><span class="decl-value">{estime && f.indemniteRupture > 0 && !f.ruptureAConfirmer ? `environ ${eurosArrondis(total)}` : euros(total)}</span></div>
-          <p class="hint">L’indemnité de rupture est calculée sur {estime ? `environ ${eurosArrondis(f.totalBrut)}` : euros(f.totalBrut)} de salaires bruts, régularisation et indemnité de congés de la fin comprises{f.regularisationNonCalculee ? ' (la régularisation n’est pas calculée : elle n’y est pas encore, l’indemnité est à confirmer)' : finDansBulletins ? ' (elles sont dans tes bulletins)' : f.cpAConfirmer || f.regularisationAConfirmer ? ' (celles qui sont à confirmer n’y sont pas encore comptées)' : ''}{estime ? ', en partie estimés à partir du net : saisis le total de tes bulletins plus haut pour un montant exact' : ''}. Elle n’est pas soumise aux cotisations.{motif === 'deces' ? ' L’indemnité égale au préavis n’y est pas comptée pour l’instant : ce point est en cours d’examen.' : ''}</p>
+          <div class="spread"><b>{nonCalcule ? 'Total, hors salaire du dernier mois et sommes non calculées' : 'Total, hors salaire du dernier mois'}</b><span class="decl-value">{euros(total)}</span></div>
+          {surBrut && !ruptureNonCalculee && <p class="hint">L’indemnité de rupture est calculée sur {euros(f.totalBrut)} de salaires bruts, régularisation et indemnités de la fin comprises{finDansBulletins ? ' (elles sont dans tes bulletins)' : ''}. Elle n’est pas soumise aux cotisations.</p>}
         </section>
         </>}
         <section class="card stack" aria-labelledby="fin-save">
@@ -184,7 +179,6 @@ export function Fin({ id }: { id?: string }) {
 }
 
 /** Ligne « à confirmer » d'une somme de la fin d'un CDD : part sûre, écart hors du total */
-const partAConfirmer = (p: FinResult['cpPartAConfirmer']) => (p ? ` + ${euros(p.montant)} à confirmer` : '');
 
 /**
  * T-076 : fin d'un CDD (regles/t076-cdd.md, parties 5.1 et 5.2 ; decisions-direction, section 2). Pas de lettre ni de préavis :
@@ -208,10 +202,8 @@ function FinCddEcran({ c }: { c: Contract }) {
   };
   const ifcNet = f.ifcAConfirmer ? 0 : f.ifcNet ?? 0;
   const total = ifcNet + (f.regularisationAConfirmer ? 0 : f.regularisation) + (f.cpAConfirmer ? 0 : f.cpIndemnite);
-  const aConfirmer = !!(f.ifcAConfirmer || f.ifcPartAConfirmer || f.cpAConfirmer || f.cpPartAConfirmer || f.regularisationAConfirmer || f.regularisationPartAConfirmer);
+  const nonCalcule = !!(f.ifcAConfirmer || f.cpAConfirmer || f.regularisationAConfirmer);
   const choix = [...FINS_CDD, ...FINS_CDD_NON_GEREES];
-  // m3 : CDD à deux lectures du salaire (P1, P2) : la somme de fin complète le total au plus petit des deux calculs.
-  const deuxLectures = cddDeuxLectures(c) && f.finCdd !== 'suite_cdi';
   return (
     <>
       <p class="muted">Une simulation pour savoir ce qui t’est dû. L’app ne produit pas les documents officiels (certificat de travail, attestation France Travail, reçu pour solde de tout compte) : c’est au parent employeur de les établir.</p>
@@ -231,7 +223,7 @@ function FinCddEcran({ c }: { c: Contract }) {
         </section>
       ) : <>
         {f.alertes.map((a) => <Banner tone="warn">{a}</Banner>)}
-        {[f.ifcAConfirmer, f.ifcPartAConfirmer?.message, f.regularisationAConfirmer, f.regularisationPartAConfirmer?.message, f.cpAConfirmer, f.cpPartAConfirmer?.message].filter(Boolean).map((t) => <Banner tone="warn">{t}</Banner>)}
+        {[f.ifcAConfirmer, f.regularisationAConfirmer, f.cpAConfirmer].filter(Boolean).map((t) => <Banner tone="warn">{t}</Banner>)}
         <section class="card stack" aria-labelledby="fincdd-res" aria-live="polite">
           <h2 id="fincdd-res">Ce qui t’est dû</h2>
           <dl class="kv">
@@ -239,12 +231,12 @@ function FinCddEcran({ c }: { c: Contract }) {
             <dt>Dernier jour</dt><dd>{shortDate(f.dernierJour)}</dd>
           </dl>
           <div class="decl">
-            <div class="decl-line"><span class="decl-label"><span>Indemnité de fin de contrat</span><span class="decl-hint">{f.ifcExplication}</span></span><span class="decl-value">{f.ifcAConfirmer ? 'à confirmer' : `${euros(ifcNet)} net${partAConfirmer(f.ifcPartAConfirmer)}${ifcNet > 0 ? ` (environ ${eurosArrondis(f.ifc ?? 0)} brut)` : ''}`}</span></div>
-            <div class="decl-line"><span class="decl-label"><span>{deuxLectures ? 'Régularisation et complément de salaire' : 'Régularisation'}</span><span class="decl-hint">{f.regularisationAConfirmer ? 'Montant à confirmer : voir l’encadré plus haut' : f.finCdd === 'suite_cdi' ? 'Ton contrat continue en CDI : rien n’est dû maintenant' : deuxLectures ? 'Ce qui porte ton total au plus petit des deux calculs du CDD : voir l’encadré plus haut' : termsAt(c, f.dernierJour).yearType === 'incomplete' ? (f.regulMinutes ? `${hoursLabel(f.regulMinutes)} accueillies mais non payées par la mensualisation` : 'Pas d’heures accueillies au-delà de ce qui a été payé') : 'Accueil toute l’année : pas de régularisation'}</span></span><span class="decl-value">{f.regularisationAConfirmer ? 'à confirmer' : `${euros(f.regularisation)}${partAConfirmer(f.regularisationPartAConfirmer)}`}</span></div>
-            <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{f.cpAConfirmer ? 'à confirmer' : `${euros(f.cpIndemnite)}${partAConfirmer(f.cpPartAConfirmer)}`}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>Indemnité de fin de contrat</span><span class="decl-hint">{f.ifcExplication}</span></span><span class="decl-value">{f.ifcAConfirmer ? 'non calculée' : `${euros(ifcNet)} net`}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint">{f.regularisationAConfirmer ? 'Non calculée : voir l’encadré plus haut' : f.finCdd === 'suite_cdi' ? 'Ton contrat continue en CDI : rien n’est dû maintenant' : termsAt(c, f.dernierJour).yearType === 'incomplete' ? (f.regulMinutes ? `${hoursLabel(f.regulMinutes)} accueillies mais non payées par la mensualisation` : 'Pas d’heures accueillies au-delà de ce qui a été payé') : 'Accueil toute l’année : pas de régularisation'}</span></span><span class="decl-value">{f.regularisationAConfirmer ? 'non calculée' : euros(f.regularisation)}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{f.cpAConfirmer ? 'non calculée' : euros(f.cpIndemnite)}</span></div>
           </div>
-          <div class="spread"><b>{aConfirmer ? 'Total net estimé, hors salaire du dernier mois et sommes à confirmer' : 'Total net estimé, hors salaire du dernier mois'}</b><span class="decl-value">{euros(total)}</span></div>
-          {ifcNet > 0 && <p class="hint">{MESSAGE_CDD_IFC} Elle est calculée sur {euros(f.assietteNetteCdd ?? 0)} de salaires nets : l’Urssaf la fait déclarer et payer en net. Le brut est une estimation.</p>}
+          <div class="spread"><b>{nonCalcule ? 'Total net, hors salaire du dernier mois et sommes non calculées' : 'Total net, hors salaire du dernier mois'}</b><span class="decl-value">{euros(total)}</span></div>
+          {ifcNet > 0 && <p class="hint">{MESSAGE_CDD_IFC} Elle est calculée sur {euros(f.assietteNetteCdd ?? 0)} de salaires nets : l’Urssaf la fait déclarer et payer en net.</p>}
         </section>
         {!!f.declaration?.length && (
           <section class="card stack-sm" aria-labelledby="fincdd-decl">

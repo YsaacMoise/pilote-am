@@ -1126,8 +1126,23 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
 export function monthBrut(ctx: Ctx, m: Month): number {
   const b = monthBase(ctx, m);
   if (b.brut) return b.brut;
-  return netToBrut(b.net, lastDay(m), regionDe(ctx.c));
+  return brutDuNet(ctx.c, b.net, lastDay(m));
 }
+
+/**
+ * T-103 (D1) : brut d'une somme nette du salaire. Avec le taux horaire brut du contrat : net × brut ÷ net (CCN 107, 109 : le
+ * salaire se calcule sur le salaire horaire brut, les heures et majorations suivent le même taux). Sans lui : estimation
+ * interne (part fixe, rates.ts), jamais affichée comme un montant (`brutConnu`).
+ */
+export function brutDuNet(c: Contract, net: number, d: ISODate): number {
+  const t = termsAt(c, d);
+  if (t.rateBrut && t.rateNet) return Math.round((net * t.rateBrut) / t.rateNet);
+  return netToBrut(net, d, regionDe(c));
+}
+/** T-103 (D1) : le brut de la date `d` se calcule exactement (taux horaire brut du contrat saisi) */
+export const brutConnu = (c: Contract, d: ISODate): boolean => !!termsAt(c, d).rateBrut;
+/** T-103 (D1) : donnée demandée quand le brut n'est pas connu */
+export const MESSAGE_TAUX_BRUT = 'Indique dans le contrat ton salaire horaire brut (il est écrit dans ton contrat, à côté du net : convention, article 41.1). L’app en a besoin pour donner ton salaire brut exact.';
 
 export function dayCountLabel(n: number): string {
   return `${n} jour${n > 1 ? 's' : ''}`;

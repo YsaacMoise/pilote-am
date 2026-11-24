@@ -104,6 +104,7 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
             <legend>La rémunération</legend>
             <EuroInput label="Taux horaire net" hint={!rates ? MESSAGE_PERIODE_NON_GEREE : rates.minConvNet === undefined ? `Minimum en ${monthLabel(month)} : ${libelleMinimumBrut(minimumBrut(date, regionDe(c))!)} (pas de repère net dans l’app)` : `Minimum conventionnel en ${monthLabel(month)} : ${euros(rates.minConvNet)} net`} cents={t.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
             {t.rateNet > 0 && rates?.minConvNet !== undefined && t.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel.</Banner>}
+            <EuroInput label="Taux horaire brut" hint="Écrit dans l’avenant, à côté du net (convention, article 41.1)." cents={t.rateBrut} allowEmpty onChange={(v) => set({ rateBrut: v ?? undefined })} />
             {rates?.minConvNet !== undefined && <p class="hint">{MINIMUM_SANS_TITRE}</p>}
             {/* T-044b (C2-1) : un avenant daté dans le passé recalcule les mois depuis sa date : le dire. */}
             <EntretienSaisie t={t} set={set} passe={date < firstDay(monthOf(today())) && (changes.entretienJour != null || changes.entretienHeure != null || changes.entretienMode != null)} />

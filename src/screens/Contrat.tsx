@@ -247,6 +247,9 @@ export function Contrat({ id }: { id?: string }) {
             {!!c.avenants?.length && <p class="hint">Ce sont les conditions de départ. Les changements datés sont dans les avenants, plus bas.</p>}
             <EuroInput label="Taux horaire net" hint={rates.minConvNet !== undefined ? `Minimum conventionnel : ${euros(rates.minConvNet)} net (${euros(rates.minConvBrut)} brut)` : `Minimum conventionnel : ${euros(rates.minConvBrut)} brut`} cents={c.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
             {c.rateNet > 0 && rates.minConvNet !== undefined && c.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel. Vérifie le contrat.</Banner>}
+            {/* T-103 (D1) : CCN 41.1, le salaire horaire est au contrat ; CCN 107 et 109, le salaire se calcule sur le brut. */}
+            <EuroInput label="Taux horaire brut" hint="Écrit dans ton contrat, à côté du net. Il donne ton salaire brut exact (indemnité de rupture, impôts, contrôle du bulletin)." cents={c.rateBrut} allowEmpty onChange={(v) => set({ rateBrut: v ?? undefined })} />
+            {c.rateBrut != null && c.rateBrut > 0 && c.rateBrut < c.rateNet && <Banner tone="warn">Le brut ne peut pas être plus bas que le net. Vérifie le contrat.</Banner>}
             {rates.minConvNet !== undefined && <p class="hint">{MINIMUM_SANS_TITRE}</p>}
             {isNew
               ? <EntretienSaisie t={c} set={set} hint={`Si le montant est plus bas, l’app verse le minimum légal (${euros(entretienPlancher(today(), 540)!)} pour 9 h).`} />
@@ -417,6 +420,7 @@ function WeeksOff({ c, onChange }: { c: Contract; onChange: (w: string[]) => voi
 export function avenantSummary(before: Contract, ch: Partial<Terms>): string[] {
   const out: string[] = [];
   if (ch.rateNet != null && ch.rateNet !== before.rateNet) out.push(`Taux : ${euros(before.rateNet)} → ${euros(ch.rateNet)} net de l’heure`);
+  if (ch.rateBrut != null && ch.rateBrut !== before.rateBrut) out.push(`Taux brut : ${before.rateBrut ? euros(before.rateBrut) : 'non saisi'} → ${euros(ch.rateBrut)} brut de l’heure`);
   if (ch.planning) out.push(`Planning : ${hoursLabel(weeklyMinutes(before.planning))} → ${hoursLabel(weeklyMinutes(ch.planning))} par semaine`);
   // T-044 : tarif par jour ou par heure.
   if (ch.entretienJour != null || ch.entretienHeure != null || ch.entretienMode != null) {

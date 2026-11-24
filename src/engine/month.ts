@@ -1,8 +1,8 @@
 // Récapitulatif mensuel par enfant, dans l'ordre de la déclaration Pajemploi.
 import { lastDay, monthLabel, type Month } from './dates';
 import { cpForMonth } from './conges';
-import { monthBase, termsAt, type Ctx, type MonthBase } from './payroll';
-import { netToBrut, REDUCTION_HS } from './rates';
+import { brutConnu, brutDuNet, monthBase, termsAt, type Ctx, type MonthBase } from './payroll';
+import { REDUCTION_HS } from './rates';
 import { regionDe } from './regions';
 
 export const MESSAGE_REDUCTION_HS_MAYOTTE = 'Mayotte : la réduction de cotisations de tes heures complémentaires et majorées n’est pas estimée par l’app (les cotisations y sont différentes). Pajemploi la calcule : regarde ton relevé.';
@@ -15,7 +15,10 @@ export interface MonthResult extends MonthBase {
   cpNote?: string;
   /** Salaire net à déclarer, congés compris */
   netTotal: number;
+  /** Brut du mois : celui du bulletin, ou net × brut ÷ net du contrat (T-103, D1) ; estimation interne si `brutConnu` est faux */
   brutEstime: number;
+  /** T-103 (D1) : le brut est exact (bulletin ou taux horaire brut du contrat) ; sinon l'écran le demande */
+  brutConnu: boolean;
   /**
    * Heures complémentaires et majorées (CGI art. 81 quater, CSS art. L241-17 : pour une assistante maternelle, heures
    * au-delà du contrat jusqu'à 45 h et heures au-delà de 45 h, prévues au contrat ou en plus) : valeur nette déclarée.
@@ -44,7 +47,7 @@ function computeMonthLecture(ctx: Ctx, m: Month, enfants = 0): MonthResult {
   const mayotte = regionDe(ctx.c) === 'mayotte';
   if (mayotte && b.complAmount + b.majAmount + b.majContratAmount > 0) alerts.push(MESSAGE_REDUCTION_HS_MAYOTTE);
   const hsNet = b.complAmount + b.majAmount + b.majContratAmount;
-  const hsBrut = netToBrut(hsNet, lastDay(m), regionDe(ctx.c));
+  const hsBrut = brutDuNet(ctx.c, hsNet, lastDay(m));
   return {
     ...b,
     alerts,
@@ -54,7 +57,8 @@ function computeMonthLecture(ctx: Ctx, m: Month, enfants = 0): MonthResult {
     cpComplement: cp.complement,
     cpNote: cp.note,
     netTotal,
-    brutEstime: b.brut ?? netToBrut(netTotal, lastDay(m), regionDe(ctx.c)),
+    brutEstime: b.brut ?? brutDuNet(ctx.c, netTotal, lastDay(m)),
+    brutConnu: !!b.brut || brutConnu(ctx.c, lastDay(m)),
     hsNet,
     hsBrut,
     reductionHS: mayotte ? 0 : Math.round(hsBrut * REDUCTION_HS),

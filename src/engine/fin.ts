@@ -11,8 +11,7 @@ import {
   type ISODate, type Month,
 } from './dates';
 import { acquisition, baseDixieme, compteur, cpForMonth, indemnite, maintien } from './conges';
-import { absencesL2NonGerees, messageAbsenceL2, makeCtx, monthBase, planningBrutMin, monthBrut, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx, regularisation } from './payroll';
-import { netToBrut } from './rates';
+import { absencesL2NonGerees, messageAbsenceL2, makeCtx, monthBase, planningBrutMin, monthBrut, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx, regularisation, brutConnu, brutDuNet } from './payroll';
 import { regionDe } from './regions';
 
 /** Entrée en vigueur de l'avenant n° 10 du 9 septembre 2025 (inaptitude) */
@@ -47,25 +46,14 @@ export interface FinResult {
   ancienneteMois: number;
   preavisLabel: string;
   preavisFin: ISODate;
-  /**
-   * PREAVIS-DATE-FIN (regles/triage-f3.md) : aucun texte ne dit si le premier jour du préavis compte, ni comment compter
-   * « un mois ». La date calculée est gardée, affichée « à confirmer ». Absent : pas de préavis à faire.
-   */
-  preavisFinAConfirmer?: string;
   dernierJour: ISODate;
   indemniteRupture: number;
   ruptureExplication: string;
-  /** L'assiette de l'indemnité de rupture ne contient pas des congés payés encore à confirmer (T-019) */
+  /** T-103 : indemnité de rupture non calculée, une somme de son assiette manque (donnée à saisir) ; `indemniteRupture` vaut 0 */
   ruptureAConfirmer?: boolean;
-  /** T-038 suite : l'indemnité change avec la date de fin à confirmer ; message avec les valeurs (non comptée) */
-  ruptureVariantes?: string;
   /** Décès de l'enfant : indemnité égale au préavis (R-FIN-07, CCN art. 119.4.2), 0 pour les autres motifs */
   indemnitePreavis: number;
   indemnitePreavisExplication?: string;
-  /** T-038 (R-1) : le montant change selon le premier jour retenu ; `indemnitePreavis` vaut 0 et n'est pas compté */
-  indemnitePreavisAConfirmer?: string;
-  /** T-077 (R5) : Alsace-Moselle, préavis de six semaines du droit local (lecture B), avec l'écart en euros */
-  preavisLocalAConfirmer?: string;
   totalBrut: number;
   /**
    * C-008 : mois dont le brut est estimé à partir du net (rapport fixe), faute de brut lu sur un bulletin.
@@ -83,15 +71,11 @@ export interface FinResult {
   /** Base du dixième de la période en cours ; absente quand la régularisation n'est pas calculée (T-072, T-055). */
   cpDixiemeEnCours?: number;
   cpExplication: string;
-  /** Congés non pris à confirmer : `cpIndemnite` vaut 0 et n'est pas compté (T-019) */
+  /** T-103 : congés non pris non calculés (donnée à saisir), avec la raison : `cpIndemnite` vaut 0 et n'est pas compté */
   cpAConfirmer?: string;
-  /**
-   * T-033 (décision de la direction, 18/11/2026) : la date de fin du préavis est « à confirmer » (PREAVIS-DATE-FIN). Si la
-   * régularisation change quand le préavis finit un jour plus tard (seconde lecture : le jour de présentation ne compte pas,
-   * ou le mois finit à la même date), elle n'est ni donnée ni comptée : `regularisation` vaut 0.
-   */
+  /** T-103 : régularisation d'un CDD non calculée, avec la raison : `regularisation` vaut 0 et n'est pas comptée */
   regularisationAConfirmer?: string;
-  /** T-055 : régularisation non calculée (semaines sans accueil manquantes, C-002). `regularisation` vaut alors 0 mais n'est pas un montant : à confirmer. */
+  /** T-055 : régularisation non calculée (semaines sans accueil manquantes, C-002). `regularisation` vaut alors 0 mais n'est pas un montant. */
   regularisationNonCalculee?: string;
   manquants: Month[];
   alertes: string[];
@@ -101,14 +85,8 @@ export interface FinResult {
    * T-074 : préavis dont les parents ont dispensé l'AM, en tout ou en partie (CCN art. 64, 64.2, 66, 122). Jours dispensés
    * (`du` au `au`, à partir du début du préavis) et indemnité compensatrice de préavis de ces jours (`net`, `brut` estimé). Elle
    * est comprise dans les salaires des mois du préavis (mensualisation) : information, jamais ajoutée au total de la fin.
-   * `autre` : P-1, mois où l'AM a travaillé puis a été dispensée ; aucun texte ne dit quelle part du salaire est l'indemnité
-   * (proportion de l'art. 111, ou heures dispensées × taux horaire). Présent si les deux lectures diffèrent : montant à confirmer.
-   * T-078 (D1) : `aConfirmer` et `variantes` présents si l'indemnité change d'une date de fin possible du préavis à l'autre
-   * (règle T-038) : `net` et `brut` sont alors ceux de la date de l'app, à ne pas donner comme dus.
-   * T-078 (D1 bis) : `du` après `au` : aucun jour dispensé à la date de l'app (`net` 0), mais une autre date de fin possible en
-   * donne : toujours avec `aConfirmer`.
    */
-  dispense?: { du: ISODate; au: ISODate; net: number; brut: number; autre?: number; aConfirmer?: string; variantes?: { fin: ISODate; libelle: string; net: number; autre?: number }[] };
+  dispense?: { du: ISODate; au: ISODate; net: number; brut: number };
   /** T-076 : fin d'un CDD (champs suivants remplis seulement pour un CDD) */
   cdd?: true;
   finCdd?: FinCdd | FinCddNonGere;
@@ -124,45 +102,11 @@ export interface FinResult {
   assietteNetteCdd?: number;
   /** T-076 : la même en brut, affichage seulement (netToBrut) */
   brutCdd?: number;
-  /** T-076 : IFC impossible à donner (base incomplète, congés à confirmer…) : `ifc` vaut 0 et n'est pas compté */
+  /** T-076, revu par la T-103 : IFC non calculée (base incomplète, donnée à saisir) : `ifc` vaut 0 et n'est pas compté */
   ifcAConfirmer?: string;
-  /** T-076 : part de l'IFC (en net) qui dépend d'une lecture (P1, P2, P4) : hors du total, `ifcNet` est la part sûre */
-  ifcPartAConfirmer?: PartAConfirmer;
-  /** T-076 : part de l'indemnité de congés non pris qui dépend d'une lecture (P1 à P3, plancher L1242-16) : hors du total */
-  cpPartAConfirmer?: PartAConfirmer;
-  /**
-   * T-076 : part de la somme de fin (régularisation et, pour P1 et P2, complément qui porte le total versé au plus petit des
-   * deux totaux du CDD) qui dépend d'une lecture : hors du total. `lectures` : reste dû à la fin dans chaque lecture.
-   */
-  regularisationPartAConfirmer?: PartAConfirmer;
-  /**
-   * T-076 : régularisation de fin de contrat (art. 109.2 et 124) de chaque lecture du salaire (P2 : lecture 1 puis lecture 2),
-   * part basse si elle dépend aussi de jours à confirmer. Information : la somme versée à la fin est `regularisation`.
-   */
-  regularisationParLecture?: number[];
   /** T-076 : sommes de la fin à déclarer à Pajemploi qui ne correspondent à aucune heure (champ de l'API Pajemploi) */
   declaration?: { champ: 'mntIndPrecarite'; libelle: string; net: number; hint: string }[];
 }
-
-/**
- * T-076 (decisions-direction, principe commun) : « la part sûre est payée ; la part qui dépend de la lecture est affichée
- * « à confirmer » à côté, hors du total ». `montant` : écart, hors du total ; `lectures` : valeurs de chaque lecture.
- */
-export interface PartAConfirmer { montant: number; message: string; lectures: number[] }
-
-/** PREAVIS-DATE-FIN : méthode de l'app sans texte (premier jour compté ; un mois de date à date, du 15/10 au 14/11) */
-export const MESSAGE_PREAVIS_FIN =
-  'Date de fin du préavis à confirmer. Aucun texte ne dit si le jour où la lettre est présentée compte comme premier jour, ni comment compter un mois. L’app compte ce jour comme le premier. Vérifie la date avec les parents : le dernier salaire en dépend.';
-
-/**
- * PREAVIS-DEMISSION-3-12 (T-034, décision du DG) : démission de 3 mois à moins d'un an d'accueil. La durée elle-même est en
- * conflit : CASF L423-26 (« un enfant qui lui était confié depuis au moins trois mois est subordonnée […] à un préavis
- * d'un mois ») ; CCN art. 120 (« 15 jours calendaires si l'enfant est accueilli depuis 3 mois et jusqu'à moins d'un an »).
- * L'app applique 15 jours, le dit, et garde la date de fin à confirmer (MESSAGE_PREAVIS_FIN). T-038 (AC-1) : la régularisation
- * et l'indemnité de congés non pris sont aussi calculées avec un préavis d'un mois ; si elles changent, « à confirmer ».
- */
-export const MESSAGE_PREAVIS_DEMISSION_3_12 =
-  'Durée du préavis à confirmer. Pour une démission entre 3 mois et 1 an d’accueil, la loi (code de l’action sociale et des familles, article L423-26) prévoit un mois, la convention (article 120) 15 jours. La question a été posée à la DDETS le 18/11/2026. L’app applique 15 jours : si c’est un mois, la date de fin et le dernier salaire changent, et la régularisation et l’indemnité de congés non pris peuvent changer aussi (elles sont alors à confirmer).';
 
 /**
  * Indemnité compensatrice de préavis (R-FIN-05, CCN art. 64.2, 66, 122) : salaire mensualisé de chaque mois couvert,
@@ -187,7 +131,7 @@ function icpDispense(c: Ctx['c'], from: ISODate, to: ISODate): { net: number; br
   for (const m of monthsBetween(monthOf(from), monthOf(to))) {
     const b = monthBase(h, m).base;
     net += b;
-    brut += netToBrut(b, lastDay(m), regionDe(c));
+    brut += brutDuNet(c, b, lastDay(m));
     // P-1 : mois où des jours prévus précèdent la dispense (jours travaillés ou payés comme salaire) : seconde lecture,
     // heures dispensées du mois × taux horaire net du contrat. Ailleurs (mois entier ou dernier mois sans jour travaillé),
     // art. 122 et 111 : une seule lecture.
@@ -440,10 +384,10 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     // Brut d'un bulletin contrôlé : congés compris, rien à ajouter.
     const lu = bruts.parMois?.[m];
     if (lu != null && lu > 0) { totalBrut += lu; continue; }
-    if (!b.brut) brutsEstimes.push(m);
+    if (!b.brut && !brutConnu(c, lastDay(m))) brutsEstimes.push(m);
     totalBrut += monthBrut(endCtx, m);
     const cp = cpForMonth(endCtx, m, enfants);
-    totalBrut += netToBrut(cp.indemnite + cp.complement, lastDay(m), regionDe(c));
+    totalBrut += brutDuNet(c, cp.indemnite + cp.complement, lastDay(m));
     if (cp.aConfirmer) cpManquants = true;
   }
   if (manquants.length) {
@@ -507,7 +451,11 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // Elles sont payées sur le dernier bulletin : déjà comprises si ce bulletin est couvert par le total saisi ou lu (C-008).
   const finCouverte = (m: Month) => couvert(m) || (bruts.parMois?.[m] != null && bruts.parMois[m]! > 0);
   const dernierMois = monthOf(dernierJour);
-  if (!finCouverte(dernierMois)) totalBrut += netToBrut(cpIndemnite + regularisation_, lastDay(dernierMois), regionDe(c));
+  if (!finCouverte(dernierMois)) totalBrut += brutDuNet(c, cpIndemnite + regularisation_, lastDay(dernierMois));
+  // T-103 (F13, même règle que F4) : décès de l'enfant, l'indemnité « égale à l'indemnité compensatrice de préavis définie à
+  // l'article 122 » (CCN 119.4.2) est de même nature, « soumise à contributions et cotisations sociales » (CCN 64.2) : elle entre
+  // dans les salaires bruts du 1/80 (CCN 121.1 n'exclut que les sommes non soumises). Versée à la fin, sur le dernier bulletin.
+  if (motif === 'deces' && indemnitePreavis > 0 && !finCouverte(dernierMois)) totalBrut += brutDuNet(c, indemnitePreavis, lastDay(dernierMois));
   const iccpManquante = !finCouverte(dernierMois) && !!cpAConfirmer;
   // Indemnité de rupture. Ancienneté appréciée à la date d'envoi de la lettre (ou au décès), comme pour le préavis.
   let indemniteRupture = 0;
@@ -841,7 +789,7 @@ export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCdd
   const assiette = l1.netCdd;
   const finMois = lastDay(monthOf(dernierJour));
   // Brut affiché seulement, dérivé du net (rapport fixe de l'app).
-  const brutCdd = netToBrut(assiette, finMois);
+  const brutCdd = brutDuNet(c, assiette, finMois);
   const due = IFC_DUE[fin];
   const ifcNet = ifc.valeur;
   const ifcExplication = !due
@@ -867,7 +815,7 @@ export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCdd
     cpExplication: iccp.inconnu ? 'Non calculée : voir l’encadré plus haut.' : l1.cpExplication,
     ...(iccp.inconnu ? { cpAConfirmer: iccp.inconnu } : {}),
     alertes,
-    cdd: true, finCdd: fin, ifc: netToBrut(ifcNet, finMois), ifcNet, ifcExplication, brutCdd, assietteNetteCdd: assiette,
+    cdd: true, finCdd: fin, ifc: brutDuNet(c, ifcNet, finMois), ifcNet, ifcExplication, brutCdd, assietteNetteCdd: assiette,
     ...(ifc.inconnu ? { ifcAConfirmer: ifc.inconnu } : {}),
     declaration: due && ifc.valeur > 0 ? [{ champ: 'mntIndPrecarite', libelle: 'Indemnité de précarité', net: ifcNet, hint: 'Montant net. Elle ne correspond à aucune heure : ne l’ajoute ni aux heures ni aux jours.' }] : [],
   };
