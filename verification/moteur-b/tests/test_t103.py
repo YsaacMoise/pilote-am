@@ -196,5 +196,109 @@ class F9F12CDD(unittest.TestCase):
         self.assertFalse(R(m.qualifier_semaine_sans_accueil_cdd("46"), "deductible"))
 
 
+def jours_lv(du, au):
+    """Jours du lundi au vendredi entre du et au (faits du calendrier)."""
+    out, d = [], du
+    while d <= au:
+        if d.weekday() < 5:
+            out.append(d)
+        d = date.fromordinal(d.toordinal() + 1)
+    return out
+
+
+class C1C5EnfantMalade(unittest.TestCase):
+    """CCN 105 : 5 jours de courtes absences ; absence de 14 jours calendaires ; periode de 12 mois."""
+    DEB = date(2025, 9, 1)
+
+    def run105(self, certs, jours, **kw):
+        return m.absences_enfant_malade_art105(self.DEB, [{"du": a, "au": b} for a, b in certs], jours, **kw)
+
+    def test_c1_huit_jours_courte(self):
+        # Certificat du 14 au 21/09 (8 jours) : courte ; 6 jours d'accueil : 5 retenus, le 6e paye.
+        js = jours_lv(date(2026, 9, 14), date(2026, 9, 21))
+        r = self.run105([(date(2026, 9, 14), date(2026, 9, 21))], js)
+        self.assertEqual(R(r, "absences")[0]["classe"], "courte")
+        self.assertEqual(R(r, "jours_retenus"), 5)
+        self.assertEqual(R(r, "jours")["2026-09-21"], "paye")
+
+    def test_c2_quatorze_jours_peu_d_accueil(self):
+        # Certificat de 14 jours, 4 jours d'accueil : absence longue, 4 retenus.
+        js = [date(2026, 9, 7), date(2026, 9, 8), date(2026, 9, 14), date(2026, 9, 15)]
+        r = self.run105([(date(2026, 9, 7), date(2026, 9, 20))], js)
+        self.assertEqual(R(r, "absences")[0]["classe"], "longue")
+        self.assertEqual(R(r, "jours_retenus"), 4)
+
+    def test_c2_au_dela_de_14_jours_paye(self):
+        js = jours_lv(date(2026, 9, 7), date(2026, 9, 25))
+        r = self.run105([(date(2026, 9, 7), date(2026, 9, 26))], js)
+        self.assertEqual(R(r, "jours_retenus"), 10)
+        self.assertEqual(R(r, "jours")["2026-09-21"], "paye")
+
+    def test_c3_dates_obligatoires(self):
+        r = m.absences_enfant_malade_art105(self.DEB, [{"du": None, "au": None}], [date(2026, 9, 15)])
+        self.assertEqual(r["code"], "C3-DATES-CERTIFICAT")
+        r = self.run105([], [date(2026, 9, 15)])
+        self.assertEqual(r["code"], "C3-DATES-CERTIFICAT")
+
+    def test_c4_chaque_jour_dans_sa_periode(self):
+        # Debut 17/09/2025 : periode 1 jusqu'au 16/09/2026. 3 jours deja retenus (courtes). Certificat du 14 au
+        # 18/09/2026 : 14, 15, 16/09 en periode 1 (2 retenus, 1 paye) ; 17, 18/09 en periode 2 (retenus).
+        deb = date(2025, 9, 17)
+        r = m.absences_enfant_malade_art105(deb, [{"du": date(2026, 9, 14), "au": date(2026, 9, 18)}],
+                                            jours_lv(date(2026, 9, 14), date(2026, 9, 18)),
+                                            deja_retenus={"jours": 3, "longue": False}, date_debut_suivi=date(2026, 1, 5))
+        self.assertEqual(R(r, "jours"), {"2026-09-14": "retenu", "2026-09-15": "retenu", "2026-09-16": "paye",
+                                         "2026-09-17": "retenu", "2026-09-18": "retenu"})
+
+    def test_c5_origine(self):
+        r = self.run105([(date(2026, 9, 8), date(2026, 9, 9))], [date(2026, 9, 8)],
+                        deja_retenus={"jours": 2}, date_debut_suivi=date(2026, 9, 1))
+        self.assertEqual(r["code"], "C5-ORIGINE-MANQUANTE")
+        # Absence longue deja faite dans la periode : une seconde absence longue : refus A-18 (hors tableau).
+        js = jours_lv(date(2026, 9, 7), date(2026, 9, 22))
+        r = self.run105([(date(2026, 9, 7), date(2026, 9, 22))], js, deja_retenus={"jours": 10, "longue": True},
+                        date_debut_suivi=date(2026, 9, 1))
+        self.assertEqual(r["code"], "A-18")
+
+
+class C6C9Evenements(unittest.TestCase):
+
+    def test_c6_bascule_au_1er_mai_2024(self):
+        # Avant le 01/05/2024 : CCN 2022 (handicap : 2 jours), loi 2023 (5 jours) : 5. Plus de refus EVT-VERSION.
+        r = m.conge_evenement_familial("handicap_enfant", date(2023, 11, 15), pathologie_ou_cancer=True)
+        self.assertEqual(R(r, "jours_ouvrables_remuneres"), 5)
+
+    def test_c8_repos_hebdomadaire(self):
+        # Repos le samedi (5) : jeudi 17, vendredi 18, dimanche 20, lundi 21/09 : 4 jours de mariage.
+        r = m.jours_conge_evenement("mariage_pacs", date(2026, 9, 17), date(2026, 9, 17), date(2026, 9, 21),
+                                    jour_repos_hebdomadaire=5, planning_contient_dimanche=True)
+        self.assertEqual(R(r, "jours")["2026-09-19"], "non_ouvrable")
+        self.assertEqual(R(r, "jours")["2026-09-21"], "remunere")
+        r = m.jours_conge_evenement("mariage_pacs", date(2026, 9, 17), date(2026, 9, 17), date(2026, 9, 21),
+                                    planning_contient_dimanche=True)
+        self.assertEqual(r["code"], "C8-REPOS-HEBDO-MANQUANT")
+
+    def test_c9_deuil(self):
+        self.assertEqual(R(m.conge_deuil(date(2026, 9, 14), 15000), "deduction_ij_centimes"), 15000)
+        self.assertEqual(m.conge_deuil(date(2026, 9, 14))["code"], "C9-IJ-MANQUANTES")
+
+
+class C15C17DecompteCP(unittest.TestCase):
+
+    def test_c15_arret_pendant_cp(self):
+        # Du 14 au 19/09 (6 jours ouvrables), arret les 16 et 17 : 4 jours decomptes.
+        r = m.decompte_jours_cp(date(2026, 9, 14), date(2026, 9, 21), [0, 1, 2, 3, 4],
+                                jours_arret_maladie=[date(2026, 9, 16), date(2026, 9, 17)])
+        self.assertEqual(R(r, "jours_decomptes"), 4)
+        self.assertEqual(R(m.absence_retenue_du_jour(["cp", "am_malade"]), "type"), "am_malade")
+
+    def test_c16_fin_avant_reprise(self):
+        r = m.decompte_jours_cp(date(2026, 9, 14), date(2026, 9, 28), [0, 1, 2, 3, 4], date_fin_contrat=date(2026, 9, 16))
+        self.assertEqual(R(r, "jours_decomptes"), 3)
+
+    def test_c17_double_saisie(self):
+        self.assertEqual(m.absence_retenue_du_jour(["cp", "sans_solde"])["code"], "C17-SAISIE-CONTRADICTOIRE")
+
+
 if __name__ == "__main__":
     unittest.main()

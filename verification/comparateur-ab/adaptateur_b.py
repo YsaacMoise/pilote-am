@@ -245,9 +245,19 @@ class Ctx:
         return self.plan_jour(d)
 
     def conge(self, d):
+        """Type d'absence de l'AM ce jour. T-103 (C15, C17) : plusieurs saisies le meme jour : B decide
+        (absence_retenue_du_jour : l'arret maladie l'emporte sur le conge paye ; autre cas : refus C17)."""
+        types = [l["type"] for l in self.conges if l["du"] <= d <= l["au"]]
+        if not types:
+            return None
+        if len(types) == 1:
+            return types[0]
+        return appel("absence_retenue_du_jour", types)["resultat"]["type"]
+
+    def conge_ligne(self, d, type_):
         for l in self.conges:
-            if l["du"] <= d <= l["au"]:
-                return l["type"]
+            if l["du"] <= d <= l["au"] and l["type"] == type_:
+                return l
         return None
 
     def travail_jour(self, d):
@@ -287,14 +297,23 @@ NATURES_EVT = {"mariage": "mariage_pacs", "mariage_enfant": "mariage_pacs_enfant
 def jour_evenement(ctx, d):
     """Deductible ou non pour un jour de conge pour evenement familial (B decide).
     La date de l'evenement est le premier jour du conge (fait de la situation)."""
-    for l in ctx.conges:
-        if l["type"] == "evenement" and l["du"] <= d <= l["au"]:
-            break
+    l = ctx.conge_ligne(d, "evenement")
     if not l.get("nature"):
         r = appel("qualifier_absence", "am_evenement_familial", ctx.type)  # refus R-ABS-06
-    r = appel("jours_conge_evenement", NATURES_EVT[l["nature"]], l["du"], l["du"], l["au"])
+    # T-103 (C8) : jour de repos hebdomadaire du contrat (contrat.reposHebdo : 1 = lundi ... 7 = dimanche) ; B refuse
+    # (C8-REPOS-HEBDO-MANQUANT) si le planning prevoit le dimanche et que ce jour n'est pas saisi.
+    rh = ctx.k.get("reposHebdo")
+    dim = 6 in ctx.plan_min or (ctx.pv and any(6 in p for p in (ctx.pv_cycle or list((ctx.pv_semaines or {}).values()))))
+    r = appel("jours_conge_evenement", NATURES_EVT[l["nature"]], l.get("date_evenement") and d_(l["date_evenement"])
+              or l["du"], l["du"], l["au"], jour_repos_hebdomadaire=None if rh is None else int(rh) - 1,
+              planning_contient_dimanche=dim)
     st = r["resultat"]["jours"][d.isoformat()]
+    if st == "ferie":
+        return None  # T-103 (C7) : ferie pendant le conge : jour ferie (CCN 47), qualifie a part
     if st == "remunere":
+        if l["nature"] == "deuil":
+            # T-103 (C9) : salaire maintenu, IJ de la CPAM (l["ijSecu"], centimes) retirees du mois (ij_du_mois).
+            appel("conge_deuil", l["du"], l.get("ijSecu"))
         return False
     if st == "non_remunere":
         return True
@@ -367,8 +386,14 @@ def decompte_conge(ctx, l, borne=None):
     if ctx.pv:
         n = decompte_b(ctx, l["du"], reprise)
         return n, n
+    # T-103 (C15) : jours d'arret maladie saisis pendant le conge : non decomptes (B). (C16) : contrat fini avant la
+    # reprise : decompte arrete a la fin du contrat (B).
+    arret = [x for x in jours_entre(l["du"], reprise - timedelta(days=1))
+             if any(c["type"] == "am_malade" and c["du"] <= x <= c["au"] for c in ctx.conges)]
+    fin_k = ctx.fin if ctx.fin is not None and ctx.fin < reprise - timedelta(days=1) else None
     try:
-        r = appel("decompte_jours_cp", l["du"], reprise, ctx.jours_travailles, region=ctx.region)
+        r = appel("decompte_jours_cp", l["du"], reprise, ctx.jours_travailles, region=ctx.region,
+                  jours_arret_maladie=arret, date_fin_contrat=fin_k)
         n = r["resultat"]["jours_decomptes"]
         return n, n
     except Refus as e:
@@ -390,6 +415,33 @@ def episodes_maladie(ctx):
     if "episodes" in ctx.cache:
         return ctx.cache["episodes"]
     jours = sorted(d for d, j in ctx.jours.items() if j.get("abs") == "malade_certif" and ctx.prevu(d) > 0)
+    # T-103 (C1 a C5) : B classe chaque absence d'apres les dates du certificat (jours[].certifDu, certifAu) et
+    # compte les limites par periode de 12 mois (absences_enfant_malade_art105). Jours deja retenus avant le suivi :
+    # contrat.balances.maladieDeduits (nombre) et maladieDeduitsLongue (booleen), a la date contrat.suivi_depuis.
+    certs = {}
+    for d in jours:
+        j = ctx.jours[d]
+        cle = (j.get("certifDu"), j.get("certifAu"))
+        certs[cle] = {"du": cle[0] and d_(cle[0]), "au": cle[1] and d_(cle[1])}
+    bal = ctx.k.get("balances") or {}
+    deja = None
+    if bal.get("maladieDeduits"):
+        deja = {"jours": bal["maladieDeduits"], "longue": bal.get("maladieDeduitsLongue")}
+    res = {}
+    try:
+        r = appel("absences_enfant_malade_art105", ctx.debut, list(certs.values()), jours, deja_retenus=deja,
+                  date_debut_suivi=d_(ctx.k.get("suivi_depuis", ctx.k["debut"])))
+        for d in jours:
+            res[d] = ("ok", r["resultat"]["jours"][d.isoformat()] == "retenu")
+    except Refus as e:
+        for d in jours:
+            res[d] = ("refus", e)
+    ctx.cache["episodes"] = res
+    return res
+
+
+def _episodes_maladie_t042(ctx, jours):
+    """Ancien calcul (avant T-103), garde pour l'historique ; n'est plus appele."""
     eps = []
     for d in jours:
         if eps:
@@ -482,7 +534,10 @@ def _qualifier_jour(ctx, d):
             return "absence", r["resultat"]["deductible"], 0
         raise Refus("SANS-REGLE-CP-SEMAINE-PROGRAMMEE", "qualifier_jour")
     if c == "evenement":
-        return "absence", jour_evenement(ctx, d), 0
+        ev = jour_evenement(ctx, d)
+        if ev is not None:
+            return "absence", ev, 0
+        c = None  # T-103 (C7) : ferie chome pendant le conge : suit les regles du ferie ci-dessous
     if c:
         r = appel("qualifier_absence", _TYPE_AM[c], ctx.type, region=ctx.region)
         return "absence", r["resultat"]["deductible"], 0
@@ -694,7 +749,20 @@ def mois_b(ctx, m):
                            "valeur sans retenue est avant deduction des IJ (lecture A)."}
         raise Refus(premier_refus.code, "deduction", dict(details, deduction_certaine_centimes=sans))
 
-    garde("deduction", deduction)
+    def ij_du_mois():
+        # T-103 (C9) : conge de deuil du mois : salaire maintenu sous deduction des IJ de la CPAM (CCN 48.1.3.1.3).
+        # Montant saisi par conge (absences_am[].ijSecu, centimes) ; un conge a cheval sur deux mois : la repartition
+        # des IJ n'est pas un fait de la situation, refus visible.
+        tot = 0
+        for l in ctx.conges:
+            if l["type"] != "evenement" or l.get("nature") != "deuil" or l["au"] < a or l["du"] > b:
+                continue
+            if l["du"] < a or l["au"] > b:
+                raise Refus("HORS-COMPARATEUR", "conge_deuil", {"motif": "conge de deuil a cheval sur deux mois"})
+            tot += appel("conge_deuil", l["du"], l.get("ijSecu"))["resultat"]["deduction_ij_centimes"]
+        return tot
+
+    garde("deduction", lambda: deduction() + ij_du_mois())
 
     def base():
         ded = out["deduction"]
@@ -1992,7 +2060,13 @@ def composition(s):
                 if ctx.pv:
                     res = {"jours_decomptes": decompte_b(ctx, d_(k["du"]), d_(k["reprise"]))}  # T-076 : R-PV-09
                 else:
-                    r = appel("decompte_jours_cp", d_(k["du"]), d_(k["reprise"]), ctx.jours_travailles, region=ctx.region)
+                    du_, rep_ = d_(k["du"]), d_(k["reprise"])
+                    # T-103 (C15, C16) : arret maladie saisi pendant le conge ; fin du contrat avant la reprise.
+                    arret = [x for x in jours_entre(du_, rep_ - timedelta(days=1))
+                             if any(c["type"] == "am_malade" and c["du"] <= x <= c["au"] for c in ctx.conges)]
+                    fin_k = ctx.fin if ctx.fin is not None and du_ <= ctx.fin < rep_ - timedelta(days=1) else None
+                    r = appel("decompte_jours_cp", du_, rep_, ctx.jours_travailles, region=ctx.region,
+                              jours_arret_maladie=arret, date_fin_contrat=fin_k)
                     res = {"jours_decomptes": r["resultat"]["jours_decomptes"]}
             except Refus as e:
                 if e.code == "A77-DECOMPTE-CP":

@@ -8,7 +8,8 @@ from .baremes import baremes_du_jour, minimum_horaire_brut, verifier_taux_horair
 from .mensualisation import (type_annee, semaines_programmees, mensualisation, heures_mensualisees,
                              verifier_date_effet_avenant)
 from .heures import temps_de_travail_jour, heures_en_plus_semaine, salaire_du_mois
-from .absences import (qualifier_absence, absence_enfant_malade, deduction_absence, prevu_du_mois,
+from .absences import (qualifier_absence, absence_enfant_malade, absences_enfant_malade_art105, absence_retenue_du_jour,
+                       deduction_absence, prevu_du_mois,
                        ferie_chome, ferie_travaille, ferie_local_travaille)
 from .conges import (acquisition_cp, jours_enfants_a_charge, jours_fractionnement, decompte_jours_cp,
                      indemnite_cp, complement_cp_annee_complete, paiement_cp_annee_incomplete,
