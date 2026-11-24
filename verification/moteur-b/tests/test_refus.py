@@ -176,9 +176,11 @@ class Refus(unittest.TestCase):
         self.refus(m.duree_preavis("employeur", date(2026, 1, 31), date(2026, 6, 5), date(2026, 6, 6)), "DATE-MOIS")
 
     def test_A_45(self):
-        # T-050b : l'ICCP entre dans l'assiette ; seul le preavis reste refuse (art. 64.2 non relu).
+        # T-103 (F4) : le preavis entre dans l'assiette (CCN 121.1 : seules les indemnites « non soumises a
+        # contributions et cotisations sociales » sont exclues ; CCN 64.2 : l'ICP y est « soumise »).
+        # A-45 reste pour une regularisation negative seulement.
         self.refus(m.indemnite_rupture("normal", "employeur", date(2025, 1, 5), date(2026, 6, 20), 800000,
-                                       indemnite_preavis_centimes=40000), "A-45")
+                                       regularisation_centimes=-1000), "A-45")
 
     def test_ASSIETTE_A_CONFIRMER(self):
         self.refus(m.indemnite_rupture("normal", "employeur", date(2025, 1, 5), date(2026, 6, 20), 800000,

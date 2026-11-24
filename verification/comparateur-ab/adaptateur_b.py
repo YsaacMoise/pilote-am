@@ -449,7 +449,10 @@ def _qualifier_jour(ctx, d):
     if ctx.dispense(d):
         # T-074 : jour paye comme s'il avait ete travaille (CCN 64.2, 66, 122 ; F16842), sans travail effectif : pas
         # d'entretien ni de repas (CCN 114.1, 114.2 ; CASF L423-18). Compte pour les CP et l'anciennete (CCN 64.2).
-        if j or ctx.conge(d):
+        # T-103 (H7) : une absence (de l'AM ou de l'enfant) pendant le preavis dispense ne reduit pas l'indemnite :
+        # CCN 64.2 (indemnite « jusqu'a la date prevue de fin du contrat », egale a la remuneration « correspondant a
+        # la duree du preavis »). Le jour reste « dispense ». Restent hors comparateur : CP, presence saisie.
+        if j.get("pres") or j.get("ferie_travaille") or ctx.conge(d) == "cp":
             raise Refus("HORS-COMPARATEUR", "qualifier_jour", {"motif": "evenement saisi un jour de preavis dispense"})
         if prevu == 0:
             return "hors", False, 0
@@ -490,10 +493,6 @@ def _qualifier_jour(ctx, d):
         # T-077 (R3.1) : B refuse (A77-FERIE-LOCAL) ; sinon le jour n'est pas un jour habituellement travaille.
         r = appel("ferie_chome", d, ctx.jours_travailles, jours_non_accueil=jna, region=ctx.region)
         return "hors", False, 0
-    if ctx.p2_52 and lundi(d) in ctx.sans_accueil:
-        # T-076, CDD point P2, lecture « 52 » : semaine sans accueil deduite (art. 111) ; qualification par B.
-        r = appel("qualifier_semaine_sans_accueil_cdd", "52")
-        return "absence", r["resultat"]["deductible"], 0
     if ctx.pv and est_ferie(d) and not (j.get("ferie_travaille") or j.get("pres")):
         # T-076 : ferie avec un planning variable, lecture F1 (R-PV-12) ; jours de travail lus sur le planning.
         jna = [x + timedelta(days=i) for x in ctx.sans_accueil for i in range(7)] if ctx.type == "incomplete" else []
@@ -918,23 +917,15 @@ def mois_b(ctx, m):
             r = appel("indemnite_entretien_mois", [jour_b(d, mt) for d, mt in js],
                       ctx.k["entretien_horaire"], a)
             return r["resultat"]["indemnite_centimes"]
-        # T-042c : tarif PAR JOUR au contrat. B n'a pas d'entree « par jour » (indemnite_entretien_mois ne prend qu'un
-        # montant horaire). Un jour qui dure exactement le planning vaut le tarif du jour sous toutes les lectures :
-        # B recoit le montant horaire tarif x 60 / duree prevue, qui redonne ce tarif sans choisir de lecture. Un jour
-        # d'une autre duree que le planning (heures en plus, jour hors planning) : B refuse visiblement
-        # (ENTRETIEN-TARIF-JOUR), sans convertir. Remplace la conversion de T-042 (V5, B-1).
-        jour = ctx.k.get("entretien_jour", 0)
-        autres = [str(d) for d, mt in js if mt != ctx.prevu(d)]
-        if autres:
-            raise Refus("ENTRETIEN-TARIF-JOUR", "indemnite_entretien_mois",
-                        {"motif": "tarif par jour, jour d'une autre duree que le planning : B n'a pas d'entree par jour",
-                         "jours": autres})
-        total = 0
-        for d, mt in js:
-            r = appel("indemnite_entretien_mois", [jour_b(d, mt)],
-                      f"{jour * 60}/{mt}", a)
-            total += r["resultat"]["indemnite_centimes"]
-        return total
+        # T-103 (M2, M3) : tarif PAR JOUR au contrat (contrat.entretien_jour, centimes par journee). B le recoit tel
+        # quel (montant_journalier_contrat_centimes) : du pour chaque journee de travail effectif, quelle que soit sa
+        # duree, jour hors planning compris ; minimum de 114.1 sur la duree de travail de l'art. 99. Remplace le refus
+        # ENTRETIEN-TARIF-JOUR de T-042c.
+        if not js:
+            return 0
+        r = appel("indemnite_entretien_mois", [jour_b(d, mt) for d, mt in js], None, a,
+                  montant_journalier_contrat_centimes=ctx.k.get("entretien_jour", 0))
+        return r["resultat"]["indemnite_centimes"]
 
     garde("entretien", entretien)
 
@@ -1273,8 +1264,6 @@ def fin_dispense_employeur(ctx, k, out, auteur, motif_b, env):
         icp_lectures = [total]
     except Refus as e:
         out["indemnite_preavis"] = e
-        if e.code == "P-1" and e.details.get("lectures_centimes"):
-            icp_lectures = list(e.details["lectures_centimes"])
         par_mois = None
     # Regularisation (annee incomplete), avant l'ICCP et l'indemnite de rupture (T-050b).
     try:
@@ -1505,9 +1494,18 @@ def fin_b(ctx, k):
     try:
         r = appel("duree_preavis", auteur, ctx.debut, env, pres, motif=motif_b)
         out["preavis"] = r["resultat"]["preavis"]
+        # T-103 (F1) : dernier jour du preavis (jour de la premiere presentation non compte) ; (F8) deces de
+        # l'enfant : dernier jour de la periode egale au preavis, comptee depuis le deces (date de fin du contrat).
+        if out["preavis"] is None:
+            out["date_fin_preavis"] = None
+        elif motif_b == "deces_enfant":
+            out["date_fin_preavis"] = appel("periode_indemnite_deces", env, out["preavis"])[  # env : date du deces
+                "resultat"]["dernier_jour"].isoformat()
+        else:
+            out["date_fin_preavis"] = r["resultat"]["date_fin_preavis"].isoformat()
     except Refus as e:
         out["preavis"] = e
-    out["date_fin_preavis"] = Refus("PREAVIS-DATE-FIN", "duree_preavis")
+        out["date_fin_preavis"] = e
     # La date de fin est un fait donne par la situation (dernier jour du contrat).
     fin = ctx.fin
     # T-042c (M11, T-045) : preavis non execute. B n'a pas de parametre d'inexecution ; son entree est la date de fin
@@ -1534,7 +1532,8 @@ def fin_b(ctx, k):
     # sans avoir besoin des salaires (non due, moins de 9 mois, A-47...), sa
     # reponse vaut ; sinon on lui donne les salaires du contrat.
     try:
-        essai = B.indemnite_rupture(motif_b, auteur, ctx.debut, env, 0)
+        # T-103 (F3) : 9 mois apprecies a la fin du contrat (CCN 60, 64.2) : date de fin donnee a B.
+        essai = B.indemnite_rupture(motif_b, auteur, ctx.debut, env, 0, date_fin_contrat=fin)
         if essai["statut"] == "non_gere":
             raise Refus(essai["code"], "indemnite_rupture", essai.get("details"))
         if essai["statut"] in ("ok", "provisoire") and essai["resultat"].get("raison"):
@@ -1577,7 +1576,7 @@ def fin_b(ctx, k):
         reg_brut = _brut_comme_a(reg_v, ctx, mf)
         iccp_brut = _brut_comme_a(iccp_v + reg_v, ctx, mf) - reg_brut
         r = appel("indemnite_rupture", motif_b, auteur, ctx.debut, env, sal, iccp_centimes=iccp_brut, icp_centimes=icp,
-                  regularisation_centimes=reg_brut, sommes_a_confirmer=a_confirmer)
+                  regularisation_centimes=reg_brut, sommes_a_confirmer=a_confirmer, date_fin_contrat=fin)
         out["indemnite_rupture"] = r["resultat"]["indemnite_centimes"]
         if k.get("comparer_assiette"):
             out["assiette_rupture"] = r["resultat"]["assiette_centimes"]
@@ -1663,14 +1662,6 @@ def cdd_p2(ctx):
     """Point P2 : CDD dont le contrat prevoit des semaines sans accueil (contrat saisi en 46 semaines ou moins)."""
     return ctx.type == "incomplete"
 
-def ctx_52(ctx):
-    """P2, lecture 2 : meme situation, formule 52 semaines (R-CDD-04), semaines sans accueil deduites (art. 111)."""
-    if "ctx52" not in ctx.cache:
-        c = Ctx(ctx.s)
-        c.type, c.semaines, c.p2_52 = "complete", 52, True
-        ctx.cache["ctx52"] = c
-    return ctx.cache["ctx52"]
-
 def _lect(v1, v2):
     for v in (v1, v2):
         if isinstance(v, Refus):
@@ -1702,24 +1693,14 @@ def mois_cdd(ctx, m):
             for n in ("salaire_base_mois", "deduction", "_reel_contrat"):
                 if isinstance(out[n], Refus):
                     raise out[n]
+            # T-103 (F11) : lecture 1 seule (CCN 108.1, 111 ; L1242-14) : salaire mensualise moins la deduction.
             r = appel("salaire_mois_cdd_moins_d_un_mois", mensualise(ctx), out["deduction"], ctx.taux,
                       out["_reel_contrat"])
-            l1, l2 = r["resultat"]["lectures"]
-            out["salaire_base_mois"] = _lect(l1, l2)
-            tot = out["salaire_mois_hors_cp"]
-            if not isinstance(tot, Refus):
-                plus = tot - l1  # heures en plus, payees dans les deux lectures
-                out["salaire_mois_hors_cp"] = _lect(l1 + plus, l2 + plus)
+            out["salaire_base_mois"] = r["resultat"]["valeur_centimes"]
         except Refus as e:
             for n in noms:
                 out[n] = e
-    elif cdd_p2(ctx):
-        o52 = mois_b(ctx_52(ctx), m)
-        for n in ("salaire_mensualise",) + noms:
-            try:
-                out[n] = _lect(out[n], o52[n])
-            except Refus as e:
-                out[n] = e
+    # T-103 (F12) : semaines sans accueil d'un CDD : mode 46 semaines seul (CCN 97.1, 109.2) ; plus de lecture 52.
     ctx.cache[key] = out
     return out
 
@@ -1749,15 +1730,8 @@ def fin_cdd_b(ctx, k):
             out[cle] = e
         return out
     mois_contrat = [m for m in mois_entre(ctx.debut, fin)]
-    if p1:
-        variantes = [(ctx, lambda m: mois_cdd(ctx, m)["salaire_mois_hors_cp"].lectures[0]),
-                     (ctx, lambda m: mois_cdd(ctx, m)["salaire_mois_hors_cp"].lectures[1])]
-    elif p2:
-        c52 = ctx_52(ctx)
-        variantes = [(ctx, lambda m: mois_b(ctx, m)["salaire_mois_hors_cp"]),
-                     (c52, lambda m: mois_b(c52, m)["salaire_mois_hors_cp"])]
-    else:
-        variantes = [(ctx, lambda m: mois_b(ctx, m)["salaire_mois_hors_cp"])]
+    # T-103 (F11, F12) : une seule lecture du salaire (mensualise ; mode 46 semaines).
+    variantes = [(ctx, lambda m: mois_cdd(ctx, m)["salaire_mois_hors_cp"])]
     res = []
     for cv, sal_mois in variantes:
         v = {}
@@ -1823,53 +1797,28 @@ def fin_cdd_b(ctx, k):
                 periodes.append(pj)
             if periodes:
                 periodes[-1]["regularisation_due_centimes"] = reg
+            # T-103 (F9, F10) : ICCP = plus haut du maintien et du dixieme ; IFC sans l'ICCP dans sa base.
+            v["ifc"] = ifc
             try:
-                r = appel("iccp_cdd", fc, periodes, ifc, brut, cv.hebdo, cv.taux)
-                lec = r["resultat"]["lectures"]
-                v["iccp"] = (r["resultat"]["iccp_centimes"], lec)
-                if lec is None:
-                    v["ifc"] = (ifc, None)  # P4 lecture 2 : ICCP la plus haute inconnue
-                else:
-                    r = appel("indemnite_fin_cdd", brut, fc, iccp_centimes=max(lec))
-                    v["ifc"] = (ifc, r["resultat"]["lectures"])
+                v["iccp"] = appel("iccp_cdd", fc, periodes, ifc, brut, cv.hebdo, cv.taux)["resultat"]["iccp_centimes"]
             except Refus as e:
                 v["iccp"] = e
-                v["ifc"] = (ifc, None)
         except Refus as e:
             v = {"refus": e}
         res.append(v)
 
-    def combine(nom):
-        for v in res:
-            if "refus" in v:
-                return v["refus"]
-            if isinstance(v[nom], Refus):
-                return v[nom]
-        sures = [v[nom][0] for v in res]
-        if any(v[nom][1] is None for v in res):
-            return Lect(min(sures), None)
-        tout = [x for v in res for x in v[nom][1]]
-        return Lect(min(tout), [min(tout), max(tout)])
-
-    out["ifc"] = combine("ifc")
-    out["iccp"] = combine("iccp")
-    for nom, cle in (("regularisation_fin", "reg"), ("assiette_ifc", "brut")):
-        if any("refus" in v for v in res):
-            out[nom] = next(v["refus"] for v in res if "refus" in v)
-        elif len(res) == 1:
-            out[nom] = res[0][cle]
-        else:
-            out[nom] = _lect(res[0][cle], res[1][cle])
+    v = res[0]
+    for nom, cle in (("ifc", "ifc"), ("iccp", "iccp"), ("regularisation_fin", "reg"), ("assiette_ifc", "brut")):
+        out[nom] = v["refus"] if "refus" in v else v[cle]
     out["salaire_dernier_mois"] = mois_cdd(ctx, mois_de(fin))["salaire_mois_hors_cp"]
-    if len(res) == 2:
-        # D11 (B1) : total sur = min(total lecture 1, total lecture 2) ; les mois ont verse leur part sure.
+    if p1 or p2:
+        # D11 : solde de fin = total - verse (une seule lecture depuis T-103, F11 et F12).
         try:
-            for v in res:
-                if "refus" in v:
-                    raise v["refus"]
+            if "refus" in v:
+                raise v["refus"]
             verse = sum(int(mois_cdd(ctx, m)["salaire_mois_hors_cp"]) for m in mois_contrat)
-            r = appel("solde_fin_cdd", [res[0]["total"], res[1]["total"]], verse, fc)
-            out["solde_fin_cdd"] = Lect(r["resultat"]["solde_centimes"], r["resultat"]["lectures"])
+            r = appel("solde_fin_cdd", [v["total"], v["total"]], verse, fc)
+            out["solde_fin_cdd"] = r["resultat"]["solde_centimes"]
         except Refus as e:
             out["solde_fin_cdd"] = e
     return out

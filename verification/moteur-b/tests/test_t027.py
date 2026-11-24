@@ -167,8 +167,11 @@ class Preavis(Base):
         self.assertEqual(r["preavis"], {"jours": 8})
 
     def test_demission_3_mois_a_1_an(self):
-        self.refus(m.duree_preavis("am", date(2026, 3, 2), date(2026, 7, 15), date(2026, 7, 16)),
-                   "PREAVIS-DEMISSION-3-12")
+        # T-103 (F2) : CASF L423-26 : un mois « a moins que l'employeur n'accepte d'abreger cette duree » ;
+        # CCN 120 : 15 jours calendaires ; C. trav. L2251-1 (par CASF L423-2, 6°) : plus favorable permis.
+        r = self.ok(m.duree_preavis("am", date(2026, 3, 2), date(2026, 7, 15), date(2026, 7, 16)))
+        self.assertEqual(r["preavis"], {"jours": 15})
+        self.assertEqual(r["date_fin_preavis"], date(2026, 7, 31))
 
     def test_demission_un_an(self):
         r = self.ok(m.duree_preavis("am", date(2025, 1, 5), date(2026, 6, 5), date(2026, 6, 6)))

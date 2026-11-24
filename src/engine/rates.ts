@@ -150,20 +150,20 @@ export function ratesConnus(d: ISODate): Rates {
  * être inférieure à 0,281 fois le montant du salaire minimum de croissance par enfant et par heure d'accueil ».
  * Annexe 5, art. 2 : la grille reste applicable « dès lors qu'elles sont au moins aussi favorables que les dispositions
  * légales et réglementaires relatives au salaire minimum statutaire ».
- * T-103 (D3) : D423-9 dit « ne peut être inférieure à » 0,281 × SMIC. Un taux en centimes plus bas que la valeur exacte lui
- * est inférieur : le minimum en centimes est la valeur exacte arrondie au centime supérieur (`certain`). `legal` : valeur
- * exacte, en centimes non arrondis.
+ * Aucun texte lu ne dit comment arrondir 0,281 × SMIC au centime. `certain` : le minimum arrondi au centime le plus
+ * proche (un taux plus bas est sous le minimum dans toute lecture). `doute` : le centime supérieur, quand il dépasse
+ * `certain` ; un taux entre les deux est « à confirmer ». `legal` : valeur exacte, en centimes non arrondis.
  */
-export interface MinimumBrut { certain: number; legal: number; conv: number; source: 'grille' | 'legal' }
+export interface MinimumBrut { certain: number; doute?: number; legal: number; conv: number; source: 'grille' | 'legal' }
 export function minimumBrut(d: ISODate, region: Region = 'metropole'): MinimumBrut | undefined {
   const r = ratesAt(d);
   if (!r) return undefined;
   // T-077 (R2) : CASF R544-2 XV, à Mayotte le minimum légal se calcule sur le « salaire minimum interprofessionnel en vigueur à Mayotte ».
   const smic = region === 'mayotte' ? smicMayotte(d) ?? r.smic : r.smic;
   const legal = (281 * smic) / 1000;
+  const certain = Math.max(r.minConvBrut, Math.round(legal));
   const haut = Math.ceil(legal - 1e-9);
-  const certain = Math.max(r.minConvBrut, haut);
-  return { certain, legal, conv: r.minConvBrut, source: haut > r.minConvBrut ? 'legal' : 'grille' };
+  return { certain, doute: haut > certain ? haut : undefined, legal, conv: r.minConvBrut, source: Math.round(legal) > r.minConvBrut ? 'legal' : 'grille' };
 }
 
 /** Libellé court du minimum brut, pour les écrans et les contrôles */
@@ -178,9 +178,9 @@ export const MINIMUM_SANS_TITRE = 'Ce minimum ne compte pas la majoration de 4 %
 export function libelleMinimumBrut(m: MinimumBrut): string {
   const exact = (m.legal / 100).toFixed(3).replace('.', ',');
   if (m.source === 'legal') {
-    return `${eurosCts(m.certain)} brut (minimum légal : 0,281 × SMIC = ${exact} €, arrondi au centime supérieur, au-dessus de la grille de la convention à ${eurosCts(m.conv)})`;
+    return `${eurosCts(m.certain)} brut (minimum légal : 0,281 × SMIC = ${exact} €, au-dessus de la grille de la convention à ${eurosCts(m.conv)})${m.doute ? `, ${eurosCts(m.doute)} si l’on arrondit au centime supérieur` : ''}`;
   }
-  return `${eurosCts(m.certain)} brut`;
+  return `${eurosCts(m.certain)} brut${m.doute ? ` (0,281 × SMIC = ${exact} € : ${eurosCts(m.doute)} si l’on arrondit au centime supérieur)` : ''}`;
 }
 function eurosCts(c: number): string {
   return `${(c / 100).toFixed(2).replace('.', ',')} €`;

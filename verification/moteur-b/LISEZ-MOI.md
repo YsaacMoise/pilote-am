@@ -255,3 +255,13 @@ Corrections après vérification (T-076, décisions D1 à D11 de regles/t076-dec
 - `heures_en_plus_semaine_planning_variable` : D1 (1er mai chômé compté ; autre jour payé non travaillé en deux lectures), D2 (refus PV-L2-ABSENCE-HC), D4 (base entière ou au prorata), `lectures_montant_complementaires`.
 - `iccp_planning_variable` (R-PV-13, P-PV-5 lecture C1) ; `indemnite_cp_planning_variable(..., jours_supplementaires)` : refus CP-SUPP.
 - `solde_fin_cdd` (D11, D8), `controle_dates_cdd` (D9), `verifier_cas_cdd` (D3) ; `iccp_cdd` : part sûre sur deux périodes (D10), CP-SUPP.
+
+## T-103 (24/11/2026) : règles du tableau validé par le DG
+
+Spécification : calculateur-arvela, rapports/T-103-inventaire.md (validé le 24/11/2026). Rapport : calculateur-arvela, rapports/T-103-moteur-b.md. Tests : `tests/test_t103.py`. Les sections plus haut restent l'historique ; en cas de conflit, cette section l'emporte.
+
+- M1 à M3 (entretien, `indemnites.py`) : durée du jour = temps de travail de l'art. 99 (`duree_travail_art99`) ; refus ENTRETIEN-DUREE-ACCUEIL-OU-TRAVAIL levé. `indemnite_entretien_mois(jours, None, d, montant_journalier_contrat_centimes=...)` : contrat « montant fixe par journée », dû par journée de travail effectif (jour hors planning compris), au moins le minimum de 114.1 sur la durée du travail.
+- F1, F8 (`fin_contrat.py`) : `date_fin_preavis(presentation, preavis)` (jour de présentation non compté ; même quantième ; dernier jour du mois sans même quantième ; pas de report) ; `duree_preavis` rend aussi `date_fin_preavis` ; `dates_fin_preavis_possibles` ne rend plus qu'une date ; `periode_indemnite_deces(date_deces, preavis)`. Refus PREAVIS-DATE-FIN et DATE-MOIS (préavis) levés.
+- F2 : démission de 3 mois à 1 an : 15 jours (refus PREAVIS-DEMISSION-3-12 levé). F3 : 9 mois appréciés à `date_fin_contrat` (refus D-1 levé). F4 : indemnité de préavis dans l'assiette du 1/80 (A-45 ne reste que pour une régularisation négative). F5 : mois mixte à la proportion de l'art. 111 (P-1 levé, sauf semaine sans accueil dans la dispense). F6 : régularisation en lecture (a) (D-2 levé). F7 : ICCP de la période précédente dans la base du dixième (A-50 levé pour elle) ; base du dixième avec l'ICP versée pendant la période (CCN 48.1.1.5), CASF L423-6 en plancher (A-28 seulement s'il dépasse).
+- F9 à F12 (`cdd.py`) : ICCP du CDD = plus haut du maintien et du dixième ; IFC sans l'ICCP ; CDD de moins d'un mois mensualisé ; mode 46 semaines. Les fonctions gardent leurs clés `lectures` (égales) pour les appels existants.
+- H7 (adaptateur) : absence pendant un préavis dispensé : jour toujours « dispensé ».
