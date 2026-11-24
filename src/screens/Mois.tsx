@@ -2,7 +2,7 @@ import { AVERTISSEMENT_CALCUL, PAJEMPLOI_PLUS_DATE, PAJEMPLOI_PLUS_RAPPEL } from
 import { useState } from 'preact/hooks';
 import { ctxFor, logUsage, toast, useStore, state } from '../store';
 import { addMonths, dayLabel, eachDay, firstDay, lastDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
-import { computeMonth, declarationLines, declarationText, totalAVerser } from '../engine/month';
+import { computeMonth, declarationLines, declarationText, moisEnCoursAu, totalAVerser } from '../engine/month';
 import { dayInfo, termsAt } from '../engine/payroll';
 import { euros, eurosArrondis, hoursLabel } from '../engine/money';
 import { MESSAGE_BAREMES_PROVISOIRES, baremesProvisoires } from '../engine/rates';
@@ -146,7 +146,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
         <span class="summary-label" id="tot">À verser par la famille {c.family ? `(${c.family})` : ''}</span>
         <span class="total">{euros(totalVerse)}</span>
         <span class="summary-sub">dont salaire net {euros(r.netTotal)}, soit {r.brut ? euros(r.brutEstime) : `environ ${eurosArrondis(r.brutEstime)}`} brut</span>
-        {current && <span class="summary-note">Provisoire jusqu’à la fin du mois</span>}
+        {current && moisEnCoursAu(ctx.today, month) && <span class="summary-note">Mois en cours : entretien et repas comptés jusqu’au {moisEnCoursAu(ctx.today, month)}</span>}
       </section>
 
       {baremesProvisoires(lastDay(month)) && <Banner tone="info">{MESSAGE_BAREMES_PROVISOIRES}</Banner>}
@@ -205,7 +205,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
             {r.cpIndemnite > 0 && (<><dt>Congés payés</dt><dd>{euros(r.cpIndemnite)}</dd></>)}
             {r.cpComplement > 0 && (<><dt>Complément congés</dt><dd>{euros(r.cpComplement)}</dd></>)}
             <dt>Salaire net</dt><dd>{euros(r.netTotal)}</dd>
-            <dt>Entretien ({r.presenceDays} j)</dt><dd>{euros(r.entretien)}{r.entretienAConfirmer ? ` + ${euros(r.entretienAConfirmer)} à confirmer` : ''}</dd>
+            <dt>Entretien ({r.presenceDays} j)</dt><dd>{euros(r.entretien)}</dd>
             {r.repas > 0 && (<><dt>Repas</dt><dd>{euros(r.repas)}</dd></>)}
             {r.km > 0 && (<><dt>Kilomètres</dt><dd>{euros(r.km)}</dd></>)}
           </dl>
@@ -219,9 +219,13 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
       </details>
 
       <div class="row">
-        <label for="other-day" class="label" style={{ flex: 1 }}>Corriger un autre jour</label>
-        <input id="other-day" class="input" style={{ width: 'auto' }} type="date" min={firstDay(month)} max={lastDay(month) < today() ? lastDay(month) : today()}
-          onChange={(e) => { const v = (e.target as HTMLInputElement).value; if (v) onEdit(v); (e.target as HTMLInputElement).value = ''; }} />
+        <span class="label" style={{ flex: 1 }}>Corriger un autre jour</span>
+        {/* T-103 (M5) : un champ date vide s'affiche sur iPhone comme un cadre blanc. Bouton visible, champ date transparent par-dessus. */}
+        <span class="btn btn-outline pick-day">
+          <Icon name="edit" size={18} />Choisir un jour
+          <input id="other-day" aria-label="Choisir un jour à corriger" type="date" min={firstDay(month)} max={lastDay(month) < today() ? lastDay(month) : today()}
+            onChange={(e) => { const v = (e.target as HTMLInputElement).value; if (v) onEdit(v); (e.target as HTMLInputElement).value = ''; }} />
+        </span>
       </div>
       <section class="stack-sm" aria-labelledby="exc-t">
         <h2 id="exc-t" class="section-title">Ce qui a changé ce mois-ci</h2>

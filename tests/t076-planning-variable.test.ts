@@ -10,7 +10,7 @@ import { finDeContrat } from '../src/engine/fin';
 import { nonGeresContrat } from '../src/engine/nonGeres';
 import { lecturePV, pvActif } from '../src/engine/planningVariable';
 import { NON_GERE_CDD_PV_P2 } from '../src/engine/cdd';
-import { toutesSemainesSansAccueil, MESSAGE_MOIS_DEJA_DECLARE } from '../src/engine/payroll';
+import { toutesSemainesSansAccueil } from '../src/engine/payroll';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
   const p: Planning = {};
@@ -227,7 +227,7 @@ describe('T-076 : absences, congés, fériés, indemnités (R-PV-08 à R-PV-12)'
     expect(b.entretien).toBe(14800);
     expect(b.repas).toBe(6000);
   });
-  it('R-PV-10 / P-PV-5 : maintien C1 et C2, part sûre payée, écart à confirmer (52 semaines)', () => {
+  it('R-PV-10 / P-PV-5, revu par la T-103 (C13) : maintien C1 seul, sans part à confirmer (52 semaines)', () => {
     const c = s1({ start: '2026-06-01', trackedFrom: '2026-06-01', cycleAncre: '2026-06-01' });
     // Congés pris l'été 2027, cinq semaines A du lundi au samedi (6 jours ouvrables chacune, sans férié) = 30 jours.
     const leaves: AmLeave[] = ['2027-06-14', '2027-06-28', '2027-07-26', '2027-08-09', '2027-08-23'].map((l, i) => {
@@ -246,17 +246,17 @@ describe('T-076 : absences, congés, fériés, indemnités (R-PV-08 à R-PV-12)'
     expect(ind.pv?.c1).toBe(65167);
     expect(ind.pv?.c2).toBe(90000);
     expect(ind.pv?.c2Complet).toBe(true);
-    // Part sûre = max(675,98 ; min(651,67 ; 900)) = 675,98 € ; à confirmer = max(675,98 ; 900) − 675,98 = 224,02 €.
+    // T-103 (C13) : une seule méthode, C1 (durée habituelle sur la période, Cass. soc. 09/05/2019) : max(675,98 ; 651,67).
     expect(ind.montant).toBe(67598);
-    expect(ind.pv?.aConfirmer).toBe(22402);
+    expect(ind.pv?.aConfirmer).toBe(0);
     // Juin 2027 : maintien déjà versé par le salaire = 5 semaines × (140,83 × 60 × 12 ÷ 52 = 1 949,9538 min) × 4,00 €
-    // = 649,98 € ; complément sûr = 675,98 − 649,98 = 26,00 € ; à confirmer = (900,00 − 649,98) − 26,00 = 224,02 €.
+    // = 649,98 € ; complément = 675,98 − 649,98 = 26,00 €, sans part à confirmer.
     const juin = cpForMonth(ctx, '2027-06');
     expect(juin.complement).toBe(2600);
-    expect(juin.maintienAConfirmer).toBe(22402);
+    expect(juin.maintienAConfirmer ?? 0).toBe(0);
     const r = computeMonth(ctx, '2027-06');
-    expect(r.cpMaintienAConfirmer).toBe(22402);
-    expect(declarationLines(ctx, r).find((l) => l.label === 'Salaire net')?.value).toMatch(/224,02\s€ de congés à confirmer/);
+    expect(r.cpMaintienAConfirmer ?? 0).toBe(0);
+    expect(declarationLines(ctx, r).find((l) => l.label === 'Salaire net')?.value).not.toMatch(/à confirmer/);
   });
 });
 
@@ -343,20 +343,13 @@ describe('T-076 : corrections après vérification (décisions D1 à D6)', () =>
     // Entrée en cours de mois (52 semaines, heures) : 520,00 € × (158 − 18) ÷ 158 = 460,76 €.
     expect(b.base).toBe(46076);
   });
-  it('D5 : mois passé avec une part de congés à confirmer : message du mois déjà déclaré', () => {
+  it('D5, revu par la T-103 : plus de part de congés à confirmer, donc pas de message « mois déjà déclaré » pour elle', () => {
     const c = s1({ start: '2026-06-01', trackedFrom: '2026-06-01', cycleAncre: '2026-06-01' });
     const ctx = makeCtx(c, [], [], '2027-12-31');
-    // Aucun congé saisi : C2 inconnu (0 jour sur 30) ; part sûre = dixième, écart à confirmer = max(dixième ; C1) − dixième.
-    const r = computeMonth(ctx, '2027-06');
-    if (r.cpMaintienAConfirmer) expect(r.alerts).toContain(MESSAGE_MOIS_DEJA_DECLARE);
-    else expect(cpForMonth(ctx, '2027-06').maintienAConfirmer ?? 0).toBe(0);
-    // Avec les congés de l'été 2027 (cas R-PV-10) : écart 224,02 €, mois de juin passé → message.
-    const leaves: AmLeave[] = ['2027-06-14', '2027-06-28', '2027-07-26', '2027-08-09', '2027-08-23'].map((l, i) => {
-      const d = new Date(`${l}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 5);
-      return { id: `cp${i}`, type: 'cp', from: l, to: d.toISOString().slice(0, 10) };
-    });
-    expect(computeMonth(makeCtx(c, [], leaves, '2027-12-31'), '2027-06').alerts).toContain(MESSAGE_MOIS_DEJA_DECLARE);
+    expect(computeMonth(ctx, '2027-06').cpMaintienAConfirmer ?? 0).toBe(0);
+    expect(cpForMonth(ctx, '2027-06').maintienAConfirmer ?? 0).toBe(0);
   });
+
   it('D6 : planning remis, année incomplète : semaine sans accueil du contrat sans planning à saisir ; « sans accueil » = semaine sans accueil', () => {
     const ps: Record<string, Planning> = {};
     for (const l of ['2026-01-26', '2026-02-02', '2026-02-09', '2026-02-23']) ps[l] = week('08:00', '14:00');

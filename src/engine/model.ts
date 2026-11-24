@@ -28,6 +28,11 @@ export interface StartBalances {
   cpEnCours: number;
   /** Jours d'enfant malade (avec certificat) déjà déduits sur l'année de contrat en cours */
   maladieDeduits: number;
+  /**
+   * T-103 (C5) : ces jours déjà déduits venaient-ils de l'absence de 14 jours calendaires (vrai) ou d'absences courtes
+   * (faux) ? CCN 105. Demandé une fois, seulement si le calcul en dépend.
+   */
+  maladieDeduitsLongue?: boolean;
 }
 
 /** Conditions du contrat qu'un avenant peut changer */
@@ -202,6 +207,11 @@ export interface Contract {
   cddMotif?: 'remplacement' | 'autre';
   /** Date à partir de laquelle l'app suit le contrat (avant : historique) */
   trackedFrom: ISODate;
+  /**
+   * T-103 (C8) : jour de repos hebdomadaire (1 = lundi … 7 = dimanche), CCN 46 (« prévue par le contrat de travail »).
+   * Demandé seulement si le planning prévoit le dimanche : il sert au décompte des jours ouvrables (CCN 48, liminaire).
+   */
+  reposHebdo?: number;
   balances: StartBalances;
   history: HistoryMonth[];
   createdAt: number;
@@ -252,6 +262,12 @@ export interface DayRec {
    * art. 113). Sert seulement au partage, quand plusieurs familles ont demandé le trajet.
    */
   kmEnfants?: number;
+  /**
+   * T-103 (C3) : enfant malade (abs = 'malade_certif') : premier et dernier jour couverts par le certificat médical ou le
+   * bulletin d'hospitalisation (CCN 105 compte « 14 jours calendaires consécutifs »). Demandés à la saisie.
+   */
+  certifDu?: ISODate;
+  certifAu?: ISODate;
 }
 
 /**
@@ -281,6 +297,12 @@ export interface AmLeave {
    * de la raison. Absent : événement à part.
    */
   suiteDe?: string;
+  /**
+   * T-103 (C9) : congé indemnisé par la Sécurité sociale (congé de deuil, CCN 48.1.3.1.2 et 48.1.3.1.3) : montant net des
+   * indemnités journalières de la CPAM pour ce
+   * congé, en centimes. Le salaire est maintenu « sous déduction des indemnités journalières versées ». Demandé à la saisie.
+   */
+  ijSecu?: number;
 }
 
 export interface Settings {

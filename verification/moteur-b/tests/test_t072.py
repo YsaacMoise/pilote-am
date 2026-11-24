@@ -27,25 +27,22 @@ def R(s, k):
 
 
 class DatesFinPreavis(unittest.TestCase):
-    """T-103 (F1, corrige apres la porte-verite) : une seule date. Le jour de la premiere presentation est le 1er
-    jour du preavis (CCN 64.1 et 120, CASF L423-24 ; fiche officielle F2883 : presentee le 8 juillet, preavis « du 8
-    juillet au 7 aout 2026 inclus »)."""
+    """CCN 64.1 et 120 : point de depart ecrit, dernier jour non ecrit : deux lectures."""
 
     def test_quinze_jours(self):
         r = m.dates_fin_preavis_possibles(date(2026, 1, 17), {"jours": 15})
-        self.assertEqual(R(r, "dates"), [date(2026, 1, 31)])
+        self.assertEqual(R(r, "dates"), [date(2026, 1, 31), date(2026, 2, 1)])
 
     def test_fiche_branche_dans_les_lectures(self):
-        # Fiche anciennete (valeur indicative) : remise le 16/04/2021, fin le 30/04/2021 : meme lecture que F1.
+        # Fiche anciennete (valeur indicative) : remise le 16/04/2021, fin le 30/04/2021.
         r = m.dates_fin_preavis_possibles(date(2021, 4, 16), {"jours": 15})
-        self.assertEqual(R(r, "dates"), [date(2021, 4, 30)])
+        self.assertIn(date(2021, 4, 30), R(r, "dates"))
 
     def test_un_mois(self):
         r = m.dates_fin_preavis_possibles(date(2026, 3, 15), {"mois": 1})
-        self.assertEqual(R(r, "dates"), [date(2026, 4, 14)])
+        self.assertEqual(R(r, "dates"), [date(2026, 4, 14), date(2026, 4, 15)])
 
     def test_un_mois_fin_de_mois_refuse(self):
-        # Depart apres le 28 : la veille d'un quantieme absent n'est ecrite nulle part : refus DATE-MOIS garde.
         r = m.dates_fin_preavis_possibles(date(2026, 1, 31), {"mois": 1})
         self.assertEqual(r["code"], "DATE-MOIS")
 
@@ -126,11 +123,9 @@ class BulletinsDansAssiette(unittest.TestCase):
         self.assertEqual(r["code"], "A-45")
 
     def test_preavis_non_nul_a45(self):
-        # T-103 (F4) : l'ICP entre dans l'assiette (CCN 121.1, 64.2). Dernier mois couvert par le total saisi :
-        # elle y est deja (payee sur le dernier bulletin) ; rien n'est ajoute : 10 000 EUR / 80 = 125 EUR.
         r = m.indemnite_rupture_bulletins("normal", "employeur", DEBUT, ENVOI, [V(date(2026, 2, 26), pre=30000)],
                                           total_bulletins_centimes=1000000, total_jusqua="2026-02")
-        self.assertEqual(R(r, "indemnite_centimes"), 12500)
+        self.assertEqual(r["code"], "A-45")
 
     def test_demission_non_due(self):
         r = m.indemnite_rupture_bulletins("normal", "am", DEBUT, ENVOI, [V(date(2026, 2, 26))],

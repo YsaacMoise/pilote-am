@@ -4,7 +4,7 @@ import { holidayName } from './holidays';
 import { ferieLocal, regionDe } from './regions';
 import { euros } from './money';
 import {
-  H45, absencesL2NonGerees, daysPerWeek, messageAbsenceL2, inContract, libelleSalaireAConfirmer, makeCtx, monthBase, plannedPlages, planningBrutMin, salaireMensualise, semainesSansAccueilAnnee, termsAt,
+  H45, absencesL2NonGerees, messageAbsenceL2, inContract, libelleSalaireAConfirmer, makeCtx, monthBase, plannedPlages, planningBrutMin, semainesSansAccueilAnnee, termsAt,
   toutesSemainesSansAccueil, weeklyMinutes, weeksPerYear, type Ctx,
 } from './payroll';
 import type { AmLeave, Contract } from './model';
@@ -280,34 +280,49 @@ function round(x: number): number {
 export const CP_MALADIE_PAR_4_SEMAINES = 2;
 export const CP_MALADIE_PLAFOND = 24;
 
-/** Semaines d'arrêt maladie de l'AM (« je suis malade ») comprises dans [from, to], comptées comme `weeksIn` */
-function semainesMaladie(ctx: Ctx, from: ISODate, to: ISODate): number {
-  const jours = new Set<ISODate>();
-  for (const l of ctx.leaves) {
-    if (l.type !== 'am_malade') continue;
-    const a = l.from > from ? l.from : from;
-    const b = l.to < to ? l.to : to;
-    if (b < a) continue;
-    for (const d of eachDay(a, b)) jours.add(d);
-  }
-  if (!jours.size) return 0;
-  // Regroupe les jours en intervalles continus, puis les compte comme le reste du contrat
-  const tri = [...jours].sort();
-  let total = 0, debut = tri[0], prec = tri[0];
-  for (const d of tri.slice(1)) {
-    if (d === addDays(prec, 1)) { prec = d; continue; }
-    total += weeksIn(ctx, debut, prec);
-    debut = prec = d;
-  }
-  return total + weeksIn(ctx, debut, prec);
-}
 
-/** Jours bruts acquis sur [from, to] : 2,5 jours par 4 semaines travaillées, 2 par 4 semaines d'arrêt maladie (24 au plus) */
-function joursBruts(ctx: Ctx, from: ISODate, to: ISODate): number {
-  const semaines = weeksIn(ctx, from, to);
-  const malade = Math.min(semaines, semainesMaladie(ctx, from, to));
-  const auTitreMaladie = Math.min(CP_MALADIE_PLAFOND, (malade / 4) * CP_MALADIE_PAR_4_SEMAINES);
-  return ((semaines - malade) / 4) * 2.5 + auTitreMaladie;
+
+/**
+ * T-103 (C10, C11 ; décision du DG du 24/11/2026). Jours acquis sur [from, to], une seule méthode :
+ * - Cass. soc. 10/01/1980, n° 78-41.140, publié : « retenir d'abord le nombre des mois complets de travail, puis celui des
+ *   semaines supplémentaires groupées par quatre et enfin celui des jours restants groupés par vingt-quatre » ;
+ * - CCN 48.1.1.2 : « 2,5 jours ouvrables […] à l'issue de chaque mois de travail ou de chaque période équivalente » (C. trav.
+ *   L3141-4 : « quatre semaines ou vingt-quatre jours de travail »), calcul « pro rata temporis, en cas d'embauche, de départ ou
+ *   d'absence non assimilée » : ce qui reste après les mois complets compte au prorata (jours calendaires de travail ÷ 28,
+ *   soit 4 semaines), au lieu d'être perdu ;
+ * - mois de travail : mois civil entier de la période, sans jour hors travail. Semaine sans accueil de l'année incomplète :
+ *   hors travail (ni travail effectif ni assimilée, L3141-5), sauf les congés payés qui y sont pris (assimilés, 6 jours
+ *   ouvrables = 1 semaine) ;
+ * - arrêt maladie non professionnel : 2 jours ouvrables par mois (mois entier d'arrêt, ou au prorata), 24 au plus
+ *   (L3141-5-1, applicable par CASF L423-2, 11°).
+ * Le total est arrondi au jour supérieur par `round` (CCN 48.1.1.2, L3141-7).
+ */
+function joursAcquis(ctx: Ctx, from: ISODate, to: ISODate): number {
+  const { c } = ctx;
+  const a = from < c.start ? c.start : from;
+  const b = c.end && c.end < to ? c.end : to;
+  if (b < a) return 0;
+  const off = toutesSemainesSansAccueil(c);
+  const malade = new Set<ISODate>();
+  for (const l of ctx.leaves) if (l.type === 'am_malade') for (const d of eachDay(l.from > a ? l.from : a, l.to < b ? l.to : b)) malade.add(d);
+  const sorte = (d: ISODate): 'travail' | 'maladie' | 'hors' => {
+    if (malade.has(d)) return 'maladie';
+    return termsAt(c, d).yearType === 'incomplete' && off.has(mondayOf(d)) ? 'hors' : 'travail';
+  };
+  let mois = 0, moisMaladie = 0, resteTravail = 0, resteMaladie = 0;
+  for (const m of monthsBetween(monthOf(a), monthOf(b))) {
+    const premier = `${m}-01`, dernier = lastOf(m);
+    const jours = eachDay(premier > a ? premier : a, dernier < b ? dernier : b).map(sorte);
+    const entier = premier >= a && dernier <= b;
+    if (entier && jours.every((k) => k === 'travail')) { mois++; continue; }
+    if (entier && jours.every((k) => k === 'maladie')) { moisMaladie++; continue; }
+    for (const k of jours) { if (k === 'travail') resteTravail++; else if (k === 'maladie') resteMaladie++; }
+  }
+  // Congés payés pris pendant des semaines sans accueil (année incomplète, semaines toutes saisies) : assimilés.
+  const cpHors = off.size && semainesSaisiesCP(c, a, b) ? cpAssimiles(ctx, a, b, off) : 0;
+  const periodes = mois + (resteTravail / 7 + cpHors / 6) / 4;
+  const maladie = Math.min(CP_MALADIE_PLAFOND, (moisMaladie + resteMaladie / 28) * CP_MALADIE_PAR_4_SEMAINES);
+  return periodes * 2.5 + maladie;
 }
 
 /**
@@ -346,93 +361,6 @@ function touchesIncomplete(c: Contract, a: ISODate, b: ISODate): boolean {
   return bornes.some((d) => termsAt(c, d).yearType === 'incomplete');
 }
 
-/**
- * Les deux lectures officielles de l'acquisition en année incomplète (SUS-11), sans en choisir une :
- * - semaines et jours d'accueil (Urssaf « gestion des congés payés », deux formules : semaines × 2,5 ÷ 4, et
- *   [(semaines × jours par semaine) + jours en plus] × 2,5 ÷ (4 × jours par semaine) ; S-BERTRAND et S-OCC : cas C-CPA-04,
- *   C-CPA-05, C-CPA-07, C-CPA-10). La lecture affichée compte les jours d'accueil réels (seconde formule ; C-CPA-04 : 155
- *   jours, 20 ; C-CPA-05 : 58 jours, 8 retenus). La formule en semaines peut donner un autre nombre (C-CPA-05 : 7), et le
- *   comptage d'une semaine partielle n'est pas le même d'un exemple à l'autre (C-CPA-04 la compte comme une semaine,
- *   C-CPA-05 en jours) : elle sert seulement de contrôle (`controles`), un nombre n'est sûr que si tout concorde ;
- * - mois d'accueil (S-BFC fiche 04-III : 2,5 jours par mois, « seuls les mois totalement non travaillés » n'ouvrent pas
- *   droit ; cas C-CPA-12).
- * Les congés payés pris pendant les semaines sans accueil comptent comme travail (C-CPA-05 : « 11 semaines (dont les
- * 2 semaines de congés payés pris … au mois d'août) et 3 jours »). Calculées seulement quand l'app a toutes les données.
- */
-function lecturesAnneeIncomplete(ctx: Ctx, y: number, enfants: number, moins21: boolean): { lectures: LectureCP[]; controles?: number[]; raison?: string } {
-  const { c } = ctx;
-  const p = cpPeriod(y);
-  const a = c.start > p.from ? c.start : p.from;
-  const b = c.end && c.end < p.to ? c.end : p.to;
-  if (b < a) return { lectures: [] };
-  if ((c.avenants ?? []).some((x) => x.from > a && x.from <= b) || termsAt(c, a).yearType !== 'incomplete') {
-    return { lectures: [], raison: 'un avenant change le contrat pendant la période' };
-  }
-  if (c.trackedFrom > a) return { lectures: [], raison: 'le suivi par l’app a commencé après le début de la période' };
-  const planningType = (d: ISODate) => planningBrutMin(termsAt(c, d), d) > 0;
-  // T-038 (point 10, G-6) : un jour de l'enfant noté « sans solde » n'est plus retenu depuis T-035b (CCN art. 105 al. 1 :
-  // « les temps d'absence non prévus sont rémunérés ») : il est payé comme une absence voulue par les parents, qui ne change
-  // pas ce calcul (les jours comptés sont ceux du planning). Le refus qui le visait n'a plus d'objet.
-  const absence = ctx.leaves.some((l) => l.type !== 'cp' && l.from <= b && l.to >= a
-    && eachDay(l.from > a ? l.from : a, l.to < b ? l.to : b).some(planningType));
-  if (absence) return { lectures: [], raison: 'une absence (maladie, congé sans solde…) change le calcul' };
-  // Semaines sans accueil : toutes celles des années de contrat comprises dans le contrat et qui touchent la période.
-  for (let i = 0; ; i++) {
-    const debut = addMonthsToDate(c.start, 12 * i);
-    if (debut > b) break;
-    const finAnnee = addDays(addMonthsToDate(c.start, 12 * (i + 1)), -1);
-    if (finAnnee < a || (c.end && c.end < finAnnee)) continue;
-    const { attendu, saisies } = semainesSansAccueilAnnee(c, debut);
-    if (saisies < attendu) return { lectures: [], raison: 'il manque des semaines sans accueil dans le contrat' };
-  }
-  const off = toutesSemainesSansAccueil(c);
-  const cpJours = new Set<ISODate>();
-  for (const l of ctx.leaves) if (l.type === 'cp') for (const d of eachDay(l.from, l.to)) cpJours.add(d);
-  const upTo = ctx.today < b ? ctx.today : b;
-  let jours = 0, joursAD = 0;
-  const mois = new Set<Month>(), moisAD = new Set<Month>();
-  const entieres = new Set<ISODate>(), touchees = new Set<ISODate>();
-  for (const d of eachDay(a, b)) {
-    const accueil = plannedPlages(c, d).length > 0;
-    const cpHorsAccueil = !accueil && planningType(d) && off.has(mondayOf(d)) && cpJours.has(d);
-    if (!accueil && !cpHorsAccueil) continue;
-    jours++; mois.add(monthOf(d));
-    const lundi = mondayOf(d);
-    touchees.add(lundi);
-    if (lundi >= a && addDays(lundi, 6) <= b) entieres.add(lundi);
-    if (d <= upTo) { joursAD++; moisAD.add(monthOf(d)); }
-  }
-  // T-076 : planning variable, le nombre de jours d'accueil par semaine change : la formule en semaines et jours
-  // (jours ÷ jours par semaine) n'a pas de diviseur unique. Aucune source ne le tranche : rien n'est calculé.
-  if (pvActif(termsAt(c, a))) return { lectures: [], raison: 'tes horaires changent d’une semaine à l’autre, et la formule en semaines et jours d’accueil a besoin d’un nombre de jours par semaine fixe' };
-  const jps = daysPerWeek(termsAt(c, a).planning);
-  if (!jps) return { lectures: [] };
-  const lecture = (methode: LectureCP['methode'], brut: number, brutAD: number): LectureCP => {
-    const base = round(brut);
-    const bonus = joursEnfants(base, enfants, moins21);
-    const info = methode === 'semaines' ? LECTURE_SEMAINES : LECTURE_MOIS;
-    return { methode, ...info, jours: base + bonus, joursADate: round(Math.max(0, brutAD)), enfantsBonus: bonus };
-  };
-  const enSemaines = (n: number) => { const base = round((n * 2.5) / 4); return base + joursEnfants(base, enfants, moins21); };
-  return {
-    lectures: [
-      lecture('semaines', (jours * 2.5) / (4 * jps), (joursAD * 2.5) / (4 * jps)),
-      lecture('mois', mois.size * 2.5, moisAD.size * 2.5),
-    ],
-    controles: [enSemaines(entieres.size), enSemaines(touchees.size)],
-  };
-}
-
-function messageAcquisition(lectures: LectureCP[], raison?: string): string {
-  const debut = 'Année incomplète : tes jours de congés sont à confirmer. Deux lectures officielles existent';
-  const fin = 'En attendant une réponse officielle, mets-toi d’accord par écrit avec les parents.';
-  if (lectures.length === 2) {
-    const [s, m] = lectures;
-    return `${debut} : ${s.jours} jours ${s.libelle} (${s.source}), ou ${m.jours} jours ${m.libelle} (${m.source}). ${fin}`;
-  }
-  return `${debut} : ${LECTURE_SEMAINES.libelle} (${LECTURE_SEMAINES.source}), ou ${LECTURE_MOIS.libelle} (${LECTURE_MOIS.source}).`
-    + (raison ? ` L’app ne peut pas les calculer ici : ${raison}.` : '') + ` ${fin}`;
-}
 
 // ---------- Année complète : mois ou périodes de 4 semaines (A-23, T-030) ----------
 // CCN 48.1.1.2 : « 2,5 jours ouvrables de congés payés à l'issue de chaque mois de travail ou de chaque période
@@ -453,56 +381,6 @@ export const LECTURE_MOIS_52 = {
   source: 'DREETS Bourgogne-Franche-Comté, guide des assistantes maternelles',
 };
 
-function messageAcquisition52(lectures: LectureCP[]): string {
-  const [s, m] = lectures;
-  return `Tes jours de congés de cette période sont à confirmer. Les fiches officielles ne comptent pas de la même façon : ${s.jours} jours ${s.libelle} (${s.source}), ou ${m.jours} jours ${m.libelle} (${m.source}). `
-    + 'Aucun texte ne dit laquelle retenir. En attendant une réponse officielle, mets-toi d’accord par écrit avec les parents.';
-}
-
-/**
- * Lectures de l'acquisition en année complète (A-23). Chaque lecture retient le plus favorable de deux modes :
- * - mois : 2,5 jours par mois civil entier de travail, 2 par mois civil entier d'arrêt maladie (24 au plus, L3141-5-1).
- *   Un mois commencé (embauche, fin, arrêt en cours de mois) n'a pas de règle écrite : borne basse (non compté, ou compté
- *   en maladie s'il a de l'arrêt) et borne haute (compté en travail) ;
- * - semaines : `brut` (semaines avec leurs fractions, calcul de base) pour la lecture Occitanie ; périodes entières de
- *   4 semaines pour la lecture Bourgogne-Franche-Comté.
- * `lectures` : bornes basses ; `controles` : bornes hautes. Rien à confirmer si tout donne le même nombre.
- */
-function lecturesAnneeComplete(ctx: Ctx, a: ISODate, b: ISODate, upTo: ISODate, brut: number, brutAD: number,
-  enfants: number, moins21: boolean): { lectures: LectureCP[]; controles: number[] } {
-  const maladie = new Set<ISODate>();
-  for (const l of ctx.leaves) if (l.type === 'am_malade') for (const d of eachDay(l.from > a ? l.from : a, l.to < b ? l.to : b)) maladie.add(d);
-  let bas = 0, haut = 0, malBas = 0, malHaut = 0, basAD = 0, malAD = 0;
-  for (const m of monthsBetween(monthOf(a), monthOf(b))) {
-    const premier = `${m}-01`, dernier = lastOf(m);
-    const entier = a <= premier && b >= dernier;
-    const jours = eachDay(premier > a ? premier : a, dernier < b ? dernier : b);
-    const nMal = jours.filter((d) => maladie.has(d)).length;
-    const nTot = eachDay(premier, dernier).length;
-    if (entier && nMal === 0) { bas++; haut++; if (dernier <= upTo) basAD++; continue; }
-    if (entier && nMal === nTot) { malBas++; malHaut++; if (dernier <= upTo) malAD++; continue; }
-    if (nMal > 0) malBas++;
-    haut++;
-  }
-  const mois = (n: number, mal: number) => n * 2.5 + Math.min(CP_MALADIE_PLAFOND, mal * CP_MALADIE_PAR_4_SEMAINES);
-  const semaines = weeksIn(ctx, a, b);
-  const mal = Math.min(semaines, semainesMaladie(ctx, a, b));
-  const periodes = Math.floor((semaines - mal) / 4 + 1e-9) * 2.5 + Math.min(CP_MALADIE_PLAFOND, Math.floor(mal / 4 + 1e-9) * CP_MALADIE_PAR_4_SEMAINES);
-  const avecEnfants = (x: number) => { const n = round(x); return n + joursEnfants(n, enfants, moins21); };
-  const lect = (info: { libelle: string; source: string }, methode: LectureCP['methode'], x: number, xAD: number): LectureCP => {
-    const n = round(x);
-    const bonus = joursEnfants(n, enfants, moins21);
-    return { methode, ...info, jours: n + bonus, joursADate: round(Math.max(0, xAD)), enfantsBonus: bonus };
-  };
-  const moisAD = mois(basAD, malAD);
-  return {
-    lectures: [
-      lect(LECTURE_SEMAINES_52, 'semaines', Math.max(brut, mois(bas, malBas)), Math.max(brutAD, moisAD)),
-      lect(LECTURE_MOIS_52, 'mois', Math.max(periodes, mois(bas, malBas)), moisAD),
-    ],
-    controles: [avecEnfants(Math.max(brut, mois(haut, malHaut))), avecEnfants(Math.max(periodes, mois(haut, malHaut)))],
-  };
-}
 
 /** Acquisition pour la période de référence commençant le 1er juin `y` */
 export function acquisition(ctx: Ctx, y: number, enfantsAChargeSaisis = 0): Acquisition {
@@ -511,19 +389,20 @@ export function acquisition(ctx: Ctx, y: number, enfantsAChargeSaisis = 0): Acqu
     const p = cpPeriod(y);
     // T-030 (C-CPA-03) : CCN 48.1.3.3, « Le droit aux jours de congés pour enfant(s) à charge est déterminé et acquis à
     // l'issue de la période de référence (…) soit au 31 mai de chaque année ». Une période arrêtée avant le 31 mai (fin
-    // du contrat) n'ouvre pas ces jours. S-DURAND p. 8 : « Pas de jours enfant à charge » pour juin-septembre 2022.
+    // du contrat) n'ouvre pas ces jours.
     const enfantsACharge = c.end && c.end < p.to ? 0 : enfantsAChargeSaisis;
     const trackedY = cpPeriodStartYear(c.trackedFrom);
     let raw: number, rawADate: number, semaines: number;
     const upTo = ctx.today < p.to ? ctx.today : p.to;
     if (y === trackedY && c.trackedFrom > c.start) {
+      // Suivi commencé en cours de période : le solde saisi par l'AM (`cpEnCours`, donnée B) plus les jours suivis.
       semaines = weeksIn(ctx, c.trackedFrom, p.to);
-      raw = c.balances.cpEnCours + joursBruts(ctx, c.trackedFrom, p.to);
-      rawADate = c.balances.cpEnCours + joursBruts(ctx, c.trackedFrom, upTo);
+      raw = c.balances.cpEnCours + joursAcquis(ctx, c.trackedFrom, p.to);
+      rawADate = c.balances.cpEnCours + joursAcquis(ctx, c.trackedFrom, upTo);
     } else {
       semaines = weeksIn(ctx, p.from, p.to);
-      raw = joursBruts(ctx, p.from, p.to);
-      rawADate = joursBruts(ctx, p.from, upTo);
+      raw = joursAcquis(ctx, p.from, p.to);
+      rawADate = joursAcquis(ctx, p.from, upTo);
     }
     const moins21 = moinsDe21Ans(ctx.amMoins21Jusqu, y);
     const base = round(raw);
@@ -532,56 +411,44 @@ export function acquisition(ctx: Ctx, y: number, enfantsAChargeSaisis = 0): Acqu
       startYear: y, from: p.from, to: p.to, jours: base + bonus, joursADate: round(Math.max(0, rawADate)),
       semaines, enfantsBonus: bonus,
     };
-    // Année incomplète (SUS-11, T-019) : la méthode d'acquisition n'est pas tranchée. L'app ne choisit pas : elle donne
-    // les deux lectures officielles. Si elles donnent le même nombre, ce nombre est sûr.
+    // T-103 (B) : année incomplète sans toutes les semaines sans accueil au contrat : l'app ne peut pas compter les jours de
+    // travail. Donnée demandée (contrat), jamais un nombre deviné.
     const a = c.start > p.from ? c.start : p.from;
     const b = c.end && c.end < p.to ? c.end : p.to;
-    if (touchesIncomplete(c, a, b)) {
-      const { lectures, controles, raison } = lecturesAnneeIncomplete(ctx, y, enfantsACharge, moins21);
-      const l1 = lectures[0];
-      // Toutes les lectures et variantes donnent le même nombre (à date aussi) : il est sûr, quelle que soit la méthode
-      // retenue plus tard. La période doit être close pour que les variantes en semaines comptent à date.
-      const close = ctx.today >= b;
-      if (l1 && close && lectures.every((l) => l.jours === l1.jours && l.joursADate === l1.joursADate)
-        && (controles ?? []).every((n) => n === l1.jours)) {
-        out.jours = l1.jours; out.joursADate = l1.joursADate; out.enfantsBonus = l1.enfantsBonus;
-      } else if (lectures.length || raison) {
-        out.aConfirmer = { message: messageAcquisition(lectures, raison), lectures, controles, raison };
-        if (lectures.length) {
-          // Borne interne seulement (jamais affichée ni payée) : la lecture la plus haute, pour ne pas retenir à tort.
-          out.jours = Math.max(...lectures.map((l) => l.jours));
-          out.joursADate = Math.max(...lectures.map((l) => l.joursADate));
-          out.enfantsBonus = Math.max(...lectures.map((l) => l.enfantsBonus));
-        }
-      }
-    } else if (b >= a && !(y === trackedY && c.trackedFrom > a)) {
-      // Année complète (A-23, T-030) : mois ou périodes de 4 semaines, non tranché. Le suivi commencé en cours de période
-      // garde le solde saisi par l'AM (`cpEnCours`) : cette période n'est pas recomptée.
-      const { lectures, controles } = lecturesAnneeComplete(ctx, a, b, upTo, raw, rawADate, enfantsACharge, moins21);
-      const tous = [...lectures.map((l) => l.jours), ...controles];
-      if (tous.every((n) => n === tous[0])) {
-        out.jours = lectures[0].jours; out.enfantsBonus = lectures[0].enfantsBonus;
-      } else {
-        out.aConfirmer = { message: messageAcquisition52(lectures), lectures, controles };
-        // Borne interne seulement (jamais affichée ni payée) : la lecture la plus haute, pour ne pas retenir à tort.
-        out.jours = Math.max(...tous);
-        out.joursADate = Math.max(...lectures.map((l) => l.joursADate));
-        out.enfantsBonus = Math.max(...lectures.map((l) => l.enfantsBonus));
-      }
+    if (touchesIncomplete(c, a, b) && !semainesSaisiesCP(c, a, b)) {
+      out.aConfirmer = { message: MESSAGE_SEMAINES_SANS_ACCUEIL, lectures: [], raison: 'il manque des semaines sans accueil dans le contrat' };
     }
     // T-031 : un cas non géré touche la période (Alsace-Moselle, horaires variables, accueil occasionnel, congé maternité,
     // accident du travail…) : les jours acquis ne sont pas calculés. `jours` reste une borne interne, jamais affichée ni payée.
     const ng = nonGeresPeriode(c, ctx.leaves, p.from, p.to, ctx.finControlee ? 'non' : 'connu');
-    // T-076, D2 (revue 2, B4 b) : mois refusé pour une absence retenue en L2 : il n'entre ni dans les jours acquis ni dans le
-    // dixième sans le dire, comme les autres cas non gérés (T-031).
     const absL2 = absencesL2NonGerees(ctx, p.from > c.start ? p.from : c.start, c.end && c.end < p.to ? c.end : p.to);
     if (absL2.length) ng.push(messageAbsenceL2(absL2));
     if (ng.length) {
-      out.aConfirmer = { message: `Jours de congés acquis à confirmer. ${ng.join(' ')}`, lectures: [], raison: 'un cas non géré par l’app touche la période' };
+      out.aConfirmer = { message: `Jours de congés acquis non calculés. ${ng.join(' ')}`, lectures: [], raison: 'un cas non géré par l’app touche la période' };
     }
     return out;
   });
 }
+
+/**
+ * T-103 (B) : toutes les semaines sans accueil des années de contrat qui touchent [a, b] sont saisies. Une année de contrat
+ * coupée par la fin du contrat n'est pas exigée en entier (même règle que l'ancienne lecture « semaines »).
+ */
+function semainesSaisiesCP(c: Contract, a: ISODate, b: ISODate): boolean {
+  for (let i = 0; ; i++) {
+    const debut = addMonthsToDate(c.start, 12 * i);
+    if (debut > b) break;
+    const finAnnee = addDays(addMonthsToDate(c.start, 12 * (i + 1)), -1);
+    if (finAnnee < a || (c.end && c.end < finAnnee)) continue;
+    if (termsAt(c, debut).yearType !== 'incomplete') continue;
+    const { attendu, saisies } = semainesSansAccueilAnnee(c, debut);
+    if (saisies < attendu) return false;
+  }
+  return true;
+}
+
+/** T-103 (B) : donnée du contrat qui manque pour compter les jours de congés d'une année incomplète */
+export const MESSAGE_SEMAINES_SANS_ACCUEIL = 'Indique dans le contrat toutes tes semaines sans accueil de l’année : l’app en a besoin pour compter tes jours de congés (convention, article 48.1.1.2).';
 
 /** Jours de congés payés pris (jours ouvrables décomptés, R-CP-09) pendant la période [from, to] pour ce contrat */
 export function cpPrisEntre(ctx: Ctx, from: ISODate, to: ISODate): ISODate[] {
@@ -875,18 +742,12 @@ export function indemnite(ctx: Ctx, y: number, enfants = 0): IndemniteCP {
     let mt = maintien(ctx, acq.jours, at, y);
     let pv: IndemniteCP['pv'];
     if (pvActif(termsAt(ctx.c, at))) {
-      // T-076 (spécification, section 1, P-PV-5) : part sûre = max(dixième ; min(C1, C2)) ; à confirmer = max(dixième ;
-      // max(C1, C2)) − part sûre. C2 pas encore connue en entier (congés pas tous saisis) : borne basse des jours connus.
-      const c1 = mt;
+      // T-103 (C13) : Cass. soc. 09/05/2019, n° 17-26.232 (AM) : rechercher « la durée normale habituelle d'accueil de l'enfant
+      // […] pendant toute la période de référence ». Une seule méthode : C1, heures prévues moyennes de la période.
       const c2 = maintienC2(ctx, y, acq.jours, at);
-      mt = Math.min(c1, c2.montant);
-      const haut = Math.max(dix, c1, c2.montant);
       const tAt = termsAt(ctx.c, at);
       const verse = Math.round(((acq.jours / 6) * ((tAt.heuresMensualisees ?? 0) * 60 * 12 / semainesParAn(tAt)) * tAt.rateNet) / 60);
-      pv = { c1, c2: c2.montant, c2Complet: c2.complet, aConfirmer: haut - Math.max(dix, mt), verseDansSalaire: verse };
-      if (pv.aConfirmer > 0) {
-        pv.message = `Congés payés, horaires variables : deux méthodes du maintien de salaire sont possibles. ${euros(c1)} sur tes heures prévues moyennes de la période, ou ${euros(c2.montant)} sur les heures prévues des jours de congé pris${c2.complet ? '' : ` (${c2.connus} jour${c2.connus > 1 ? 's' : ''} saisi${c2.connus > 1 ? 's' : ''} sur ${Math.ceil(acq.jours - 1e-9)} : ce montant augmentera avec les congés suivants)`}. Le dixième vaut ${euros(dix)}. L’app retient la part sûre ; ${euros(pv.aConfirmer)} restent à confirmer, non compris dans le total. La convention (article 48.1.1.5) ne tranche pas ; la question est posée à la DDETS.`;
-      }
+      pv = { c1: mt, c2: c2.montant, c2Complet: c2.complet, aConfirmer: 0, verseDansSalaire: verse };
     }
     const out: IndemniteCP = {
       startYear: y, jours: acq.jours, dixieme: dix, maintien: mt, montant: Math.max(dix, mt),
@@ -904,35 +765,11 @@ export function indemnite(ctx: Ctx, y: number, enfants = 0): IndemniteCP {
     } else if (baseAC) {
       out.aConfirmer = { message: 'Indemnité de congés payés à confirmer : la règle du dixième compte l’indemnité de l’an dernier, qui est elle-même à confirmer.', montants: [], tous: [], baseSure: false };
     }
-    // T-030 (A-26, C-CPI-13) : année incomplète, formule du maintien non tranchée. CCN 48.1.1.5 : « la rémunération brute
-    // que le salarié aurait perçue pour une durée de travail égale à celle du congé payé », sans formule ; 102.1.2.2 renvoie
-    // à 48.1.1.5. Urssaf (C-CPI-07) et DREETS Occitanie (C-CPI-03, C-CPI-04) : jours ÷ 6 × heures par semaine × taux.
-    // DREETS Bourgogne-Franche-Comté (fiche 08, C-CPI-13 à C-CPI-15) : jours ÷ 26 × salaire mensualisé. Les deux formules
-    // coïncident en année complète, pas en année incomplète : si l'indemnité change, elle est à confirmer.
-    const tAt = termsAt(ctx.c, at);
-    if (tAt.yearType === 'incomplete') {
-      const sm = salaireMensualise(tAt);
-      const m26 = (j: number) => Math.max(dix, Math.round((j * sm) / 26));
-      const l26 = 'maintien au 1/26 du salaire mensualisé (DREETS Bourgogne-Franche-Comté)';
-      if (out.aConfirmer) {
-        if (out.aConfirmer.baseSure) {
-          const extra = [...out.aConfirmer.montants.map((x) => x.jours), ...(acq.aConfirmer?.controles ?? [])].map((j) => ({ jours: j, montant: m26(j) }));
-          if (extra.some((x) => !out.aConfirmer!.tous.some((t) => t.jours === x.jours && t.montant === x.montant))) {
-            out.aConfirmer = { ...out.aConfirmer, tous: [...out.aConfirmer.tous, ...extra],
-              message: `${out.aConfirmer.message} La formule du maintien de salaire n’est pas tranchée non plus en année incomplète (jours ÷ 6 × heures par semaine, ou ${l26}).` };
-          }
-        }
-      } else if (m26(acq.jours) !== out.montant) {
-        const montants = [
-          { libelle: 'maintien en semaines : jours ÷ 6 × heures par semaine × taux (Urssaf, DREETS Occitanie)', jours: acq.jours, montant: out.montant },
-          { libelle: l26, jours: acq.jours, montant: m26(acq.jours) },
-        ];
-        out.aConfirmer = {
-          message: `Indemnité de congés payés à confirmer : la formule du maintien de salaire n’est pas tranchée en année incomplète. ${euros(out.montant)} (${montants[0].libelle}), ou ${euros(m26(acq.jours))} (${l26}). Aucun texte ne dit laquelle retenir. En attendant une réponse officielle, mets-toi d’accord par écrit avec les parents.`,
-          montants, tous: montants, baseSure: !baseAC,
-        };
-      }
-    }
+    // T-103 (C12) : année incomplète, une seule formule du maintien. CCN 48.1.1.5 : « la rémunération brute que le salarié aurait
+    // perçue pour une durée de travail égale à celle du congé payé ». Cass. soc. 09/05/2019, n° 17-26.232 (AM) : « la durée
+    // normale habituelle d'accueil de l'enfant […] la rémunération que la salariée aurait perçue pendant la période de congé si
+    // elle avait continué à travailler ». Donc jours ÷ 6 × heures par semaine × taux (`maintien`). Le 1/26 du salaire
+    // mensualisé (fiche DREETS BFC) suppose un salaire versé pendant le congé, ce qui n'existe pas en 46 semaines (109.2).
     // T-025 C-5 : si le salaire d'événement à confirmer change l'indemnité (le dixième l'emporte), l'indemnité est à
     // confirmer, avec les deux montants. S'il ne la change pas (le maintien l'emporte dans les deux cas), rien ne change.
     if (evAC > 0) {

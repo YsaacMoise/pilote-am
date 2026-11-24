@@ -107,42 +107,8 @@ def verifier_entretien_journalier(montant_journalier_centimes, d, duree_minutes)
                        provisoire=prov)
 
 
-def duree_travail_art99(j, i=0):
-    """T-103 (M1, M3) : duree de travail du jour au sens de la CCN art. 99
-    (KALIARTI000043942263) : le travail « debute a l'heure prevue dans le contrat
-    [...] ou encore a l'heure d'arrivee de l'enfant [...] si celle-ci est
-    anterieure » et « prend fin a l'heure prevue [...] ou a l'heure a laquelle
-    l'enfant quitte le lieu d'accueil [...] si celle-ci est posterieure ».
-    Le jour j donne soit duree_minutes (deja calculee), soit les heures en minutes
-    depuis minuit : debut_prevu, fin_prevue (None si le jour est hors planning),
-    arrivee, depart. Hors planning (M3) : rien n'est prevu, le travail va de
-    l'arrivee au depart de l'enfant."""
-    cles = ("debut_prevu", "fin_prevue", "arrivee", "depart")
-    if any(k in j for k in cles):
-        dp, fp = j.get("debut_prevu"), j.get("fin_prevue")
-        ar, de = j.get("arrivee"), j.get("depart")
-        if (dp is None) != (fp is None):
-            raise ErreurSaisie(f"jours[{i}] : debut_prevu et fin_prevue vont ensemble.")
-        if dp is None:
-            if ar is None or de is None:
-                raise ErreurSaisie(f"jours[{i}] : jour hors planning, arrivee et depart de l'enfant obligatoires.")
-            debut, fin = entier(ar, "arrivee"), entier(de, "depart")
-        else:
-            debut, fin = entier(dp, "debut_prevu"), entier(fp, "fin_prevue")
-            if ar is not None:
-                debut = min(debut, entier(ar, "arrivee"))
-            if de is not None:
-                fin = max(fin, entier(de, "depart"))
-        if fin <= debut:
-            raise ErreurSaisie(f"jours[{i}] : fin du travail avant son debut.")
-        return fin - debut
-    return positif(j.get("duree_minutes"), f"jours[{i}].duree_minutes")
-
-
-def _entretien_jours(jours, taux, d, journalier=None):
-    """Calcul jour par jour (T-040e, T-103).
-    taux : montant horaire du contrat (Fraction) ou None ; journalier : montant
-    fixe par journee du contrat (M2) ou None.
+def _entretien_jours(jours, taux, d, cle_duree):
+    """Calcul jour par jour (T-040e) avec la duree lue dans cle_duree.
     Renvoie (total_centimes, jours_payes, sous, ecart, det, prov)."""
     total = 0
     n = 0
@@ -153,8 +119,8 @@ def _entretien_jours(jours, taux, d, journalier=None):
     for i, j in enumerate(jours):
         if not j.get("travail_effectif", False):
             continue
-        dur = duree_travail_art99(j, i)
-        montant = taux * dur / 60 if journalier is None else Fraction(journalier)
+        dur = positif(j.get(cle_duree, j.get("duree_minutes")), f"jours[{i}].{cle_duree}")
+        montant = taux * dur / 60
         exact_min, paye, details, p = _minimum_entretien(d, dur)
         prov = prov or p
         if montant < exact_min:
@@ -170,41 +136,45 @@ def _entretien_jours(jours, taux, d, journalier=None):
 
 
 @api("R-IND-02", "R-ABS-10", "R-IND-06")
-def indemnite_entretien_mois(jours, montant_horaire_contrat_centimes, d, montant_journalier_contrat_centimes=None):
-    """Indemnite d'entretien du mois (R-IND-02, R-ABS-10). Rien les jours sans
-    travail effectif (absence de l'enfant, CP, ferie chome).
-    jours : liste de dicts {"duree_minutes": int, "travail_effectif": bool} ou,
-    a la place de duree_minutes, {"debut_prevu", "fin_prevue", "arrivee",
-    "depart"} en minutes depuis minuit (voir duree_travail_art99).
-    T-103 (M1, A1) : la duree du jour est la duree de TRAVAIL de l'art. 99. CCN
-    114.1 (KALIARTI000043942300) : indemnite « versee en cas de travail effectif,
-    par heure de travail » ; « Il varie en fonction de la duree de travail
-    effectif ». La cle duree_accueil_minutes (presence de l'enfant) n'est plus
-    lue : le refus ENTRETIEN-DUREE-ACCUEIL-OU-TRAVAIL de T-040e est leve.
-    Contrat : soit un montant horaire (montant_horaire_contrat_centimes), soit
-    un montant fixe par journee (montant_journalier_contrat_centimes, et
-    montant_horaire_contrat_centimes=None).
-    T-103 (M2, M3, A1) : montant fixe par journee = clause du contrat, du pour
-    chaque journee de travail effectif quelle que soit sa duree, jour hors
-    planning compris ; seul le minimum de 114.1 suit la duree du travail.
-    Minimum (T-040b) : max(2,65 EUR ; 90 % du MG x duree / 9 h). Jour sous le
-    minimum exact : paye au plus haut du montant du contrat et du minimum arrondi
-    au centime le plus proche (ARR-01), ecart signale.
-    Arrondi : chaque jour au centime le plus proche, puis somme (ARR-01, T-040e).
+def indemnite_entretien_mois(jours, montant_horaire_contrat_centimes, d):
+    """Indemnite d'entretien du mois (R-IND-02, R-ABS-10). Due par heure de
+    travail effectif, au montant horaire du contrat ; rien les jours sans travail
+    effectif (absence de l'enfant, CP, ferie chome).
+    jours : liste de dicts {"duree_minutes": int (temps de travail du jour, CCN
+    art. 99), "duree_accueil_minutes": int (facultatif : presence reelle de
+    l'enfant), "travail_effectif": bool}.
+    T-040e, duree : la CCN (art. 114.1) parle d'heures de « travail effectif » et
+    l'art. 99 decompte le temps de travail ; le CASF (L423-18, D423-7), l'Urssaf et
+    service-public parlent de la duree d'accueil. Aucun texte ne tranche. Si
+    duree_accueil_minutes est donnee et que les deux durees donnent des montants
+    du mois differents : refus ENTRETIEN-DUREE-ACCUEIL-OU-TRAVAIL, les deux
+    montants dans details. Sans duree_accueil_minutes, le moteur ne peut pas
+    faire ce controle : l'appelant doit la fournir des que la presence differe
+    du temps de travail.
+    Chaque jour est controle face au minimum (CCN art. 114.1), quelle que soit
+    sa duree (T-040b) : minimum exact = max(2,65 EUR ; 90 % du MG x duree / 9 h).
+    Jour sous le minimum exact : paye au plus haut du montant du contrat et du
+    minimum arrondi au centime le plus proche (decision ARR-01, T-040c), ecart
+    signale (cle ecart_minimum, details par jour).
+    T-040e, arrondi : chaque jour est arrondi au centime le plus proche, puis les
+    jours sont additionnes (decision ARR-01 du DG appliquee jour par jour comme
+    pour les km ; extension a l'entretien decidee par la direction le 18/11/2026).
     Hors salaire, sans cotisations.
-    Sortie : indemnite_centimes, jours_payes, mode_contrat, jours_sous_minimum, ecart_minimum, details."""
-    if (montant_horaire_contrat_centimes is None) == (montant_journalier_contrat_centimes is None):
-        raise ErreurSaisie("Donner soit le montant horaire, soit le montant par journee du contrat (un seul).")
-    if montant_journalier_contrat_centimes is None:
-        taux = positif(montant_horaire_contrat_centimes, "montant_horaire_contrat_centimes")
-        total, n, sous, ecart, det, prov = _entretien_jours(jours, taux, d)
-        mode = "horaire"
-    else:
-        jr = entier(montant_journalier_contrat_centimes, "montant_journalier_contrat_centimes")
-        total, n, sous, ecart, det, prov = _entretien_jours(jours, None, d, journalier=jr)
-        mode = "par_journee"
-    res = {"indemnite_centimes": total, "jours_payes": n, "mode_contrat": mode,
-           "duree_du_jour": "temps de travail de la CCN art. 99 (CCN 114.1 : par heure de travail effectif)",
+    Sortie : indemnite_centimes, jours_payes, jours_sous_minimum, ecart_minimum, details."""
+    taux = positif(montant_horaire_contrat_centimes, "montant_horaire_contrat_centimes")
+    avec_accueil = any(j.get("travail_effectif", False) and j.get("duree_accueil_minutes") is not None
+                       and positif(j["duree_accueil_minutes"], "duree_accueil_minutes") != positif(j.get("duree_minutes"), "duree_minutes")
+                       for j in jours)
+    total, n, sous, ecart, det, prov = _entretien_jours(jours, taux, d, "duree_minutes")
+    if avec_accueil:
+        total_acc, _, _, _, _, p2 = _entretien_jours(jours, taux, d, "duree_accueil_minutes")
+        if total_acc != total:
+            raise NonGere("ENTRETIEN-DUREE-ACCUEIL-OU-TRAVAIL", ["R-IND-02"], details={
+                "montant_duree_de_travail_art99_centimes": total,
+                "montant_duree_d_accueil_centimes": total_acc,
+                "textes": "CCN art. 114.1 (travail effectif) et 99 (decompte du temps de travail) ; "
+                          "CCN art. 98.1.1, CASF L423-18 et D423-7, Urssaf, service-public F12812 (duree d'accueil)"})
+    res = {"indemnite_centimes": total, "jours_payes": n,
            "arrondi_jour_par_jour": "chaque jour arrondi au centime le plus proche puis additionne, decision ARR-01 "
                                     "du DG du 18/11/2026 dans l'attente de la DDETS"}
     notes = None

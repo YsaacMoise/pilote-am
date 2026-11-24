@@ -114,8 +114,9 @@ describe('[OCC52] DDETS 31, accueil sur 52 semaines (version du 30/03/2023)', ()
 
   it('p. 4-5 : congés du 01/09/2021 au 31/05/2022 : 39 semaines → 24,375 → 25 jours, + 2 pour enfant à charge = 27', () => {
     const a = acquisition(ctx(), 2021, 1);
-    ecart(a.jours - a.enfantsBonus, 25, 0);
-    ecart(a.jours, 27, 0);
+    // T-103 (C10, C11) : méthode de Cass. soc. 10/01/1980, n° 78-41.140 (mois complets d'abord, reste au prorata de la CCN 48.1.1.2) ; elle rejoint la fiche 4/5 de la même DDETS (2024) et le Code du travail numérique (2025), pas cette fiche de 2023 qui compte en semaines. 9 mois × 2,5 = 22,5 → 23 jours.
+    ecart(a.jours - a.enfantsBonus, 25, 2);
+    ecart(a.jours, 27, 2);
   });
 
   it('p. 6 : maintien pour 12 jours (2 semaines de 40 h) = 400 € ; dixième 7 676,14 × 10 % = 767,61 €', () => {
@@ -134,7 +135,8 @@ describe('[OCC52] DDETS 31, accueil sur 52 semaines (version du 30/03/2023)', ()
     ecart(ind.dixieme, 82901, 6139);
     // Divergence de méthode M-1 : la fiche compte les 3 jours restants comme 3 jours de travail de 8 h ; l'app (comme
     // le guide BFC d'août 2026, 1/26 du salaire mensualisé par jour ouvrable) compte 27 ÷ 6 semaines = 900 €.
-    ecart(ind.maintien, 92000, 2000);
+    // T-103 : 25 jours (23 + 2) au lieu de 27 (C10) : 25 ÷ 6 × 40 h × 5 € = 833,33 €.
+    ecart(ind.maintien, 92000, 8667);
   });
 
   it('p. 7 : retrait remis le 01/09/2022 : préavis d’un mois, fin le 30/09/2022', () => {
@@ -145,7 +147,8 @@ describe('[OCC52] DDETS 31, accueil sur 52 semaines (version du 30/03/2023)', ()
 
   it('p. 8 : solde de congés à la rupture : 3 + 11 = 14 jours', () => {
     const f = finDeContrat(ctx(), '2022-09-01', 'retrait', 1);
-    ecart(f.cpJoursRestants, 14, 0);
+    // T-103 (C10, C11) : méthode de Cass. soc. 10/01/1980, n° 78-41.140 (mois complets d'abord, reste au prorata de la CCN 48.1.1.2) ; elle rejoint la fiche 4/5 de la même DDETS (2024) et le Code du travail numérique (2025), pas cette fiche de 2023 qui compte en semaines.
+    ecart(f.cpJoursRestants, 14, 3);
   });
 
   it('p. 9 : indemnité compensatrice 120 € (3 jours) + 400 € (11 jours) = 520 €', () => {
@@ -230,9 +233,10 @@ describe('[OCC46] DDETS 31, accueil sur 46 semaines ou moins (version du 30/03/2
     const cp = cpForMonth(ctx(), '2022-08', 2);
     // T-050 : congés « à confirmer » par la direction (T-019, année incomplète ; ici une absence pour maladie empêche le calcul des
     // deux lectures) : ni jours ni montant. Écarts du lot 3 avant la fusion : 0 et 0.
-    expect(cp.aConfirmer).toBeDefined();
-    ecart(cp.jours, 12, 12);
-    ecart(cp.indemnite, 40000, 40000);
+    expect(cp.aConfirmer).toBeUndefined();
+    // T-103 (C11, C12) : jours acquis et maintien sans réserve : la fiche est retrouvée.
+    ecart(cp.jours, 12, 0);
+    ecart(cp.indemnite, 40000, 0);
   });
 
   it('p. 9 : retrait au 01/09/2022 : régularisation définitive 5,71 + 280 = 285,71 € (4 fériés chômés payés comptés)', () => {
@@ -244,9 +248,8 @@ describe('[OCC46] DDETS 31, accueil sur 46 semaines ou moins (version du 30/03/2
   it('p. 10 : congés acquis du 01/06 au 30/09/2022 : 11 semaines (dont 2 de congés) et 3 jours → 8 jours', () => {
     const f = finDeContrat(ctx(), '2022-09-01', 'retrait', 2);
     // 12 jours restant de la période précédente + 8 en cours.
-    // T-050 : période en cours « à confirmer » (T-019 : 8 jours en semaines, 10 en mois) ; la borne interne retient
-    // la plus haute (10). Écart du lot 3 avant la fusion : 0.
-    ecart(f.cpJoursRestants, 20, -2);
+    // T-103 (C10, C11) : méthode de Cass. soc. 10/01/1980, n° 78-41.140 (mois complets d'abord, reste au prorata de la CCN 48.1.1.2) ; elle rejoint la fiche 4/5 de la même DDETS (2024) et le Code du travail numérique (2025), pas cette fiche de 2023 qui compte en semaines. Juin, mois complet de travail, compte pour une période (4 semaines) : 7 jours au lieu de 8.
+    ecart(f.cpJoursRestants, 20, 1);
   });
 
   it('p. 11 : indemnité compensatrice 400 € (12 jours restants) + 348,57 € (dixième, régularisation comprise)', () => {
@@ -254,8 +257,9 @@ describe('[OCC46] DDETS 31, accueil sur 46 semaines ou moins (version du 30/03/2
     // Divergence M-5 : la fiche met aussi dans la base du dixième les 400 € d'indemnité compensatrice de la période
     // précédente ; le guide BFC (p. 40-41) ne le fait pas, l'app non plus : (2 400 + 400 + 285,71) × 10 % = 308,57 €.
     // T-050 : congés « à confirmer » par la direction (T-019) : aucun montant. Écart du lot 3 avant la fusion : 4000.
-    expect(f.cpAConfirmer).toBeDefined();
-    ecart(f.cpIndemnite, 74857, 74857);
+    expect(f.cpAConfirmer).toBeUndefined();
+    // T-103 (F7, C11, C12) : la fiche est retrouvée au centime.
+    ecart(f.cpIndemnite, 74857, 0);
   });
 
   it('p. 11 (T-050b, A-50) : dixième de la 2e période 348,57 €, régularisation de 285,71 € comprise', () => {
@@ -264,7 +268,8 @@ describe('[OCC46] DDETS 31, accueil sur 46 semaines ou moins (version du 30/03/2
     // base du dixième de la dernière période. Fiche : (salaires 2 400 + CP d'août 400 + ICCP de la 1re période 400
     // + régularisation 285,71) × 10 % = 348,57 €. Écart attendu = 80 € : 40 € de M-5 (ICCP de la période précédente, non
     // ajoutée, sources contraires) et 40 € des 400 € de CP d'août, « à confirmer » (T-019), absents de la base.
-    ecart(f.cpDixiemeEnCours!, 34857, 8000);
+    // T-103 (F7, C12) : CASF L423-6 met l'indemnité de l'année précédente dans la base ; plus rien « à confirmer » : 348,57 €.
+    ecart(f.cpDixiemeEnCours!, 34857, 0);
   });
 
   it('p. 11 (T-050b, A-50) : avec et sans régularisation, le dixième de fin change de 28,57 € (285,71 × 10 %)', () => {
@@ -288,10 +293,10 @@ describe('[OCC46] DDETS 31, accueil sur 46 semaines ou moins (version du 30/03/2
     // Rupture « à confirmer », avec la raison. Écarts du lot 3 avant la fusion, congés sûrs : 4000 et 49 (M-5 seule) ;
     // écart de la fusion T-050, règle de la direction : 143428 (la régularisation en plus).
     expect(f.regularisation).toBe(28571);
-    expect(f.ruptureAConfirmer).toBe(true);
-    expect(f.alertes.join(' ')).toMatch(/Indemnité de rupture à confirmer : elle ne compte pas encore .*l’indemnité de congés non pris/);
-    ecart(f.totalBrut, 914857, 114857);
-    ecart(f.indemniteRupture, 11435, 1435);
+    expect(f.ruptureAConfirmer).toBe(false);
+    // T-103 (F4, F7, C11) : assiette et indemnité de la fiche retrouvées.
+    ecart(f.totalBrut, 914857, 0);
+    ecart(f.indemniteRupture, 11435, -1); // 9 148,57 ÷ 80 = 114,357 : centime le plus proche (ARR-01), la fiche tronque
   });
 });
 
@@ -343,7 +348,8 @@ describe('[OCCCP] DDETS 31, fiches congés payés 3/5 à 5/5 (version du 05/11/2
     ecart(Math.round(baseDixieme(ctx, 2021).base / 10), 77999, -1);
     // Divergence M-2 : la fiche 4/5 (et le guide BFC) comptent en mois (9 × 2,5 = 22,5 → 23) ; la fiche « Accueil sur
     // 52 semaines » de la même DDETS et l'app comptent en semaines (39 ÷ 4 × 2,5 = 24,375 → 25), plus favorable.
-    ecart(acquisition(ctx, 2021).jours, 23, -2);
+    // T-103 (C10) : la méthode de l'arrêt de 1980 donne les 23 jours de cette fiche.
+    ecart(acquisition(ctx, 2021).jours, 23, 0);
   });
 
   it('4/5 p. 4 : 52 semaines, août 2022 : dixième 406,95 € pour 12 jours contre 400 € (salaire d’août 873,61 €)', () => {
@@ -352,7 +358,9 @@ describe('[OCCCP] DDETS 31, fiches congés payés 3/5 à 5/5 (version du 05/11/2
     // Divergence M-2 et M-3 : avec 25 jours, le dixième (780,00 €) reste sous le maintien (833,33 €), l'app ne verse aucun
     // complément ; la fiche, avec 23 jours, verse 6,95 € en août, mois de la prise (l'app verse le complément en juin).
     const aout = monthBase(ctx, '2022-08').net + cpForMonth(ctx, '2022-08').indemnite + cpForMonth(ctx, '2022-06').complement;
-    ecart(aout, 87361, 694);
+    // T-103 (C10) : 23 jours ; l'app verse en juin le complément de toute la période (13,33 €), la fiche le répartit sur
+    // les mois de congés (6,95 € en août) : même total sur l'année, mois différent.
+    ecart(aout, 87361, -639);
   });
 
   it('5/5 p. 2-4 : 52 semaines, fin au 31/08/2022 : dixième 671,03 € contre maintien 680 € (20 jours) : 680 €', () => {
@@ -363,8 +371,8 @@ describe('[OCCCP] DDETS 31, fiches congés payés 3/5 à 5/5 (version du 05/11/2
     // Jours restants : 23 − 12 + 9 = 20 pour la fiche ; 25 − 12 + 9 = 22 pour l'app (M-2). Maintien (fiche) :
     // 3 semaines + 2 jours de 8 h = 680 € ; app : 13 ÷ 6 × 200 = 433,33 € et 9 jours au plus favorable
     // (maintien 300 € contre dixième 3 × 866,67 ÷ 10 = 260 €) = 733,33 €. La fiche compare aussi dixième et maintien
-    // sur le total des deux périodes, l'app période par période (M-6).
-    ecart(f.cpJoursRestants, 20, -2);
+    // sur le total des deux périodes, l'app période par période (M-6). T-103 (C10, C11) : méthode de Cass. soc. 10/01/1980, n° 78-41.140 (mois complets d'abord, reste au prorata de la CCN 48.1.1.2) ; elle rejoint la fiche 4/5 de la même DDETS (2024) et le Code du travail numérique (2025), pas cette fiche de 2023 qui compte en semaines.
+    ecart(f.cpJoursRestants, 20, 1);
     // T-050 : congés « à confirmer » par la direction (A-23, T-030 : 9 ou 8 jours en cours, 25 ou 23 jours de la période close) : aucun
     // montant. Écart du lot 3 avant la fusion : −5333.
     expect(f.cpAConfirmer).toBeDefined();
@@ -470,14 +478,16 @@ describe('[BFC] guide DREETS Bourgogne-Franche-Comté (août 2026)', () => {
     // dixième (702 €) reste au-dessous du maintien (750 €) : l'app verse 0 € de complément en juin, puis le maintien
     // des 7 jours restants (210 €) ; le guide verse 162 €.
     const prec = cpForMonth(ctx, '2027-06').complement;
-    expect(prec).toBe(0);
+    // T-103 (C10) : 23 jours comme le guide ; l'app verse en juin le complément de toute la période (702 − 690 = 12 €), le
+    // guide le calcule à la fin sur les 18 jours pris (702 − 540 = 162 €) : moment du versement différent (question v2 n° 5).
+    ecart(prec, 16200, 15000);
     // Période en cours, du 01/06 au 31/08 : 3 mois → 8 jours (guide) ; 13,1 semaines → 9 jours (app, M-2) :
     // maintien 9/26 × 780 = 270 €, dixième 3 × 780 ÷ 10 = 234 € (le guide non plus n'ajoute pas l'indemnité
     // compensatrice de la période précédente à la base : M-5).
     // T-050 : congés « à confirmer » par la direction (A-23, T-030 : 9 ou 8 jours en cours, 25 ou 23 jours de la période close) : aucun
     // montant. Écart du lot 3 avant la fusion : 40200 − 48000.
-    expect(f.cpAConfirmer).toBeDefined();
-    ecart(f.cpIndemnite, 16200 + 24000, 40200);
+    expect(f.cpAConfirmer).toBeUndefined();
+    ecart(f.cpIndemnite, 16200 + 24000, 999);
   });
 
   it('p. 51 et [PDL] p. 1 : minimum conventionnel 4,20 € brut (3,28 € net) au 1er juin 2026, SMIC 12,31 €', () => {
@@ -534,7 +544,8 @@ describe('[ARA] DREETS Auvergne-Rhône-Alpes', () => {
     const a2 = acquisition(makeCtx(c46, [], [], '2022-06-15'), 2021, 2);
     ecart(a2.enfantsBonus, 4, 0);
     const a4 = acquisition(makeCtx(contrat({}), [], [], '2022-06-15'), 2021, 4);
-    ecart(a4.jours - a4.enfantsBonus, 25, 0);
+    // T-103 (C10, C11) : méthode de Cass. soc. 10/01/1980, n° 78-41.140 (mois complets d'abord, reste au prorata de la CCN 48.1.1.2) ; elle rejoint la fiche 4/5 de la même DDETS (2024) et le Code du travail numérique (2025), pas cette fiche de 2023 qui compte en semaines. Base de l'app 23 jours (embauche le 01/09) ; le plafond de 30 jours est atteint de la même façon.
+    ecart(a4.jours - a4.enfantsBonus, 25, 2);
     ecart(a4.jours, 30, 0);
   });
 });
@@ -557,7 +568,8 @@ describe('[CTN] Code du travail numérique', () => {
   it('Congés payés (23/05/2025) : 7 mois du 1er novembre au 31 mai → 17,5 → 18 jours (app : 30,3 semaines → 19)', () => {
     const c7 = contrat({ start: '2025-11-01', trackedFrom: '2025-11-01' });
     // Divergence M-2 : en mois 7 × 2,5 = 17,5 → 18 ; en semaines (212 jours ÷ 7 = 30,3 semaines) → 18,9 → 19.
-    ecart(acquisition(makeCtx(c7, [], [], '2026-06-15'), 2025).jours, 18, -1);
+    // T-103 (C10) : méthode de l'arrêt de 1980 : 7 mois × 2,5 = 17,5 → 18 jours, comme le Code du travail numérique.
+    ecart(acquisition(makeCtx(c7, [], [], '2026-06-15'), 2025).jours, 18, 0);
   });
 
   it('Congés payés (23/05/2025) : 1 enfant à charge → 2 jours de plus (12 + 2 = 14)', () => {

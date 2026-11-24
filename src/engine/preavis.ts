@@ -37,19 +37,13 @@ export function finPreavisLocal(start: ISODate, r: Pick<Rupture, 'motif' | 'noti
   return local > ccn ? local : undefined;
 }
 
-export function finsAdmises(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'>, alsaceMoselle = false): { preavisFin: ISODate; admises: ISODate[] } {
+export function finsAdmises(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'>, _alsaceMoselle = false): { preavisFin: ISODate; admises: ISODate[] } {
+  // T-103 (F1, F2, R2) : une seule date de fin du préavis (fiche officielle F2883 ; CCN 120 ; pas de préavis local pour l'AM).
   if (r.motif !== 'retrait' && r.motif !== 'demission') return { preavisFin: r.notif, admises: [r.notif] };
   const anc = fullMonthsBetween(start, r.notif);
   const depart = r.presentation && r.presentation > r.notif ? r.presentation : r.notif;
   const preavisFin = finPreavis(depart, preavisEmployeur(anc));
-  const admises = [preavisFin, addDays(preavisFin, 1)];
-  if (r.motif === 'demission' && anc >= 3 && anc < 12) {
-    const finMois = finPreavis(depart, {});
-    admises.push(finMois, addDays(finMois, 1));
-  }
-  const local = alsaceMoselle ? finPreavisLocal(start, r) : undefined;
-  if (local) admises.push(local, addDays(local, 1));
-  return { preavisFin, admises };
+  return { preavisFin, admises: [preavisFin] };
 }
 
 const lo2 = (a: ISODate, b: ISODate) => (a < b ? a : b);

@@ -69,6 +69,7 @@ export const estNonGere = (t: ChoixAbsence): t is AmAbsNonGeree => (AM_ABS_NON_G
  */
 export function absenceSaisie(choix: ChoixAbsence, nature: NatureEvenement | undefined, id: string, from: string, to: string): AmLeave | undefined {
   if (estNonGere(choix)) return { id, type: 'non_gere', from, to };
+  // T-103 (C9) : congé de deuil : l'écran de saisie demande le montant des indemnités journalières (AmLeave.ijSecu).
   if (choix === 'evenement') return nature ? { id, type: 'evenement', from, to, joursEvenement: joursEvenementSaisi(nature, from) } : undefined;
   return { id, type: choix, from, to };
 }
