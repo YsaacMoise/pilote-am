@@ -3,7 +3,7 @@ import { addDays, addMonths, addMonthsToDate, cpPeriod, cpPeriodStartYear, daysB
 import { holidayName } from './holidays';
 import { ferieDe, regionDe } from './regions';
 import {
-  H45, absencesL2NonGerees, messageAbsenceL2, inContract, makeCtx, monthBase, plannedPlages, planningBrutMin, semainesSansAccueilAnnee, termsAt,
+  H45, inContract, makeCtx, monthBase, plannedPlages, planningBrutMin, semainesSansAccueilAnnee, termsAt,
   toutesSemainesSansAccueil, weeklyMinutes, weeksPerYear, type Ctx,
 } from './payroll';
 import type { AmLeave, Contract } from './model';
@@ -394,8 +394,6 @@ export function acquisition(ctx: Ctx, y: number, enfantsAChargeSaisis = 0): Acqu
     // T-031 : un cas non géré touche la période (Alsace-Moselle, horaires variables, accueil occasionnel, congé maternité,
     // accident du travail…) : les jours acquis ne sont pas calculés. `jours` reste une borne interne, jamais affichée ni payée.
     const ng = nonGeresPeriode(c, ctx.leaves, p.from, p.to, ctx.finControlee ? 'non' : 'connu');
-    const absL2 = absencesL2NonGerees(ctx, p.from > c.start ? p.from : c.start, c.end && c.end < p.to ? c.end : p.to);
-    if (absL2.length) ng.push(messageAbsenceL2(absL2));
     if (ng.length) {
       out.aConfirmer = { message: `Jours de congés acquis non calculés. ${ng.join(' ')}`, lectures: [], raison: 'un cas non géré par l’app touche la période' };
     }

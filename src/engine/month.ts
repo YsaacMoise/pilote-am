@@ -5,7 +5,7 @@ import { brutConnu, brutDuNet, monthBase, termsAt, type Ctx, type MonthBase } fr
 import { REDUCTION_HS } from './rates';
 import { regionDe } from './regions';
 
-export const MESSAGE_REDUCTION_HS_MAYOTTE = 'Mayotte : la réduction de cotisations de tes heures complémentaires et majorées n’est pas estimée par l’app (les cotisations y sont différentes). Pajemploi la calcule : regarde ton relevé.';
+export const MESSAGE_REDUCTION_HS_MAYOTTE = 'Mayotte : l’app ne calcule pas la réduction de cotisations de tes heures complémentaires et majorées. Ses règles à Mayotte (ordonnance n° 96-1122 et ses textes) ne sont pas encore lues dans l’app. Pajemploi la calcule : regarde ton relevé.';
 import { euros, hoursLabel } from './money';
 
 export interface MonthResult extends MonthBase {

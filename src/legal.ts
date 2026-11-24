@@ -53,7 +53,7 @@ export const ABSENCE_NON_GEREE_CHOISIE =
   'Non géré : l’app ne calculera pas les mois de cette absence, ni les congés et la fin de contrat qui en dépendent. Fais-les avec les parents, sans l’app.';
 /** T-077 : l'Alsace-Moselle est calculée (regions.ts). Texte gardé pour les écrans qui le citent. */
 export const ALSACE_MOSELLE_NON_GEREE =
-  'Bas-Rhin, Haut-Rhin, Moselle : l’app compte la cotisation maladie du régime local. Les jours fériés locaux, le maintien de salaire et le préavis du droit local sont affichés à confirmer, avec l’écart.';
+  'Bas-Rhin, Haut-Rhin, Moselle : l’app compte la cotisation maladie du régime local, et le maintien de ton salaire en cas de maladie (code du travail, article L1226-23), moins tes indemnités journalières. Le Vendredi saint et le 26 décembre ne sont pas fériés pour une assistante maternelle (article L3134-1), ni le préavis local de six semaines.';
 
 export const AVERTISSEMENT_CALCUL =
   'Arvela est un outil d’aide au calcul, indépendant de l’Urssaf et de Pajemploi. Vérifie les montants avant de les déclarer : la déclaration Pajemploi et le bulletin de salaire font foi.';

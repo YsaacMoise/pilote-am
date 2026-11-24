@@ -221,7 +221,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
       <main class="sim-main">
         <div class="sim-form">
         <p class="hint">Pour une famille qui emploie une assistante maternelle. Tout est calculé sur ce téléphone : rien n’est envoyé.</p>
-        {baremesProvisoires(addDays(d, 365)) && <Banner tone="info">{MESSAGE_BAREMES_PROVISOIRES.replace('Ce calcul reprend', 'Les mois concernés reprennent')}</Banner>}
+        {baremesProvisoires(addDays(d, 365)) && <Banner tone="info">{MESSAGE_BAREMES_PROVISOIRES}</Banner>}
         {connecte && <AideVideo id="simulateur" />}
 
         <section class="card">

@@ -31,7 +31,7 @@ export const CDD_A_COMPLETER =
  * (relecture R1 : heures prévues au-delà de la base payées deux fois en P1 ; R3 : congés de la période précédente).
  */
 export const NON_GERE_CDD_PV =
-  'CDD avec des horaires qui changent d’une semaine à l’autre : non géré pour l’instant. Le salaire d’un CDD court ou avec des semaines sans accueil se calcule de deux façons, et l’app ne sait pas encore les combiner avec des horaires variables, ni la fin de ce CDD. Fais la paie sans l’app.';
+  'CDD avec des horaires qui changent d’une semaine à l’autre : non géré pour l’instant. L’app ne calcule pas encore la fin d’un CDD aux horaires variables. Fais la paie sans l’app.';
 /** D3 (section 4), gardé pour les écrans et tests qui le citent : même refus que D15 */
 export const NON_GERE_CDD_PV_P2 = NON_GERE_CDD_PV;
 

@@ -5,7 +5,7 @@ import { addMonths, dayLabel, eachDay, firstDay, lastDay, monthLabel, monthOf, t
 import { computeMonth, declarationLines, declarationText, moisEnCoursAu, totalAVerser } from '../engine/month';
 import { dayInfo, termsAt } from '../engine/payroll';
 import { euros, hoursLabel } from '../engine/money';
-import { MESSAGE_BAREMES_PROVISOIRES, baremesProvisoires } from '../engine/rates';
+import { baremesProvisoires, messageBaremesAttendus } from '../engine/rates';
 import { CHILD_ABS_LABEL, AM_ABS_LABEL, type Contract } from '../engine/model';
 import { Banner, Gommette, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
@@ -124,13 +124,23 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
     );
   }
 
-  // T-031 : cas non géré : aucun montant, aucune case, pas d'envoi au parent.
+  // T-103 (D4) : barèmes du mois pas encore publiés : aucun calcul « provisoire ».
+  if (baremesProvisoires(firstDay(month))) {
+    return (
+      <section class="card stack" aria-labelledby="bar-t">
+        <h2 id="bar-t">Ce mois n’est pas encore calculé</h2>
+        <Banner tone="info">{messageBaremesAttendus(monthLabel(month))}</Banner>
+      </section>
+    );
+  }
+
+  // T-031 : cas non géré ou donnée à saisir (T-103) : aucun montant, aucune case, pas d'envoi au parent.
   if (r.nonGere.length) {
     return (
       <section class="card stack" aria-labelledby="ng-t">
         <h2 id="ng-t">Ce mois n’est pas calculé</h2>
         {r.nonGere.map((t) => <Banner tone="warn">{t}</Banner>)}
-        <p class="hint">L’app ne donne aucun montant pour ce mois. Déclare-le avec les parents, sans l’app.</p>
+        <p class="hint">L’app ne donne aucun montant pour ce mois tant que ce qui est dit ci-dessus n’est pas réglé. Une donnée à saisir : saisis-la, le mois se calcule aussitôt. Un cas non géré : déclare ce mois avec les parents, sans l’app.</p>
         <a class="btn btn-outline" href={`#/contrat/${c.id}`}>Ouvrir le contrat</a>
       </section>
     );
@@ -150,7 +160,6 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
         {current && moisEnCoursAu(ctx.today, month) && <span class="summary-note">Mois en cours : entretien et repas comptés jusqu’au {moisEnCoursAu(ctx.today, month)}</span>}
       </section>
 
-      {baremesProvisoires(lastDay(month)) && <Banner tone="info">{MESSAGE_BAREMES_PROVISOIRES}</Banner>}
       {!c.pajemploiPlus && (!c.end || c.end >= PAJEMPLOI_PLUS_DATE) && <Banner tone="info">{PAJEMPLOI_PLUS_RAPPEL}</Banner>}
       {r.alerts.map((a) => <Banner tone="warn">{a}</Banner>)}
       {r.cpNote && <Banner tone="info" icon="sun">{r.cpNote}</Banner>}

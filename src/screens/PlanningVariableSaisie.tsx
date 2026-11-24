@@ -42,7 +42,7 @@ export function PlanningVariableSaisie({ c, set }: { c: Contract; set: (p: Parti
         {c.yearType === 'complete'
           ? <p class="hint">Toute l’année : à la fin du contrat, il n’y a pas de régularisation. Si tu as fait plus d’heures que le salaire lissé n’en paie, la différence n’est pas rattrapée.</p>
           : <p class="hint">Année incomplète : garde tes plannings et tes heures réelles. Ils servent à la régularisation de chaque date anniversaire et de fin de contrat.</p>}
-        <p class="hint">Deux méthodes du maintien de salaire sont possibles pour tes congés payés avec des horaires variables. L’app te montre les deux : elle paie la part sûre et te dit ce qui reste à confirmer.</p>
+        <p class="hint">Congés payés avec des horaires variables : le maintien de salaire se calcule sur tes heures prévues habituelles de la période (Cour de cassation, 9 mai 2019).</p>
       </fieldset>
     </section>
   );

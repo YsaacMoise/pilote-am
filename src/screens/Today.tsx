@@ -720,7 +720,7 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
           {c.kmTaux > 0 && <Stepper label="Kilomètres parcourus avec l’enfant" value={km} onChange={setKm} max={500} unit="km" />}
           {c.kmTaux > 0 && km > 0 && <Switch label="Une autre famille a aussi demandé ce trajet" hint="Laisse éteint si cette famille est seule à l’avoir demandé : elle paie alors tous les km (article 113)." checked={kmPartage} onChange={setKmPartage} />}
           {c.kmTaux > 0 && km > 0 && kmPartage && <Stepper label="Enfants dans la voiture" value={kmEnfants} onChange={setKmEnfants} max={8} />}
-          {c.kmTaux > 0 && km > 0 && kmPartage && <p class="hint">Compte tous les enfants dans la voiture, les tiens compris si le trajet est aussi pour eux. Chaque famille paie sa part, au prorata des enfants (article 113). À moins de 2, les km restent à confirmer.</p>}
+          {c.kmTaux > 0 && km > 0 && kmPartage && <p class="hint">Compte tous les enfants dans la voiture, les tiens compris si le trajet est aussi pour eux. Chaque famille paie sa part, au prorata des enfants (article 113). L’app a besoin de ce nombre pour calculer le mois.</p>}
         </>
       )}
       <button class="btn btn-primary btn-block btn-lg" onClick={save}>Enregistrer</button>

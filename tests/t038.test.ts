@@ -163,9 +163,9 @@ describe('T-038 M-1, M-2 : repères nets du minimum AM lus sur la page Urssaf (m
 
 describe('T-038 M-3 : écran Règles complété', () => {
   const regle = (debut: string) => RULES.find((x) => x.t.startsWith(debut))!;
-  it('fin de contrat : conflit de durée de la démission (CASF L423-26 / CCN art. 120) et montants à confirmer', () => {
-    expect(regle('Fin de contrat').r).toMatch(/L423-26\) prévoit un mois, la convention 15 jours/);
-    expect(regle('Fin de contrat').choix).toMatch(/ne sont pas comptés dans le total/);
+  it('fin de contrat (T-103) : démission de 3 mois à 1 an, 15 jours ; rien « à confirmer »', () => {
+    expect(regle('Fin de contrat').r).toMatch(/de 3 mois à 1 an, la convention, plus favorable que la loi, prévoit 15 jours/);
+    expect(`${regle('Fin de contrat').r} ${regle('Fin de contrat').choix}`).not.toMatch(/à confirmer|DDETS|environ/);
   });
   it('congés payés : jours pour enfant à charge acquis au 31 mai (CCN 48.1.3.3, CPA-03)', () => {
     expect(regle('Congés payés').choix).toMatch(/acquis au 31 mai.*48\.1\.3\.3/);

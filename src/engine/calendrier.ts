@@ -1,6 +1,6 @@
 // Calendrier de l'accueil, mois par mois : ce que la famille paie réellement, et quand l'argent des aides arrive.
 // Règles et sources : docs/simulateur-regles.md (étape 4). Montants en centimes, aux barèmes en vigueur le jour de la simulation.
-import { addDays, weekday, type ISODate } from './dates';
+import { weekday, type ISODate } from './dates';
 import { holidaysOf } from './holidays';
 import { euros } from './money';
 import {
@@ -58,16 +58,10 @@ export const moisSuivant = (m: string, n = 1): string => {
   return `${Math.floor(t / 12)}-${String((t % 12) + 1).padStart(2, '0')}`;
 };
 
-/** Jours fériés d'un mois « AAAA-MM » (Alsace-Moselle : Vendredi saint et 26 décembre en plus, comme `feriesParJour`). */
-function feriesDuMois(m: string, alsaceMoselle: boolean): ISODate[] {
+/** Jours fériés d'un mois « AAAA-MM ». T-103 (R1) : en Alsace-Moselle, ni Vendredi saint ni 26 décembre pour l'AM (L3134-1). */
+function feriesDuMois(m: string, _alsaceMoselle: boolean): ISODate[] {
   const y = Number(m.slice(0, 4));
-  const jours = [...holidaysOf(y).keys()];
-  if (alsaceMoselle) {
-    const lundiPaques = [...holidaysOf(y).entries()].find(([, n]) => n === 'Lundi de Pâques')?.[0];
-    if (lundiPaques) jours.push(addDays(lundiPaques, -3));
-    jours.push(`${y}-12-26`);
-  }
-  return jours.filter((j) => j.startsWith(`${m}-`));
+  return [...holidaysOf(y).keys()].filter((j) => j.startsWith(`${m}-`));
 }
 
 export const MESSAGE_ADAPTATION_A_CONFIRMER = 'Premier mois (adaptation) à confirmer.';

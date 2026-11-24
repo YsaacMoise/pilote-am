@@ -193,7 +193,7 @@ export const joindre = (l: string[], et = 'et') => (l.length <= 1 ? l.join('') :
 
 /** T-074 (P-1, regles/t074-preavis-dispense.md, point 9) : déclaration d'un mois avec des jours de préavis dispensés */
 export const MESSAGE_DISPENSE_PAJEMPLOI =
-  'Préavis dont les parents t’ont dispensée : le salaire de ce mois comprend l’indemnité de préavis des jours dispensés, payés sans indemnité d’entretien. Pour la déclaration à Pajemploi, la part à mettre dans la case de l’indemnité de préavis, et les heures et jours à déclarer pour ces jours, sont à confirmer avec le service Pajemploi. Le total à verser ne change pas.';
+  'Préavis dont les parents t’ont dispensée : le salaire de ce mois comprend l’indemnité de préavis des jours dispensés, payés sans indemnité d’entretien. Déclaration à Pajemploi : mets l’indemnité de préavis dans la case « indemnité compensatrice de préavis non effectué » ; les jours dispensés ne sont ni des heures ni des jours d’activité (documentation officielle de la déclaration Pajemploi). Le total à verser ne change pas.';
 
 export function dayInfo(ctx: Ctx, d: ISODate): DayInfo {
   return memo(ctx, 'day' + d, () => computeDay(ctx, d));
@@ -585,19 +585,6 @@ function weekOvertimeL2(ctx: Ctx, monday: ISODate, B: number, base: Map<ISODate,
   return out;
 }
 
-/**
- * T-076, décision D2 : lecture L2, absence retenue sur le salaire (art. 111) dans une semaine dont les heures prévues
- * dépassent la base B. Aucune règle ne dit comment combiner la déduction de l'art. 111 et la perte des HC prévues : les
- * mois des jours retenus ne sont pas calculés (passage 2). Renvoie les jours retenus concernés de [from, to].
- */
-export function absencesL2NonGerees(_ctx: Ctx, _from: ISODate, _to: ISODate): ISODate[] {
-  // T-103 (H6) : deux calculs séparés. La retenue de l'art. 111 porte sur le salaire mensualisé ; les heures
-  // complémentaires (96.4) sont les heures effectuées au-delà de la durée de la semaine (weekOvertimeL2). Plus de refus.
-  return [];
-}
-
-export const messageAbsenceL2 = (jours: ISODate[]): string =>
-  `Absence retenue sur ton salaire ${jours.length > 1 ? 'les' : 'le'} ${jours.map((d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`).join(', ')}, une semaine où tes heures prévues dépassent la base de ton contrat : non géré pour l’instant. La convention ne dit pas comment combiner la retenue sur le salaire mensualisé (article 111) et les heures complémentaires prévues que tu n’as pas faites. La question est posée à la DDETS. Fais ce mois sans l’app.`;
 
 function weekOvertimeL1(ctx: Ctx, monday: ISODate): Map<ISODate, { compl: number; maj: number }> {
   return memo(ctx, 'wk' + monday, () => {
@@ -693,8 +680,6 @@ export function monthBase(ctx: Ctx, m: Month): MonthBase {
       else if (monthOf(c0.cddTerme) === m) r.alerts.push(messageTermeAVenir(c0.cddTerme));
       else r.nonGere.push(messageMoisApresTerme(c0.cddTerme));
     }
-    // T-076, D2 : planning variable en lecture L2, absence retenue dans une semaine au-delà de la base.
-    if (r.active && !r.fromHistory) { const j = absencesL2NonGerees(ctx, firstDay(m), lastDay(m)); if (j.length) r.nonGere.push(messageAbsenceL2(j)); }
     // T-103 (C3, C5) : donnée à saisir (dates du certificat, origine des jours déjà retenus) : le mois attend la saisie.
     // T-103 (C14, R3) : même règle pour les droits à congés non calculés et les indemnités journalières à saisir.
     if (r.active && !r.fromHistory) {

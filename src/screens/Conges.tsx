@@ -30,20 +30,21 @@ export function Conges() {
             <section class="card stack" aria-label={`Congés, contrat ${de(c.child)}`}>
               <div class="row"><Gommette name={c.child} color={c.color} size="sm" /><h2>{c.child}</h2></div>
               <div class="stat-grid">
-                <div><b class="num">{k.aPrendreAConfirmer ? 'à confirmer' : k.aPrendre}</b><span>jours à prendre d’ici le 31 mai</span></div>
-                <div><b class="num">{k.decompteAConfirmer.length ? 'à confirmer' : k.pris}</b><span>déjà pris</span></div>
-                <div><b class="num">{k.aPrendreAConfirmer || k.decompteAConfirmer.length ? 'à confirmer' : Math.max(0, k.reste)}</b><span>restants</span></div>
+                {/* T-103 : un nombre qui dépend d'une donnée à saisir n'est pas affiché ; la donnée est demandée plus bas. */}
+                <div><b class="num">{k.aPrendreAConfirmer ? '—' : k.aPrendre}</b><span>jours à prendre d’ici le 31 mai</span></div>
+                <div><b class="num">{k.decompteAConfirmer.length ? '—' : k.pris}</b><span>déjà pris</span></div>
+                <div><b class="num">{k.aPrendreAConfirmer || k.decompteAConfirmer.length ? '—' : Math.max(0, k.reste)}</b><span>restants</span></div>
               </div>
               {k.enCours.aConfirmer
-                ? <p>En cours d’acquisition : <b>à confirmer</b>.</p>
+                ? <p>En cours d’acquisition : <b>non calculé</b> (voir ci-dessous).</p>
                 : <p>En cours d’acquisition : <b>{k.enCours.joursADate} jours</b> à ce jour, <b>{k.enCours.jours}</b> au 31 mai{k.enCours.enfantsBonus ? ` (dont ${k.enCours.enfantsBonus} pour tes propres enfants à charge)` : ''}.</p>}
               {[...new Set([k.enCours.aConfirmer?.message, k.aPrendreAConfirmer?.message, ...k.decompteAConfirmer].filter(Boolean))].map((m) => <Banner tone="warn">{m}</Banner>)}
               {k.fractionnementNonGere && <Banner tone="warn">{k.fractionnementNonGere}</Banner>}
               {k.depassement && <Banner tone="warn">Tu as pris plus de jours que tes droits : les jours en trop sont normalement sans solde.</Banner>}
               <details class="more" style={{ boxShadow: 'none', border: '1px solid var(--line)' }}>
-                <summary>Indemnité estimée pour cette période</summary>
+                <summary>Indemnité de cette période, si le contrat continue comme prévu</summary>
                 <div class="more-body">
-                  {ind.aConfirmer ? <p>{ind.aConfirmer.message}</p> : <dl class="kv">
+                  {ind.aConfirmer ? <p>{ind.aConfirmer.message}</p> : ind.manquants.length > 0 ? <p class="err">Bulletins manquants dans l’historique : ajoute-les. Le dixième n’est pas calculé sans eux.</p> : <dl class="kv">
                     <dt>Règle du dixième</dt><dd>{euros(ind.dixieme)}</dd>
                     <dt>Maintien du salaire</dt><dd>{euros(ind.maintien)}</dd>
                     <dt>Le plus favorable</dt><dd>{euros(ind.montant)}</dd>
@@ -52,9 +53,8 @@ export function Conges() {
                     {termsAt(c, today()).yearType === 'complete'
                       ? 'Année complète : tes congés sont payés dans le salaire mensualisé ; si le dixième est plus favorable, la différence est versée en juin.'
                       : c.cpMode === 'juin' ? 'Année incomplète : versée en juin.' : c.cpMode === 'principale' ? 'Année incomplète : versée avec ta prise principale de congés.' : 'Année incomplète : versée au fur et à mesure des congés pris.'}
-                    {' '}Le dixième est calculé sur les salaires connus à ce jour.
+                    {' '}Le dixième compte les salaires de toute la période, ceux à venir selon ton planning.
                   </p>
-                  {ind.manquants.length > 0 && <p class="err">Bulletins manquants dans l’historique : le dixième est sous-estimé.</p>}
                 </div>
               </details>
             </section>

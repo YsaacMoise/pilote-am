@@ -39,7 +39,7 @@ export function Plus() {
             <ListLink href="#/conges" icon="sun" title="Congés payés et absences" sub="Compteur, indemnité, tes absences" />
             <ListLink href="#/controle" icon="receipt" title="Contrôler un bulletin" sub="Le net, le brut, les heures déclarées" />
             <ListLink href="#/fin" icon="door" title="Fin de contrat" sub="Préavis, indemnités, régularisation" />
-            <ListLink href="#/fiscal" icon="chart" title="Impôts" sub="Abattement et revenu imposable estimé" />
+            <ListLink href="#/fiscal" icon="chart" title="Impôts" sub="Abattement et revenu imposable" />
             <ListLink href="#/simulateur" icon="euro" title="Simuler un accueil" sub="Pour une nouvelle famille : coût, aide de la CAF" />
           </div>
         </section>
@@ -57,7 +57,7 @@ export function Plus() {
         <section class="stack-sm" aria-labelledby="donnees">
           <h2 id="donnees" class="section-title">Mes données</h2>
           <div class="list">
-            {!demo && <ListLink href="#/compte" icon="cloud" title="Compte" sub={cloud.email ? `${cloud.email} · ${cloud.verified === false ? 'adresse à confirmer' : statusLine(cloud)}` : statusLine(cloud)} />}
+            {!demo && <ListLink href="#/compte" icon="cloud" title="Compte" sub={cloud.email ? `${cloud.email} · ${cloud.verified === false ? 'adresse e-mail non vérifiée' : statusLine(cloud)}` : statusLine(cloud)} />}
             <ListLink href="#/sauvegarde" icon="shield" title="Sauvegarde" sub={lastB ? `Dernière le ${new Date(lastB).toLocaleDateString('fr-FR')}` : 'Aucune sauvegarde pour l’instant'} />
             <ListLink href="#/pilote" icon="message" title="Données du pilote" sub="Tes remarques et l’export pseudonymisé" />
             <ListLink href="#/reglages" icon="settings" title="Réglages" sub="Ton prénom, tes propres enfants à charge" />

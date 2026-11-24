@@ -11,7 +11,7 @@ import {
   type ISODate, type Month,
 } from './dates';
 import { acquisition, baseDixieme, compteur, cpForMonth, cpPrisEntre, indemnite, maintien } from './conges';
-import { absencesL2NonGerees, messageAbsenceL2, makeCtx, monthBase, planningBrutMin, monthBrut, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx, regularisation, brutConnu, brutDuNet } from './payroll';
+import { makeCtx, monthBase, planningBrutMin, monthBrut, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx, regularisation, brutConnu, brutDuNet } from './payroll';
 import { regionDe } from './regions';
 
 /** Entrée en vigueur de l'avenant n° 10 du 9 septembre 2025 (inaptitude) */
@@ -793,8 +793,6 @@ export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCdd
   }
   const endCtx: Ctx = { ...ctx, c: { ...c, end: dernierJour }, cache: new Map(), finControlee: true };
   const nonGere = nonGeresPeriode(endCtx.c, ctx.leaves, c.start, dernierJour, 'non');
-  const absL2 = absencesL2NonGerees(endCtx, c.trackedFrom > c.start ? c.trackedFrom : c.start, dernierJour);
-  if (absL2.length) nonGere.push(messageAbsenceL2(absL2));
   if (nonGere.length) return vide(nonGere);
 
   // T-103 (F11, F12) : une seule lecture du salaire du CDD : mensualisé (CCN 108.1, L1242-14) et mode 46 semaines avec la
@@ -816,7 +814,7 @@ export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCdd
     : ifc.inconnu ? 'Non calculée : voir l’encadré plus haut.'
       : `10 % de ${euros(assiette)} de salaires nets du CDD (code du travail, article L1243-8 ; l’Urssaf la fait déclarer et payer en net). Les indemnités d’entretien, de repas et de kilomètres ne comptent pas.`;
   if (fin === 'employeur') alertes.push(MESSAGE_CDD_DOMMAGES);
-  if (fin === 'suite_cdi') alertes.push('Ton CDD continue en CDI : dans l’app, ne termine pas ce contrat. Ouvre-le et passe-le en CDI. L’app ne sait pas encore si la durée et les salaires du CDD comptent pour le préavis et l’indemnité de rupture du CDI (point à confirmer).');
+  if (fin === 'suite_cdi') alertes.push('Ton CDD continue en CDI : dans l’app, ne termine pas ce contrat. Ouvre-le et passe-le en CDI. Tu gardes l’ancienneté du CDD (code du travail, article L1243-11) : elle compte pour le préavis et l’indemnité de rupture du CDI, et les salaires du CDD restent dans ceux du contrat.');
   // Messages du contrat (motif « autre », plus de 18 mois) ; la règle des 12 mois concerne les mois, pas la fin.
   for (const m of messagesCdd(c)) {
     if (m === MESSAGE_CDD_12_MOIS || (m === MESSAGE_CDD_DEVIENT_CDI && fin === 'suite_cdi') || alertes.includes(m)) continue;

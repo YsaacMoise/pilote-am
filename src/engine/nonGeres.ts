@@ -40,7 +40,7 @@ export const NON_GERE_PV_DISPENSE =
   'Préavis non fait à la demande des parents, avec des horaires qui changent d’une semaine à l’autre : non géré pour l’instant. L’app calcule chacun des deux cas seul, pas encore les deux ensemble. Fais les derniers mois et la fin du contrat avec les parents.';
 /** A-01 : CCN art. 97.1 ne connaît que 52 semaines ou 46 semaines et moins ; question 2 posée à la DDETS le 18/11/2026 */
 export const NON_GERE_47_51 =
-  'Accueil de 47 à 51 semaines par an : non géré. La convention ne prévoit que 52 semaines, ou 46 semaines et moins (article 97.1). Ne choisis ni 46 semaines ni toute l’année à la place : la paie serait fausse. La question est posée à la DDETS. En attendant, fais la paie sans l’app.';
+  'Accueil de 47 à 51 semaines par an : non géré. La convention ne prévoit que 52 semaines, ou 46 semaines et moins (article 97.1). Ne choisis ni 46 semaines ni toute l’année à la place : la paie serait fausse. Fais la paie sans l’app.';
 /** Décision du DG du 18/11/2026 : contrat sans réponse aux 4 questions (3 de T-031, CDD de T-033), mois non calculé */
 export const CONTRAT_A_COMPLETER =
   'Contrat à compléter : ouvre le contrat et réponds aux 4 questions (lieu de travail, horaires, accueil régulier, CDI ou CDD). L’app ne calcule pas ce mois avant.';

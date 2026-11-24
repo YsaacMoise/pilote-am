@@ -214,8 +214,16 @@ export function baremesProvisoires(d: ISODate): boolean {
   return d > BAREMES_VERIFIES_JUSQU_AU;
 }
 
+/**
+ * T-103 (D4) : un mois dont les barèmes ne sont pas publiés n'est pas affiché comme un calcul : l'écran dit que les barèmes
+ * sont attendus (le paquet du SMIC les ajoute à leur publication).
+ */
+export const messageBaremesAttendus = (moisLabel: string): string =>
+  `Barèmes de ${moisLabel} attendus : le SMIC, le minimum garanti et les cotisations de ce mois ne sont pas encore publiés. L’app calcule ce mois dès leur publication.`;
+
+/** Simulateur : les mois après la date des barèmes vérifiés reprennent les derniers barèmes publiés (prévision, dite telle quelle). */
 export const MESSAGE_BAREMES_PROVISOIRES =
-  'Les barèmes officiels de cette période (SMIC, minimum garanti, cotisations, aide de la CAF) ne sont pas encore tous publiés. Ce calcul reprend les derniers barèmes connus : les montants pourront changer.';
+  `Les mois après le ${BAREMES_VERIFIES_JUSQU_AU.split('-').reverse().join('/')} reprennent les barèmes publiés à ce jour (SMIC, minimum garanti, cotisations, aide de la CAF) : leurs revalorisations ne sont pas encore publiées.`;
 
 /*
  * T-041 (R-2, relecture V4) : les textes des écrans qui citent un montant ou une date de barème les lisent ici,
