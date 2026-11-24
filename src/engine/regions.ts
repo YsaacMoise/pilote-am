@@ -117,4 +117,4 @@ export function partNonDeductibleRegion(region: Region, metropole: number): numb
 
 /** R2 : majoration de 4 % du titre AM-GE à Mayotte. */
 export const MINIMUM_SANS_TITRE_MAYOTTE =
-  'Ce minimum ne compte pas la majoration de l’annexe 5 de la convention pour le titre « Assistant maternel - garde d’enfants ». Elle vaut aussi à Mayotte (convention, article 2 : la convention « est également applicable à Mayotte » pour les assistants maternels). Si tu as ce titre, ton minimum est plus haut : vérifie ton taux.';
+  'À Mayotte, l’Urssaf écrit que la majoration de 4 % du titre « Assistant maternel - garde d’enfants » ne s’applique pas. Aucun texte lu ne l’écarte (la convention vaut aussi à Mayotte) : la question sera posée à la DDETS. Ce minimum ne la compte pas.';

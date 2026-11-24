@@ -918,23 +918,15 @@ def mois_b(ctx, m):
             r = appel("indemnite_entretien_mois", [jour_b(d, mt) for d, mt in js],
                       ctx.k["entretien_horaire"], a)
             return r["resultat"]["indemnite_centimes"]
-        # T-042c : tarif PAR JOUR au contrat. B n'a pas d'entree « par jour » (indemnite_entretien_mois ne prend qu'un
-        # montant horaire). Un jour qui dure exactement le planning vaut le tarif du jour sous toutes les lectures :
-        # B recoit le montant horaire tarif x 60 / duree prevue, qui redonne ce tarif sans choisir de lecture. Un jour
-        # d'une autre duree que le planning (heures en plus, jour hors planning) : B refuse visiblement
-        # (ENTRETIEN-TARIF-JOUR), sans convertir. Remplace la conversion de T-042 (V5, B-1).
-        jour = ctx.k.get("entretien_jour", 0)
-        autres = [str(d) for d, mt in js if mt != ctx.prevu(d)]
-        if autres:
-            raise Refus("ENTRETIEN-TARIF-JOUR", "indemnite_entretien_mois",
-                        {"motif": "tarif par jour, jour d'une autre duree que le planning : B n'a pas d'entree par jour",
-                         "jours": autres})
-        total = 0
-        for d, mt in js:
-            r = appel("indemnite_entretien_mois", [jour_b(d, mt)],
-                      f"{jour * 60}/{mt}", a)
-            total += r["resultat"]["indemnite_centimes"]
-        return total
+        # T-103 (M2, M3) : tarif PAR JOUR au contrat (contrat.entretien_jour, centimes par journee). B le recoit tel
+        # quel (montant_journalier_contrat_centimes) : du pour chaque journee de travail effectif, quelle que soit sa
+        # duree, jour hors planning compris ; minimum de 114.1 sur la duree de travail de l'art. 99. Remplace le refus
+        # ENTRETIEN-TARIF-JOUR de T-042c.
+        if not js:
+            return 0
+        r = appel("indemnite_entretien_mois", [jour_b(d, mt) for d, mt in js], None, a,
+                  montant_journalier_contrat_centimes=ctx.k.get("entretien_jour", 0))
+        return r["resultat"]["indemnite_centimes"]
 
     garde("entretien", entretien)
 

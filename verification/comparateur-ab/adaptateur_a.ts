@@ -150,6 +150,10 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       if (s.contrat.entretien_horaire != null && !A_ENTRETIEN_HORAIRE) {
         out.entretien = refus('A : montant horaire d’entretien non géré par cette version de A (tarif par jour seulement)');
       }
+      // T-042c, T-042f : A (T-044) verse la part certaine et met l'écart « à confirmer », hors du total (tarif par jour sur un
+      // jour d'une autre durée que le planning ; montant horaire quand la présence diffère du temps de travail, T-044b). La sortie est donc rendue comme un refus de A, avec le montant.
+      const entAConf = (b as any).entretienAConfirmer;
+      if (entAConf) out.entretien = refus(`A : ${entAConf} centimes d’entretien à confirmer (${s.contrat.entretien_horaire != null ? 'montant horaire : présence de l’enfant différente du temps de travail' : 'tarif par jour : jour d’une autre durée que le planning'} ; part certaine ${b.entretien})`);
       out.repas = ok(b.repas);
       out.km = ok(b.km);
       out.alertes = ok(b.alerts);

@@ -126,7 +126,7 @@ export function releveDonnees(
     mois: m,
     moisLabel: moisL,
     provisoire,
-    titre: provisoire ? `Relevé du mois en cours, au ${aujourdhui.slice(8, 10)}/${aujourdhui.slice(5, 7)}` : 'Relevé du mois',
+    titre: provisoire ? 'Relevé du mois, provisoire' : 'Relevé du mois',
     enfant: c.child,
     famille: c.family,
     am: o.amName.trim(),

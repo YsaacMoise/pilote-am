@@ -853,6 +853,7 @@ def grille():
     S += situations_t076()  # T-076 : planning variable (PV-*) et CDD (CDD-*)
     S += situations_t076_d()  # T-076 : decisions D1 a D11, fins de contrat a planning variable (verification B)
     S += situations_t076_e()  # T-076 : decisions D15 a D19 et R2 (relecteur independant)
+    S += situations_t103()  # T-103 : regles du tableau rapports/T-103-inventaire.md (calculateur-arvela)
     return S
 
 
@@ -1725,6 +1726,42 @@ def situations_t076_e():
                       {"id": "ind", "type": "cp_indemnite", "periode": 2025, "sorties": ["indemnite_cp"]}],
                      theme="fin d'un CDI à planning variable, jours non pris de la période précédente (R2, R-PV-13)",
                      marques=m))
+    return S
+
+
+MARQUE_T103 = "T-103 : règle du tableau validé par le DG le 24/11/2026 (rapports/T-103-inventaire.md)"
+
+
+def situations_t103():
+    """T-103 : situations qui exercent chaque regle du tableau (lignes M, F, C, H, R, D).
+    Aucun resultat attendu n'est calcule ici : A et B sont seulement compares."""
+    S = []
+
+    def ajoute(id_, domaine, k, calculs, ev=None, theme=None):
+        S.append(sit(id_, domaine, k, calculs, ev, theme=theme or domaine, marques={"*": MARQUE_T103}))
+
+    # M1 a M3 : entretien. Duree du jour = temps de travail de l'art. 99 ; contrat « montant fixe par journee »
+    # (contrat.entretien_jour, centimes par journee) ; jour hors planning ; minimum de 114.1.
+    ent = [{"id": "m", "type": "mois", "mois": "2026-09", "sorties": ["entretien"]}]
+    for id_, hr, jour_tarif, pres, jour_ in [
+        ("M1-ARRIVEE-AVANT", "H40", None, ["07:00", "16:00"], "2026-09-15"),
+        ("M1-DEPART-APRES", "H40", None, ["08:00", "18:30"], "2026-09-15"),
+        ("M1-ARRIVEE-APRES", "H40", None, ["10:00", "16:00"], "2026-09-15"),
+        ("M2-JOUR-LONG", "H45", 300, ["07:00", "19:00"], "2026-09-15"),
+        ("M2-JOUR-COURT", "H40", 300, ["08:00", "10:00"], "2026-09-15"),
+        ("M2-JOUR-LONG-400", "H40", 400, ["07:30", "18:00"], "2026-09-15"),
+        ("M3-HORS-PLANNING-2H", "H25", 400, ["09:00", "11:00"], "2026-09-19"),
+        ("M3-HORS-PLANNING-11H", "H25", 300, ["07:00", "18:00"], "2026-09-19"),
+        ("M3-HORS-PLANNING-MERCREDI", "H32", 400, ["08:00", "16:00"], "2026-09-16"),
+    ]:
+        k = contrat_grille("C52", hr, "T420")
+        if jour_tarif is None:
+            k["entretien_horaire"] = "50"
+            k.pop("entretien_jour")
+        else:
+            k["entretien_jour"] = jour_tarif
+        ajoute(f"T103-{id_}", "indemnités", k, ent, {"jours": [{"date": jour_, "pres": [pres]}]},
+               theme="T-103 entretien (M1 a M3)")
     return S
 
 
