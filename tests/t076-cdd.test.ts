@@ -320,6 +320,7 @@ describe('Non-régression : un CDI donne exactement les mêmes sorties qu’avan
   // Sorties capturées sur le code d'avant T-076 (commit 4f85868), mêmes contrats et saisies (tests/fixtures/t076-cdi-avant.json).
   // Intégration T-078 (22/11/2026) : fixture recapturée sur integration 7bdc012 (avant la fusion de T-076), car T-072, T-074,
   // T-077, T-079 et T-078 (D1 à D4) ont changé des messages et des champs des CDI. Le test garde son sens : T-076 ne change rien.
+  // T-103 (24/11/2026) : fixture recapturée à chaque lot de la T-103 ; chaque écart est relu et noté dans rapports/T-103-execution.md.
   const avant = JSON.parse(readFileSync(new URL('./fixtures/t076-cdi-avant.json', import.meta.url), 'utf8')) as Record<string, unknown>;
   const CDI: Record<string, Contract> = {
     complet: { id: 'c1', child: 'L', family: 'M', color: 0, start: '2025-09-01', yearType: 'complete', weeks: 52, weeksOff: [], planning: week('08:00', '17:00'), rateNet: 480, majoration: 10, entretienJour: 350, repasPrix: 300, repasParJour: 1, kmTaux: 40, cpMode: 'juin', majoreFiscal: false, trackedFrom: '2025-09-01', balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 0, alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false },

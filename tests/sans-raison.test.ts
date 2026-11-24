@@ -108,7 +108,8 @@ describe('migration douce : saisies d’avant ramenées à la forme sans raison'
 });
 
 describe('paie identique : mêmes jours payés et mêmes montants qu’avant, pour chaque nature', () => {
-  // Valeurs calculées par le commit 9a078a7 (absence enregistrée avec sa nature), sur le même contrat :
+  // Valeurs calculées par le commit 9a078a7 (absence enregistrée avec sa nature), sur le même contrat. T-103 (24/11/2026) :
+  // recapturées (jours au-delà de la durée retenus au lieu de « à confirmer » ; férié non compté ; 2024 géré).
   // une absence de trois semaines, et deux saisies d'un jour à 3 jours d'écart (même événement), à quatre dates.
   const avant = JSON.parse(readFileSync(new URL('./fixtures/paie-evenements-avant-sans-raison.json', import.meta.url), 'utf8'));
   const plus3 = (d: string) => new Date(Date.parse(`${d}T12:00:00Z`) + 3 * 864e5).toISOString().slice(0, 10);
@@ -128,12 +129,12 @@ describe('paie identique : mêmes jours payés et mêmes montants qu’avant, po
 });
 
 describe('lien des parents : aucun motif d’absence de l’AM', () => {
-  it('événement familial à confirmer : ni « événement familial » ni nature, le montant est « à confirmer »', () => {
+  it('événement familial plus long que sa durée (T-103 : jours en plus retenus) : ni « événement familial » ni nature, rien « à confirmer »', () => {
     const l = absenceSaisie('evenement', 'handicap_enfant', 'e', '2026-10-05', '2026-11-06')!;
     const snap = buildSnapshot({ ctx: makeCtx(c, [], [l], '2026-11-10'), journal: [], amName: 'Ana', enfants: 0, now: 1 });
     const oct = snap.mois.find((x) => x.month === '2026-10')!;
-    expect(oct.aConfirmer).toEqual(['une part du salaire']);
-    expect(oct.lignes.find((x) => x.label === 'Salaire net')?.value).toMatch(/de salaire à confirmer$/);
+    expect(oct.aConfirmer ?? []).toEqual([]);
+    expect(JSON.stringify(snap)).not.toMatch(/à confirmer/);
     const texte = JSON.stringify(snap);
     expect(texte).not.toMatch(/[ée]v[ée]nement|handicap|mariage|décès|deces/i);
     expect(snap.jours.filter((j) => j.statut === 'am').length).toBeGreaterThan(0);
@@ -152,10 +153,9 @@ describe('lien des parents : aucun motif d’absence de l’AM', () => {
     const l = absenceSaisie('evenement', 'handicap_enfant', 'e', '2026-10-05', '2026-10-23')!;
     const ctx = makeCtx(c, [], [l], '2026-11-10');
     const r = computeMonth(ctx, '2026-10');
-    expect(r.evenementAConfirmer).toBeGreaterThan(0);
+    expect(r.retenue).toBeGreaterThan(0);
     const t = declarationText(ctx, r, 'Ana');
-    expect(t).toMatch(/• Salaire : \+ .+ de salaire à confirmer ensemble/);
-    expect(t).toMatch(/sans une part du salaire à confirmer/);
+    expect(t).not.toMatch(/à confirmer/);
     expect(t).not.toMatch(/[ée]v[ée]nement|handicap|mariage|décès/i);
   });
 });

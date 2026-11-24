@@ -202,6 +202,11 @@ export interface Contract {
   cddMotif?: 'remplacement' | 'autre';
   /** Date à partir de laquelle l'app suit le contrat (avant : historique) */
   trackedFrom: ISODate;
+  /**
+   * T-103 (C8) : jour de repos hebdomadaire (1 = lundi … 7 = dimanche), CCN 46 (« prévue par le contrat de travail »).
+   * Demandé seulement si le planning prévoit le dimanche : il sert au décompte des jours ouvrables (CCN 48, liminaire).
+   */
+  reposHebdo?: number;
   balances: StartBalances;
   history: HistoryMonth[];
   createdAt: number;
@@ -281,6 +286,12 @@ export interface AmLeave {
    * de la raison. Absent : événement à part.
    */
   suiteDe?: string;
+  /**
+   * T-103 (C9) : congé indemnisé par la Sécurité sociale (congé de deuil, CCN 48.1.3.1.2 et 48.1.3.1.3) : montant net des
+   * indemnités journalières de la CPAM pour ce
+   * congé, en centimes. Le salaire est maintenu « sous déduction des indemnités journalières versées ». Demandé à la saisie.
+   */
+  ijSecu?: number;
 }
 
 export interface Settings {
