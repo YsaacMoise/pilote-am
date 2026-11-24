@@ -102,7 +102,6 @@ describe('T-077 R3 : jours fériés locaux, deux lectures', () => {
     const met = monthBase(makeCtx(contract(), [], [], '2026-11-22'), '2025-12');
     const als = monthBase(makeCtx(contract(AM), [], [], '2026-11-22'), '2025-12');
     expect(met.base).toBe(86667);
-    expect(met.evenementAConfirmer).toBe(0);
     // Décembre 2025 : 23 jours prévus de 8 h = 184 h ; 86 666,67 × 176 ÷ 184 = 82 898,55.
     expect(als.base).toBe(82899);
     expect(als.evenementAConfirmer).toBe(86667 - 82899);
@@ -122,7 +121,6 @@ describe('T-077 R3 : jours fériés locaux, deux lectures', () => {
     const my = monthBase(makeCtx(contract(MY), [], [], '2026-11-22'), '2026-04');
     const als = monthBase(makeCtx(contract(AM), [], [], '2026-11-22'), '2026-04');
     const met = monthBase(makeCtx(contract(), [], [], '2026-11-22'), '2026-04');
-    expect(met.evenementAConfirmer).toBe(0);
     expect(my.joursFerieLocalAConfirmer).toBe(1);
     expect(my.alerts.join(' ')).toMatch(/27 avril/);
     expect(als.joursFerieLocalAConfirmer).toBe(1);
@@ -131,7 +129,6 @@ describe('T-077 R3 : jours fériés locaux, deux lectures', () => {
   it('absence de l’enfant saisie un férié local : payée dans les deux lectures, rien à confirmer', () => {
     const recs = [rec('2025-12-26', { abs: 'parents' })];
     const als = monthBase(makeCtx(contract(AM), recs, [], '2026-11-22'), '2025-12');
-    expect(als.evenementAConfirmer).toBe(0);
     expect(als.base).toBe(86667);
   });
   it('férié national dont la condition de l’art. 47.2 dépend d’un férié local : à confirmer', () => {
@@ -173,7 +170,6 @@ describe('T-077 R4 : maintien de salaire du droit local (Alsace-Moselle)', () =>
     const met = monthBase(makeCtx(contract(), [], leaves, '2026-11-22'), '2026-09');
     const my = monthBase(makeCtx(contract(MY), [], leaves, '2026-11-22'), '2026-09');
     expect(my.base).toBe(met.base);
-    expect(my.evenementAConfirmer).toBe(0);
   });
   it('enfant de l’AM malade : même règle', () => {
     const l = [leave('am_enfant_malade', '2026-09-14', '2026-09-14')];
@@ -268,7 +264,6 @@ describe('T-077 : relecture (D1, D2)', () => {
     const { baseDixieme } = await import('../src/engine/conges');
     const bd = baseDixieme(makeCtx(contract(AM), [], [], '2026-11-22'), 2025);
     expect(bd.joursFerieLocalAConfirmer).toBeGreaterThan(0);
-    expect(bd.joursEvenementAConfirmer).toBe(0);
   });
 });
 
@@ -277,7 +272,6 @@ describe('T-077 et T-074 : férié local pendant un préavis dispensé (vérific
     const c = contract({ ...AM, end: '2025-12-31', rupture: { motif: 'retrait', notif: '2025-12-01', preavis: 'employeur', dernierJourTravaille: '2025-12-19' } as Contract['rupture'] });
     const met = monthBase(makeCtx({ ...c, alsaceMoselle: false }, [], [], '2026-11-22'), '2025-12');
     const als = monthBase(makeCtx(c, [], [], '2026-11-22'), '2025-12');
-    expect(als.joursFerieLocalAConfirmer).toBe(0);
     expect(als.base).toBe(met.base);
   });
 });

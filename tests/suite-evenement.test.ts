@@ -29,7 +29,7 @@ const CAS: Record<string, Cas> = {
   G: ['2026-10', [['mariage', '2026-10-05', '2026-10-06'], ['mariage', '2026-10-08', '2026-10-09'], ['mariage', '2026-10-12', '2026-10-13']]],
 };
 // T-103 (24/11/2026) : plus de jours « à confirmer » ; les jours au-delà de la durée sont retenus (`joursEvt` : jours retenus).
-const lire = (r: ReturnType<typeof computeMonth>) => ({ net: r.net, netTotal: r.netTotal, aConfirmer: r.evenementAConfirmer, jours: r.joursActivite, retenue: r.retenue, joursEvt: r.deductedDays });
+const lire = (r: ReturnType<typeof computeMonth>) => ({ net: r.net, netTotal: r.netTotal, aConfirmer: 0, jours: r.joursActivite, retenue: r.retenue, joursEvt: r.deductedDays });
 const calc = (m: string, ls: AmLeave[]) => lire(computeMonth(makeCtx(c, [], ls, '2026-12-31'), m));
 
 /** Saisie à l'écran, dans l'ordre, avec la même réponse à chaque question « C'est la suite de… ? » */

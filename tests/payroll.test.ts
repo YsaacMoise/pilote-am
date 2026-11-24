@@ -180,14 +180,16 @@ describe('seuil des 45 h selon les absences de la semaine (art. 96-4, 99 ; Cass.
   const semaine = (recs: DayRec[], leaves: AmLeave[] = [], over: Partial<Contract> = {}) =>
     monthBase(makeCtx(contract(over), recs, leaves, '2026-11-15'), '2026-10');
 
-  it('absence voulue par les parents : le jour compte, les 4 h sont majorées', () => {
+  // T-103 (H2, revu après la porte-vérité) : CCN 96.4, heures « de travail effectuées » : une absence de l'enfant, même
+  // payée, n'est pas une heure effectuée ; elle ne compte pas dans le seuil des 45 h.
+  it('absence voulue par les parents : payée, le jour ne compte pas, les 4 h sont au taux du contrat (T-103, H2)', () => {
     const b = semaine([rec('2026-10-05', { abs: 'parents' }), ...plus4h]);
-    expect(b.complMin).toBe(0);
-    expect(b.majMin).toBe(240);
+    expect(b.complMin).toBe(240);
+    expect(b.majMin).toBe(0);
   });
-  it('enfant malade sans certificat (payé) : le jour compte, les 4 h sont majorées', () => {
+  it('enfant malade sans certificat (payé) : le jour ne compte pas (T-103, H2)', () => {
     const b = semaine([rec('2026-10-05', { abs: 'malade' }), ...plus4h]);
-    expect(b.majMin).toBe(240);
+    expect(b.majMin).toBe(0);
   });
   it('enfant malade avec certificat, jour retenu : le jour ne compte pas, les 4 h sont au taux du contrat', () => {
     const b = semaine([rec('2026-10-05', { abs: 'malade_certif' }), ...plus4h]);
@@ -197,10 +199,10 @@ describe('seuil des 45 h selon les absences de la semaine (art. 96-4, 99 ; Cass.
   });
   // T-035b : CCN art. 105 al. 1, absence non prévue = rémunérée ; plus de retenue. Le jour noté « sans solde » est traité
   // comme l'absence voulue par les parents.
-  it('absence de l’enfant notée « sans solde » : payée, le jour compte comme une absence voulue par les parents', () => {
+  it('absence de l’enfant notée « sans solde » : payée, le jour ne compte pas, comme une absence voulue par les parents', () => {
     const b = semaine([rec('2026-10-05', { abs: 'sans_solde_enfant' }), ...plus4h]);
-    expect(b.complMin).toBe(0);
-    expect(b.majMin).toBe(240);
+    expect(b.complMin).toBe(240);
+    expect(b.majMin).toBe(0);
   });
   it('congés payés de l’AM avec droits acquis : le jour compte (Cass. soc. 10/09/2025)', () => {
     const cp: AmLeave[] = [{ id: 'l', type: 'cp', from: '2026-10-05', to: '2026-10-05' }];
@@ -234,10 +236,12 @@ describe('seuil des 45 h selon les absences de la semaine (art. 96-4, 99 ; Cass.
     const b = monthBase(makeCtx(contract({ rateNet: 745, entretienJour: 422 }), recs, [], '2026-11-15'), '2026-10');
     expect(b.heuresNormales).toBe(195);
     expect(b.joursActivite).toBe(22);
-    expect(b.majMin).toBe(17 * 60);
-    expect(b.complMin).toBe(0);
-    expect(b.majAmount).toBe(13932); // 17 × 7,45 × 1,10 = 139,315 → 139,32 €
-    expect(b.net).toBe(145275 + 13932); // 1 592,07 €
+    // T-103 (H2) : chaque semaine a une absence des parents (9 h non effectuées) : 36 h + 4 h en plus, sous 45 h. Les 17 h
+    // sont des heures complémentaires au taux du contrat : 17 × 7,45 = 126,65 €.
+    expect(b.majMin).toBe(0);
+    expect(b.complMin).toBe(17 * 60);
+    expect(b.complAmount).toBe(12665);
+    expect(b.net).toBe(145275 + 12665);
     expect(b.entretien).toBe(17 * 435); // journées de 10 h : plancher 4,35 € > 4,22 € du contrat
   });
 });
@@ -326,19 +330,18 @@ describe('congés payés (art. 48 et 102)', () => {
     expect(k.pris).toBe(11); // 3 → 15 août, sans le 15 (férié) ni les dimanches
     expect(k.reste).toBe(9);
   });
-  it('année incomplète : indemnité de juin « à confirmer », jamais payée sur des jours non tranchés (T-019, SUS-11)', () => {
+  it('année incomplète sans les semaines sans accueil : indemnité de juin non calculée, le mois demande la donnée (T-103, B)', () => {
     const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', yearType: 'incomplete', weeks: 46 });
     const ctx = makeCtx(c, [], [], '2026-07-01');
     const ind = indemnite(ctx, 2025);
     // base : 12 × 603,75 € = 7 245 € → dixième 724,50 € (ne dépend pas du nombre de jours acquis)
     expect(ind.dixieme).toBe(72450);
-    expect(ind.aConfirmer).toBeDefined();
+    expect(ind.aConfirmer?.message).toMatch(/non calculée.*semaines sans accueil/);
     const juin = cpForMonth(ctx, '2026-06');
     expect(juin.indemnite).toBe(0);
-    expect(juin.aConfirmer).toMatch(/à confirmer/);
     const r = computeMonth(ctx, '2026-06');
-    expect(r.netTotal).toBe(60375);
-    expect(r.cpAConfirmer).toBeDefined();
+    expect(r.nonGere.join(' ')).toMatch(/Indique dans le contrat toutes tes semaines sans accueil/);
+    expect(r.nonGere.join(' ')).not.toMatch(/à confirmer/);
   });
   it('année complète : complément du dixième en juin seulement s’il est plus favorable', () => {
     const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01' });
@@ -349,12 +352,12 @@ describe('congés payés (art. 48 et 102)', () => {
     expect(ind.maintien).toBe(78750);
     expect(cpForMonth(ctx, '2026-06').complement).toBe(3150);
   });
-  it('versement au fur et à mesure : « à confirmer » tant que les jours acquis ne sont pas tranchés (T-019, SUS-11)', () => {
+  it('versement au fur et à mesure : non calculé tant que les semaines sans accueil manquent (T-103, B)', () => {
     const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', yearType: 'incomplete', weeks: 46, cpMode: 'fur' });
     const ctx = makeCtx(c, [], [{ id: 'l', type: 'cp', from: '2026-07-06', to: '2026-07-11' }], '2026-08-01');
     const juil = cpForMonth(ctx, '2026-07');
     expect(juil.indemnite).toBe(0);
-    expect(juil.aConfirmer).toMatch(/à confirmer/);
+    expect(juil.aConfirmer).toMatch(/non calculée/);
   });
 });
 
@@ -597,7 +600,6 @@ describe('règles tranchées le 28/10/2026 (texte et fiches officielles)', () =>
     expect(sickDeductible(ctx).size).toBe(5);
     expect(sickLectures(ctx).demandes.size).toBe(0);
     const m = monthBase(ctx, '2026-03');
-    expect(m.evenementAConfirmer).toBe(0);
     expect(m.nonGere).toEqual([]);
   });
   it('même absence sans les dates du certificat : le certificat peut aller jusqu’au 22/03 (14 jours) : l’app demande les dates', () => {
@@ -767,10 +769,8 @@ describe('corrections après audit indépendant (31 octobre 2026)', () => {
     // Sans enfant : 6, 7, 8 payés ; 9, 10 et 13 (jours prévus) retenus. Avec 1 enfant : seul le lundi 13 est retenu.
     const sans = monthBase(makeCtx(c, [], leaves, '2026-08-15', 0), '2026-07');
     expect(sans.deductedDays).toBe(3);
-    expect(sans.joursCpAConfirmer).toBe(0);
     const avec = monthBase(makeCtx(c, [], leaves, '2026-08-15', 1), '2026-07');
     expect(avec.deductedDays).toBe(1);
-    expect(avec.joursCpAConfirmer).toBe(0);
   });
   it('C-006 : retenue d’un jour en novembre 2026 : le 11 novembre compte dans le diviseur (189 h et non 180 h)', () => {
     // Jeudi 19 novembre (pas le 12 : une absence au lendemain du 11 rendrait le férié non payé, article 47)

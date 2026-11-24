@@ -154,20 +154,17 @@ describe('T-023 (2) événements familiaux, R-ABS-06', () => {
     const c22 = contract({ start: '2022-01-03', trackedFrom: '2022-01-03' });
     const r = computeMonth(makeCtx(c22, [], [ev('2022-06-07', '2022-06-08', 'deces_enfant')], '2022-12-31'), '2022-06');
     expect(r.nonGere).toEqual([]);
-    expect(r.evenementAConfirmer).toBe(0);
     expect(r.retenue).toBe(0);
   });
 
   it('mariage dans la durée (4 jours ouvrables du lundi au jeudi) : payé, « pas de réduction de la rémunération »', () => {
     const r = mois([ev('2026-10-05', '2026-10-08', 'mariage')]);
-    expect(r.evenementAConfirmer).toBe(0);
     expect(r.retenue).toBe(0);
     expect(r.net).toBe(sansAbsence.net);
   });
 
   it('mariage saisi sur 5 jours ouvrables : le 5e n’est plus un congé pour événement familial, il est retenu (T-103)', () => {
     const r = mois([ev('2026-10-05', '2026-10-09', 'mariage')]);
-    expect(r.evenementAConfirmer).toBe(0);
     expect(r.retenue).toBeGreaterThan(0);
     expect(r.net + r.retenue).toBe(sansAbsence.net);
     expect(r.joursActivite).toBe(sansAbsence.joursActivite - 1);
@@ -177,14 +174,12 @@ describe('T-023 (2) événements familiaux, R-ABS-06', () => {
 
   it('jour de plus de 600 km saisi en congé sans solde : retenu (« 1 jour ouvrable supplémentaire, non rémunéré »)', () => {
     const r = mois([ev('2026-10-05', '2026-10-08', 'mariage'), { id: 's', type: 'sans_solde', from: '2026-10-09', to: '2026-10-09' }]);
-    expect(r.evenementAConfirmer).toBe(0);
     expect(r.retenue).toBeGreaterThan(0);
   });
 
   it('événement saisi avec l’app en ligne (sans nature ni durée) : payé comme avant (décision du DG du 21/11/2026)', () => {
     const leaves = [ev('2026-10-05', '2026-10-05')];
     const r = mois(leaves);
-    expect(r.evenementAConfirmer).toBe(0);
     expect(r.retenue).toBe(0);
     expect(r.net).toBe(sansAbsence.net);
     expect(r.alerts.join(' ')).not.toMatch(/durée|Événement familial/);
@@ -196,7 +191,7 @@ describe('T-023 (2) événements familiaux, R-ABS-06', () => {
     expect(mars.retenue).toBeGreaterThan(0);
     expect(mars.joursActivite).toBe(mois([], '2026-03').joursActivite - 4);
     // Du lundi 15/06 au jeudi 25/06 : 10 jours ouvrables, tous dans la durée.
-    expect(mois([ev('2026-06-15', '2026-06-25', 'handicap_enfant')], '2026-06').evenementAConfirmer).toBe(0);
+    expect(mois([ev('2026-06-15', '2026-06-25', 'handicap_enfant')], '2026-06').retenue).toBe(0);
   });
 
   it('congé de deuil (T-103, C9) : 8 jours ouvrables, salaire maintenu moins les indemnités journalières saisies', () => {
@@ -209,7 +204,6 @@ describe('T-023 (2) événements familiaux, R-ABS-06', () => {
 
   it('avant le 01/05/2024 (T-103, C6) : version de 2022 de 48.1.3.1.1, payé sans réserve', () => {
     const r = computeMonth(makeCtx(contract({ start: '2023-09-04', trackedFrom: '2023-09-04' }), [], [ev('2024-03-04', '2024-03-04', 'naissance')], '2024-12-31'), '2024-03');
-    expect(r.evenementAConfirmer).toBe(0);
     expect(r.retenue).toBe(0);
   });
 });
@@ -269,16 +263,12 @@ describe('T-017 indemnité kilométrique (CCN art. 57 et 113)', () => {
     // T-025 C-2 : `kmPartage: true` ajouté. Le prorata ne s'applique que « Lorsque plusieurs particuliers employeurs sont demandeurs ».
     const r = computeMonth(makeCtx({ ...c, kmCv: 5 }, [rec('2026-10-05', { km: 12, kmPartage: true, kmEnfants: 3 })], [], '2026-11-01'), '2026-10');
     expect(r.km).toBe(164); // 4,92 € ÷ 3 = 1,64 €
-    expect(r.kmAConfirmer).toBe(0);
   });
-  it('art. 113 : km sans le nombre d’enfants → non payés, « à confirmer », jamais en entier par défaut', () => {
+  it('art. 113 : km sans les réponses sur le trajet → le mois demande la donnée (T-103, K1), jamais payés en entier par défaut', () => {
     const ctx = makeCtx(c, [rec('2026-10-05', { km: 12 })], [], '2026-11-01');
     const r = computeMonth(ctx, '2026-10');
     expect(r.km).toBe(0);
-    expect(r.kmAConfirmer).toBe(12);
-    expect(declarationLines(ctx, r).find((l) => l.label === 'Frais kilométriques')!.value).toMatch(/12 km à confirmer/);
-    // Puissance non renseignée sur ce contrat : le contrôle du tarif le signale
-    expect(r.alerts.join(' ')).toMatch(/renseigne la puissance fiscale/);
+    expect(r.nonGere.join(' ')).toMatch(/Frais kilométriques du 05\/10 : indique si une autre famille a aussi demandé ce trajet/);
   });
 });
 
@@ -297,7 +287,6 @@ describe('T-025 C-1 : durée d’un événement familial comptée par événemen
   it('mariage saisi en deux absences (05-06/10 puis 07-09/10) : 4 jours payés, le 5e retenu, comme en une seule saisie', () => {
     const une = mois([ev('2026-10-05', '2026-10-09', 'mariage')]);
     const deux = mois([ev('2026-10-05', '2026-10-06', 'mariage'), ev('2026-10-07', '2026-10-09', 'mariage')]);
-    expect(deux.evenementAConfirmer).toBe(0);
     expect(deux.retenue).toBeGreaterThan(0);
     expect(deux.retenue).toBe(une.retenue);
     expect(deux.net).toBe(une.net);
@@ -317,7 +306,6 @@ describe('T-025 C-1 : durée d’un événement familial comptée par événemen
     // 05-07/10 : 3 jours ouvrables, payés. 19-21/10 : même nature, 12 jours après → reliée par l'ancienne règle (l'AM peut
     // supprimer le lien en ressaisissant) ; T-103 : retenue, la raison est dite.
     const r = mois([ev('2026-10-05', '2026-10-07', 'deces_proche'), ev('2026-10-19', '2026-10-21', 'deces_proche')]);
-    expect(r.evenementAConfirmer).toBe(0);
     expect(r.retenue).toBeGreaterThan(0);
     expect(r.joursActivite).toBe(sansAbsence.joursActivite - 3);
     expect(r.alerts.join(' ')).toMatch(/en comptant l’absence saisie/);
@@ -325,13 +313,11 @@ describe('T-025 C-1 : durée d’un événement familial comptée par événemen
 
   it('deux décès d’un proche à plus de 15 jours d’écart : deux événements, chacun ses 3 jours payés', () => {
     const r = mois([ev('2026-09-07', '2026-09-09', 'deces_proche'), ev('2026-10-05', '2026-10-07', 'deces_proche')]);
-    expect(r.evenementAConfirmer).toBe(0);
     expect(r.net).toBe(sansAbsence.net);
   });
 
   it('natures différentes (naissance puis mariage) : pas reliées', () => {
     const r = mois([ev('2026-10-05', '2026-10-07', 'naissance'), ev('2026-10-08', '2026-10-09', 'mariage')]);
-    expect(r.evenementAConfirmer).toBe(0);
   });
 });
 
@@ -349,13 +335,11 @@ describe('T-025 C-4 : férié chômé pendant un congé pour événement familia
     // CCN 48, liminaire : jours ouvrables hors fériés chômés ; L3142-4 : jours ouvrables. 09, 10, 12, 13 = 4 jours.
     const r = mois([ev('2026-11-09', '2026-11-13')]);
     expect(r.retenue).toBe(0);
-    expect(r.evenementAConfirmer).toBe(0);
     expect(r.net).toBe(sansAbsence.net);
   });
 
   it('mariage du lundi 09/11 au jeudi 12/11 : 4 jours ouvrables même en comptant le férié → tout payé', () => {
     const r = mois([ev('2026-11-09', '2026-11-12')]);
-    expect(r.evenementAConfirmer).toBe(0);
     expect(r.net).toBe(sansAbsence.net);
     expect(r.joursActivite).toBe(sansAbsence.joursActivite);
   });
@@ -373,22 +357,20 @@ describe('T-025 C-2 : partage des km seulement si plusieurs employeurs demandent
   it('un seul employeur demandeur, l’enfant de l’AM aussi à bord : pas de division, 12 × 0,41 € = 4,92 €', () => {
     const r = mois({ kmPartage: false });
     expect(r.km).toBe(492);
-    expect(r.kmAConfirmer).toBe(0);
   });
   it('plusieurs employeurs demandeurs, 2 enfants transportés : moitié, 2,46 €', () => {
     expect(mois({ kmPartage: true, kmEnfants: 2 }).km).toBe(246);
   });
-  it('plusieurs employeurs demandeurs sans le nombre d’enfants (ou moins de 2) : à confirmer, rien payé', () => {
+  it('plusieurs employeurs demandeurs sans le nombre d’enfants (ou moins de 2) : le mois demande la donnée (T-103, K1)', () => {
     for (const r of [mois({ kmPartage: true }), mois({ kmPartage: true, kmEnfants: 1 })]) {
       expect(r.km).toBe(0);
-      expect(r.kmAConfirmer).toBe(12);
+      expect(r.nonGere.join(' ')).toMatch(/combien d’enfants étaient dans la voiture/);
     }
   });
-  it('saisie d’avant T-025 avec 2 enfants, sans dire qui a demandé le trajet : à confirmer, jamais divisé en silence', () => {
+  it('saisie d’avant T-025 avec 2 enfants, sans dire qui a demandé le trajet : le mois demande la donnée, jamais divisé en silence', () => {
     const r = mois({ kmEnfants: 2 });
     expect(r.km).toBe(0);
-    expect(r.kmAConfirmer).toBe(12);
-    expect(r.alerts.join(' ')).toMatch(/une autre famille a aussi demandé le trajet/);
+    expect(r.nonGere.join(' ')).toMatch(/une autre famille a aussi demandé ce trajet/);
   });
   it('saisie d’avant T-025 avec 1 seul enfant : une seule famille demandeuse possible, indemnité entière', () => {
     expect(mois({ kmEnfants: 1 }).km).toBe(492);
@@ -440,7 +422,6 @@ describe('T-103 : une ancienne saisie d’événement sans durée (0) refuse le 
   it('mois refusé avec la consigne de ressaisie', () => {
     const r = computeMonth(makeCtx(c, [], [sansDuree], '2026-10-31'), '2026-03');
     expect(r.nonGere.join(' ')).toMatch(/saisie ancienne sans durée.*saisis-la de nouveau/);
-    expect(r.evenementAConfirmer).toBe(0);
   });
   it('page des parents : rien « à confirmer »', () => {
     const snap = buildSnapshot({ ctx: makeCtx(c, [], [sansDuree], '2026-04-10'), journal: [], amName: 'Ana', enfants: 0, now: 1 });
@@ -460,12 +441,12 @@ describe('T-025 C-6 : valeur du repas fourni (avantage en nature) seulement si l
   });
 });
 
-describe('T-025 C-7 : mois terminé avec des montants à confirmer (anciennes saisies)', () => {
-  // Pas de texte : consigne de l'app (constat C-7 de la relecture T-025). Vérifie seulement que la phrase apparaît
-  // sur un mois terminé et pas sur le mois en cours.
+describe('T-025 C-7, revu par la T-103 (K1) : ancienne saisie de km incomplète', () => {
   const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01', kmTaux: 41, kmCv: 5 });
-  it('mois terminé : la phrase « déjà déclaré à Pajemploi » est ajoutée ; mois en cours : non', () => {
+  it('mois terminé ou en cours : le mois attend les réponses, aucun montant « à confirmer »', () => {
     const km: DayRec = { key: 'c1|2026-10-05', cid: 'c1', date: '2026-10-05', km: 10 };
-    expect(computeMonth(makeCtx(c, [km], [], '2026-11-15'), '2026-10').alerts.join(' ')).toMatch(/déjà déclaré à Pajemploi/);
+    const r = computeMonth(makeCtx(c, [km], [], '2026-11-15'), '2026-10');
+    expect(r.nonGere.join(' ')).toMatch(/Frais kilométriques du 05\/10/);
+    expect(r.alerts.join(' ')).not.toMatch(/à confirmer/);
   });
 });

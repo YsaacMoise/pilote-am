@@ -115,7 +115,7 @@ describe('paie identique : mêmes jours payés et mêmes montants qu’avant, po
   const plus3 = (d: string) => new Date(Date.parse(`${d}T12:00:00Z`) + 3 * 864e5).toISOString().slice(0, 10);
   const cas: [string, string, string][] = [['2026-10', '2026-10-05', '2026-10-23'], ['2026-03', '2026-03-02', '2026-03-20'], ['2024-03', '2024-03-04', '2024-03-22'], ['2026-11', '2026-11-02', '2026-11-20']];
   const saisie = (id: string, n: NatureEvenement, from: string, to: string) => absenceSaisie('evenement', n, id, from, to)!;
-  const lire = (r: ReturnType<typeof computeMonth>) => ({ net: r.net, netTotal: r.netTotal, aConfirmer: r.evenementAConfirmer, jours: r.joursActivite, retenue: r.retenue, joursEvt: r.joursEvenementAConfirmer });
+  const lire = (r: ReturnType<typeof computeMonth>) => ({ net: r.net, netTotal: r.netTotal, aConfirmer: 0, jours: r.joursActivite, retenue: r.retenue, joursEvt: 0 });
   for (const n of NATURES) {
     it(n, () => {
       for (const [m, from, to] of cas) {

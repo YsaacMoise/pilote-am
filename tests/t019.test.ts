@@ -66,22 +66,29 @@ describe('T-019 (1) décompte des jours de congés pris, R-CP-09', () => {
     const l = cp('a', '2022-08-01', '2022-08-13');
     expect(decompteConge(makeCtx(bertrand(), [], [l], '2022-12-31'), l).jours).toBe(12);
   });
-  it('R-CP-09 : un arrêt maladie pendant le congé rend le décompte ambigu ; l’app le signale au lieu de choisir', () => {
-    // « Les jours de CP qui coïncident avec un arrêt maladie ne sont pas décomptés » : le traitement des jours d'arrêt
-    // entre le dernier jour saisi et la reprise n'est pas écrit (contre-vérification, point 2, CCN 48.1.1.3).
+  it('T-103 (C15) : un arrêt maladie pendant le congé : ce jour n’est pas décompté (CCN 48.1.1.3), sans réserve', () => {
+    // CCN 48.1.1.3 : « les jours de congés payés qui coïncident avec la période de l'arrêt de travail ne sont pas décomptés ».
     const l = cp('a', '2026-03-09', '2026-03-13');
+    const sans = decompteConge(amLMJV([l]), l).jours;
     const ctx = amLMJV([l, { id: 'm', type: 'am_malade', from: '2026-03-12', to: '2026-03-12' }]);
     const d = decompteConge(ctx, l);
-    expect(d.aConfirmer).toMatch(/à confirmer/);
-    const k = compteur(ctx, '2026-04-01');
-    expect(k.decompteAConfirmer.length).toBe(1);
-    expect(k.depassement).toBe(false);
-    expect(monthBase(ctx, '2026-03').alerts.join(' ')).toMatch(/nombre de jours décomptés à confirmer/);
+    expect(d.demande).toBeUndefined();
+    expect(d.jours).toBe(sans - 1);
+    expect(compteur(ctx, '2026-04-01').decompteAConfirmer).toEqual([]);
+    expect(monthBase(ctx, '2026-03').alerts.join(' ')).not.toMatch(/à confirmer/);
   });
-  it('R-CP-09 : contrat qui finit avant la reprise : décompte signalé à confirmer', () => {
+  it('T-103 (C17) : une autre absence saisie pendant le congé : le mois demande laquelle garder', () => {
+    const l = cp('a', '2026-03-09', '2026-03-13');
+    const ctx = amLMJV([l, { id: 's', type: 'sans_solde', from: '2026-03-12', to: '2026-03-12' }]);
+    expect(decompteConge(ctx, l).demande).toMatch(/une autre absence est saisie sur les mêmes jours/);
+    expect(monthBase(ctx, '2026-03').nonGere.join(' ')).toMatch(/Garde la bonne saisie/);
+  });
+  it('T-103 (C16) : contrat qui finit avant la reprise : décompte jusqu’à la fin du contrat (CCN 48.1.1.3), sans réserve', () => {
     const l = cp('a', '2026-07-20', '2026-07-24');
-    const ctx = makeCtx(contract({ end: '2026-07-25' }), [], [l], '2026-12-31'); // fin le samedi : ce samedi compte-t-il ?
-    expect(decompteConge(ctx, l).aConfirmer).toMatch(/Le contrat finit avant ta reprise/);
+    const ctx = makeCtx(contract({ end: '2026-07-25' }), [], [l], '2026-12-31'); // fin le samedi : jour ouvrable décompté
+    const d = decompteConge(ctx, l);
+    expect(d.demande).toBeUndefined();
+    expect(d.jours).toBe(decompteConge(makeCtx(contract({ end: '2026-07-24' }), [], [l], '2026-12-31'), l).jours + 1);
   });
 });
 

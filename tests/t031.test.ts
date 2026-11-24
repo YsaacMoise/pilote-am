@@ -33,14 +33,14 @@ const BERTRAND_OFF = ['2021-10-25', '2021-11-01', '2021-12-20', '2021-12-27', '2
 const bertrand = (over: Partial<Contract> = {}) => contract({ alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false, start: '2021-09-01', trackedFrom: '2021-09-01', yearType: 'incomplete', weeks: 36,
   weeksOff: BERTRAND_OFF, majoration: 15, ...over });
 
-describe('T-028 : congés payés à confirmer dans le compteur fiscal', () => {
-  it('le mois où des congés sont à confirmer est signalé, comme l’événement familial', () => {
+describe('T-028, revu par la T-103 : compteur fiscal sans « congés à confirmer »', () => {
+  it('Mme Bertrand (semaines sans accueil saisies) : juin 2022 est compté, rien n’est signalé à confirmer', () => {
     const f = fiscalYear(makeCtx(bertrand(), [], [], '2022-12-31'), 2022);
-    expect(f.nonGere).toMatch(/Congés payés à confirmer en juin 2022 : ils ne sont pas comptés/);
+    expect(f.nonGere ?? '').not.toMatch(/à confirmer/);
   });
   it('sans congés à confirmer, rien n’est signalé', () => {
     const f = fiscalYear(makeCtx(contract({ start: '2025-06-01', trackedFrom: '2025-06-01', alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false }), [], [], '2026-10-31'), 2026);
-    expect(f.nonGere ?? '').not.toMatch(/Congés payés à confirmer/);
+    expect(f.nonGere ?? '').not.toMatch(/à confirmer/);
   });
 });
 
@@ -155,18 +155,16 @@ describe('A-01 : accueil de 47 à 51 semaines (CCN art. 97.1, question 2 posée 
   });
 });
 
-describe('PREAVIS-DATE-FIN : date de fin du préavis sans texte (regles/triage-f3.md)', () => {
+describe('PREAVIS-DATE-FIN, revu par la T-103 (F1) : une seule date de fin, sans réserve', () => {
+  // CCN 64.1 et 120 ; CASF L423-24 ; fiche officielle F2883 : le jour de la première présentation est le premier jour du
+  // préavis ; un mois finit la veille du même quantième.
   const ctx = () => makeCtx(ok({ start: '2024-09-01', trackedFrom: '2024-09-01' }), [], [], '2026-10-31');
-  it('retrait et démission : date gardée, signalée à confirmer', () => {
+  it('retrait et démission (plus d’un an) : un mois, du 15/10 au 14/11/2026', () => {
     for (const motif of ['retrait', 'demission'] as const) {
       const f = finDeContrat(ctx(), '2026-10-15', motif);
-      expect(f.preavisFin > '2026-10-15').toBe(true);
-      expect(f.preavisFinAConfirmer).toMatch(/Date de fin du préavis à confirmer/);
+      expect(f.preavisFin).toBe('2026-11-14');
+      expect(f.alertes.join(' ')).not.toMatch(/à confirmer/);
     }
-  });
-  it('inaptitude et décès : pas de préavis à faire, rien à confirmer', () => {
-    expect(finDeContrat(ctx(), '2026-10-15', 'inaptitude').preavisFinAConfirmer).toBeUndefined();
-    expect(finDeContrat(ctx(), '2026-10-15', 'deces').preavisFinAConfirmer).toBeUndefined();
   });
 });
 

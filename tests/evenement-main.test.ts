@@ -28,7 +28,6 @@ describe('absence « événement familial » de main : même paie que 87c37f3', 
         for (const m of MOIS) {
           const r = computeMonth(makeCtx(c, [], leaves, '2026-12-31'), m);
           expect({ netTotal: r.netTotal, retenue: r.retenue, joursActivite: r.joursActivite, deductedDays: r.deductedDays, entretien: r.entretien, heuresNormales: r.heuresNormales }).toEqual(main[`${ct}|${k}|${m}`]);
-          expect(r.evenementAConfirmer).toBe(0);
           expect(r.alerts.join(' ')).not.toMatch(/Événement familial du/);
         }
       });
