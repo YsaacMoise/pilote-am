@@ -407,11 +407,11 @@ describe('T-025 C-3 : minimum horaire brut = le plus haut de la grille et de 0,2
     expect(controle(b, r, 240).find((x) => x.title === 'Minimum net non contrôlé')?.detail).toMatch(/3,05 € brut \(minimum légal/);
   });
   it('contrôle d’un bulletin de mai 2022 à 3,00 € brut de l’heure : alerte « sous le minimum » (3,05 €), que la grille seule ne donnait pas', () => {
-    const c = contract({ start: '2022-01-03', trackedFrom: '2022-01-03', rateNet: 234 });
+    // T-103 (D1) : le taux brut du contrat (3,00 €) est comparé au minimum, sans estimation.
+    const c = contract({ start: '2022-01-03', trackedFrom: '2022-01-03', rateNet: 234, rateBrut: 300 });
     const r = computeMonth(makeCtx(c, [], [], '2022-07-31'), '2022-05');
-    expect(r.cpIndemnite + r.cpComplement + r.complMin + r.majContratMin + r.majMin).toBe(0);
     const b: Bulletin = { id: 'b', cid: 'c1', month: '2022-05', source: 'manuel', heures: 100, brut: 30000, net: r.netTotal };
-    expect(controle(b, r, 234).find((x) => x.title === 'Brut horaire sous le minimum')?.detail).toMatch(/3,05 €/);
+    expect(controle(b, r, 234, 'metropole', 300).find((x) => x.title === 'Brut horaire sous le minimum')?.detail).toMatch(/3,05 €/);
   });
 });
 

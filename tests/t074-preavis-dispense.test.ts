@@ -48,32 +48,32 @@ describe('T-074 : préavis dispensé par les parents (CCN art. 64, 64.2, 66, 122
     expect(f.ruptureAConfirmer).toBeFalsy();
   });
 
-  it('congés : la période dispensée compte (art. 64.2) ; 5 ou 7 jours selon la lecture (A-23), montants donnés, rien compté', () => {
+  it('congés : la période dispensée compte (art. 64.2), indemnité comptée sans réserve (T-103, C10)', () => {
     const f = finDeContrat(ctxDe(contract()), '2026-11-23', 'retrait', 0, undefined, DISPENSE);
     expect(f.cpJoursRestants).toBe(7);
-    expect(f.cpIndemnite).toBe(0);
-    expect(f.cpAConfirmer).toBeDefined();
-    // D4 (vérificateur) : cas où les jours dispensés changent le nombre de jours. Début le 01/09/2026, lettre le 24/11, 8 jours
-    // jusqu'au 01/12 ; dernier jour travaillé le 27/11. Avec les jours dispensés, 3 mois entiers et 1 jour : 2,5 × 3 = 7,5 plus
-    // le prorata, arrondi à l'entier supérieur (art. 48.1.1.2) ; sans eux (fin au 27/11), 2 mois et 27 jours.
+    expect(f.cpIndemnite).toBe(39113);
+    expect(f.cpAConfirmer).toBeUndefined();
+    // D4 (vérificateur) : début le 01/09/2026, lettre le 24/11, 8 jours jusqu'au 01/12 ; dernier jour travaillé le 27/11.
     const c = contract({ start: '2026-09-01', trackedFrom: '2026-09-01' });
     const emp = finDeContrat(ctxDe(c), '2026-11-24', 'retrait', 0, undefined, { demandeur: 'employeur', dernierJourTravaille: '2026-11-27' });
     const am = finDeContrat(ctxDe(c), '2026-11-24', 'retrait', 0, undefined, { demandeur: 'am_acceptee', dernierJourTravaille: '2026-11-27' });
     expect(emp.dernierJour).toBe('2026-12-01');
     expect(am.dernierJour).toBe('2026-11-27');
-    expect(emp.cpJoursRestants).toBeGreaterThan(am.cpJoursRestants);
+    // T-103 (C10) : (3 mois + 1 jour ÷ 28) × 2,5 = 7,59 et (2 mois + 27 ÷ 28) × 2,5 = 7,41 : 8 jours dans les deux cas (arrondi
+    // supérieur, art. 48.1.1.2) ; le maintien de 8 jours l'emporte sur le dixième dans les deux cas.
+    expect(emp.cpJoursRestants).toBe(8);
+    expect(am.cpJoursRestants).toBe(8);
+    expect(emp.cpIndemnite).toBe(am.cpIndemnite);
   });
 
-  it('P-1 : mois travaillé puis dispensé, deux lectures de la part qui est l’indemnité ; total inchangé', () => {
+  it('P-1, revu par la T-103 (F5) : mois travaillé puis dispensé, proportion de l’art. 111 seule (CCN 122)', () => {
     const f = finDeContrat(ctxDe(contract()), '2026-11-23', 'retrait', 0, undefined, DISPENSE);
-    // Proportion de l'art. 111 : 1 452,75 × 18 / 189 = 138,36 € ; heures × taux : 18 × 7,45 = 134,10 €.
+    // Proportion de l'art. 111 : 1 452,75 × 18 / 189 = 138,36 €.
     expect(f.dispense!.net).toBe(13836);
-    expect(f.dispense!.autre).toBe(13410);
     // Dernier mois sans aucun jour travaillé (dispense dès le 1er du mois) : art. 122 et 111, une seule lecture.
     const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01' });
     const g = finDeContrat(ctxDe(c), '2026-10-01', 'retrait', 0, undefined, { demandeur: 'employeur', dernierJourTravaille: '2026-09-30' });
     expect(g.dispense).toMatchObject({ du: '2026-10-01', au: '2026-10-31' });
-    expect(g.dispense!.autre).toBeUndefined();
     expect(g.dispense!.net).toBe(MENSUALISE);
   });
 
@@ -131,8 +131,8 @@ describe('T-074 : préavis dispensé par les parents (CCN art. 64, 64.2, 66, 122
   it('contrôle de la date de fin enregistrée (calcul des mois)', () => {
     const r = { motif: 'retrait' as const, notif: '2026-11-23', preavis: 'employeur' as const, dernierJourTravaille: '2026-11-26' };
     expect(controleFinContrat({ start: '2026-09-14', end: '2026-11-30', rupture: r })).toBeUndefined();
-    // Lendemain admis : date de fin du préavis à confirmer (jour de remise compté ou non).
-    expect(controleFinContrat({ start: '2026-09-14', end: '2026-12-01', rupture: r })).toBeUndefined();
+    // T-103 (F1) : une seule date de fin ; le lendemain n'est plus admis.
+    expect(controleFinContrat({ start: '2026-09-14', end: '2026-12-01', rupture: r })).toBeDefined();
     expect(controleFinContrat({ start: '2026-09-14', end: '2026-11-26', rupture: r })?.message).toMatch(/date prévue de fin du préavis/);
     expect(controleFinContrat({ start: '2026-09-14', end: '2026-11-30', rupture: { ...r, dernierJourTravaille: undefined } })).toBeDefined();
     expect(controleFinContrat({ start: '2026-09-14', end: '2026-11-30', rupture: { ...r, dernierJourTravaille: '2026-12-02' } })).toBeDefined();
@@ -160,30 +160,28 @@ describe('T-074 : préavis dispensé par les parents (CCN art. 64, 64.2, 66, 122
     expect(f.nonGere?.length).toBeGreaterThan(0);
   });
 
-  it('9 mois atteints à la lettre : indemnité de rupture « à confirmer », avec et sans l’indemnité de préavis', () => {
+  it('9 mois atteints à la lettre : indemnité de rupture comptée, indemnité de préavis dans l’assiette (T-103, F4)', () => {
     const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01', planning: week('08:00', '16:00'), rateNet: 500 });
     // Un an et plus : préavis d'un mois, du 01/10 au 31/10/2026 ; dispense après le 10/10.
     const f = finDeContrat(ctxDe(c), '2026-10-01', 'retrait', 0, undefined, { demandeur: 'employeur', dernierJourTravaille: '2026-10-09' });
     expect(f.nonGere).toBeUndefined();
     expect(f.dernierJour).toBe('2026-10-31');
-    expect(f.ruptureAConfirmer).toBe(true);
-    const avec = Math.round(f.totalBrut / 80);
-    const sans = Math.round((f.totalBrut - f.dispense!.brut) / 80);
-    expect(avec).not.toBe(sans);
-    expect(f.ruptureVariantes).toContain(`Avec elle : ${euros(avec)} ; sans elle : ${euros(sans)}`);
+    expect(f.ruptureAConfirmer).toBeFalsy();
+    // L'indemnité de préavis est dans les salaires des mois du préavis (mensualisation), donc dans le total des bruts.
+    expect(f.indemniteRupture).toBe(Math.round(f.totalBrut / 80));
   });
 
-  it('9 mois atteints seulement à la fin du contrat : « à confirmer » (D-1), jamais compté', () => {
+  it('9 mois atteints seulement à la fin du contrat : indemnité due (T-103, F3 : CCN 60, 64.2)', () => {
     // Début le 05/01/2026, lettre le 28/09/2026 : 8 mois ; préavis de 15 jours jusqu'au 12/10/2026 : 9 mois à la fin.
     const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', planning: week('08:00', '16:00'), rateNet: 500 });
     const f = finDeContrat(ctxDe(c), '2026-09-28', 'retrait', 0, undefined, { demandeur: 'employeur', dernierJourTravaille: '2026-10-02' });
     expect(f.dernierJour).toBe('2026-10-12');
-    expect(f.indemniteRupture).toBe(0);
-    expect(f.ruptureAConfirmer).toBe(true);
-    expect(f.ruptureVariantes).toMatch(/9 mois/);
+    expect(f.indemniteRupture).toBe(Math.round(f.totalBrut / 80));
+    expect(f.ruptureAConfirmer).toBeFalsy();
+    expect(f.ruptureExplication).toMatch(/9 mois d’ancienneté atteints à la fin du contrat/);
   });
 
-  it('année incomplète : régularisation « à confirmer » si elle dépend de la place des jours dispensés (D-2)', () => {
+  it('année incomplète : régularisation à la date prévue de fin, jours dispensés compris (T-103, F6)', () => {
     const lundis = (from: string, n: number) => Array.from({ length: n }, (_, i) => {
       const d = new Date(`${from}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 7 * i); return d.toISOString().slice(0, 10);
     });
@@ -191,7 +189,7 @@ describe('T-074 : préavis dispensé par les parents (CCN art. 64, 64.2, 66, 122
     const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01', yearType: 'incomplete', weeks: 36, weeksOff: off, planning: week('08:00', '16:00'), rateNet: 500, entretienJour: 0 });
     const f = finDeContrat(makeCtx(c, [], [], '2026-11-18'), '2026-06-10', 'retrait', 0, undefined, { demandeur: 'employeur', dernierJourTravaille: '2026-06-15' });
     expect(f.nonGere).toBeUndefined();
-    expect(f.regularisationAConfirmer).toMatch(/dispensée/);
-    expect(f.regularisation).toBe(0);
+    expect(f.regularisationAConfirmer).toBeUndefined();
+    expect(f.regularisation).toBeGreaterThan(0);
   });
 });

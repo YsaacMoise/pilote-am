@@ -23,16 +23,8 @@ export function estCddSemainesSansAccueil(c: CddChamps): boolean {
   return c.yearType === 'incomplete' || (c.avenants ?? []).some((a) => a.changes.yearType === 'incomplete');
 }
 
-/** Le CDD a-t-il deux lectures de salaire (P1 ou P2) ? */
-export function cddDeuxLectures(c: CddChamps): boolean {
-  return estCddMoinsUnMois(c) || estCddSemainesSansAccueil(c);
-}
-
 export const CDD_A_COMPLETER =
   'CDD à compléter : ouvre le contrat et indique la date de fin prévue du CDD (ou, pour un remplacement sans date précise, la fin de la durée minimale). L’app ne calcule pas ce mois avant.';
-export const NON_GERE_CDD_P1_P2 =
-  'CDD de moins d’un mois avec des semaines sans accueil : non géré. Chacun de ces deux cas a deux façons de calculer le salaire, et l’app ne sait pas les combiner. Fais la paie sans l’app.';
-
 /**
  * T-076, décision D15 de la direction (regles/t076-decisions-direction.md, section 5 ; remplace D3) : CDD à horaires
  * variables refusé en entier au passage 1. Les deux lectures du CDD (P1, P2) ne sont pas définies avec un planning variable
@@ -68,7 +60,6 @@ export function messageApresTerme(terme: string): string {
 export function nonGeresCdd(c: CddChamps): string[] {
   if (!c.cdd) return [];
   if (!c.cddTerme) return [CDD_A_COMPLETER];
-  if (estCddMoinsUnMois(c) && estCddSemainesSansAccueil(c)) return [NON_GERE_CDD_P1_P2];
   if (c.planningVariable) return [NON_GERE_CDD_PV];
   return [];
 }
@@ -93,22 +84,6 @@ export function finEssaiCdd(c: CddChamps): { court: string; long: string } | und
     return parSemaine < unMois ? parSemaine : unMois;
   };
   return { court: fin(Math.floor(jours / 7)), long: fin(Math.ceil(jours / 7)) };
-}
-
-/** Texte des deux lectures du salaire d'un mois (écran Mois), sans montant */
-export function libelleLecturesCdd(c: CddChamps): { l1: string; l2: string; pourquoi: string } {
-  if (estCddMoinsUnMois(c)) {
-    return {
-      l1: 'salaire mensualisé sur 12 mois, réduit pour les jours hors du CDD (convention, articles 108.1 et 111)',
-      l2: 'taux horaire × heures réellement faites (DREETS Occitanie, pour un CDD de moins d’un mois)',
-      pourquoi: 'Ton CDD dure moins d’un mois. Aucun texte ne dit quelle façon de calculer s’applique. La question est posée à la DDETS.',
-    };
-  }
-  return {
-    l1: 'semaines d’accueil du contrat sur 12 mois, avec une régularisation à la fin (convention, articles 109.2 et 124)',
-    l2: '52 semaines sur 12 mois, moins les semaines sans accueil (convention, article 111)',
-    pourquoi: 'Ton CDD a des semaines sans accueil. Aucun texte ne dit quelle façon de calculer s’applique. La question est posée à la DDETS.',
-  };
 }
 
 /** Messages du contrat CDD (écran Contrat et fin), tirés de regles/t076-cdd.md, partie 5.2 */

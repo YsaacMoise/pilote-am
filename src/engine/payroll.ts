@@ -13,7 +13,7 @@ import { nonGeresPeriode } from './nonGeres';
 import { ferieDe, MESSAGE_IJ_MAINTIEN_LOCAL, MESSAGE_MAINTIEN_LOCAL, regionDe } from './regions';
 import { jourDispense } from './preavis';
 import { baseHebdoMin, formePV, lecturePV, mensuelMinutesPV, messageBasePV, minutesPlanning, plagesDuJour, pvActif } from './planningVariable';
-import { cddDeuxLectures, estCddMoinsUnMois, estCddSemainesSansAccueil, joursApresTermeRefuses, messageApresTerme, messageMoisApresTerme, messageTermeAVenir } from './cdd';
+import { joursApresTermeRefuses, messageApresTerme, messageMoisApresTerme, messageTermeAVenir } from './cdd';
 import type { AmAbs, AmLeave, Contract, DayRec, Plage, Planning } from './model';
 
 export interface Ctx {
@@ -31,11 +31,6 @@ export interface Ctx {
    * été contrôlée face au préavis. Le contrôle de la date de fin saisie (controleFinContrat) n'y est pas refait.
    */
   finControlee?: boolean;
-  /**
-   * T-076 : seconde lecture du salaire d'un CDD (points P1 et P2 de regles/t076-cdd.md ; decisions-direction, section 2).
-   * Absent : lecture 1, celle du contrat tel qu'il est saisi. Contexte construit par `ctxLectureCdd2`.
-   */
-  lectureCdd?: 2;
 }
 
 /** Contrat tel qu'il s'applique le jour d (avenants en vigueur compris) */
@@ -1146,36 +1141,6 @@ export const MESSAGE_TAUX_BRUT = 'Indique dans le contrat ton salaire horaire br
 
 export function dayCountLabel(n: number): string {
   return `${n} jour${n > 1 ? 's' : ''}`;
-}
-
-/**
- * T-076 : contexte de la seconde lecture du salaire d'un CDD (decisions-direction, section 2), ou rien si le CDD n'en a pas.
- * - P1 (CDD à terme précis de moins d'un mois) : même contrat ; le salaire de base de chaque mois devient taux × heures
- *   réellement faites (computeRange).
- * - P2 (CDD avec semaines sans accueil) : lecture 2 = formule 52 semaines (CCN 109.1) et déduction de l'art. 111 pour chaque
- *   semaine sans accueil (DREETS Occitanie, FAQ q. 1.24 : « pour les mois de travail comportant ces semaines d'absences, le
- *   salaire sera alors minoré et calculé selon la méthode de calcul prévue à l'article 111 »), sans régularisation finale.
- *   Le contrat devient « toute l'année » ; chaque semaine sans accueil du contrat devient une absence non rémunérée (même
- *   déduction que le congé sans solde, art. 111, méthode des heures), placée avant les autres absences.
- * La lecture 1 est le contexte lui-même (contrat tel qu'il est saisi : mensualisé puis art. 111 ; ou 46 semaines ou moins).
- */
-export function ctxLectureCdd2(ctx: Ctx): Ctx | undefined {
-  const c = ctx.c;
-  if (ctx.lectureCdd === 2 || !cddDeuxLectures(c)) return undefined;
-  return memo(ctx, 'cddL2', () => {
-    if (estCddMoinsUnMois(c) && !estCddSemainesSansAccueil(c)) return { ...ctx, lectureCdd: 2 as const, cache: new Map() };
-    const semaines = [...toutesSemainesSansAccueil(c)].sort();
-    const sansAccueil: AmLeave[] = semaines.map((w) => ({ id: `cdd-sans-accueil-${w}`, type: 'sans_solde', from: w, to: addDays(w, 6) }));
-    const sansType = (ch: Partial<Contract>): Partial<Contract> => {
-      const { yearType: _y, weeks: _w, weeksOff: _o, ...reste } = ch;
-      return reste;
-    };
-    const c2: Contract = {
-      ...c, yearType: 'complete', weeks: 52, weeksOff: [],
-      ...(c.avenants ? { avenants: c.avenants.map((a) => ({ ...a, changes: sansType(a.changes) })) } : {}),
-    };
-    return { ...ctx, c: c2, leaves: [...sansAccueil, ...ctx.leaves], lectureCdd: 2 as const, cache: new Map() };
-  });
 }
 
 export { daysBetween };

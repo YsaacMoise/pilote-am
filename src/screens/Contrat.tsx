@@ -215,6 +215,8 @@ export function Contrat({ id }: { id?: string }) {
                 <Choices label="Le CDD a-t-il une date de fin précise ?" value={c.cddTermeImprecis === undefined ? (c.cddTerme ? 'oui' : undefined) : c.cddTermeImprecis ? 'non' : 'oui'} onChange={(v) => set({ cddTermeImprecis: v === 'non' })}
                   options={[{ v: 'oui', l: 'Oui, une date de fin prévue' }, { v: 'non', l: 'Non, jusqu’au retour de la personne remplacée', sub: 'Le contrat donne alors une durée minimale' }]} />
                 <DateInput label={c.cddTermeImprecis ? 'Fin de la durée minimale' : 'Date de fin prévue'} hint={c.cddTermeImprecis ? 'Le dernier jour de la durée minimale écrite dans le contrat.' : 'Le dernier jour prévu dans le contrat. Si le CDD est renouvelé, mets la nouvelle date.'} value={c.cddTerme ?? ''} min={c.start} onChange={(v) => set({ cddTerme: v || undefined })} />
+                {/* T-103 (D10) : CCN 41.1, la durée de l'essai est écrite au contrat. */}
+                <DateInput label="Fin de la période d’essai" hint="Le dernier jour de l’essai écrit dans le contrat. Laisse vide s’il n’y en a pas." value={c.cddEssaiFin ?? ''} min={c.start} onChange={(v) => set({ cddEssaiFin: v || undefined })} />
                 <Choices label="Pourquoi ce CDD ?" value={c.cddMotif} onChange={(v) => set({ cddMotif: v })}
                   options={[{ v: 'remplacement', l: 'Pour remplacer une assistante maternelle absente' }, { v: 'autre', l: 'Autre raison' }]} />
                 {messagesCdd(c).map((t) => <Banner tone={t.startsWith('Ton salaire') || t.startsWith('Si tu continues') ? 'info' : 'warn'}>{t}</Banner>)}

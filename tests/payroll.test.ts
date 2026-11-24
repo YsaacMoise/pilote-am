@@ -445,17 +445,19 @@ describe('fiscal (CGI art. 80 sexies)', () => {
 });
 
 describe('contrôle du bulletin', () => {
-  it('détecte un net trop faible et un brut incohérent', () => {
-    const ctx = makeCtx(contract(), [], [], '2026-11-01');
+  it('détecte un net trop faible et un brut différent du taux brut du contrat (T-103, D1)', () => {
+    const ctx = makeCtx(contract({ rateBrut: 448 }), [], [], '2026-11-01');
     const r = computeMonth(ctx, '2026-10');
-    const checks = controle({ id: 'b', cid: 'c1', month: '2026-10', net: r.netTotal - 3000, brut: r.netTotal, source: 'manuel' }, r, 350);
+    const checks = controle({ id: 'b', cid: 'c1', month: '2026-10', net: r.netTotal - 3000, brut: r.netTotal, source: 'manuel' }, r, 350, 'metropole', 448);
     expect(checks.some((x) => x.level === 'warn' && /manque 30,00/.test(x.title))).toBe(true);
-    expect(checks.some((x) => /incohérents/.test(x.title))).toBe(true);
+    expect(checks.some((x) => x.title === 'Salaire brut différent')).toBe(true);
   });
-  it('bulletin conforme', () => {
-    const ctx = makeCtx(contract({ rateNet: 400 }), [], [], '2026-11-01');
+  it('bulletin conforme (taux brut du contrat : 5,12 € pour 4,00 € net)', () => {
+    const ctx = makeCtx(contract({ rateNet: 400, rateBrut: 512 }), [], [], '2026-11-01');
     const r = computeMonth(ctx, '2026-10');
-    const checks = controle({ id: 'b', cid: 'c1', month: '2026-10', net: r.netTotal, brut: netToBrut(r.netTotal, '2026-10-31'), heures: r.heuresNormales, jours: r.joursActivite, source: 'manuel' }, r, 400);
+    expect(r.brutConnu).toBe(true);
+    expect(r.brutEstime).toBe(Math.round((r.netTotal * 512) / 400));
+    const checks = controle({ id: 'b', cid: 'c1', month: '2026-10', net: r.netTotal, brut: r.brutEstime, heures: r.heuresNormales, jours: r.joursActivite, source: 'manuel' }, r, 400, 'metropole', 512);
     // T-033 : seule une information reste, le minimum ne compte pas la majoration du titre (Urssaf, renvoi *)
     expect(checks.filter((x) => x.level !== 'ok').map((x) => x.title)).toEqual(['Minimum vérifié sans le titre']);
     expect(checks.find((x) => x.level === 'info')!.detail).toMatch(/majoration de 4 %.*« Assistant maternel - garde d’enfants »/);

@@ -209,6 +209,11 @@ export interface Contract {
   cddTerme?: ISODate;
   /** T-076 : vrai = « jusqu'au retour de la personne remplacée », `cddTerme` est la fin de la durée minimale */
   cddTermeImprecis?: boolean;
+  /**
+   * T-103 (D10) : dernier jour de la période d'essai écrite au contrat (CCN 41.1 : la durée de la période d'essai figure au
+   * contrat). Demandé seulement quand le CDD finit pendant l'essai.
+   */
+  cddEssaiFin?: ISODate;
   /** T-076 : motif du CDD (R-CDD-03) ; message seulement, aucun effet sur les montants */
   cddMotif?: 'remplacement' | 'autre';
   /** Date à partir de laquelle l'app suit le contrat (avant : historique) */

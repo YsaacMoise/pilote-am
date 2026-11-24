@@ -578,6 +578,8 @@ export const MESSAGE_CDD_PAS_DE_PREAVIS = 'À la fin d’un CDD, il n’y a ni p
 export const MESSAGE_CDD_DOCUMENTS = 'Ton employeur te remet le certificat de travail, l’attestation France Travail et le reçu pour solde de tout compte.';
 export const MESSAGE_CDD_IFC = 'Tu touches une indemnité de fin de contrat : 10 % de tous tes salaires bruts du CDD. Les indemnités d’entretien, de repas et de kilomètres ne comptent pas.';
 export const MESSAGE_CDD_ICCP = 'Tes congés non payés te sont payés à la fin. Cette indemnité compte aussi l’indemnité de fin de contrat.';
+/** T-103 (D10) : durée d'essai du CDD à saisir */
+export const MESSAGE_CDD_ESSAI_A_SAISIR = 'Fin pendant la période d’essai : indique dans le contrat le dernier jour de la période d’essai écrite au contrat (convention, article 41.1). L’app vérifie qu’il respecte la loi (code du travail, article L1242-10) et calcule la fin dès que c’est saisi.';
 export const MESSAGE_CDD_DOMMAGES = 'Le parent a mis fin au CDD avant la date, sans faute grave : il peut te devoir aussi des dommages et intérêts, au moins les salaires jusqu’à la date prévue (code du travail, article L1243-4). L’app ne les calcule pas : vois-les avec un conseil (relais petite enfance, DREETS, avocat).';
 
 /** Montant possible d'un élément de la fin : de `lo` (part sûre) à `hi` ; `inconnu` : aucun montant ne peut être donné */
@@ -763,9 +765,20 @@ export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCdd
   if (fin === 'essai' && (dernierJour >= addMonthsToDate(c.start, 1) || (essai && dernierJour > essai.long))) {
     return vide([`Tu as choisi « ${FIN_CDD_LABEL.essai.l} », mais le dernier jour (${shortDate(dernierJour)}) est après la fin possible de la période d’essai (au plus tard le ${shortDate(essai && essai.long < addDays(addMonthsToDate(c.start, 1), -1) ? essai.long : addDays(addMonthsToDate(c.start, 1), -1))}). L’essai d’un CDD compte un jour par semaine, au plus deux semaines si le CDD dure six mois ou moins, un mois sinon (code du travail, article L1242-10). Choisis comment le CDD a fini, ou corrige la date : l’indemnité de fin de contrat en dépend.`]);
   }
-  if (fin === 'essai' && essai && dernierJour > essai.court) {
-    return vide([`Fin pendant la période d’essai à confirmer : le dernier jour (${shortDate(dernierJour)}) est dans l’essai si on compte les semaines commencées (jusqu’au ${shortDate(essai.long)}), après l’essai si on compte les semaines entières (jusqu’au ${shortDate(essai.court)}). Aucun texte ne dit comment compter (code du travail, article L1242-10). L’indemnité de fin de contrat en dépend : l’app ne calcule pas cette fin. Vois avec les parents ce que dit ton contrat sur la durée de l’essai.`]);
+  // T-103 (D10) : CCN 41.1, la durée de l'essai est écrite au contrat : l'app la demande une fois (B). Un dernier jour après
+  // l'essai écrit n'est pas une fin pendant l'essai. Reste un cas rare (C) : essai écrit plus long que le maximum sûr et
+  // dernier jour entre les deux comptes des semaines ; aucun texte ni arrêt publié lu ne dit comment compter une semaine
+  // commencée (L1242-10 ; Cass. soc. 28/04/2011, n° 09-72.165 : essai en jours calendaires, sans réponse sur ce point).
+  if (fin === 'essai' && !c.cddEssaiFin) {
+    return vide([MESSAGE_CDD_ESSAI_A_SAISIR]);
   }
+  if (fin === 'essai' && c.cddEssaiFin && dernierJour > c.cddEssaiFin) {
+    return vide([`Tu as choisi « ${FIN_CDD_LABEL.essai.l} », mais le dernier jour (${shortDate(dernierJour)}) est après la fin de la période d’essai écrite au contrat (${shortDate(c.cddEssaiFin)}). Choisis comment le CDD a fini, ou corrige la date : l’indemnité de fin de contrat en dépend.`]);
+  }
+  if (fin === 'essai' && essai && dernierJour > essai.court) {
+    return vide([`Cas non géré : ton contrat prévoit un essai jusqu’au ${shortDate(c.cddEssaiFin!)}, plus long que le maximum sûr de la loi (jusqu’au ${shortDate(essai.court)}, un jour par semaine entière : code du travail, article L1242-10). Le dernier jour (${shortDate(dernierJour)}) est dans l’essai seulement si l’on compte aussi la semaine commencée (jusqu’au ${shortDate(essai.long)}). Aucun texte ni arrêt publié lu ne dit comment compter cette semaine. L’indemnité de fin de contrat en dépend : l’app ne calcule pas cette fin.`]);
+  }
+
   if (fin !== 'suite_cdi' && c.cddTerme && !c.cddTermeImprecis && dernierJour > c.cddTerme) {
     // C. trav. L1243-11 : « Lorsque la relation contractuelle de travail se poursuit après l'échéance du terme du contrat à
     // durée déterminée, celui-ci devient un contrat à durée indéterminée. » Un report écrit du terme (L1243-7, renouvellement)

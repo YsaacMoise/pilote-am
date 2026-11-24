@@ -152,11 +152,9 @@ describe('C-019 : heures complémentaires et majorées exonérées (CGI art. 81 
     const ok = controle({ id: 'b', cid: 'c1', month: '2026-10', net: r.netTotal + 1208, source: 'manuel' }, r, 350);
     expect(ok[0].level).toBe('ok');
     expect(ok[0].detail).toMatch(/12,08\s€ de réduction/);
-    // Rapport 90 % : incohérent sans réduction ; cohérent avec 90 € de réduction sur 1 000 € de brut (limite 91 %).
+    // T-103 (D1, D6) : sans taux horaire brut au contrat, le brut n'est pas contrôlé, l'app demande le taux.
     const sans = controle({ id: 'b', cid: 'c1', month: '2026-10', net: 90000, brut: 100000, source: 'manuel' }, { ...r, reductionHS: 0 }, 350);
-    expect(sans.some((x) => /incohérents/.test(x.title))).toBe(true);
-    const avec = controle({ id: 'b', cid: 'c1', month: '2026-10', net: 90000, brut: 100000, source: 'manuel' }, { ...r, reductionHS: 9000 }, 350);
-    expect(avec.some((x) => x.title === 'Net et brut cohérents' && /91,0 %/.test(x.detail))).toBe(true);
+    expect(sans.some((x) => x.title === 'Brut non contrôlé')).toBe(true);
   });
 });
 

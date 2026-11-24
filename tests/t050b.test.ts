@@ -87,7 +87,9 @@ describe('T-050b, A-45 : ICCP des deux périodes dans l’assiette du 1/80 (ann�
   it('décès de l’enfant : même assiette (art. 119.4.2 renvoie au calcul de 121.1)', () => {
     const r = finDeContrat(ctx(), '2026-05-15', 'deces');
     expect(r.cpAConfirmer).toBeUndefined();
-    expect(r.totalBrut).toBe(salairesBruts(ctx(), '2026-05-15') + netToBrut(r.cpIndemnite, '2026-05-31'));
+    // T-103 (F13) : l'indemnité égale au préavis (CCN 119.4.2, soumise à cotisations) entre aussi dans l'assiette.
+    expect(r.indemnitePreavis).toBeGreaterThan(0);
+    expect(r.totalBrut).toBe(salairesBruts(ctx(), '2026-05-15') + netToBrut(r.cpIndemnite, '2026-05-31') + netToBrut(r.indemnitePreavis, '2026-05-31'));
   });
 });
 

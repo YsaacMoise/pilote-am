@@ -1,6 +1,6 @@
 // T-072 / T-055 (M12, rapports/T-050b-M12.md § 6) : régularisation de fin non calculée (semaines sans accueil manquantes).
 // Règle (charte, T-019) : aucun montant sur une base incomplète. La régularisation entre dans l'assiette de l'indemnité
-// de rupture (CCN art. 121.1) et dans la base du dixième (art. 48.1.1.5 et 124) : rupture et congés non pris « à confirmer ».
+// de rupture (CCN art. 121.1) et dans la base du dixième (art. 48.1.1.5 et 124) : rupture et congés non pris non calculés (T-103).
 // Sur main, la correction M13 (T-050d, C-1) couvre déjà le retrait avec la 2e année sans saisie (tests/t050d-neutralise).
 // Ici : les autres causes et motifs (verts sur main, preuve), et ce qui manquait : la régularisation elle-même, donnée
 // pour 0,00 € (résultat et écran Fin).
@@ -28,17 +28,17 @@ const AN2 = SEMAINES_OFF.filter((w) => w !== '2026-10-19');
 describe('T-055 : régularisation non calculée, rien n’est calculé avec 0', () => {
   for (const [cause, off] of [['semaine passée non saisie', PASSEE], ['2e année sans semaine saisie', AN2]] as const) {
     for (const motif of ['retrait', 'deces', 'inaptitude', 'inaptitude_pro'] as Motif[]) {
-      it(`${cause}, ${motif} : indemnité de rupture et congés non pris à confirmer (déjà juste sur main)`, () => {
+      it(`${cause}, ${motif} : indemnité de rupture et congés non pris non calculés, la donnée est demandée (T-103)`, () => {
         const f = fin(off, motif);
         expect(f.alertes.some((a) => a.startsWith('Régularisation non calculée'))).toBe(true);
-        expect(f.indemniteRupture).toBeGreaterThan(0);
+        expect(f.indemniteRupture).toBe(0);
         expect(f.ruptureAConfirmer).toBe(true);
-        expect(f.alertes.some((a) => a.startsWith('Indemnité de rupture à confirmer') && a.includes('la régularisation de fin de contrat, qui n’est pas calculée'))).toBe(true);
+        expect(f.alertes.some((a) => a.startsWith('Indemnité de rupture non calculée') && a.includes('la régularisation de fin de contrat, qui n’est pas calculée'))).toBe(true);
         expect(f.cpAConfirmer).toContain('n’est pas calculée');
         expect(f.cpIndemnite).toBe(0);
       });
     }
-    it(`${cause}, démission : congés non pris à confirmer, pas d’indemnité de rupture (déjà juste sur main)`, () => {
+    it(`${cause}, démission : congés non pris non calculés, pas d’indemnité de rupture`, () => {
       const f = fin(off, 'demission');
       expect(f.cpAConfirmer).toContain('n’est pas calculée');
       expect(f.cpIndemnite).toBe(0);
@@ -49,7 +49,7 @@ describe('T-055 : régularisation non calculée, rien n’est calculé avec 0', 
       expect(f.regularisation).toBe(0); // non comptée dans le total
       expect(f.regularisationNonCalculee).toMatch(/^Régularisation non calculée : il manque \d+ semaines? sans accueil/);
       const l = ligneRegularisation(f, true);
-      expect(l.valeur).toBe('à confirmer');
+      expect(l.valeur).toBe('non calculée');
       expect(l.hint).toMatch(/^Non calculée/);
       expect(l.hint).not.toMatch(/accueillies mais non payées/);
     });
@@ -58,15 +58,15 @@ describe('T-055 : régularisation non calculée, rien n’est calculé avec 0', 
   // art. 124 : « régularisation définitive du salaire »). Non calculée, elle n'est pas connue : un total de bulletins
   // couvrant le dernier mois ne prouve pas qu'elle y est. L'indemnité reste « à confirmer ».
   for (const [cause, off] of [['semaine passée non saisie', PASSEE], ['2e année sans semaine saisie', AN2]] as const) {
-    it(`${cause}, total des bulletins saisi jusqu’au dernier mois : indemnité de rupture à confirmer`, () => {
+    it(`${cause}, total des bulletins saisi jusqu’au dernier mois : indemnité de rupture non calculée`, () => {
       const f0 = fin(off, 'retrait');
       const f = fin(off, 'retrait', '2026-10-28', { total: 1000000, jusqua: f0.dernierJour.slice(0, 7) });
       expect(f.totalBrut).toBe(1000000);
       expect(f.ruptureAConfirmer).toBe(true);
-      expect(f.alertes.some((a) => a.startsWith('Indemnité de rupture à confirmer') && a.includes('qui n’est pas calculée'))).toBe(true);
+      expect(f.alertes.some((a) => a.startsWith('Indemnité de rupture non calculée') && a.includes('qui n’est pas calculée'))).toBe(true);
       expect(f.regularisationNonCalculee).not.toContain('sauf si');
     });
-    it(`${cause}, brut du dernier mois lu sur un bulletin : indemnité de rupture à confirmer`, () => {
+    it(`${cause}, brut du dernier mois lu sur un bulletin : indemnité de rupture non calculée`, () => {
       const f0 = fin(off, 'retrait');
       const m = f0.dernierJour.slice(0, 7);
       const avant = `${m.slice(0, 5)}${String(Number(m.slice(5)) - 1).padStart(2, '0')}`;
