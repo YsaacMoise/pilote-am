@@ -133,7 +133,7 @@ describe('lien des parents : aucun motif d’absence de l’AM', () => {
     const l = absenceSaisie('evenement', 'handicap_enfant', 'e', '2026-10-05', '2026-11-06')!;
     const snap = buildSnapshot({ ctx: makeCtx(c, [], [l], '2026-11-10'), journal: [], amName: 'Ana', enfants: 0, now: 1 });
     const oct = snap.mois.find((x) => x.month === '2026-10')!;
-    expect(oct.aConfirmer ?? []).toEqual([]);
+    expect(oct).toBeDefined();
     expect(JSON.stringify(snap)).not.toMatch(/à confirmer/);
     const texte = JSON.stringify(snap);
     expect(texte).not.toMatch(/[ée]v[ée]nement|handicap|mariage|décès|deces/i);

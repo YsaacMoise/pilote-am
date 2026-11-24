@@ -12,7 +12,6 @@ import { dayInfo, makeCtx } from '../src/engine/payroll';
 import { computeMonth } from '../src/engine/month';
 import { finDeContrat } from '../src/engine/fin';
 import { controleFinContrat } from '../src/engine/preavis';
-import { euros } from '../src/engine/money';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
   const p: Planning = {};

@@ -10,7 +10,7 @@ import {
   addDays, addMonthsToDate, cpPeriod, cpPeriodStartYear, fullMonthsBetween, lastDay, monthOf, monthsBetween, shortDate,
   type ISODate, type Month,
 } from './dates';
-import { acquisition, baseDixieme, compteur, cpForMonth, indemnite, maintien } from './conges';
+import { acquisition, baseDixieme, compteur, cpForMonth, cpPrisEntre, indemnite, maintien } from './conges';
 import { absencesL2NonGerees, messageAbsenceL2, makeCtx, monthBase, planningBrutMin, monthBrut, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx, regularisation, brutConnu, brutDuNet } from './payroll';
 import { regionDe } from './regions';
 
@@ -704,16 +704,22 @@ function coeurCdd(endCtx: Ctx, dernierJour: ISODate, finCdd: FinCdd, enfants: nu
     if (!iccpInconnu) {
       iccp = Math.max(cpDixiemeEnCours, maintien(endCtx, acq.joursADate, dernierJour)) + prec;
       // Plancher L1242-16 : « ne peut être inférieur au dixième de la rémunération totale brute perçue par le salarié pendant
-      // la durée de son contrat ». Les congés déjà payés pendant le CDD en sont déduits : le total des congés versés pour le
-      // CDD atteint au moins ce dixième (T-103, lecture de la finalité du texte, signalée au DG).
+      // la durée de son contrat ». T-103 (lecture de la finalité du texte, signalée au DG) : le total des congés payés pour le
+      // CDD atteint au moins ce dixième ; les congés déjà payés en sont déduits (indemnités et compléments versés, et en année
+      // complète le maintien des jours pris, payé dans le salaire). CDD suivi après son début : jours pris avant le suivi demandés.
       const plancher = Math.round((netCdd + ifc) / 10);
-      if (c.trackedFrom > c.start && iccp + cpPayeNet < plancher) {
-        // T-078 (R1) : CDD suivi par l'app après son début : les congés versés avant le suivi ne sont pas connus (B).
-        iccpInconnu = `Indemnité de congés non pris non calculée : l’app suit ton CDD depuis le ${shortDate(c.trackedFrom)}. Ajoute dans l’historique les bulletins du CDD d’avant cette date : le minimum du code du travail (article L1242-16) compte les congés déjà payés.`;
-        iccp = 0;
-      } else if (iccp + cpPayeNet < plancher) {
-        iccp = plancher - cpPayeNet;
-        cpExplication = `${cpExplication} Le code du travail (article L1242-16) fixe un minimum : le dixième de tous les salaires du CDD, indemnité de fin de contrat comprise, moins les congés déjà payés. Il s’applique ici.`;
+      const prisSuivis = cpPrisEntre(endCtx, c.trackedFrom > c.start ? c.trackedFrom : c.start, dernierJour).length;
+      const suiviTardif = c.trackedFrom > c.start;
+      const prisAvant = suiviTardif ? c.cddCpPrisAvantSuivi : 0;
+      const dansSalaire = complete && prisAvant !== undefined ? maintien(endCtx, prisSuivis + prisAvant, dernierJour) : 0;
+      if (iccp + cpPayeNet + dansSalaire < plancher) {
+        if (prisAvant === undefined) {
+          iccpInconnu = `Indemnité de congés non pris non calculée : l’app suit ton CDD depuis le ${shortDate(c.trackedFrom)}. Indique dans le contrat les jours de congés payés pris pendant le CDD avant cette date (0 si aucun) : le minimum du code du travail (article L1242-16) compte les congés déjà payés.`;
+          iccp = 0;
+        } else {
+          iccp = plancher - cpPayeNet - dansSalaire;
+          cpExplication = `${cpExplication} Le code du travail (article L1242-16) fixe un minimum : le dixième de tous les salaires du CDD, indemnité de fin de contrat comprise, moins les congés déjà payés. Il s’applique ici.`;
+        }
       }
     }
   }

@@ -60,8 +60,6 @@ describe('T-045 : préavis non exécuté (CCN art. 64 et 64.2)', () => {
     expect(f.preavisFin).toBe('2026-10-31');
     expect(f.dernierJour).toBe('2026-10-15');
     expect(f.nonGere).toBeUndefined();
-    // La date de fin ne dépend plus de la fin du préavis à confirmer : pas de variante.
-    expect(f.ruptureVariantes).toBeUndefined();
     expect(f.regularisationAConfirmer).toBeUndefined();
     const ref = finDeContrat(ctxDe(c), '2026-10-15', 'faute_grave');
     expect(f.totalBrut).toBe(ref.totalBrut);

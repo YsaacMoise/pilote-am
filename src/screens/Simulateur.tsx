@@ -416,11 +416,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
 
         </div>
         <div class="sim-result">
-        {/* T-077 (R7) : Alsace-Moselle calculée ; le Vendredi saint et le 26 décembre sont à confirmer (deux lectures). */}
         {<>
-        {r.feriesLocauxB && (
-          <Banner tone="info">Le Vendredi saint et le 26 décembre sont fériés en Alsace-Moselle, mais aucun texte ne dit s’ils le sont pour une assistante maternelle (question à poser à la DDETS). Cette simulation les compte comme fériés. Sans eux, le coût réel serait de {euros(r.feriesLocauxB.reel)} par mois{r.feriesLocauxB.reel !== r.reel ? `, soit ${euros(Math.abs(r.feriesLocauxB.reel - r.reel))} de ${r.feriesLocauxB.reel > r.reel ? 'plus' : 'moins'}` : ', le même montant'}.</Banner>
-        )}
         {/* Rappel du résultat collé en bas de l'écran pendant la saisie ; il s'efface quand le résultat complet est visible. */}
         <button type="button" class={`sim-sticky ${resultVisible ? 'is-hidden' : ''} ${connecte ? 'with-tabbar' : ''}`} aria-hidden={resultVisible} tabIndex={resultVisible ? -1 : 0}
           onClick={() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>

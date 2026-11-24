@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { AmLeave, Contract, DayRec, Planning } from '../src/engine/model';
 import { makeCtx, monthBase } from '../src/engine/payroll';
-import { computeMonth, declarationLines } from '../src/engine/month';
+import { computeMonth } from '../src/engine/month';
 import { finDeCdd, finDeContrat, MESSAGE_CDD_PAS_DE_PREAVIS, MESSAGES_FIN_CDD_NON_GEREE } from '../src/engine/fin';
 import { controleFinContrat } from '../src/engine/preavis';
 import { nonGeresContrat } from '../src/engine/nonGeres';
@@ -48,8 +48,6 @@ describe('R-CDD-04 : mensualisation du CDD comme un CDI (52 semaines sur 12 mois
     expect(computeMonth(ctx, '2026-04').netTotal).toBe(86667);
     // Janvier : 22 jours prévus au planning (8 h), dont 20 dans le CDD (à partir du 05/01) : 86667 × 160 / 176 = 78788,18 → 787,88 €.
     expect(computeMonth(ctx, '2026-01').netTotal).toBe(78788);
-    // Aucune seconde lecture pour ce CDD (ni P1 ni P2).
-    expect(computeMonth(ctx, '2026-01').cddAConfirmer).toBeUndefined();
   });
   it('plus de refus « non géré » pour un CDD qui a sa date de fin prévue', () => {
     expect(nonGeresContrat(cdd())).toEqual([]);

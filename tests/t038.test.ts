@@ -8,7 +8,6 @@ import { describe, expect, it } from 'vitest';
 import type { AmLeave, Contract, Planning } from '../src/engine/model';
 import { makeCtx, MESSAGE_MOIS_DEJA_DECLARE, messageMoisSansSoldeChange, monthBase, salaireMensualise } from '../src/engine/payroll';
 import { finDeContrat } from '../src/engine/fin';
-import { euros } from '../src/engine/money';
 import { ratesAt } from '../src/engine/rates';
 import { RULES } from '../src/screens/Regles';
 import { NON_GERE_MAYOTTE, nonGeresContrat } from '../src/engine/nonGeres';
@@ -46,7 +45,6 @@ const fin = (leaves: AmLeave[], c = contract()) => finDeContrat(makeCtx(c, [], l
 describe('T-038 B-1, revu par la T-103 : plus de jours « à confirmer » à faire entrer dans la régularisation', () => {
   it('ancienne saisie d’événement sans durée (0) : le mois est refusé avec la consigne, rien n’est « à confirmer »', () => {
     expect(salaireMensualise(contract())).toBe(60000);
-    const b = monthBase(makeCtx(contract(), [], [EVENEMENT], '2026-11-18'), '2026-03');
     expect(computeMonthRef(makeCtx(contract(), [], [EVENEMENT], '2026-11-18'), '2026-03').nonGere.join(' ')).toMatch(/saisie ancienne sans durée/);
   });
   it('fin de contrat avec un congé sans solde : régularisation calculée, sans « à confirmer »', () => {

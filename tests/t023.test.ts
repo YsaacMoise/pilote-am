@@ -318,6 +318,9 @@ describe('T-025 C-1 : durée d’un événement familial comptée par événemen
 
   it('natures différentes (naissance puis mariage) : pas reliées', () => {
     const r = mois([ev('2026-10-05', '2026-10-07', 'naissance'), ev('2026-10-08', '2026-10-09', 'mariage')]);
+    // Chacun dans sa propre durée (naissance 3 jours, mariage 4 jours) : tout est payé.
+    expect(r.retenue).toBe(0);
+    expect(r.nonGere).toEqual([]);
   });
 });
 
@@ -425,7 +428,7 @@ describe('T-103 : une ancienne saisie d’événement sans durée (0) refuse le 
   });
   it('page des parents : rien « à confirmer »', () => {
     const snap = buildSnapshot({ ctx: makeCtx(c, [], [sansDuree], '2026-04-10'), journal: [], amName: 'Ana', enfants: 0, now: 1 });
-    expect(snap.mois.find((x) => x.month === '2026-03')?.aConfirmer ?? []).toEqual([]);
+    expect(JSON.stringify(snap.mois.find((x) => x.month === '2026-03') ?? {})).not.toMatch(/à confirmer/);
   });
 });
 

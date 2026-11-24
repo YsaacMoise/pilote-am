@@ -132,10 +132,9 @@ describe('accueil jour par jour (étape 2)', () => {
     expect(simuler({ ...base, planning, entretien: 50, entretienMode: 'heure' }, D).parJour.map((j) => j.entretien)).toEqual([500, 265]);
   });
 
-  it('jours fériés : 1er nov. 2026 → 31 oct. 2027 ; Alsace-Moselle ajoute le Vendredi saint', () => {
-    const f = feriesParJour(D, false);
+  it('jours fériés : 1er nov. 2026 → 31 oct. 2027 (T-103, R1 : rien de plus en Alsace-Moselle)', () => {
+    const f = feriesParJour(D);
     expect(f.slice(1, 6)).toEqual([2, 0, 2, 1, 2]); // lun : Pâques, Pentecôte ; mer : 11 nov., 14 juil. ; jeu : Ascension ; ven : 25 déc., 1er janv.
-    expect(feriesParJour(D, true)[5]).toBe(3); // + Vendredi saint (26 mars 2027)
   });
 
   it('repas comptés selon les horaires du jour', () => {
@@ -237,12 +236,12 @@ describe('comparaison avec le simulateur officiel Urssaf (1er novembre 2026)', (
     proche(r.reste, 98031);
   });
 
-  it('D : Alsace-Moselle → net 679,47 €, CMG 419,96 €, cotisations 595,20 €', () => {
+  it('D : Alsace-Moselle → net 679,47 €, CMG 420,12 € (T-103, R1 : référence Urssaf de 419,96 € obtenue avec les anciens fériés)', () => {
     const r = simuler({ ...base, alsaceMoselle: true, tauxBrut: 510 }, d); // 5,10 € brut → 3,92 € net en Alsace-Moselle
     expect(r.salaire).toBe(67947);
-    expect(r.cmg.montant).toBe(41996);
+    expect(r.cmg.montant).toBe(42012);
     proche(r.cotisations, 59520);
-    expect(r.reste).toBe(33164);
+    expect(r.reste).toBe(33176); // T-103 (R1) : 331,64 € avant, avec les anciens fériés
   });
 
   it('E : parent seul, 2 enfants à charge, enfant de 6 à 12 ans, déjeuner à 4 € → CMG 706,32 €, reste 132,18 €', () => {

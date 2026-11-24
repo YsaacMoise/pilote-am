@@ -15,7 +15,6 @@ const contrat = (): Contract => ({ id: 'c1', child: 'Léa', family: 'Martin', co
   balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 0 } as Contract);
 const ctx = () => makeCtx(contrat(), [], [], '2027-12-31');
 const T = 1234500;
-const eur = (s: string) => Math.round(parseFloat(s.replace(/\s| | /g, '').replace(',', '.')) * 100);
 /** Variantes lues dans le message : date de fin (AAAA-MM-JJ) → montant en centimes */
 describe('T-054, revu par la T-103 (F1) : une seule date de fin, bulletins saisis jusqu’au dernier mois', () => {
   it('cas du constat (C-008) : fin le 16/11/2026, total 12 345,00 € jusqu’en novembre : 154,31 €, sans réserve', () => {

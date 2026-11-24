@@ -214,6 +214,8 @@ export interface Contract {
    * contrat). Demandé seulement quand le CDD finit pendant l'essai.
    */
   cddEssaiFin?: ISODate;
+  /** T-103 : CDD suivi après son début : jours de congés payés pris pendant le CDD avant le suivi (plancher L1242-16) */
+  cddCpPrisAvantSuivi?: number;
   /** T-076 : motif du CDD (R-CDD-03) ; message seulement, aucun effet sur les montants */
   cddMotif?: 'remplacement' | 'autre';
   /** Date à partir de laquelle l'app suit le contrat (avant : historique) */

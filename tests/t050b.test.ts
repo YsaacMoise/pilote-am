@@ -11,7 +11,6 @@ import { makeCtx, monthBase, monthBrut, type Ctx } from '../src/engine/payroll';
 import { baseDixieme, cpForMonth } from '../src/engine/conges';
 import { finDeContrat } from '../src/engine/fin';
 import { lastDay, monthOf, monthsBetween, type ISODate, type Month } from '../src/engine/dates';
-import { euros } from '../src/engine/money';
 import { netToBrut } from '../src/engine/rates';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {

@@ -118,7 +118,7 @@ export function messageBasePV(c: Contract): string {
   if (lecturePV(c) === 'L1') {
     return `Horaires variables : ton salaire suit les ${hm} payées chaque mois écrites dans ton contrat. Une semaine plus courte ne réduit pas ton salaire. Les heures complémentaires se comptent semaine par semaine, au-delà des heures prévues pour la semaine.`;
   }
-  return `Horaires variables : ton salaire suit les ${hm} payées chaque mois écrites dans ton contrat, soit une base de ${fmtH(baseHebdoMin(c))} par semaine. Les heures prévues ou faites au-delà de cette base, jusqu’à 45 h, sont payées en heures complémentaires, avec le mois du jour où elles tombent. La convention ne tranche pas ce choix ; c’est ton contrat qui l’écrit. La question est posée à la DDETS.`;
+  return `Horaires variables : ton salaire suit les ${hm} payées chaque mois écrites dans ton contrat, soit une base de ${fmtH(baseHebdoMin(c))} par semaine. Les heures prévues ou faites au-delà de cette base, jusqu’à 45 h, sont payées en heures complémentaires, avec le mois du jour où elles tombent (convention, article 96.4 : au-delà de la durée de travail hebdomadaire prévue au contrat).`;
 }
 
 export const NON_GERE_PV_AVENANT =
@@ -142,7 +142,7 @@ export function nonGeresContratPV(c: Contract): string[] {
 }
 
 function messageSemaine45(quoi: string[], fin = 'Fais ces mois sans l’app.'): string {
-  return `Semaine prévue au-delà de 45 h (${quoi.join(' ; ')}) : non géré pour l’instant. La convention ne dit pas si la majoration de ces heures prévues se paie dans le salaire mensualisé ou le mois de la semaine (question posée à la DDETS). ${fin}`;
+  return `Semaine prévue au-delà de 45 h (${quoi.join(' ; ')}) : non géré pour l’instant. L’app ne sait pas encore mettre la majoration de ces heures dans le salaire mensualisé quand les horaires changent d’une semaine à l’autre (convention, articles 108.1 et 110.1). ${fin}`;
 }
 
 /**

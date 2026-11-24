@@ -267,18 +267,15 @@ export function repasDuJour(plages: Plage[], type: TypeRepas): boolean {
 export { bornesKm } from './km';
 
 /** Jours fériés des 12 mois qui suivent `d`, par jour de la semaine (1 = lundi … 7 = dimanche). */
-export function feriesParJour(d: ISODate, alsaceMoselle: boolean): number[] {
+/**
+ * Fériés de l'année qui vient, par jour de la semaine. T-103 (R1) : en Alsace-Moselle, le Vendredi saint et le 26 décembre ne
+ * sont pas fériés pour l'AM (C. trav. L3134-1, al. 2) : seuls les fériés de droit commun (L3133-1) comptent.
+ */
+export function feriesParJour(d: ISODate): number[] {
   const out = [0, 0, 0, 0, 0, 0, 0, 0];
   const fin = addDays(d, 365);
   for (const y of [Number(d.slice(0, 4)), Number(d.slice(0, 4)) + 1]) {
-    const jours = [...holidaysOf(y).keys()];
-    // Alsace-Moselle : Vendredi saint et 26 décembre en plus (code du travail L3134-13)
-    if (alsaceMoselle) {
-      const lundiPaques = [...holidaysOf(y).entries()].find(([, n]) => n === 'Lundi de Pâques')?.[0];
-      if (lundiPaques) jours.push(addDays(lundiPaques, -3));
-      jours.push(`${y}-12-26`);
-    }
-    for (const j of jours) if (j >= d && j < fin) out[weekday(j)]++;
+    for (const j of holidaysOf(y).keys()) if (j >= d && j < fin) out[weekday(j)]++;
   }
   return out;
 }
@@ -295,11 +292,6 @@ export interface SimInput {
   tauxBrut: number;
   /** L'assistante maternelle travaille en Alsace-Moselle (Bas-Rhin, Haut-Rhin, Moselle) : cotisations salariales plus élevées */
   alsaceMoselle: boolean;
-  /**
-   * T-077 (R7) : Alsace-Moselle, Vendredi saint et 26 décembre comptés comme fériés (lecture A, défaut) ou non (lecture B,
-   * `false`). Les deux lectures sont calculées : voir `feriesLocauxB`.
-   */
-  feriesLocaux?: boolean;
   /** Indemnité d'entretien prévue au contrat (centimes), par jour ou par heure ; le minimum légal s'applique chaque jour */
   entretien: number;
   entretienMode: 'jour' | 'heure';
@@ -425,11 +417,6 @@ export interface SimResult {
   depensesAnnuelles: number;
   /** Coût mensuel réel, crédit d'impôt réparti sur 12 mois */
   reel: number;
-  /**
-   * T-077 (R7) : Alsace-Moselle, mêmes résultats sans le Vendredi saint ni le 26 décembre (lecture B : fériés locaux non
-   * applicables à l'AM). Absent ailleurs, ou quand le résultat est déjà la lecture B.
-   */
-  feriesLocauxB?: { reel: number; entretien: number; repas: number; feriesAn: number };
   /** Heures maximales par semaine pour ce planning (2 250 h par an) */
   heuresMax: number;
   /** Jours où l'amplitude dépasse 13 h (11 h de repos obligatoire) */
@@ -533,7 +520,7 @@ export function simuler(i: SimInput, d: ISODate): SimResult {
 
   // Jour par jour : entretien (minimum légal de la journée), repas, et jours fériés sans accueil.
   // Un férié tombe en moyenne sur une semaine d'accueil dans la proportion semaines travaillées ÷ 52.
-  const feries = feriesParJour(d, i.alsaceMoselle && i.feriesLocaux !== false);
+  const feries = feriesParJour(d);
   const parJour: SimResult['parJour'] = [];
   const repasAn: Record<TypeRepas, number> = { petitDej: 0, dejeuner: 0, gouter: 0, diner: 0 };
   let joursAnExact = 0, entretienAn = 0, repasMontantAn = 0, feriesAn = 0;
@@ -626,10 +613,6 @@ export function simuler(i: SimInput, d: ISODate): SimResult {
     reste, resteHoraire: heuresMoisMin > 0 && n ? Math.round(reste / n / (heuresMoisMin / 60)) : 0,
     creditEligible, creditAnnuel, depensesAnnuelles: depenses,
     reel: reste - Math.round(creditAnnuel / 12),
-    ...(i.alsaceMoselle && i.feriesLocaux === undefined ? (() => {
-      const b = simuler({ ...i, feriesLocaux: false }, d);
-      return { feriesLocauxB: { reel: b.reel, entretien: b.entretien, repas: b.repas, feriesAn: b.feriesAn } };
-    })() : {}),
     heuresMax, joursTropLongs,
     depasseAnnuel: heuresSemMin / 60 > heuresMax,
     accordNecessaire: heuresSemMin > HEURES_SANS_ACCORD * 60,

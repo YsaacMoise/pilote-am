@@ -6,7 +6,7 @@ import { acquisition, compteur, cpForMonth, indemnite, joursOuvrables, MESSAGE_S
 import { finDeContrat } from '../src/engine/fin';
 import { fiscalYear } from '../src/engine/fiscal';
 import { controle } from '../src/engine/controle';
-import { entretienPlancher, netToBrut } from '../src/engine/rates';
+import { entretienPlancher } from '../src/engine/rates';
 import { holidayName } from '../src/engine/holidays';
 import { parseEuros, euros } from '../src/engine/money';
 
@@ -407,7 +407,6 @@ describe('fin de contrat (art. 120, 121, 124)', () => {
     const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05', yearType: 'incomplete', weeks: 46, weeksOff: ete });
     // Lettre présentée le dimanche 22/03 : 8 jours, fin le dimanche 29/03 ; le lendemain est un lundi accueilli.
     const f = finDeContrat(makeCtx(c, [], [], '2026-04-30'), '2026-03-22', 'retrait');
-    expect(f.preavisFinAConfirmer).toBeUndefined();
     expect(f.dernierJour).toBe('2026-03-29');
     expect(f.regularisationAConfirmer).toBeUndefined();
   });

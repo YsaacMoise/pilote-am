@@ -113,7 +113,7 @@ describe('C-019 : heures complémentaires et majorées exonérées (CGI art. 81 
   it('plafond de 7 500 € tous employeurs réunis : l’excédent redevient imposable, au prorata', () => {
     const row = (cid: string, hsValeur: number): FiscalChild => ({
       cid, recu: 1000000, netImposable: 900000, hsValeur, hsExonere: hsValeur, hsImposable: 0, entretienRepas: 100000, km: 0,
-      repasParents: 0, jours: 200, joursCourts: 0, abattementBrut: 738600, abattement: 738600, imposable: 261400,
+      repasParents: 0, jours: 200, joursCourts: 0, abattementBrut: 738600, abattement: 738600, imposable: 261400, brutInconnu: false,
       smic: 1231, smics: [1231], facteur: 3, partiel: false, moisHistorique: 0,
     });
     // 5 000 € + 4 000 € = 9 000 € : 1 500 € au-delà, soit 833,33 € et 666,67 €.
