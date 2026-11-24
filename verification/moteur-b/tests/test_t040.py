@@ -247,12 +247,12 @@ class T040eEntretienJourEtDuree(unittest.TestCase):
         self.assertEqual([x["valeur_exacte_centimes"] for x in a], ["2002/5", "2002/5"])
 
     def test_duree_accueil_differente_montants_differents(self):
-        # T-103 (M1, A1) : ancien refus ENTRETIEN-DUREE-ACCUEIL-OU-TRAVAIL leve. CCN 114.1
-        # (KALIARTI000043942300) : « versee en cas de travail effectif, par heure de travail » ;
-        # CCN 99 (KALIARTI000043942263) definit le temps de travail. Seule la duree de travail compte.
-        # 0,60 EUR/h ; 5 h de travail (art. 99) contre 3 h d'accueil : 3,00 EUR.
+        # 0,60 EUR/h ; 5 h de travail (art. 99) contre 3 h d'accueil : 3,00 EUR contre 2,65 EUR (plancher).
         j = [{"duree_minutes": 300, "duree_accueil_minutes": 180, "travail_effectif": True}]
-        self.assertEqual(R(m.indemnite_entretien_mois(j, 60, self.D), "indemnite_centimes"), 300)
+        r = m.indemnite_entretien_mois(j, 60, self.D)
+        self.assertEqual(r["code"], "ENTRETIEN-DUREE-ACCUEIL-OU-TRAVAIL")
+        self.assertEqual(r["details"]["montant_duree_de_travail_art99_centimes"], 300)
+        self.assertEqual(r["details"]["montant_duree_d_accueil_centimes"], 265)
 
     def test_duree_accueil_differente_meme_montant(self):
         # 0,50 EUR/h : 5 h donne 2,50 EUR et 3 h 1,50 EUR, tous deux releves au plancher de 2,65 EUR.

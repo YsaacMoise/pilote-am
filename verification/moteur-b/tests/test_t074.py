@@ -68,10 +68,11 @@ class IndemnitePreavis(unittest.TestCase):
         # Cas reel : 45 h x 52 / 12 = 195 h x 7,45 EUR = 1 452,75 EUR. Novembre 2026 : 21 jours du lundi au vendredi
         # x 9 h = 11 340 min (le 11/11, ferie chome d'un jour habituellement travaille, compte : CCN 111).
         # Jours dispenses : 27 et 30/11 = 1 080 min. Proportion : 1 452,75 x 1 080 / 11 340 = 138,357... -> 138,36 EUR.
-        # Heures x taux : 18 h x 7,45 = 134,10 EUR. T-103 (F5) : CCN 122 « tient compte de la deduction d'absence
-        # prevue a l'article 111 » : la proportion est la methode ecrite. Refus P-1 leve : 138,36 EUR.
+        # Heures x taux : 18 h x 7,45 = 134,10 EUR. Lectures differentes : refus P-1 (regles/t074, point 1).
         r = m.indemnite_preavis_dispense("complete", [mois_mixte(145275, 11340, 1080, 1080)], 745)
-        self.assertEqual(R(r, "indemnite_centimes"), 13836)
+        self.assertEqual(r["statut"], "non_gere")
+        self.assertEqual(r["code"], "P-1")
+        self.assertEqual(r["details"]["lectures_centimes"], [13836, 13410])
 
     def test_deux_mois_a_cheval(self):
         # Mois 1 mixte aux lectures egales (72 EUR), mois 2 entier dispense et fini le dernier jour (780 EUR) : 852 EUR.
@@ -100,10 +101,11 @@ class RegularisationD2(unittest.TestCase):
 
     def test_lectures_differentes_d2(self):
         # (a) (9 000 + 960) min = 166 h x 5 = 830 EUR - 600 EUR verses = 230 EUR.
-        # (b) 150 h x 5 = 750 EUR - (600 - 100) EUR = 250 EUR. T-103 (F6) : lecture (a) (CCN 124 « a la date de fin
-        # du contrat », 64 « date prevue de fin du preavis », 66). Refus D-2 leve : 230 EUR.
+        # (b) 150 h x 5 = 750 EUR - (600 - 100) EUR = 250 EUR. Differents : refus D-2.
         r = m.regularisation_finale_preavis_dispense([], 60000, 500, 9000, 960, 10000, AUCUNE)
-        self.assertEqual(R(r, "versement_centimes"), 23000)
+        self.assertEqual(r["code"], "D-2")
+        self.assertEqual(r["details"]["lecture_a_centimes"], 23000)
+        self.assertEqual(r["details"]["lecture_b_centimes"], [25000])
 
     def test_lectures_egales(self):
         # ICP = 16 h x 5 EUR = 80 EUR : (a) 830 - 600 = 230 EUR ; (b) 750 - 520 = 230 EUR. Resultat 230 EUR.
@@ -111,9 +113,9 @@ class RegularisationD2(unittest.TestCase):
         self.assertEqual(R(r, "versement_centimes"), 23000)
 
     def test_icp_a_deux_lectures(self):
-        # T-103 (F6) : lecture (a) seule ; l'ICP n'y entre pas : 230 EUR (ancien refus D-2 leve).
+        # ICP de 80 EUR ou 100 EUR (P-1) : (b) donne 230 ou 250 EUR : refus D-2.
         r = m.regularisation_finale_preavis_dispense([], 60000, 500, 9000, 960, [8000, 10000], AUCUNE)
-        self.assertEqual(R(r, "versement_centimes"), 23000)
+        self.assertEqual(r["code"], "D-2")
 
     def test_refus_a06_propage(self):
         comp = dict(AUCUNE, feries_chomes_payes={"minutes": None, "incluses": False})
@@ -125,12 +127,10 @@ class RuptureD1EtA45(unittest.TestCase):
     """CCN 121.1, 60, 64.2 ; F16842 ; regles/t074, point 5."""
 
     def test_neuf_mois_seulement_a_la_fin_d1(self):
-        # Debut 05/01/2026 : 9 mois le 05/10/2026. Lettre le 28/09 (8 mois et 23 jours), fin prevue le 12/10.
-        # T-103 (F3) : CCN 60 « s'arrete a la date a laquelle le contrat de travail prend fin » ; 64.2 : periode
-        # d'inexecution comptee « au titre de l'anciennete ». 9 mois atteints a la fin : 8 000 / 80 = 100 EUR.
+        # Debut 05/01/2026 : 9 mois le 05/10/2026. Lettre le 28/09 (8 mois et 23 jours), fin prevue le 12/10 : D-1.
         r = m.indemnite_rupture("normal", "employeur", date(2026, 1, 5), date(2026, 9, 28), 800000,
                                 date_fin_contrat=date(2026, 10, 12))
-        self.assertEqual(R(r, "indemnite_centimes"), 10000)
+        self.assertEqual(r["code"], "D-1")
 
     def test_cas_reel_moins_de_neuf_mois(self):
         # Debut 14/09/2026, lettre 23/11, fin 30/11/2026 : moins de 9 mois aux deux dates (9 mois le 14/06/2027) : 0.
@@ -145,11 +145,12 @@ class RuptureD1EtA45(unittest.TestCase):
         self.assertEqual(R(r, "indemnite_centimes"), 10000)
 
     def test_preavis_change_le_montant_a45(self):
-        # T-103 (F4) : l'ICP entre dans l'assiette (CCN 121.1, 64.2 « soumise a contributions et cotisations
-        # sociales ») : 8 200 / 80 = 102,50 EUR. Ancien refus A-45 leve.
+        # Sans ICP : 8 000 / 80 = 100 EUR ; avec 200 EUR d'ICP : 8 200 / 80 = 102,50 EUR. Refus A-45 (envoi 1, Q4).
         r = m.indemnite_rupture("normal", "employeur", date(2025, 12, 1), date(2026, 9, 14), 800000,
                                 indemnite_preavis_centimes=20000, date_fin_contrat=date(2026, 9, 28))
-        self.assertEqual(R(r, "indemnite_centimes"), 10250)
+        self.assertEqual(r["code"], "A-45")
+        self.assertEqual(r["details"]["sans_preavis_centimes"], 10000)
+        self.assertEqual(r["details"]["avec_preavis_centimes"], 10250)
 
     def test_preavis_sans_effet_sur_le_montant(self):
         # 8 000,30 / 80 = 100,00375 EUR -> 100,00 EUR, comme sans l'ICP de 0,30 EUR : resultat 100 EUR.

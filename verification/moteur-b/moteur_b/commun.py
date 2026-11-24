@@ -119,8 +119,7 @@ CODES = {
     "R-CP-02-DATE": "Maladie et CP avant le 24 avril 2024 : regime retroactif et forclusion non geres.",
     "R-CP-08-PRISE": "Prise principale des conges sur deux mois : mois de versement non ecrit.",
     "R-JF-02-LIMITE": "Jour ferie pendant une semaine de non-accueil en annee incomplete : cas limite non tranche (R-JF-02).",
-    "ENTRETIEN-DUREE-ACCUEIL-OU-TRAVAIL": "Code leve par T-103 (M1) : duree de travail de l art. 99 (CCN 114.1 « par heure de travail », KALIARTI000043942300) ; garde pour l historique.",
-
+    "ENTRETIEN-DUREE-ACCUEIL-OU-TRAVAIL": "Indemnite d'entretien : duree de travail (CCN art. 114.1 et 99) ou duree d'accueil (CASF L423-18, D423-7, Urssaf, service-public) ; aucun texte ne tranche et les deux donnent ici des montants differents (T-040e).",
     "ENTRETIEN-SOUS-MINIMUM": "Montant contractuel d'entretien inferieur au minimum conventionnel : le contrat doit etre corrige.",
     "KM-SOUS-PLANCHER": "Taux kilometrique contractuel inferieur au bareme de l'administration : le contrat doit etre corrige.",
     "FIN-DATE-A-CONFIRMER": "T-072 : l'assiette du 1/80 change selon la date de fin du preavis (jour de depart compte ou non, CCN 64.1 et 120, non ecrit) : indemnite a confirmer.",

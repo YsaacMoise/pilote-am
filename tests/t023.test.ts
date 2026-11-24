@@ -11,8 +11,6 @@ import { controleKm, SUIVI_ARRETES } from '../src/engine/km';
 import type { DayRec } from '../src/engine/model';
 import { controle } from '../src/engine/controle';
 import { fiscalYear } from '../src/engine/fiscal';
-import { finDeContrat } from '../src/engine/fin';
-import { indemnite } from '../src/engine/conges';
 import { buildSnapshot } from '../src/partage/snapshot';
 import { entretienPlancher, minimumBrut, PREMIERE_DATE_GEREE, ratesAt } from '../src/engine/rates';
 
@@ -129,8 +127,8 @@ describe('T-023 (2) événements familiaux, R-ABS-06', () => {
     // Annonce d'un handicap : CCN 5 ; L3142-4 6° « Cinq jours » jusqu'au 13/06/2026, « Dix jours » depuis le 14/06/2026
     expect(dureeEvenement('handicap_enfant', '2026-06-13')).toBe(5);
     expect(dureeEvenement('handicap_enfant', '2026-06-14')).toBe(10);
-    // Art. 48.1.3.1.2 et 48.1.3.1.3 : congé de deuil indemnisé par la sécurité sociale, maintien sous déduction des IJ : non géré
-    expect(dureeEvenement('deuil', '2026-10-05')).toBeUndefined();
+    // Art. 48.1.3.1.2 : 8 jours ouvrables ; T-103 (C9) : salaire maintenu moins les indemnités journalières (montant saisi)
+    expect(dureeEvenement('deuil', '2026-10-05')).toBe(8);
   });
 
   it('T-033 : durées avant le 21/07/2023 (L3142-4 version du 19/12/2021 et CCN 48.1.3.1.1 version remplacée)', () => {
@@ -138,8 +136,8 @@ describe('T-023 (2) événements familiaux, R-ABS-06', () => {
     expect(dureeEvenement('deces_enfant', '2022-06-01')).toBe(5);
     expect(dureeEvenement('deces_enfant', '2023-07-20')).toBe(5);
     expect(dureeEvenement('deces_enfant', '2023-07-21')).toBe(12); // loi n° 2023-622 : « Douze jours »
-    // « sept jours ouvrés » (loi) contre « 9 jours ouvrables » (CCN) : comparaison d'unités non écrite → non géré
-    expect(dureeEvenement('deces_enfant_14', '2023-07-20')).toBeUndefined();
+    // T-103 : « 9 jours ouvrables » (CCN) contiennent toujours au moins « sept jours ouvrés » (loi) : 9
+    expect(dureeEvenement('deces_enfant_14', '2023-07-20')).toBe(9);
     expect(dureeEvenement('deces_enfant_14', '2023-07-21')).toBe(14);
     // L3142-4 6° « Deux jours » ; CCN remplacée « 2 jours ouvrables pour l'annonce de la survenue d'un handicap »
     expect(dureeEvenement('handicap_enfant', '2022-06-01')).toBe(2);
@@ -152,11 +150,12 @@ describe('T-023 (2) événements familiaux, R-ABS-06', () => {
     expect(dureeEvenement('mariage', '2021-12-31')).toBeUndefined();
   });
 
-  it('T-033 : la paie d’un événement avant le 01/05/2024 reste « à confirmer »', () => {
+  it('T-103 (C6) : un événement de 2022 est payé selon la version de 2022 et la loi (avenant n° 4 en vigueur au 01/05/2024)', () => {
     const c22 = contract({ start: '2022-01-03', trackedFrom: '2022-01-03' });
     const r = computeMonth(makeCtx(c22, [], [ev('2022-06-07', '2022-06-08', 'deces_enfant')], '2022-12-31'), '2022-06');
     expect(r.nonGere).toEqual([]);
-    expect(r.evenementAConfirmer).toBeGreaterThan(0);
+    expect(r.evenementAConfirmer).toBe(0);
+    expect(r.retenue).toBe(0);
   });
 
   it('mariage dans la durée (4 jours ouvrables du lundi au jeudi) : payé, « pas de réduction de la rémunération »', () => {
@@ -166,14 +165,14 @@ describe('T-023 (2) événements familiaux, R-ABS-06', () => {
     expect(r.net).toBe(sansAbsence.net);
   });
 
-  it('mariage saisi sur 5 jours ouvrables : le 5e n’est ni payé ni retenu, il est à confirmer', () => {
+  it('mariage saisi sur 5 jours ouvrables : le 5e n’est plus un congé pour événement familial, il est retenu (T-103)', () => {
     const r = mois([ev('2026-10-05', '2026-10-09', 'mariage')]);
-    expect(r.evenementAConfirmer).toBeGreaterThan(0);
-    expect(r.retenue).toBe(0);
-    expect(r.net + r.evenementAConfirmer).toBe(sansAbsence.net);
+    expect(r.evenementAConfirmer).toBe(0);
+    expect(r.retenue).toBeGreaterThan(0);
+    expect(r.net + r.retenue).toBe(sansAbsence.net);
     expect(r.joursActivite).toBe(sansAbsence.joursActivite - 1);
-    expect(r.alerts.join(' ')).toMatch(/4 jours ouvrables au plus/);
-    expect(declarationLines(makeCtx(c, [], [ev('2026-10-05', '2026-10-09', 'mariage')], '2026-12-31'), r).find((l) => l.label === 'Salaire net')!.value).toMatch(/événement familial à confirmer/);
+    expect(r.alerts.join(' ')).toMatch(/4 jours ouvrables au plus.*retenu comme une absence non payée/);
+    expect(declarationLines(makeCtx(c, [], [ev('2026-10-05', '2026-10-09', 'mariage')], '2026-12-31'), r).find((l) => l.label === 'Salaire net')!.value).not.toMatch(/à confirmer/);
   });
 
   it('jour de plus de 600 km saisi en congé sans solde : retenu (« 1 jour ouvrable supplémentaire, non rémunéré »)', () => {
@@ -192,24 +191,26 @@ describe('T-023 (2) événements familiaux, R-ABS-06', () => {
   });
 
   it('annonce d’un handicap le 02/03/2026 : 5 jours (avant la loi du 12 juin 2026) ; le 15/06/2026 : 10 jours', () => {
-    // Du lundi 02/03 au jeudi 12/03 : 10 jours ouvrables (le samedi 07/03 compte). Au-delà de 5 : 4 jours prévus à confirmer.
+    // Du lundi 02/03 au jeudi 12/03 : 10 jours ouvrables (le samedi 07/03 compte). Au-delà de 5 : 4 jours prévus retenus.
     const mars = mois([ev('2026-03-02', '2026-03-12', 'handicap_enfant')], '2026-03');
-    expect(mars.evenementAConfirmer).toBeGreaterThan(0);
+    expect(mars.retenue).toBeGreaterThan(0);
     expect(mars.joursActivite).toBe(mois([], '2026-03').joursActivite - 4);
     // Du lundi 15/06 au jeudi 25/06 : 10 jours ouvrables, tous dans la durée.
     expect(mois([ev('2026-06-15', '2026-06-25', 'handicap_enfant')], '2026-06').evenementAConfirmer).toBe(0);
   });
 
-  it('congé de deuil : art. 48.1.3.1.3 non géré, à confirmer', () => {
-    const r = mois([ev('2026-10-05', '2026-10-06', 'deuil')]);
-    expect(r.evenementAConfirmer).toBeGreaterThan(0);
-    expect(r.alerts.join(' ')).toMatch(/48\.1\.3\.1\.3/);
+  it('congé de deuil (T-103, C9) : 8 jours ouvrables, salaire maintenu moins les indemnités journalières saisies', () => {
+    const l = ev('2026-10-05', '2026-10-06', 'deuil');
+    const r = mois([{ ...l, ijSecu: 5000 }]);
+    expect(r.nonGere).toEqual([]);
+    expect(r.ijDeduites).toBe(5000);
+    expect(r.net).toBe(sansAbsence.net - 5000);
   });
 
-  it('avant le 01/05/2024 : version de 48.1.3.1.1 non tranchée (avenant n° 4), à confirmer', () => {
+  it('avant le 01/05/2024 (T-103, C6) : version de 2022 de 48.1.3.1.1, payé sans réserve', () => {
     const r = computeMonth(makeCtx(contract({ start: '2023-09-04', trackedFrom: '2023-09-04' }), [], [ev('2024-03-04', '2024-03-04', 'naissance')], '2024-12-31'), '2024-03');
-    expect(r.evenementAConfirmer).toBeGreaterThan(0);
-    expect(r.alerts.join(' ')).toMatch(/période non gérée/);
+    expect(r.evenementAConfirmer).toBe(0);
+    expect(r.retenue).toBe(0);
   });
 });
 
@@ -293,31 +294,33 @@ describe('T-025 C-1 : durée d’un événement familial comptée par événemen
   const mois = (leaves: AbsenceLue[], m = '2026-10') => computeMonth(makeCtx(c, [], normaliserAbsences(leaves), '2026-12-31'), m);
   const sansAbsence = mois([]);
 
-  it('mariage saisi en deux absences (05-06/10 puis 07-09/10) : 4 jours payés, le 5e à confirmer, comme en une seule saisie', () => {
+  it('mariage saisi en deux absences (05-06/10 puis 07-09/10) : 4 jours payés, le 5e retenu, comme en une seule saisie', () => {
     const une = mois([ev('2026-10-05', '2026-10-09', 'mariage')]);
     const deux = mois([ev('2026-10-05', '2026-10-06', 'mariage'), ev('2026-10-07', '2026-10-09', 'mariage')]);
-    expect(deux.retenue).toBe(0);
-    expect(deux.evenementAConfirmer).toBeGreaterThan(0);
-    expect(deux.evenementAConfirmer).toBe(une.evenementAConfirmer);
+    expect(deux.evenementAConfirmer).toBe(0);
+    expect(deux.retenue).toBeGreaterThan(0);
+    expect(deux.retenue).toBe(une.retenue);
     expect(deux.net).toBe(une.net);
     expect(deux.joursActivite).toBe(sansAbsence.joursActivite - 1);
-    expect(deux.alerts.join(' ')).toMatch(/notée comme la suite de l’absence saisie/);
+    expect(deux.alerts.join(' ')).toMatch(/en comptant l’absence saisie/);
   });
 
-  it('mariage du jeudi 08/10 au vendredi 09/10 puis du lundi 12/10 au mardi 13/10 : le samedi compte comme en une saisie, le 13/10 à confirmer', () => {
+  it('mariage du jeudi 08/10 au vendredi 09/10 puis du lundi 12/10 au mardi 13/10 : le samedi compte comme en une saisie, le 13/10 retenu', () => {
     // Jours ouvrables comptés : 08, 09, samedi 10, 12 → 4 ; le 13/10 dépasse.
     const deux = mois([ev('2026-10-08', '2026-10-09', 'mariage'), ev('2026-10-12', '2026-10-13', 'mariage')]);
     const une = mois([ev('2026-10-08', '2026-10-13', 'mariage')]);
-    expect(deux.evenementAConfirmer).toBe(une.evenementAConfirmer);
+    expect(deux.retenue).toBe(une.retenue);
     expect(deux.joursActivite).toBe(sansAbsence.joursActivite - 1);
   });
 
-  it('deux décès d’un proche à 12 jours d’écart : la seconde absence est à confirmer (même événement ou non), jamais payée en silence', () => {
-    // 05-07/10 : 3 jours ouvrables, payés. 19-21/10 : même nature, 12 jours après → reliée ; à confirmer.
+  it('deux décès d’un proche à 12 jours d’écart, reliés (ancienne saisie) : la seconde absence dépasse la durée, retenue avec la raison', () => {
+    // 05-07/10 : 3 jours ouvrables, payés. 19-21/10 : même nature, 12 jours après → reliée par l'ancienne règle (l'AM peut
+    // supprimer le lien en ressaisissant) ; T-103 : retenue, la raison est dite.
     const r = mois([ev('2026-10-05', '2026-10-07', 'deces_proche'), ev('2026-10-19', '2026-10-21', 'deces_proche')]);
-    expect(r.retenue).toBe(0);
+    expect(r.evenementAConfirmer).toBe(0);
+    expect(r.retenue).toBeGreaterThan(0);
     expect(r.joursActivite).toBe(sansAbsence.joursActivite - 3);
-    expect(r.alerts.join(' ')).toMatch(/si c’est un autre événement, il est dû/);
+    expect(r.alerts.join(' ')).toMatch(/en comptant l’absence saisie/);
   });
 
   it('deux décès d’un proche à plus de 15 jours d’écart : deux événements, chacun ses 3 jours payés', () => {
@@ -342,13 +345,12 @@ describe('T-025 C-4 : férié chômé pendant un congé pour événement familia
   const mois = (leaves: AmLeave[]) => computeMonth(makeCtx(c, [], leaves, '2026-12-31'), '2026-11');
   const sansAbsence = mois([]);
 
-  it('mariage du lundi 09/11 au vendredi 13/11 : le 11/11 est payé (dû dans les deux lectures), le 13/11 est à confirmer', () => {
+  it('mariage du lundi 09/11 au vendredi 13/11 (T-103, C7) : le 11/11 férié ne compte pas, le congé couvre le 13/11 : tout payé', () => {
+    // CCN 48, liminaire : jours ouvrables hors fériés chômés ; L3142-4 : jours ouvrables. 09, 10, 12, 13 = 4 jours.
     const r = mois([ev('2026-11-09', '2026-11-13')]);
     expect(r.retenue).toBe(0);
-    // Un seul jour à confirmer (le 13/11) : le salaire de ce jour sort du total, rien d'autre.
-    expect(r.joursActivite).toBe(sansAbsence.joursActivite - 1);
-    expect(r.net + r.evenementAConfirmer).toBe(sansAbsence.net);
-    expect(r.alerts.join(' ')).toMatch(/un jour férié tombe pendant le congé/);
+    expect(r.evenementAConfirmer).toBe(0);
+    expect(r.net).toBe(sansAbsence.net);
   });
 
   it('mariage du lundi 09/11 au jeudi 12/11 : 4 jours ouvrables même en comptant le férié → tout payé', () => {
@@ -401,23 +403,20 @@ describe('T-025 C-3 : minimum horaire brut = le plus haut de la grille et de 0,2
   it('mai-juin 2022 : 0,281 × 10,85 € = 3,04885 € → 3,05 € dans toute lecture de l’arrondi, au-dessus de 2,97 €', () => {
     const m = minimumBrut('2022-05-15')!;
     expect(m.certain).toBe(305);
-    expect(m.doute).toBeUndefined();
     expect(m.source).toBe('legal');
   });
-  it('août 2022 : 0,281 × 11,07 € = 3,11067 € → 3,11 € certain, 3,12 € si arrondi au centime supérieur', () => {
+  it('août 2022 : 0,281 × 11,07 € = 3,11067 € → 3,12 € (T-103, D3 : un taux de 3,11 € est inférieur au minimum)', () => {
     const m = minimumBrut('2022-08-15')!;
-    expect(m.certain).toBe(311);
-    expect(m.doute).toBe(312);
+    expect(m.certain).toBe(312);
   });
-  it('janvier-avril 2022 : 0,281 × 10,57 € = 2,97017 € : la grille de 2,97 € vaut, 2,98 € si arrondi au centime supérieur', () => {
+  it('janvier-avril 2022 : 0,281 × 10,57 € = 2,97017 € → 2,98 €, au-dessus de la grille de 2,97 € (T-103, D3)', () => {
     const m = minimumBrut('2022-03-15')!;
-    expect(m.certain).toBe(297);
-    expect(m.doute).toBe(298);
-    expect(m.source).toBe('grille');
+    expect(m.certain).toBe(298);
+    expect(m.source).toBe('legal');
   });
   it('juillet 2022 : grille de 3,06 € au-dessus de 3,04885 € ; octobre 2026 : grille de 4,20 € au-dessus de 0,281 × 12,31 €', () => {
-    expect(minimumBrut('2022-07-15')).toMatchObject({ certain: 306, doute: undefined, source: 'grille' });
-    expect(minimumBrut('2026-10-15')).toMatchObject({ certain: 420, doute: undefined, source: 'grille' });
+    expect(minimumBrut('2022-07-15')).toMatchObject({ certain: 306, source: 'grille' });
+    expect(minimumBrut('2026-10-15')).toMatchObject({ certain: 420, source: 'grille' });
   });
   it('contrôle d’un bulletin de juin 2022 : le repère donné est 3,05 € (minimum légal), pas 2,97 €', () => {
     const c = contract({ start: '2022-01-03', trackedFrom: '2022-01-03', rateNet: 240 });
@@ -434,65 +433,18 @@ describe('T-025 C-3 : minimum horaire brut = le plus haut de la grille et de 0,2
   });
 });
 
-describe('T-025 C-5 : le salaire d’événement à confirmer n’est retiré en silence d’aucun calcul qui en dépend', () => {
-  // CCN 48.1.3.1.1 (lu le 18/11/2026) : « Ces congés n'entraînent pas de réduction de la rémunération. Ils sont assimilés
-  // à du temps de travail effectif pour la détermination du droit à congés payés et au titre de l'ancienneté. »
-  // Événement saisi sans nature (saisie d'avant T-023) : son salaire est « à confirmer » (T-023 (2)).
-  // T-030 : contrat au 1er juin 2025 (période de référence entière) ; une embauche au 1er septembre rend les jours acquis
-  // à confirmer (A-23 : 23 jours en mois, 25 en semaines), ce qui masquerait l'effet testé ici.
+describe('T-103 : une ancienne saisie d’événement sans durée (0) refuse le mois et dit quoi faire, jamais « à confirmer »', () => {
+  // Décision du DG du 24/11/2026 : plus aucun montant en suspens. Une saisie que l'app ne sait pas lire : refus clair (B).
   const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01' });
-  // Décision du DG du 21/11/2026 : l'absence sans durée est payée comme avant ; durée non gérée (0) pour un jour à confirmer.
-  const sansNature: AmLeave = { id: 'x', type: 'evenement', from: '2026-03-02', to: '2026-03-02', joursEvenement: 0 };
-  const ctx = (leaves: AmLeave[], t = '2026-10-31') => makeCtx(c, [], leaves, t);
-
-  it('indemnité de rupture (1/80e des salaires) : à confirmer, avec la raison', () => {
-    // T-050b (A-45) : l'assiette comprend l'indemnité de congés non pris, ici « à confirmer » (A-23 : 17 ou 15 jours en
-    // cours) ; sans événement, la rupture est donc à confirmer pour cette seule raison, sans parler d'événement familial.
-    const sans = finDeContrat(ctx([]), '2026-10-28', 'retrait');
-    expect(sans.ruptureAConfirmer).toBe(true);
-    expect(sans.alertes.join(' ')).toMatch(/l’indemnité de congés non pris à confirmer/);
-    expect(sans.alertes.join(' ')).not.toMatch(/salaire d’événement familial/);
-    const f = finDeContrat(ctx([sansNature]), '2026-10-28', 'retrait');
-    expect(f.ruptureAConfirmer).toBe(true);
-    expect(f.alertes.join(' ')).toMatch(/salaire d’événement familial/);
+  const sansDuree: AmLeave = { id: 'x', type: 'evenement', from: '2026-03-02', to: '2026-03-02', joursEvenement: 0 };
+  it('mois refusé avec la consigne de ressaisie', () => {
+    const r = computeMonth(makeCtx(c, [], [sansDuree], '2026-10-31'), '2026-03');
+    expect(r.nonGere.join(' ')).toMatch(/saisie ancienne sans durée.*saisis-la de nouveau/);
+    expect(r.evenementAConfirmer).toBe(0);
   });
-  it('indemnité de rupture : à confirmer par le seul salaire d’événement quand les congés non pris sont sûrs (fin le 15/05/2026)', () => {
-    const sans = finDeContrat(ctx([], '2027-03-31'), '2026-05-01', 'retrait');
-    expect(sans.dernierJour).toBe('2026-05-15');
-    expect(sans.cpAConfirmer).toBeUndefined();
-    expect(sans.ruptureAConfirmer).toBe(false);
-    const f = finDeContrat(ctx([sansNature], '2027-03-31'), '2026-05-01', 'retrait');
-    expect(f.cpAConfirmer).toBeUndefined();
-    expect(f.ruptureAConfirmer).toBe(true);
-    expect(f.alertes.join(' ')).toMatch(/Indemnité de rupture à confirmer : elle ne compte pas encore le salaire d’événement familial à confirmer\./);
-  });
-  it('compteur fiscal : le montant non compté est dit', () => {
-    expect(fiscalYear(ctx([sansNature]), 2026).nonGere).toMatch(/Événement familial à confirmer/);
-    expect(fiscalYear(ctx([]), 2026).nonGere ?? '').not.toMatch(/Événement familial/);
-  });
-  it('dixième des congés : si le salaire à confirmer change l’indemnité, elle est à confirmer avec les deux montants', () => {
-    // Avenant au 01/05/2026 qui baisse le taux à 3 € net : le maintien de salaire (calculé au taux de juin) passe sous le
-    // dixième, qui dépend alors du salaire à confirmer.
-    const c2 = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', avenants: [{ id: 'a', from: '2026-05-01', changes: { rateNet: 300 } }] });
-    const sans = indemnite(makeCtx(c2, [], [], '2026-10-31'), 2025);
-    expect(sans.methode).toBe('dixieme');
-    expect(sans.aConfirmer).toBeUndefined();
-    const avec = indemnite(makeCtx(c2, [], [sansNature], '2026-10-31'), 2025);
-    expect(avec.aConfirmer?.message).toMatch(/salaire d’événement familial encore à confirmer/);
-    expect(avec.aConfirmer?.montants.map((x) => x.montant)).toContain(avec.montant);
-    expect(avec.aConfirmer?.montants.some((x) => x.montant > avec.montant)).toBe(true);
-  });
-  it('dixième des congés : si le maintien l’emporte dans les deux cas, rien n’est à confirmer', () => {
-    // T-030 : période entière (embauche au 1er juin) ; sans hausse, le dixième d'une année complète passe le maintien.
-    // Avenant au 01/05/2026 qui monte le taux à 6 € : le maintien (calculé au taux de juin) l'emporte.
-    const c3 = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', avenants: [{ id: 'b', from: '2026-05-01', changes: { rateNet: 600 } }] });
-    expect(indemnite(makeCtx(c3, [], [], '2026-10-31'), 2025).methode).toBe('maintien');
-    expect(indemnite(makeCtx(c3, [], [sansNature], '2026-10-31'), 2025).aConfirmer).toBeUndefined();
-  });
-  it('page des parents : le total du mois dit ce qui est sorti du total', () => {
-    const snap = buildSnapshot({ ctx: makeCtx(c, [], [sansNature], '2026-04-10'), journal: [], amName: 'Ana', enfants: 0, now: 1 });
-    // Décision du DG du 21/11/2026 : le lien des parents ne nomme pas la raison de l'absence de l'AM.
-    expect(snap.mois.find((x) => x.month === '2026-03')?.aConfirmer).toEqual(['une part du salaire']);
+  it('page des parents : rien « à confirmer »', () => {
+    const snap = buildSnapshot({ ctx: makeCtx(c, [], [sansDuree], '2026-04-10'), journal: [], amName: 'Ana', enfants: 0, now: 1 });
+    expect(snap.mois.find((x) => x.month === '2026-03')?.aConfirmer ?? []).toEqual([]);
   });
 });
 
@@ -512,10 +464,7 @@ describe('T-025 C-7 : mois terminé avec des montants à confirmer (anciennes sa
   // Pas de texte : consigne de l'app (constat C-7 de la relecture T-025). Vérifie seulement que la phrase apparaît
   // sur un mois terminé et pas sur le mois en cours.
   const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01', kmTaux: 41, kmCv: 5 });
-  const sansNature: AmLeave = { id: 'x', type: 'evenement', from: '2026-10-05', to: '2026-10-05', joursEvenement: 0 };
   it('mois terminé : la phrase « déjà déclaré à Pajemploi » est ajoutée ; mois en cours : non', () => {
-    expect(computeMonth(makeCtx(c, [], [sansNature], '2026-11-15'), '2026-10').alerts.join(' ')).toMatch(/déjà déclaré à Pajemploi/);
-    expect(computeMonth(makeCtx(c, [], [sansNature], '2026-10-20'), '2026-10').alerts.join(' ')).not.toMatch(/déjà déclaré à Pajemploi/);
     const km: DayRec = { key: 'c1|2026-10-05', cid: 'c1', date: '2026-10-05', km: 10 };
     expect(computeMonth(makeCtx(c, [km], [], '2026-11-15'), '2026-10').alerts.join(' ')).toMatch(/déjà déclaré à Pajemploi/);
   });

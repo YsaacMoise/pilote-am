@@ -27,29 +27,24 @@ def R(s, k):
 
 
 class DatesFinPreavis(unittest.TestCase):
-    """T-103 (F1) : une seule date. CCN 64.1 ; code de procedure civile art. 641 et 642 appliques au preavis par
-    Cass. soc. 23/10/2024, n° 23-17.460 : jour de depart non compte (jours) ; meme quantieme (mois) ; sans meme
-    quantieme, dernier jour du mois (Cass. soc. 04/06/2025, n° 23-18.185)."""
+    """CCN 64.1 et 120 : point de depart ecrit, dernier jour non ecrit : deux lectures."""
 
     def test_quinze_jours(self):
         r = m.dates_fin_preavis_possibles(date(2026, 1, 17), {"jours": 15})
-        self.assertEqual(R(r, "dates"), [date(2026, 2, 1)])
+        self.assertEqual(R(r, "dates"), [date(2026, 1, 31), date(2026, 2, 1)])
 
     def test_fiche_branche_dans_les_lectures(self):
-        # La fiche anciennete (valeur indicative, non conventionnelle) comptait le jour de remise (fin le 30/04).
-        # T-103 (F1) : le jour de remise ne compte pas : fin le 01/05/2021.
+        # Fiche anciennete (valeur indicative) : remise le 16/04/2021, fin le 30/04/2021.
         r = m.dates_fin_preavis_possibles(date(2021, 4, 16), {"jours": 15})
-        self.assertEqual(R(r, "dates"), [date(2021, 5, 1)])
+        self.assertIn(date(2021, 4, 30), R(r, "dates"))
 
     def test_un_mois(self):
         r = m.dates_fin_preavis_possibles(date(2026, 3, 15), {"mois": 1})
-        self.assertEqual(R(r, "dates"), [date(2026, 4, 15)])
+        self.assertEqual(R(r, "dates"), [date(2026, 4, 14), date(2026, 4, 15)])
 
     def test_un_mois_fin_de_mois_refuse(self):
-        # T-103 : plus de refus DATE-MOIS : « A defaut d'un quantieme identique, le delai expire le dernier jour du
-        # mois » (Cass. soc. 04/06/2025, n° 23-18.185, citant l'art. 641 al. 2).
         r = m.dates_fin_preavis_possibles(date(2026, 1, 31), {"mois": 1})
-        self.assertEqual(R(r, "dates"), [date(2026, 2, 28)])
+        self.assertEqual(r["code"], "DATE-MOIS")
 
 
 class BulletinsDansAssiette(unittest.TestCase):
@@ -128,11 +123,9 @@ class BulletinsDansAssiette(unittest.TestCase):
         self.assertEqual(r["code"], "A-45")
 
     def test_preavis_non_nul_a45(self):
-        # T-103 (F4) : l'ICP entre dans l'assiette (CCN 121.1, 64.2). Dernier mois couvert par le total saisi :
-        # elle y est deja (payee sur le dernier bulletin) ; rien n'est ajoute : 10 000 EUR / 80 = 125 EUR.
         r = m.indemnite_rupture_bulletins("normal", "employeur", DEBUT, ENVOI, [V(date(2026, 2, 26), pre=30000)],
                                           total_bulletins_centimes=1000000, total_jusqua="2026-02")
-        self.assertEqual(R(r, "indemnite_centimes"), 12500)
+        self.assertEqual(r["code"], "A-45")
 
     def test_demission_non_due(self):
         r = m.indemnite_rupture_bulletins("normal", "am", DEBUT, ENVOI, [V(date(2026, 2, 26))],

@@ -108,13 +108,10 @@ def salaire_mois_cdd_moins_d_un_mois(salaire_mensualise_centimes, deduction_art1
         raise ErreurSaisie("Deduction superieure au salaire mensualise.")
     t = positif(taux_horaire_centimes, "taux_horaire_centimes")
     m = positif(minutes_reelles_dans_le_contrat, "minutes_reelles_dans_le_contrat")
-    # T-103 (F11, A1 et A3) : lecture 1. CCN 108.1 : salaire mensualise « quels que soient le nombre d'heures de
-    # travail par semaine et le nombre de semaines de travail dans l'annee » ; C. trav. L1242-14 : les dispositions
-    # conventionnelles du CDI s'appliquent au CDD ; DG 22/11/2026, question n° 9 close. La fiche DREETS (heures x
-    # taux) n'est pas un texte. taux et minutes sont gardes pour les appels existants (controle de saisie seul).
-    return resultat_ok(salaire_mois_cdd_moins_d_un_mois.regles, {
-        "valeur_centimes": s - d, "lectures": [s - d, s - d], "a_confirmer_centimes": 0,
-        "texte": "CCN 108.1, 111 ; C. trav. L1242-14 (T-103, F11)"})
+    l2 = vers_centimes(m / 60 * t, "salaire au reel (P1, lecture 2)", ["P1"])
+    res = _deux_lectures(s - d, l2)
+    res["question"] = ("Question DDETS P1 : CDD de moins d'un mois mensualise puis reduit (art. 111) ou paye au reel ?")
+    return resultat_ok(salaire_mois_cdd_moins_d_un_mois.regles, res)
 
 
 @api("R-CDD-05", "P2", "R-ABS-07", "R-MENS-04")
@@ -127,12 +124,9 @@ def qualifier_semaine_sans_accueil_cdd(lecture):
       selon la methode de calcul prevue a l'article 111 ») : heures prevues de la
       semaine deduites selon l'art. 111 (formule 52 semaines, en heures).
     Sortie : deductible."""
-    # T-103 (F12, A1) : mode 46 semaines. CCN 97.1 et 109.2 definissent l'accueil « 46 semaines ou moins » par les
-    # semaines du contrat ; L1242-14 les applique au CDD ; la FAQ DREETS (52 semaines avec retenues) n'est pas un
-    # texte. La lecture « 52 » est refusee comme saisie.
-    if lecture != "46":
-        raise ErreurSaisie("lecture : « 46 » seulement (T-103, F12 : mode 46 semaines, CCN 97.1, 109.2).")
-    return resultat_ok(["P2"], {"deductible": False})
+    if lecture not in ("46", "52"):
+        raise ErreurSaisie("lecture : « 46 » ou « 52 ».")
+    return resultat_ok(["P2"], {"deductible": lecture == "52"})
 
 
 @api("R-CDD-05", "P2")
@@ -195,12 +189,16 @@ def indemnite_fin_cdd(brut_cdd_centimes, fin_cdd, iccp_centimes=None):
     if not due:
         return resultat_ok(indemnite_fin_cdd.regles, {"indemnite_centimes": 0, "raison": texte, "lectures": [0, 0],
                                                       "a_confirmer_centimes": 0})
-    # T-103 (F10, A2) : l'ICCP n'entre pas dans la base de l'IFC (circulaire DRT n° 18/90 du 30/10/1990, § 4.2.3 ;
-    # reponse ministerielle n° 8078 de 1999 ; Urssaf) ; l'IFC entre dans la base de l'ICCP (iccp_cdd). L'autre
-    # lecture tourne en rond. iccp_centimes est garde pour les appels existants et n'est plus lu.
     l1 = vers_centimes(Fraction(brut, 10), "IFC", regles)
-    return resultat_ok(indemnite_fin_cdd.regles, {"indemnite_centimes": l1, "texte": texte,
-                                                  "lectures": [l1, l1], "a_confirmer_centimes": 0})
+    res = {"indemnite_centimes": l1, "texte": texte}
+    if iccp_centimes is None:
+        res.update({"lectures": None, "a_confirmer_centimes": None,
+                    "note": "Lecture 2 de P4 (ICCP dans l'assiette) non donnee : ICCP non calculee."})
+    else:
+        ic = entier(iccp_centimes, "iccp_centimes")
+        l2 = vers_centimes(Fraction(brut + ic, 10), "IFC, lecture 2 de P4", regles)
+        res.update({"lectures": [l1, l2], "a_confirmer_centimes": l2 - l1})
+    return resultat_ok(indemnite_fin_cdd.regles, res)
 
 
 @api("R-CDD-10", "R-FIN-09", "P3", "R-CP-06")
@@ -214,17 +212,18 @@ def iccp_cdd(fin_cdd, periodes, ifc_centimes, brut_cdd_centimes, heures_hebdo_mi
       remuneration totale brute percue par le salarie pendant la duree de son
       contrat » : plancher 10 % x (BrutCDD + IFC) quand aucun CP n'a ete paye.
     - L1242-16 al. 3 : pas d'ICCP si le CDD se poursuit en CDI (suite_cdi).
-    T-103 (F9) : P3 tranche : max(maintien ; dixieme) par periode (CCN
-    48.1.1.5 ; les fiches DREETS et Pajemploi ne sont pas des textes).
-    Maintien = jours / 6 x heures hebdo x taux ; jours inconnus (acquisition
-    refusee) : refus avec le code de l'acquisition ; jours non multiples de 6 :
-    refus A-26. T-103 (F7) : deux periodes : l'ICCP de la premiere entre dans la
-    base de la derniere.
+    P3 : lecture 1 (DREETS fiche 5/5, modele Pajemploi) = dixieme seul = part
+    sure ; lecture 2 (CCN 48.1.1.5) = max(maintien ; dixieme) par periode ; a
+    confirmer = ecart. Maintien = jours / 6 x heures hebdo x taux (formule de
+    R-CP-06) ; jours inconnus (acquisition refusee) ou non multiples de 6
+    (A-26) : lecture 2 non donnee, part sure seule.
     periodes : liste (la plus ancienne d'abord) de {salaires_bruts_periode_centimes,
     icp_versee_pendant_periode_centimes, icp_annee_precedente_centimes,
     regularisation_due_centimes (derniere periode), jours_acquis (int ou None),
     jours_payes, code_jours (code du refus d'acquisition, facultatif),
     jours_supplementaires}.
+    Deux periodes (CDD a cheval sur le 1er juin, D10) : part sure donnee, lecture 2
+    non calculee (A-50, SUS-04 : ICCP de la periode precedente dans la base).
     Refus : A-28 (ICP selon la lecture), CP-SUPP (jours supplementaires),
     CDD-PLANCHER-L1242-16 (CP payes pendant le CDD : plancher non applique tel quel)."""
     regles = ["R-CDD-10", "R-FIN-09"]
@@ -242,7 +241,6 @@ def iccp_cdd(fin_cdd, periodes, ifc_centimes, brut_cdd_centimes, heures_hebdo_mi
     dixiemes = []
     maintiens = []
     code_l2 = None
-    precedente = Fraction(0)
     for i, p in enumerate(periodes):
         derniere = i == len(periodes) - 1
         payes = entier(p.get("jours_payes", 0), f"periodes[{i}].jours_payes")
@@ -250,6 +248,10 @@ def iccp_cdd(fin_cdd, periodes, ifc_centimes, brut_cdd_centimes, heures_hebdo_mi
             raise NonGere("CDD-PLANCHER-L1242-16", regles, precision=(
                 "CP payes pendant le CDD : le plancher de L1242-16 sur toute la duree du contrat n'est pas applique "
                 "tel quel (aucune regle de repartition lue)."))
+        if not derniere:
+            # D10 : la part sure est donnee. SUS-04 / A-50 (ICCP de cette periode dans la base de la suivante) :
+            # la lecture 2 n'est pas calculee.
+            code_l2 = code_l2 or "A-50"
         sal = entier(p.get("salaires_bruts_periode_centimes"), f"periodes[{i}].salaires_bruts_periode_centimes")
         icp1 = entier(p.get("icp_versee_pendant_periode_centimes", 0), "icp_versee_pendant_periode_centimes")
         icp2 = entier(p.get("icp_annee_precedente_centimes", icp1), "icp_annee_precedente_centimes")
@@ -257,9 +259,7 @@ def iccp_cdd(fin_cdd, periodes, ifc_centimes, brut_cdd_centimes, heures_hebdo_mi
             raise NonGere("A-28", regles + ["R-CP-06"])
         reg = max(0, entier(p.get("regularisation_due_centimes", 0) or 0, "regularisation_due_centimes")) \
             if derniere else 0
-        # T-103 (F7) : l'ICCP de la periode precedente, versee a la fin, entre dans la base de la derniere periode
-        # (CCN 48.1.1.5). Refus A-50 (D10) leve.
-        base = sal + icp1 + reg + (ifc if derniere else 0) + precedente
+        base = sal + icp1 + reg + (ifc if derniere else 0)
         dix = Fraction(base, 10)
         sup = entier(p.get("jours_supplementaires", 0) or 0, "jours_supplementaires")
         if sup:
@@ -268,24 +268,29 @@ def iccp_cdd(fin_cdd, periodes, ifc_centimes, brut_cdd_centimes, heures_hebdo_mi
         dixiemes.append(dix)
         j = p.get("jours_acquis")
         if j is None:
-            raise NonGere(p.get("code_jours", "JOURS-ACQUIS-INCONNUS"), regles, precision=(
-                "Jours acquis inconnus : le maintien de salaire, a comparer au dixieme (T-103, F9), n'est pas connu."))
-        j = entier(j, f"periodes[{i}].jours_acquis")
-        if j % 6:
-            raise NonGere("A-26", regles, precision=(
-                "Conge qui n'est pas un nombre entier de semaines : maintien non calcule (T-103, F9 : comparaison)."))
-        mt = Fraction(j, 6) * h / 60 * t
-        maintiens.append(mt)
-        precedente = Fraction(vers_centimes(max(dix, mt), f"ICCP periode {i + 1}", regles)) if not derniere else 0
+            maintiens.append(None)
+            code_l2 = code_l2 or p.get("code_jours", "JOURS-ACQUIS-INCONNUS")
+        else:
+            j = entier(j, f"periodes[{i}].jours_acquis")
+            if j % 6:
+                maintiens.append(None)
+                code_l2 = code_l2 or "A-26"
+            else:
+                maintiens.append(Fraction(j, 6) * h / 60 * t)
     plancher = Fraction(brut + ifc, 10)
-    # T-103 (F9, A1) : CCN 48.1.1.5 : « le montant le plus avantageux pour le salarie sera retenu » ; CCN 67 et 123
-    # valent pour tout contrat ; C. trav. L1242-14 (le CDD suit les regles du CDI) ; L1242-16 n'est qu'un plancher.
-    # Comparaison au maintien par periode, plancher de L1242-16 sur tout le contrat.
-    exact_l2 = max(sum(max(d, m_) for d, m_ in zip(dixiemes, maintiens)), plancher)
-    v = vers_centimes(exact_l2, "ICCP du CDD (comparaison, T-103 F9)", regles)
-    res = {"iccp_centimes": v, "plancher_l1242_16_exact_centimes": texte_fraction(plancher),
-           "dixieme_exact_centimes": texte_fraction(sum(dixiemes)),
-           "maintien_exact_centimes": [texte_fraction(m_) for m_ in maintiens]}
+    l1_exact = max(sum(dixiemes), plancher)
+    l1 = vers_centimes(l1_exact, "ICCP, dixieme (P3 lecture 1)", regles)
+    res = {"iccp_centimes": l1, "plancher_l1242_16_exact_centimes": texte_fraction(plancher),
+           "dixieme_exact_centimes": texte_fraction(sum(dixiemes))}
+    if code_l2:
+        res.update({"lectures": None, "a_confirmer_centimes": None, "code_lecture_2": code_l2,
+                    "note": "Lecture 2 de P3 (comparaison au maintien) non calculee : " + code_l2 + "."})
+    else:
+        l2_exact = max(sum(max(d, m) for d, m in zip(dixiemes, maintiens)), plancher)
+        l2 = vers_centimes(l2_exact, "ICCP, comparaison (P3 lecture 2)", regles)
+        res.update({"lectures": [l1, l2], "a_confirmer_centimes": l2 - l1,
+                    "maintien_exact_centimes": [texte_fraction(m) for m in maintiens]})
+    res["question"] = "Question DDETS P3 (facultative) : dixieme seul ou comparaison au maintien pour l'AM en CDD ?"
     return resultat_ok(iccp_cdd.regles, res)
 
 

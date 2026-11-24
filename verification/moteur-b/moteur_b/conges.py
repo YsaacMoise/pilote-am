@@ -232,12 +232,8 @@ def _indemnite_cp(jours_conges, heures_hebdo_minutes, taux_horaire_centimes, sal
     # Dixieme (R-CP-06) : variantes selon les ambiguites ouvertes.
     dims = ["A-26"]
     options = [maintiens]
-    # T-103 (F7) : CCN 48.1.1.5 : base « y compris celle versee au titre des conges payes pris au cours de ladite
-    # periode » : l'ICP versee pendant la periode (icp1). CASF L423-6 (LEGIARTI000006798032 : dixieme de la
-    # remuneration recue « et [de] l'indemnite de conge paye de l'annee precedente ») est un minimum legal (C. trav.
-    # L2251-1) : controle apres le calcul ; refus A-28 seulement si ce minimum depasse le resultat de la CCN.
     dims.append("A-28")
-    options.append([icp1])
+    options.append(sorted({icp1, icp2}))
     dims.append("CP-SUPP")
     options.append([False, True] if sup else [False])
     amb = sommes_assiette_ambigues or {}
@@ -263,12 +259,6 @@ def _indemnite_cp(jours_conges, heures_hebdo_minutes, taux_horaire_centimes, sal
             "maintien_exact_centimes": [texte_fraction(x) for x in maintiens],
             "dixieme_exact_centimes": sorted(texte_fraction(x) for x in dixiemes)})
     valeur = next(iter(resultats.values()))
-    if icp2 != icp1:
-        legal = (base + icp2 + sum(mt for _, mt in amb_items)) / 10
-        if legal > valeur:
-            raise NonGere("A-28", regles, precision=(
-                "Le dixieme du CASF L423-6 (ICP de l'annee precedente) depasse ici le resultat de la CCN 48.1.1.5."),
-                details={"ccn_exact_centimes": texte_fraction(valeur), "casf_l423_6_exact_centimes": texte_fraction(legal)})
     if all(valeur == m for m in maintiens) and all(valeur > d for d in dixiemes):
         methode = "maintien"
     elif all(valeur == d for d in dixiemes) and all(valeur > m for m in maintiens):
