@@ -40,10 +40,7 @@ export function controle(b: Bulletin, r: MonthResult, rateNet: number, region: R
   }
   if (b.entretien != null) {
     const diff = b.entretien - r.entretien;
-    // T-044 : une part de l'entretien peut être à confirmer (tarif par jour) : tout montant entre les deux lectures est admis.
-    const haut = r.entretien + (r.entretienAConfirmer ?? 0);
-    if (r.entretienAConfirmer && b.entretien >= r.entretien - tol && b.entretien <= haut + tol) out.push({ level: 'info', title: 'Entretien dans la fourchette à confirmer', detail: `${euros(b.entretien)} déclarés, entre ${euros(r.entretien)} et ${euros(haut)} selon la lecture du tarif par jour.` });
-    else if (Math.abs(diff) <= tol) out.push({ level: 'ok', title: 'Entretien conforme', detail: euros(b.entretien) });
+    if (Math.abs(diff) <= tol) out.push({ level: 'ok', title: 'Entretien conforme', detail: euros(b.entretien) });
     else out.push({ level: diff < 0 ? 'warn' : 'info', title: 'Indemnités d’entretien différentes', detail: `${euros(b.entretien)} déclarés, ${euros(r.entretien)} calculés.` });
   }
 

@@ -819,12 +819,7 @@ export interface MonthBase {
   ferieLocalAConfirmer: number;
   /** Kilomètres saisis sans le nombre d'enfants transportés (CCN art. 113) : non payés, à confirmer (T-017) */
   kmAConfirmer: number;
-  /** T-044 : part de l'indemnité d'entretien qui dépend d'une lecture non tranchée (tarif par jour, jour d'une autre durée) ; hors du total */
-  entretienAConfirmer: number;
-  /** T-044c : jours dont l'entretien est à confirmer, par raison (durée d'accueil ou de travail ; tarif par jour et durée différente du planning ; jour hors planning au tarif par jour) */
-  entretienJoursDuree: number;
-  entretienJoursTarifJour: number;
-  entretienJoursHorsPlanning: number;
+
   /** Salaire net hors congés payés */
   net: number;
   /** Régularisation versée avec un avenant (année incomplète qui se termine) */
@@ -868,7 +863,7 @@ function emptyBase(m: Month): MonthBase {
     month: m, active: false, fromHistory: false, missing: false, salaireMens: 0, mensuelMin: 0, divisorDays: 0,
     divisorMin: 0, contractDays: 0, contractMin: 0, deductedDays: 0, deductedMin: 0, paidFraction: 0, base: 0,
     retenue: 0, heuresNormales: 0, joursActivite: 0, complMin: 0, majMin: 0, majContratMin: 0, majContratAmount: 0, complAmount: 0, majAmount: 0,
-    ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, evenementAConfirmer: 0, joursCpAConfirmer: 0, joursEvenementAConfirmer: 0, joursMaladieAConfirmer: 0, joursFerieLocalAConfirmer: 0, joursMaintienAConfirmer: 0, ferieLocalAConfirmer: 0, kmAConfirmer: 0, entretienAConfirmer: 0, entretienJoursDuree: 0, entretienJoursTarifJour: 0, entretienJoursHorsPlanning: 0, net: 0,
+    ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, evenementAConfirmer: 0, joursCpAConfirmer: 0, joursEvenementAConfirmer: 0, joursMaladieAConfirmer: 0, joursFerieLocalAConfirmer: 0, joursMaintienAConfirmer: 0, ferieLocalAConfirmer: 0, kmAConfirmer: 0, net: 0,
     alerts: [], forgotten: [], sickPaidNotice: false, nonGere: [],
   };
 }
@@ -1051,7 +1046,7 @@ function hoursMin(min: number): string {
 }
 
 const SUM_KEYS = ['base', 'retenue', 'majContratMin', 'majContratAmount', 'joursActivite', 'complMin', 'majMin', 'complAmount', 'majAmount', 'complPrevuMin', 'complAConfirmerMin', 'complAConfirmerAmount', 'ferieAmount',
-  'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'evenementAConfirmer', 'joursCpAConfirmer', 'joursEvenementAConfirmer', 'joursMaladieAConfirmer', 'joursFerieLocalAConfirmer', 'joursMaintienAConfirmer', 'ferieLocalAConfirmer', 'kmAConfirmer', 'entretienAConfirmer', 'entretienJoursDuree', 'entretienJoursTarifJour', 'entretienJoursHorsPlanning', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
+  'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'evenementAConfirmer', 'joursCpAConfirmer', 'joursEvenementAConfirmer', 'joursMaladieAConfirmer', 'joursFerieLocalAConfirmer', 'joursMaintienAConfirmer', 'ferieLocalAConfirmer', 'kmAConfirmer', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
 
 function mergeParts(m: Month, parts: MonthBase[], cuts: ISODate[]): MonthBase {
   const r = emptyBase(m);
@@ -1130,8 +1125,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   let entretienNonVerifie = false;
   let entretienSousMin = 0, entretienMinVerse = 0;
   // T-044 : montants exacts (centimes non arrondis), arrondis une seule fois sur le mois.
-  let entretienExact = 0, entretienExactNonArrondi = 0, entretienAConfExact = 0, entretienJoursAConf = 0;
-  const entretienCauses = new Set<'base' | 'jour' | 'hors'>();
+  let entretienExact = 0;
   let suspDays = 0, suspMin = 0, kmJours = 0, sansSoldePayes = 0;
   const suspRaisons: string[] = [];
   const forgotten: ISODate[] = [];
@@ -1161,52 +1155,22 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
       if (di.presentMin > 0) {
         r.presenceDays++;
         if (di.plannedMin === 0) r.extraDays++;
-        // T-044b. Montant de l'entretien du jour : toutes les lectures non tranchées sont calculées, chacune arrondie au
-        // centime le plus proche (décision ARR-01 du DG, 18/11/2026, comme les km jour par jour). Le plus bas est versé,
-        // l'écart est « à confirmer », hors du total.
-        // Durée du jour, deux lectures (relecture V5, P2-B1) :
-        // - accueil : présence de l'enfant (CCN 98.1.1 « Les périodes de travail correspondent au temps d'accueil de
-        //   l'enfant » ; CASF D423-7 « durée effective d'accueil quotidien » ; Urssaf « nombre d'heures d'accueil par
-        //   jour » ; service-public F12812 « durée d'accueil ») ;
-        // - travail : CCN 99, heures prévues plus présence hors des plages prévues ; hors planning, la présence.
-        const durees = [...new Set([di.presentMin, di.plannedMin > 0 ? di.plannedMin + di.extraMin : di.presentMin])];
-        const planchers = durees.map((m) => entretienPlancher(d, m));
+        // T-103 (décision du DG du 24/11/2026, rapports/T-103-inventaire.md, M1 à M3). Un seul montant par jour :
+        // - durée : temps de travail de l'art. 99 (CCN 114.1 : « versée en cas de travail effectif, par heure de travail » ;
+        //   « Il varie en fonction de la durée de travail effectif ») : heures prévues plus présence hors des plages prévues ;
+        //   hors planning, la présence de l'enfant ;
+        // - contrat par heure : montant horaire × durée ; contrat « montant fixe par journée » : ce montant, quelle que soit
+        //   la durée (clause du contrat) ;
+        // - au moins le minimum de l'art. 114.1 sur cette durée. Arrondi au centime le plus proche (ARR-01).
+        const duree = di.plannedMin > 0 ? di.plannedMin + di.extraMin : di.presentMin;
+        const plancher = entretienPlancher(d, duree);
         // T-023 : avant les barèmes vérifiés, le plancher légal n'est pas connu. L'app retient le montant du contrat et le dit.
-        if (planchers.some((x) => x === undefined)) entretienNonVerifie = true;
+        if (plancher === undefined) entretienNonVerifie = true;
         const parHeure = (c.entretienMode ?? (c.entretienHeure ? 'heure' : 'jour')) === 'heure';
-        // Chaque lecture : [montant brut du contrat, plancher]. `undefined` : lecture sans durée de référence (hors planning).
-        const lectures: { brut?: number; p: number; cause: 'base' | 'jour' | 'hors' }[] = [];
-        durees.forEach((m, k) => {
-          const p = planchers[k] ?? 0;
-          if (parHeure) {
-            // CCN 114.1 : « versée en cas de travail effectif, par heure de travail » ; montant horaire prévu au contrat.
-            lectures.push({ brut: ((c.entretienHeure ?? 0) * m) / 60, p, cause: 'base' });
-          } else {
-            // Tarif par jour. Lecture 1 : il vaut pour la journée, quelle que soit sa durée. Lecture 2 : il vaut pour les
-            // heures prévues ce jour-là et suit la durée (« Il varie en fonction de la durée de travail effectif »).
-            // Hors planning, aucune durée de référence : seul le minimum est certain.
-            lectures.push({ brut: c.entretienJour, p, cause: 'jour' });
-            lectures.push(di.plannedMin > 0 ? { brut: (c.entretienJour * m) / di.plannedMin, p, cause: 'jour' } : { p, cause: 'hors' });
-          }
-        });
-        const montants = lectures.map((l) => Math.round(Math.max(l.brut ?? (planchers.includes(undefined) ? c.entretienJour : 0), l.p)));
-        const exacts = lectures.map((l) => Math.max(l.brut ?? (planchers.includes(undefined) ? c.entretienJour : 0), l.p));
-        // Le montant de la lecture « hors planning » sans durée de référence est inconnu : borne haute = tarif du jour.
-        const hauts = lectures.map((l, k) => (l.cause === 'hors' ? Math.round(Math.max(c.entretienJour, l.p)) : montants[k]));
-        const certain = Math.min(...montants);
-        const ecart = Math.max(...hauts) - certain;
-        entretienExact += certain;
-        entretienExactNonArrondi += Math.min(...exacts);
-        // T-034 (ENTRETIEN-SOUS-MINIMUM), sur la présence de l'enfant (base d'avant T-044) : tarif du contrat sous le minimum.
-        const pAccueil = planchers[0];
-        const brutAccueil = parHeure ? ((c.entretienHeure ?? 0) * durees[0]) / 60 : c.entretienJour;
-        if (pAccueil !== undefined && brutAccueil < pAccueil) { entretienSousMin++; entretienMinVerse += pAccueil - brutAccueil; }
-        if (ecart > 0) {
-          entretienAConfExact += ecart; entretienJoursAConf++;
-          if (durees.length > 1) { entretienCauses.add('base'); r.entretienJoursDuree++; }
-          if (!parHeure && di.plannedMin > 0 && di.presentMin !== di.plannedMin) { entretienCauses.add('jour'); r.entretienJoursTarifJour++; }
-          if (lectures.some((l) => l.cause === 'hors')) { entretienCauses.add('hors'); r.entretienJoursHorsPlanning++; }
-        }
+        const brutJour = parHeure ? ((c.entretienHeure ?? 0) * duree) / 60 : c.entretienJour;
+        entretienExact += Math.round(Math.max(brutJour, plancher ?? 0));
+        // T-034 (ENTRETIEN-SOUS-MINIMUM) : tarif du contrat sous le minimum.
+        if (plancher !== undefined && brutJour < plancher) { entretienSousMin++; entretienMinVerse += plancher - brutJour; }
         const nbRepas = di.rec?.repas ?? c.repasParJour;
         r.repas += nbRepas * c.repasPrix;
       }
@@ -1284,15 +1248,12 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     const objet = joindre(naturesAConfirmer(r).map((n) => ({ evenement: 'événement familial', cp: 'congés', maladie: 'enfant malade', ferieLocal: 'jour férié local', maintien: 'absence pour maladie' })[n])).replace(/^./, (x) => x.toUpperCase());
     r.alerts.push(`${objet} : ${dayCountLabel(suspDays)} ni payé${suspDays > 1 ? 's' : ''} ni retenu${suspDays > 1 ? 's' : ''}, ${euros(r.evenementAConfirmer)} de salaire à confirmer (non compris dans le total).`);
   }
-  // ARR-01 (décision du DG du 18/11/2026, jusqu'à la réponse de la DDETS) : chaque montant du jour est arrondi au centime le
-  // plus proche, comme les km jour par jour. Si l'arrondi du total du mois donne un autre montant, l'app le dit.
+  // ARR-01 (décision du DG du 18/11/2026) : chaque montant du jour est arrondi au centime le plus proche (CCN 114.1 fixe un
+  // montant journalier), comme les km jour par jour.
   r.entretien = entretienExact;
-  r.entretienAConfirmer = Math.round(entretienAConfExact);
-  const auMois = Math.round(entretienExactNonArrondi);
-  if (auMois !== r.entretien) r.alerts.push(`Indemnité d’entretien : ${euros(r.entretien)} en arrondissant chaque jour au centime le plus proche. En arrondissant seulement le total du mois, elle serait de ${euros(auMois)}. Aucun texte ne dit à quel moment arrondir : l’app arrondit chaque jour en attendant une réponse officielle.`);
   if (r.kmAConfirmer) r.alerts.push(`${r.kmAConfirmer} km à confirmer, non comptés. Pour chaque jour, indique si une autre famille a aussi demandé le trajet. Si oui, indique aussi les enfants dans la voiture : l’indemnité est alors partagée entre eux (article 113 de la convention). Si non, elle est due en entier.`);
   // T-025 C-7 : mois terminé, peut-être déjà déclaré à Pajemploi avant la mise à jour qui a rendu ces montants « à confirmer ».
-  if ((r.evenementAConfirmer || r.kmAConfirmer || r.entretienAConfirmer || r.ferieLocalAConfirmer) && to < ctx.today && !r.alerts.includes(MESSAGE_MOIS_DEJA_DECLARE)) r.alerts.push(MESSAGE_MOIS_DEJA_DECLARE);
+  if ((r.evenementAConfirmer || r.kmAConfirmer || r.ferieLocalAConfirmer) && to < ctx.today && !r.alerts.includes(MESSAGE_MOIS_DEJA_DECLARE)) r.alerts.push(MESSAGE_MOIS_DEJA_DECLARE);
   // T-038 (G-1, relecture V4 du diff m8) : mois terminé avec des jours notés « sans solde » avant la mise à jour T-035b. Il a
   // pu être déclaré à Pajemploi avec la retenue ; son salaire affiché est maintenant plus haut. Le dire, et quoi faire.
   if (sansSoldePayes && to < ctx.today) {
@@ -1302,13 +1263,6 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   if (kmJours && c.kmTaux > 0) for (const m of controleKm(ctx.c.kmCv, c.kmTaux, segFrom).messages) if (!r.alerts.includes(m)) r.alerts.push(m);
   // CCN art. 114.1 : « le montant journalier de cette indemnité ne peut pas être inférieur à 2,65 € » et le montant horaire
   // ne peut être « inférieur à 90 % du minimum garanti lorsque la durée de travail journalière est de 9 heures ».
-  if (r.entretienAConfirmer) {
-    const causes: string[] = [];
-    if (entretienCauses.has('base')) causes.push('la durée du jour se compte en temps de présence de l’enfant (articles 98.1.1 et 114.1 de la convention, code de l’action sociale, Urssaf) ou en temps de travail (article 99 : heures prévues, plus la présence en dehors) ; aucun texte ne dit laquelle retenir pour l’entretien');
-    if (entretienCauses.has('jour')) causes.push('le contrat donne un montant par jour, alors que la convention (article 114.1) prévoit un montant par heure : il peut valoir pour la journée entière ou pour les heures prévues ce jour-là');
-    if (entretienCauses.has('hors')) causes.push('un jour hors planning n’a pas de durée de référence pour le montant par jour : seul le minimum est certain');
-    r.alerts.push(`Indemnité d’entretien : ${euros(r.entretienAConfirmer)} à confirmer, non compris dans le total, pour ${dayCountLabel(entretienJoursAConf)}. L’app verse ${euros(r.entretien)}, le plus bas des calculs possibles et au moins le minimum ; selon la lecture, le mois va jusqu’à ${euros(r.entretien + r.entretienAConfirmer)}. Pourquoi : ${causes.join(' ; ')}. Mets-toi d’accord avec les parents, par écrit${entretienCauses.has('jour') ? ' ; le plus simple est un avenant qui fixe un montant par heure' : ''}.`);
-  }
   if (entretienSousMin) r.alerts.push(`Indemnité d’entretien : le montant du contrat (${c.entretienHeure ? `${euros(c.entretienHeure)} par heure` : `${euros(c.entretienJour)} par jour`}) est sous le minimum de la convention (article 114.1) pour ${dayCountLabel(entretienSousMin)}. L’app verse le minimum, soit ${euros(Math.round(entretienMinVerse))} de plus que le contrat ce mois-ci. Fais corriger le contrat avec les parents, par un avenant.`);
   if (entretienNonVerifie) r.alerts.push(`${MESSAGE_PERIODE_NON_GEREE} Indemnité d’entretien : l’app retient le montant du contrat, sans contrôle du minimum légal ; vérifie-le avec les parents.`);
   // R-CP-09 : un congé dont le décompte reste ambigu est signalé, pas tranché (T-019).
