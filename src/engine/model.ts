@@ -28,6 +28,11 @@ export interface StartBalances {
   cpEnCours: number;
   /** Jours d'enfant malade (avec certificat) déjà déduits sur l'année de contrat en cours */
   maladieDeduits: number;
+  /**
+   * T-103 (C5) : ces jours déjà déduits venaient-ils de l'absence de 14 jours calendaires (vrai) ou d'absences courtes
+   * (faux) ? CCN 105. Demandé une fois, seulement si le calcul en dépend.
+   */
+  maladieDeduitsLongue?: boolean;
 }
 
 /** Conditions du contrat qu'un avenant peut changer */
@@ -257,6 +262,12 @@ export interface DayRec {
    * art. 113). Sert seulement au partage, quand plusieurs familles ont demandé le trajet.
    */
   kmEnfants?: number;
+  /**
+   * T-103 (C3) : enfant malade (abs = 'malade_certif') : premier et dernier jour couverts par le certificat médical ou le
+   * bulletin d'hospitalisation (CCN 105 compte « 14 jours calendaires consécutifs »). Demandés à la saisie.
+   */
+  certifDu?: ISODate;
+  certifAu?: ISODate;
 }
 
 /**

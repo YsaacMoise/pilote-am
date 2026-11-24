@@ -181,6 +181,8 @@ export interface DayInfo {
   sansSoldeEnfantPaye?: boolean;
   /** T-077 (R3) : jour férié local (Alsace-Moselle, Mayotte), férié dans une lecture et jour ordinaire dans l'autre */
   ferieLocal?: string;
+  /** T-103 (C3, C5) : donnée à saisir pour calculer ce jour ; le mois n'est pas calculé tant qu'elle manque */
+  donneeManquante?: string;
   /** T-103 : jour retenu avec une raison à dire dans le mois (jour d'événement familial au-delà de la durée) */
   raisonRetenue?: string;
   /** T-077 (R3) : férié local non travaillé, ou férié national dont la condition de l'art. 47.2 dépend d'un férié local : à confirmer */
@@ -337,8 +339,8 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
       if (rec.abs === 'malade_certif') {
         const sick = sickLectures(ctx);
         info.deducted = sick.retenus.has(d);
-        const raison = sick.aConfirmer.get(d);
-        if (raison) { info.aConfirmer = raison; info.maladieAConfirmer = true; }
+        const demande = sick.demandes.get(d);
+        if (demande) info.donneeManquante = demande;
       }
     }
     return info;
@@ -429,165 +431,123 @@ export function sickDeductible(ctx: Ctx): Set<ISODate> {
 }
 
 /**
- * T-033 (A-15, A-17 ; regles/t020-comparatifs.md). CCN art. 105 : « en cas de courtes absences de l'enfant, pas
- * nécessairement consécutives, dans la limite de 5 jours d'absence » ; « en cas d'absence durant 14 jours calendaires
- * consécutifs ». Le texte ne dit pas où classer une absence de plus de 5 jours qui dure moins de 14 jours calendaires.
- * - Lecture 1 (app avant T-033) : toute absence de plus de 5 jours est l'absence longue, retenue en entier (14 jours
- *   calendaires au plus), sans entamer les 5 jours.
- * - Lecture 2 (DREETS BFC 2026, fiche 03, IV : « Une absence de 9 jours consécutifs devra ainsi être considérée comme
- *   une absence courte et les 4 derniers jours devront faire l'objet d'une rémunération ») : seule une absence d'au moins
- *   14 jours calendaires consécutifs est l'absence longue ; une absence plus courte entame les 5 jours, le reste est payé.
- * Un jour retenu dans les deux lectures est retenu ; payé dans les deux, payé ; sinon « à confirmer » (ni payé ni
- * retenu). Le choix de l'une modifie aussi les absences suivantes de la même période de 12 mois : elles sont comparées
- * de la même façon.
+ * T-103 (C1 à C5, décision du DG du 24/11/2026) : jours d'enfant malade retenus (CCN 105), une seule lecture, celle de la
+ * lettre du texte (méthode de la Cour de cassation : Cass. soc. 25/03/2020, n° 18-12.467) :
+ * - « courtes absences […] dans la limite de 5 jours d'absence » : jours d'accueil prévus, par période de 12 mois ;
+ * - « absence durant 14 jours calendaires consécutifs » : seule une absence qui dure 14 jours calendaires ou plus est
+ *   l'absence longue (C1 : une absence de 6 à 13 jours est une absence courte ; C2 : 14 jours ou plus, même avec 5 jours
+ *   d'accueil ou moins, est l'absence longue), retenue sur 14 jours calendaires au plus ;
+ * - « appréciées par période de 12 mois glissants à compter de la date d'effet de l'embauche ou de sa date anniversaire » :
+ *   chaque jour compte dans sa période (C4) ;
+ * - les jours calendaires se comptent du premier au dernier jour du certificat (C3, `certifDu`, `certifAu`) ; deux
+ *   épisodes séparés par des jours sans accueil prévu forment une seule absence si un même certificat les couvre ;
+ * - jours déjà retenus avant le suivi par l'app : `balances.maladieDeduitsLongue` (C5).
+ * `demandes` : jours dont le résultat dépend d'une donnée non saisie (dates du certificat, origine des jours déjà retenus).
+ * Le mois n'est pas calculé tant qu'elle manque (B : l'app la demande, jamais « à confirmer »).
  */
-export function sickLectures(ctx: Ctx): { retenus: Set<ISODate>; aConfirmer: Map<ISODate, string> } {
+export function sickLectures(ctx: Ctx): { retenus: Set<ISODate>; demandes: Map<ISODate, string> } {
   return memo(ctx, 'sick', () => {
     const { c } = ctx;
     const prevu = (x: ISODate) => plannedPlages(c, x).length > 0;
-    // Jour prévu où l'enfant n'est pas attendu : férié chômé ou congé de l'AM. Le certificat peut le couvrir ou non.
-    const sansAccueilPrevu = (x: ISODate): 'ferie' | 'conge' | undefined =>
-      !prevu(x) ? undefined : holidayName(x) && !ctx.days.get(x)?.ferieTravaille ? 'ferie' : amLeaveOn(ctx.leaves, x) ? 'conge' : undefined;
-    const sansAccueil = (x: ISODate) => !prevu(x) || !!sansAccueilPrevu(x);
-    const certDays = [...ctx.days.values()]
-      .filter((r) => r.abs === 'malade_certif' && prevu(r.date) && !sansAccueilPrevu(r.date))
-      .map((r) => r.date)
-      .sort();
-    // Épisodes : jours certifiés consécutifs, en sautant les jours sans accueil prévu. `joindre` : en sautant aussi les
-    // fériés chômés et les congés de l'AM (un même certificat peut les couvrir, ou deux certificats les encadrer).
-    // `couper` (T-041 suite 2, ambiguïté a) : une absence qui chevauche la date anniversaire du contrat est coupée en deux,
-    // chaque partie comptant dans sa période de 12 mois.
-    const episodesDe = (joindre: boolean, couper = false): ISODate[][] => {
-      const episodes: ISODate[][] = [];
+    const sansAccueilPrevu = (x: ISODate): boolean =>
+      !prevu(x) ? false : (!!holidayName(x) && !ctx.days.get(x)?.ferieTravaille) || !!amLeaveOn(ctx.leaves, x);
+    const sansAccueil = (x: ISODate) => !prevu(x) || sansAccueilPrevu(x);
+    const recs = [...ctx.days.values()].filter((r) => r.abs === 'malade_certif' && prevu(r.date) && !sansAccueilPrevu(r.date)).sort((x, y) => (x.date < y.date ? -1 : 1));
+    const certDays = recs.map((r) => r.date);
+    const recOf = new Map(recs.map((r) => [r.date, r]));
+    // Certificat d'un épisode : la plus large des dates saisies sur ses jours ; `undefined` si aucune n'est saisie.
+    const certif = (ep: ISODate[]) => {
+      const du = ep.map((d) => recOf.get(d)?.certifDu).filter((x): x is ISODate => !!x).sort()[0];
+      const au = ep.map((d) => recOf.get(d)?.certifAu).filter((x): x is ISODate => !!x).sort().at(-1);
+      return { du, au };
+    };
+    // Épisodes : jours certifiés consécutifs en sautant les jours sans accueil prévu ; coupés à la date anniversaire (C4).
+    // Deux épisodes séparés par un férié chômé ou un congé de l'AM sont joints si le certificat de l'un couvre l'autre ;
+    // sans certificat saisi (`joindreInconnu`), la variante jointe sert seulement à savoir si la donnée compte.
+    const episodesDe = (joindreInconnu: boolean): ISODate[][] => {
+      const eps: ISODate[][] = [];
       for (const d of certDays) {
-        const last = episodes.at(-1);
+        const last = eps.at(-1);
         if (last) {
           const prev = last.at(-1)!;
-          let joined = !couper || contractYearIndex(c, prev) === contractYearIndex(c, d);
+          let joined = contractYearIndex(c, prev) === contractYearIndex(c, d);
+          let trou = false;
           for (let x = addDays(prev, 1); joined && x < d; x = addDays(x, 1)) {
-            if (prevu(x) && !(joindre && sansAccueilPrevu(x))) { joined = false; break; }
+            if (!prevu(x)) continue;
+            if (!sansAccueilPrevu(x)) { joined = false; break; }
+            trou = true;
+          }
+          if (joined && trou) {
+            const ce = certif(last), ce2 = certif([d]);
+            const couvert = (ce.au && ce.au >= d) || (ce2.du && ce2.du <= prev);
+            const inconnu = !ce.au && !ce2.du;
+            joined = !!couvert || (joindreInconnu && inconnu);
           }
           if (joined) { last.push(d); continue; }
         }
-        episodes.push([d]);
+        eps.push([d]);
       }
-      return episodes;
+      return eps;
     };
-    // T-041 suite : dates du certificat que l'app ne connaît pas. Le certificat peut commencer dès le lendemain du dernier
-    // jour d'accueil prévu avant l'absence, et finir la veille du suivant (13 jours au plus de chaque côté).
-    const debutAuPlusTot = (d: ISODate, memePeriode = false): ISODate => {
+    // Bornes possibles quand le certificat manque : il peut commencer dès le lendemain du dernier jour d'accueil prévu
+    // avant l'absence (13 jours au plus) et finir la veille du suivant. Servent seulement à savoir si la donnée compte.
+    const debutAuPlusTot = (d: ISODate): ISODate => {
       let s = d;
-      for (let x = addDays(d, -1), n = 0; n < 13 && x >= c.start && sansAccueil(x) && (!memePeriode || contractYearIndex(c, x) === contractYearIndex(c, d)); x = addDays(x, -1), n++) s = x;
+      for (let x = addDays(d, -1), n = 0; n < 13 && x >= c.start && sansAccueil(x) && contractYearIndex(c, x) === contractYearIndex(c, d); x = addDays(x, -1), n++) s = x;
       return s;
     };
-    const finAuPlusTard = (d: ISODate, memePeriode = false): ISODate => {
+    const finAuPlusTard = (d: ISODate): ISODate => {
       let e = d;
-      for (let x = addDays(d, 1), n = 0; n < 13 && (!c.end || x <= c.end) && sansAccueil(x) && (!memePeriode || contractYearIndex(c, x) === contractYearIndex(c, d)); x = addDays(x, 1), n++) e = x;
+      for (let x = addDays(d, 1), n = 0; n < 13 && (!c.end || x <= c.end) && sansAccueil(x) && contractYearIndex(c, x) === contractYearIndex(c, d); x = addDays(x, 1), n++) e = x;
       return e;
     };
     const trackedYear = contractYearIndex(c, c.trackedFrom);
-    // T-041 suite 2. `longue14` (ambiguïté b) : une absence de 14 jours calendaires ou plus qui ne compte que 5 jours
-    // d'accueil ou moins est l'absence longue (sinon : absence courte). `soldeLong` (ambiguïté c) : les jours déjà retenus
-    // avant l'app viennent d'une absence longue (sinon : d'absences courtes, et d'une absence longue au-delà de 5).
-    type Variante = { longueSiPlusDe5: boolean; debutTot: boolean; finTard: boolean; joindre: boolean; couper: boolean; longue14: boolean; soldeLong: boolean };
     const deja = c.balances.maladieDeduits;
-    const lecture = (v: Variante): Set<ISODate> => {
+    const lecture = (tot: boolean, tard: boolean, soldeLong: boolean, joindre: boolean): Set<ISODate> => {
       const out = new Set<ISODate>();
       const yearState = new Map<number, { left: number; longUsed: boolean }>();
-      for (const ep of episodesDe(v.joindre, v.couper)) {
-        const debut = v.debutTot ? debutAuPlusTot(ep[0], v.couper) : ep[0];
-        const fin = v.finTard ? finAuPlusTard(ep.at(-1)!, v.couper) : ep.at(-1)!;
-        const y = contractYearIndex(c, debut);
+      for (const ep of episodesDe(joindre)) {
+        const ce = certif(ep);
+        const debut = ce.du && ce.du <= ep[0] ? ce.du : tot ? debutAuPlusTot(ep[0]) : ep[0];
+        const fin = ce.au && ce.au >= ep.at(-1)! ? ce.au : tard ? finAuPlusTard(ep.at(-1)!) : ep.at(-1)!;
+        const y = contractYearIndex(c, ep[0]);
         let st = yearState.get(y);
         if (!st) {
           st = y !== trackedYear || deja <= 0 ? { left: 5, longUsed: false }
-            : v.soldeLong ? { left: 5, longUsed: true } : { left: 5 - Math.min(5, deja), longUsed: deja > 5 };
+            : soldeLong ? { left: 5, longUsed: true } : { left: 5 - Math.min(5, deja), longUsed: deja > 5 };
           yearState.set(y, st);
         }
         const calendaires = daysBetween(debut, fin) + 1;
-        const longue = (ep.length > 5 && (v.longueSiPlusDe5 || calendaires >= 14)) || (v.longue14 && calendaires >= 14);
-        if (v.longue14 && ep.length <= 5 && calendaires >= 14 && !st.longUsed) {
-          const limit = addDays(debut, 13);
-          ep.filter((d) => d <= limit).forEach((d) => out.add(d));
-          st.longUsed = true;
-        } else if (ep.length <= st.left) {
-          ep.forEach((d) => out.add(d));
-          st.left -= ep.length;
-        } else if (longue && !st.longUsed) {
+        if (calendaires >= 14 && !st.longUsed) {
           // L'absence longue : retenue sur 14 jours calendaires consécutifs au plus, sans entamer les 5 jours.
           const limit = addDays(debut, 13);
           ep.filter((d) => d <= limit).forEach((d) => out.add(d));
           st.longUsed = true;
         } else {
           ep.slice(0, st.left).forEach((d) => out.add(d));
-          st.left = 0;
+          st.left = Math.max(0, st.left - ep.length);
         }
       }
       return out;
     };
-    // Toutes les combinaisons : deux lectures du texte × dates du certificat (début, fin, férié ou congé couvert).
-    const variantes: (Variante & { res: Set<ISODate> })[] = [];
-    const B = [false, true];
-    for (const longueSiPlusDe5 of [true, false]) for (const debutTot of B) for (const finTard of B) for (const joindre of B)
-      for (const couper of B) for (const longue14 of B) for (const soldeLong of deja > 0 ? B : [false]) {
-        const v = { longueSiPlusDe5, debutTot, finTard, joindre, couper, longue14, soldeLong };
-        variantes.push({ ...v, res: lecture(v) });
-      }
-    const CLES = ['longueSiPlusDe5', 'debutTot', 'finTard', 'joindre', 'couper', 'longue14', 'soldeLong'] as const;
-    const base = (l: boolean) => variantes.find((v) => v.longueSiPlusDe5 === l && CLES.slice(1).every((k) => !v[k]))!.res;
-    const l1 = base(true), l2 = base(false);
-    const retenus = new Set([...l1].filter((d) => variantes.every((v) => v.res.has(d))));
-    // Une dimension compte pour un jour si, à lecture et autres dates égales, la changer change le jour.
-    const compte = (d: ISODate, dim: (typeof CLES)[number]) => variantes.some((v) => {
-      const w = variantes.find((x) => CLES.every((k) => k === dim ? x[k] !== v[k] : x[k] === v[k]));
-      return !!w && v.res.has(d) !== w.res.has(d);
-    });
-    const aConfirmer = new Map<ISODate, string>();
+    const soldeConnu = c.balances.maladieDeduitsLongue;
+    const soldes = deja > 0 && soldeConnu === undefined ? [false, true] : [soldeConnu ?? false];
+    const variantes: Set<ISODate>[] = [];
+    for (const tot of [false, true]) for (const tard of [false, true]) for (const s of soldes) for (const j of [false, true]) variantes.push(lecture(tot, tard, s, j));
+    const base = variantes[0];
+    const retenus = new Set([...base]);
+    const demandes = new Map<ISODate, string>();
     for (const ep of episodesDe(false)) {
-      const diff = ep.filter((d) => !variantes.every((v) => v.res.has(d) === l1.has(d)));
+      const diff = ep.filter((d) => !variantes.every((v) => v.has(d) === base.has(d)));
       if (!diff.length) continue;
-      const fin = ep.at(-1)!;
-      const parties: string[] = [];
-      if (diff.some((d) => l1.has(d) !== l2.has(d))) {
-        parties.push('La convention (article 105) prévoit 5 jours d’absences courtes et une absence de 14 jours calendaires consécutifs. Elle ne dit pas où classer une absence de plus de 5 jours qui dure moins de 14 jours, ni comment cela compte pour les absences suivantes. Selon la lecture, ces jours sont retenus ou payés, et aucune source officielle ne tranche.');
-      }
-      const dates: string[] = [];
-      const joint = diff.some((d) => compte(d, 'joindre'));
-      // Bornes affichées : celles de l'absence réunie quand un férié ou un congé peut la relier à une autre.
-      const tous = joint ? episodesDe(true).find((e) => e.includes(ep[0]))! : ep;
-      if (diff.some((d) => compte(d, 'debutTot'))) dates.push(`le premier jour du certificat (entre le ${jjmm(debutAuPlusTot(tous[0]))} et le ${jjmm(tous[0])})`);
-      if (diff.some((d) => compte(d, 'finTard'))) dates.push(`le dernier jour du certificat (entre le ${jjmm(tous.at(-1)!)} et le ${jjmm(finAuPlusTard(tous.at(-1)!))})`);
-      if (joint) {
-        const trous: string[] = [];
-        for (let x = tous[0]; x <= tous.at(-1)!; x = addDays(x, 1)) {
-          const k = sansAccueilPrevu(x);
-          if (k) trous.push(`${k === 'ferie' ? 'le férié' : 'le congé'} du ${jjmm(x)}`);
-        }
-        dates.push(`si un même certificat couvre aussi ${trous.join(', ')} (une seule absence) ou non`);
-      }
-      const lectures: string[] = [];
-      if (diff.some((d) => compte(d, 'couper'))) {
-        // Date anniversaire qui tombe dans l'absence la plus large possible (dates du certificat et férié compris).
-        const touche = episodesDe(true).find((e) => e.includes(ep[0]))!;
-        const a = addMonthsToDate(c.start, 12 * contractYearIndex(c, finAuPlusTard(touche.at(-1)!)));
-        lectures.push(`l’absence chevauche la date anniversaire du contrat (${jjmm(a)}) : la convention apprécie les limites « par période de 12 mois glissants » sans dire dans quelle période compter une absence qui touche les deux`);
-      }
-      if (diff.some((d) => compte(d, 'longue14'))) {
-        lectures.push('l’absence dure 14 jours calendaires ou plus mais compte 5 jours d’accueil ou moins : la convention ne dit pas si c’est une absence courte (dans la limite des 5 jours) ou l’absence de 14 jours calendaires consécutifs');
-      }
-      if (diff.some((d) => compte(d, 'soldeLong'))) {
-        lectures.push(`${dayCountLabel(deja)} déjà retenus avant le suivi par l’app : l’app ne sait pas s’ils venaient d’absences courtes ou d’une absence de 14 jours calendaires, et cela change les limites restantes`);
-      }
-      if (lectures.length) parties.push(`${parties.length ? 'Autres points que' : 'Points que'} la convention (article 105) ne tranche pas : ${lectures.join(' ; ')}.`);
-      if (dates.length) {
-        parties.push(`Le résultat dépend ${parties.length ? 'aussi ' : ''}de dates que l’app ne connaît pas : ${dates.join(' ; ')}. La convention (article 105) compte 14 jours calendaires consécutifs et ne dit pas si les jours sans accueil couverts par le certificat en font partie. L’app ne devine pas : ces jours restent à confirmer.`);
-      }
-      const nb = variantes.map((v) => ep.filter((d) => v.res.has(d)).length);
-      parties.push(`Selon la lecture et les dates, ${Math.min(...nb)} à ${Math.max(...nb)} jours de cette absence sont retenus.`);
-      const raison = `Enfant malade du ${jjmm(ep[0])} au ${jjmm(fin)} : ${dayCountLabel(diff.length)} ni payé${diff.length > 1 ? 's' : ''} ni retenu${diff.length > 1 ? 's' : ''}. ${parties.join(' ')} Mets-toi d’accord avec les parents, par écrit, avant de déclarer.`;
-      for (const d of diff) aConfirmer.set(d, raison);
+      const ce = certif(ep);
+      const manque: string[] = [];
+      if (!ce.du || !ce.au) manque.push(`les dates de début et de fin du certificat médical de l’absence du ${jjmm(ep[0])} au ${jjmm(ep.at(-1)!)} (saisis-les sur un des jours de l’absence)`);
+      if (soldes.length > 1) manque.push('dans le contrat, si les jours d’enfant malade déjà retenus avant le suivi par l’app venaient d’absences courtes ou d’une absence de 14 jours');
+      const msg = `Enfant malade : indique ${manque.join(', et ')}. La convention (article 105) compte « 14 jours calendaires consécutifs » : le résultat en dépend. L’app calcule ce mois dès que c’est saisi.`;
+      for (const d of diff) demandes.set(d, msg);
     }
-    return { retenus, aConfirmer };
+    return { retenus, demandes };
   });
 }
 
@@ -860,6 +820,11 @@ export function monthBase(ctx: Ctx, m: Month): MonthBase {
     }
     // T-076, D2 : planning variable en lecture L2, absence retenue dans une semaine au-delà de la base.
     if (r.active && !r.fromHistory) { const j = absencesL2NonGerees(ctx, firstDay(m), lastDay(m)); if (j.length) r.nonGere.push(messageAbsenceL2(j)); }
+    // T-103 (C3, C5) : donnée à saisir (dates du certificat, origine des jours déjà retenus) : le mois attend la saisie.
+    if (r.active && !r.fromHistory) {
+      const dem = sickLectures(ctx).demandes;
+      for (const d of eachDay(firstDay(m), lastDay(m))) { const x = dem.get(d); if (x && !r.nonGere.includes(x)) r.nonGere.push(x); }
+    }
     return r;
   });
 }
