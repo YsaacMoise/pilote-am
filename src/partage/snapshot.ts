@@ -4,7 +4,7 @@
 // les présences, le carnet et les montants du mois.
 import { addDays, monthOf, addMonths, type ISODate, type Month } from '../engine/dates';
 import { dayInfo, inContract, type Ctx } from '../engine/payroll';
-import { computeMonth, declarationLines, partsAConfirmer } from '../engine/month';
+import { computeMonth, declarationLines } from '../engine/month';
 import { CHILD_ABS_LABEL, type Journal, type Plage, type Presence } from '../engine/model';
 import { detailReveilOublie, reveilOublie } from '../engine/carnet';
 
@@ -41,8 +41,6 @@ export interface MoisParent {
   repas: number;
   km: number;
   lignes: LigneDecl[];
-  /** T-025 C-5 : parts sorties du total, à confirmer (« une part du salaire », « les kilomètres »…). Absent : aucune. */
-  aConfirmer?: string[];
   /** T-031 : mois que l'app ne calcule pas (cas non géré) : aucun montant ni aucune case n'est envoyé */
   nonGere?: boolean;
   joursAccueil: number;
@@ -102,7 +100,6 @@ function moisParent(ctx: Ctx, m: Month, enfants: number): MoisParent | null {
     km: r.km,
     // Décision du DG du 21/11/2026 : aucun motif d'absence de l'AM sur le lien (« pourParents »).
     lignes: declarationLines(ctx, r, true).map((l) => (l.hint ? { label: l.label, value: l.value, hint: l.hint } : { label: l.label, value: l.value })),
-    ...(partsAConfirmer(r, true).length ? { aConfirmer: partsAConfirmer(r, true) } : {}),
     joursAccueil: r.presenceDays,
     absences,
   };

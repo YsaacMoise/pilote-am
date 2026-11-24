@@ -2,9 +2,8 @@
 import { addDays, addMonths, addMonthsToDate, cpPeriod, cpPeriodStartYear, daysBetween, eachDay, mondayOf, monthOf, monthsBetween, weekday, type ISODate, type Month } from './dates';
 import { holidayName } from './holidays';
 import { ferieDe, regionDe } from './regions';
-import { euros } from './money';
 import {
-  H45, absencesL2NonGerees, messageAbsenceL2, inContract, libelleSalaireAConfirmer, makeCtx, monthBase, plannedPlages, planningBrutMin, semainesSansAccueilAnnee, termsAt,
+  H45, absencesL2NonGerees, messageAbsenceL2, inContract, makeCtx, monthBase, plannedPlages, planningBrutMin, semainesSansAccueilAnnee, termsAt,
   toutesSemainesSansAccueil, weeklyMinutes, weeksPerYear, type Ctx,
 } from './payroll';
 import type { AmLeave, Contract } from './model';
@@ -570,7 +569,7 @@ export function compteur(ctx: Ctx, at: ISODate, enfantsACharge = 0): Compteur {
   const p = cpPeriod(y);
   const fin = at < p.to ? at : p.to;
   const pris = cpPrisEntre(ctx, debutDecompte(ctx, y), fin).length;
-  const decompteAConfirmer = cpAConfirmerEntre(ctx, debutDecompte(ctx, y), fin);
+  const decompteAConfirmer = cpDemandesEntre(ctx, debutDecompte(ctx, y), fin);
   const reste = aPrendre - pris;
   // CCN 48.1.1.4 : jours de fractionnement si 3 jours ou plus du congé principal sont pris hors du 1er mai - 31 octobre.
   // L'app ne sait pas quels jours relèvent du congé principal (hors 5e semaine) ni s'il y a eu renonciation : non géré.
@@ -583,38 +582,25 @@ export function compteur(ctx: Ctx, at: ISODate, enfantsACharge = 0): Compteur {
 }
 
 /** Base du dixième : salaires nets (hors frais) de la période, indemnités de congés versées incluses */
-export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; manquants: Month[]; aConfirmer: boolean; evenementAConfirmer: number; joursCpAConfirmer: number; joursEvenementAConfirmer: number; joursMaladieAConfirmer: number; joursFerieLocalAConfirmer: number; joursMaintienAConfirmer: number } {
+export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; manquants: Month[]; aConfirmer: boolean } {
   return memo(ctx, `b10${y}|${enfants}`, () => {
     const p = cpPeriod(y);
     let base = 0;
     let aConfirmer = false;
-    let evenementAConfirmer = 0, joursCpAConfirmer = 0, joursEvenementAConfirmer = 0, joursMaladieAConfirmer = 0;
-    let joursFerieLocalAConfirmer = 0, joursMaintienAConfirmer = 0;
     const manquants: Month[] = [];
     for (const m of monthsBetween(monthOf(p.from), monthOf(p.to))) {
       const b = monthBase(ctx, m);
       if (!b.active) continue;
       if (b.missing) manquants.push(m);
-      // T-077 : jours de férié local et de maintien du droit local à confirmer (R3, R4).
-      joursFerieLocalAConfirmer += b.joursFerieLocalAConfirmer ?? 0;
-      joursMaintienAConfirmer += b.joursMaintienAConfirmer ?? 0;
       base += b.net;
-      // T-025 C-5 : salaire d'événement familial à confirmer, hors de `b.net`. CCN 48.1.3.1.1 : ces congés « sont
-      // assimilés à du temps de travail effectif pour la détermination du droit à congés payés ».
-      // T-030 : comprend aussi les congés pris peut-être au-delà des droits (année complète, A-23).
-      evenementAConfirmer += b.evenementAConfirmer;
-      joursCpAConfirmer += b.joursCpAConfirmer;
-      joursEvenementAConfirmer += b.joursEvenementAConfirmer;
-      // T-033 : jours d'enfant malade à confirmer (art. 105) : payés dans une lecture, retenus dans l'autre.
-      joursMaladieAConfirmer += b.joursMaladieAConfirmer;
       if (!b.fromHistory) {
         const cp = cpForMonth(ctx, m, enfants);
         base += cp.indemnite + cp.complement;
-        // Une indemnité de congés à confirmer manque dans la base : le dixième l'est aussi.
+        // T-103 : une indemnité de congés non calculée manque dans la base : le dixième n'est pas calculé non plus.
         if (cp.aConfirmer) aConfirmer = true;
       }
     }
-    return { base, manquants, aConfirmer, evenementAConfirmer, joursCpAConfirmer, joursEvenementAConfirmer, joursMaladieAConfirmer, joursFerieLocalAConfirmer, joursMaintienAConfirmer };
+    return { base, manquants, aConfirmer };
   });
 }
 
@@ -704,7 +690,7 @@ export function indemnite(ctx: Ctx, y: number, enfants = 0): IndemniteCP {
   return memo(ctx, `ind${y}|${enfants}`, () => {
     const acq = acquisition(ctx, y, enfants);
     const bd = baseDixieme(ctx, y, enfants);
-    const { base, manquants, aConfirmer: baseAC, evenementAConfirmer: evAC } = bd;
+    const { base, manquants, aConfirmer: baseAC } = bd;
     const dix = Math.round(base / 10);
     const at = `${y + 1}-06-01`;
     let mt = maintien(ctx, acq.jours, at, y);
@@ -728,7 +714,6 @@ export function indemnite(ctx: Ctx, y: number, enfants = 0): IndemniteCP {
     } else if (baseAC) {
       out.aConfirmer = { message: 'Indemnité de congés payés non calculée : le dixième compte l’indemnité de l’an dernier, qui n’est pas calculée (voir le mois de juin).', montants: [], tous: [], baseSure: false };
     }
-    void evAC;
     return out;
   });
 }

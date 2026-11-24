@@ -91,7 +91,7 @@ export function Conges() {
 function decompteTexte(l: AmLeave, contrats: Contract[]): string {
   const res = contrats.map((c) => ({ c, d: decompteConge(ctxFor(c), l) }));
   if (!res.length) return '';
-  if (res.some((r) => r.d.aConfirmer)) return ', jours décomptés à confirmer';
+  if (res.some((r) => r.d.demande)) return ', une autre absence est saisie sur ces jours';
   const n = res[0].d.jours;
   if (res.every((r) => r.d.jours === n)) return `, ${n} jour${n > 1 ? 's' : ''} ouvrable${n > 1 ? 's' : ''} décompté${n > 1 ? 's' : ''}`;
   return `, ${res.map((r) => `${r.d.jours} jour${r.d.jours > 1 ? 's' : ''} pour ${r.c.child}`).join(', ')}`;

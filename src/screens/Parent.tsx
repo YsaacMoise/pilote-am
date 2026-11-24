@@ -338,7 +338,6 @@ function MoisVue({ mois, am }: { mois: MoisParent; am: string }) {
         <span class="summary-label" id="tot-p">À verser à {am} pour {monthLabel(mois.month).split(' ')[0]}</span>
         <span class="total">{euros(mois.total)}</span>
         <span class="summary-sub">{cap(detail.join(', '))}</span>
-        {mois.aConfirmer?.length ? <span class="summary-note">Sans {mois.aConfirmer.join(' ni ')} : à confirmer avec {am}, voir ci-dessous.</span> : null}
         <span class="summary-note">{mois.termine ? 'Mois terminé' : `Mois en cours : entretien et repas comptés jusqu’au ${today().slice(8, 10)}/${today().slice(5, 7)}`}</span>
       </section>
       <section class="card stack-sm" aria-labelledby="decl-p">
