@@ -126,6 +126,7 @@ CODES = {
     "C8-REPOS-HEBDO-MANQUANT": "T-103 (C8) : le planning prevoit le dimanche : jour de repos hebdomadaire du contrat (CCN 46) a saisir.",
     "C9-IJ-MANQUANTES": "T-103 (C9) : conge de deuil : montant des indemnites journalieres de la CPAM a saisir (salaire maintenu sous deduction, CCN 48.1.3.1.3).",
     "C11-SEMAINES-CP-AM": "T-103 (C11, reserve de B) : annee incomplete : parmi les semaines sans accueil, lesquelles sont les conges payes de l'AM (assimiles a du travail effectif, C. trav. L3141-5 1°, CCN 48.1.1.3) ? Donnee a saisir.",
+    "R3-IJ-MANQUANTES": "T-103 (R3) : Alsace-Moselle, maladie de l'AM ou de son enfant : salaire maintenu moins les indemnites journalieres ; montant des indemnites journalieres a saisir (L1226-23).",
     "C17-SAISIE-CONTRADICTOIRE": "T-103 (C17) : deux absences saisies sur le meme jour (dont un conge paye) : choisir celle a garder.",
     "ENTRETIEN-SOUS-MINIMUM":"Montant contractuel d'entretien inferieur au minimum conventionnel : le contrat doit etre corrige.",
     "KM-SOUS-PLANCHER": "Taux kilometrique contractuel inferieur au bareme de l'administration : le contrat doit etre corrige.",

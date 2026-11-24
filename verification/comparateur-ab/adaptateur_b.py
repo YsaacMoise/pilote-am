@@ -110,8 +110,13 @@ def mois_entre(a, b):
         m = date(m.year + (m.month // 12), m.month % 12 + 1, 1)
 
 
+# T-103 (R4) : la liste des feries depend de la region (27 avril a Mayotte, B : calendrier.jours_feries). Region de
+# la situation en cours, fixee par Ctx (une situation a une seule region).
+_REGION = ["metropole"]
+
+
 def feries(annee):
-    return jours_feries(annee)
+    return jours_feries(annee, _REGION[0])
 
 
 def est_ferie(d):
@@ -143,6 +148,7 @@ class Ctx:
         self.conges = [dict(l, du=d_(l["du"]), au=d_(l["au"])) for l in ev.get("absences_am", [])]
         self.cache = {}
         self.region = region_valide(k.get("region"))
+        _REGION[0] = self.region
         self.locaux = feries_locaux_entre(self.debut, self.fin or date(self.debut.year + 6, 12, 31), self.region)
         # T-072 (T-052) : types d'annee successifs du contrat (debut, puis chaque avenant), pour les conges.
         # Rempli par ctx_mois quand la situation a des avenants.
@@ -753,13 +759,20 @@ def mois_b(ctx, m):
         # T-103 (C9) : conge de deuil du mois : salaire maintenu sous deduction des IJ de la CPAM (CCN 48.1.3.1.3).
         # Montant saisi par conge (absences_am[].ijSecu, centimes) ; un conge a cheval sur deux mois : la repartition
         # des IJ n'est pas un fait de la situation, refus visible.
+        # T-103 (R3) : Alsace-Moselle, maladie de l'AM ou de son enfant : salaire maintenu moins les IJ saisies
+        # (absences_am[].ijSecu, centimes) ; B refuse sans elles (R3-IJ-MANQUANTES).
         tot = 0
         for l in ctx.conges:
-            if l["type"] != "evenement" or l.get("nature") != "deuil" or l["au"] < a or l["du"] > b:
+            deuil = l["type"] == "evenement" and l.get("nature") == "deuil"
+            local = ctx.region == "alsace_moselle" and l["type"] in ("am_malade", "am_enfant_malade")
+            if not (deuil or local) or l["au"] < a or l["du"] > b:
                 continue
             if l["du"] < a or l["au"] > b:
-                raise Refus("HORS-COMPARATEUR", "conge_deuil", {"motif": "conge de deuil a cheval sur deux mois"})
-            tot += appel("conge_deuil", l["du"], l.get("ijSecu"))["resultat"]["deduction_ij_centimes"]
+                raise Refus("HORS-COMPARATEUR", "ij", {"motif": "absence avec IJ a cheval sur deux mois"})
+            if deuil:
+                tot += appel("conge_deuil", l["du"], l.get("ijSecu"))["resultat"]["deduction_ij_centimes"]
+            else:
+                tot += appel("maintien_droit_local", l.get("ijSecu"))["resultat"]["deduction_ij_centimes"]
         return tot
 
     garde("deduction", lambda: deduction() + ij_du_mois())
@@ -787,6 +800,7 @@ def mois_b(ctx, m):
             absence = False
             contrat_min = 0
             mai = payees = 0  # T-076, D1 : heures prevues non travaillees mais payees (1er mai ; autres)
+            cp_min = 0  # T-103 (H1) : heures prevues des jours de conge paye de la semaine
             retenue = False   # T-076, D2 : absence deduite (art. 111) dans la semaine
             for d in sem:
                 pv = ctx.prevu(d)
@@ -806,6 +820,8 @@ def mois_b(ctx, m):
                     extra += max(0, mt - pv)
                 elif pv > 0:
                     absence = True
+                    if nature == "cp":
+                        cp_min += pv
                     if ded is None or ded:
                         retenue = True
                     elif nature == "ferie_chome" and d.month == 5 and d.day == 1:
@@ -817,7 +833,7 @@ def mois_b(ctx, m):
                 mensualise(ctx)
                 kw = {}
                 if ctx.pv_lecture == "L1":
-                    ref, haut = contrat_min, reelles
+                    ref, haut = contrat_min, reelles + cp_min + mai  # T-103 (H1, D1)
                     kw["absence_dans_semaine"] = absence
                     if ctx.pv_base_contrat is not None:
                         # D16 : planning remis, seconde reference = duree hebdomadaire du contrat.
@@ -825,7 +841,7 @@ def mois_b(ctx, m):
                         ref = min(ref, Fraction(ctx.pv_base_contrat))
                 else:
                     # D1, D2, D4 (decisions, section 4) : faits comptes ici, regle appliquee par B.
-                    ref, haut = Fraction(ctx.pv_base), reelles + mai + payees
+                    ref, haut = Fraction(ctx.pv_base), reelles + mai + cp_min  # T-103 (H1 ; H2 revu, H3)
                     n_in = sum(1 for d in sem if ctx.prevu(d) > 0)
                     n_sem = sum(1 for d in sem if ctx.prevu_hors_dates(d) > 0)
                     if n_in != n_sem:
@@ -833,7 +849,10 @@ def mois_b(ctx, m):
                         ref = ref * n_in / n_sem
                     kw.update(absence_dans_semaine=retenue, absence_retenue=retenue, minutes_1er_mai_chome=mai,
                               minutes_payees_non_travaillees=payees)
-                if min(haut, 2700) <= ref and reelles <= 2700 and not (retenue and contrat_min > ref):
+                kw["minutes_conges_payes"] = cp_min  # T-103 (H1)
+                if ctx.pv_lecture == "L1":
+                    kw["minutes_1er_mai_chome"] = mai
+                if min(haut, 2700) <= ref and haut <= 2700:
                     continue
                 if lu < a or lu + timedelta(days=6) > b:
                     raise Refus("HORS-COMPARATEUR", "heures", {"motif": "semaine a cheval sur deux mois"})
@@ -855,8 +874,10 @@ def mois_b(ctx, m):
                 continue
             if lu < a or lu + timedelta(days=6) > b:
                 raise Refus("HORS-COMPARATEUR", "heures", {"motif": "semaine a cheval sur deux mois"})
-            r = appel("heures_en_plus_semaine", contrat_min, reelles, ctx.taux, ctx.maj_hm,
-                      majoration_hc_pourcent=ctx.maj_hc, absence_dans_semaine=absence)
+            # T-103 (H1 a H4, H6) : conges payes et 1er mai chome comptes ; autres jours non effectues non comptes ;
+            # base = heures prevues de la semaine dans le contrat ; retenue a part. Remplace le refus A-09.
+            r = appel("heures_en_plus_semaine_t103", contrat_min, reelles, ctx.taux, ctx.maj_hm,
+                      majoration_hc_pourcent=ctx.maj_hc, minutes_conges_payes=cp_min, minutes_1er_mai_chome=mai)
             hc += r["resultat"]["montant_complementaires_centimes"]
             hm += r["resultat"]["montant_majorees_centimes"]
         if d16 != [0, 0]:

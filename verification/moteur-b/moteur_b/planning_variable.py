@@ -167,7 +167,8 @@ def heures_en_plus_semaine_planning_variable(lecture, heures_prevues_semaine_min
                                              heures_reelles_minutes, taux_horaire_centimes, majoration_hm_pourcent,
                                              majoration_hc_pourcent=0, absence_dans_semaine=False,
                                              minutes_1er_mai_chome=0, minutes_payees_non_travaillees=0,
-                                             absence_retenue=False, prorata_base=None, base_contrat_minutes=None):
+                                             absence_retenue=False, prorata_base=None, base_contrat_minutes=None,
+                                             minutes_conges_payes=0):
     """Heures complementaires et majorees d'une semaine (planning variable).
     - CCN 96.4 : HC « au-dela de la duree de travail hebdomadaire prevue au
       contrat et jusqu'a 45 heures par semaine incluses » ; une semaine ne
@@ -210,36 +211,34 @@ def heures_en_plus_semaine_planning_variable(lecture, heures_prevues_semaine_min
     if maj_hm < MAJORATION_MINIMALE_HM:
         raise ErreurSaisie("Majoration des heures majorees inferieure a 10 % (CCN art. 110.1).", regles)
     mai = positif(minutes_1er_mai_chome, "minutes_1er_mai_chome")
-    payees = positif(minutes_payees_non_travaillees, "minutes_payees_non_travaillees")
+    positif(minutes_payees_non_travaillees, "minutes_payees_non_travaillees")  # T-103 (H2, H3) : non comptees
+    cp = positif(minutes_conges_payes, "minutes_conges_payes")
+    # T-103 : H1 (CP comptes), D1 (1er mai compte), H2 revu et H3 (autres jours payes non effectues non comptes),
+    # H6 (retenue a part : refus PV-L2-ABSENCE-HC leve), refus A-09 leve.
+    eff = reelles + mai + cp
     if lecture == "L1":
         refs = [prevu]
         if base_contrat_minutes is not None:
             refs.append(positif(base_contrat_minutes, "base_contrat_minutes"))  # D16
-        reels = [reelles]
     else:
         base = positif(base_hebdo_minutes, "base_hebdo_minutes")
-        if absence_retenue and prevu > base:
-            raise NonGere("PV-L2-ABSENCE-HC", regles + ["D2"], precision=(
-                "Absence deduite dans une semaine prevue au-dela de la base : combinaison de la deduction de "
-                "l'art. 111 et de la perte des HC non ecrite (passage 2, question DDETS)."))
         refs = [base]
         if prorata_base is not None:
+            # T-103 (H4) : semaine coupee : base au prorata (lecture « base entiere » retiree).
             n, dnm = (entier(x, "prorata_base") for x in prorata_base)
             if dnm == 0 or n > dnm:
                 raise ErreurSaisie("prorata_base : (jours dans le contrat, jours prevus de la semaine).")
-            refs.append(base * n / dnm)
-        reels = sorted({reelles + mai, reelles + mai + payees})
+            refs = [base * n / dnm]
+    reels = [eff]
     hcs = sorted({max(Fraction(0), min(r, SEUIL_45H) - ref) for r in reels for ref in refs})
-    hm = max(Fraction(0), reelles - SEUIL_45H)
-    if absence_dans_semaine and (hcs[-1] > 0 or hm > 0):
-        raise NonGere("A-09", regles + ["R-MENS-05"])
+    hm = max(Fraction(0), eff - SEUIL_45H)
     montants = [vers_centimes(h / 60 * t * (1 + maj_hc / 100), "heures complementaires", regles) for h in hcs]
     mhm = hm / 60 * t * (1 + maj_hm / 100)
     extra = {}
     if lecture == "L1" and len(refs) == 2:
         # D16 : une lecture par reference, a sommer lecture par lecture sur le mois (jamais semaine par semaine
         # au plus bas : la part sure se prend sur le total de chaque lecture).
-        extra["montants_par_lecture"] = [vers_centimes(max(Fraction(0), min(reelles, SEUIL_45H) - ref) / 60 * t
+        extra["montants_par_lecture"] = [vers_centimes(max(Fraction(0), min(eff, SEUIL_45H) - ref) / 60 * t
                                                        * (1 + maj_hc / 100), "heures complementaires", regles)
                                          for ref in refs]
     return resultat_ok(heures_en_plus_semaine_planning_variable.regles, {**extra,

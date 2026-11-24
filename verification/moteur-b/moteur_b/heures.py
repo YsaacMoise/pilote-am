@@ -78,6 +78,37 @@ def heures_en_plus_semaine(heures_contrat_minutes, heures_reelles_minutes, taux_
     return resultat_ok(heures_en_plus_semaine.regles, res)
 
 
+@api("R-HC-01", "R-HC-02", "R-HC-03", "T103-H1", "T103-H6")
+def heures_en_plus_semaine_t103(heures_contrat_semaine_minutes, minutes_effectuees, taux_horaire_centimes,
+                                majoration_hm_pourcent, majoration_hc_pourcent=0, minutes_conges_payes=0,
+                                minutes_1er_mai_chome=0, date_paie=None):
+    """T-103 (H1 a H4, H6) : heures complementaires et majorees d'une semaine, absences comprises.
+    CCN 96.4 : heures « de travail effectuees » au-dela de « la duree de travail hebdomadaire prevue au contrat » et
+    jusqu'a 45 h (HC), puis au-dela de 45 h (HM, CCN 110.1 ; majoration d'au moins 10 %).
+    - H1 (A2) : heures prevues des jours de conge paye de la semaine comptees (minutes_conges_payes) : Cass. soc.
+      10/09/2025, n° 23-14.455, publie (Charte des droits fondamentaux de l'Union, art. 31 § 2) ; seuils du
+      contrat et de 45 h.
+    - D1 (decision T-076 gardee par H3) : heures prevues d'un 1er mai chome comptees (minutes_1er_mai_chome).
+    - H2 (revu), H3 : absence de l'enfant payee, ferie chome, evenement familial, absence retenue : non comptes
+      (rien n'est « effectue ») ; l'appelant ne les met pas dans minutes_effectuees.
+    - H4 : heures_contrat_semaine_minutes = heures que le contrat prevoit cette semaine-la (semaine coupee par
+      l'embauche ou la fin : prorata).
+    - H6 : une retenue de l'art. 111 la meme semaine se calcule a part (sur le salaire mensualise). Refus A-09 leve.
+    Refus garde : A-13 (contrat au-dela de 45 h).
+    Sortie : minutes et montants des HC et HM."""
+    verifier_date_ccn(date_paie, ["R-HC-02"])
+    cp = positif(minutes_conges_payes, "minutes_conges_payes")
+    mai = positif(minutes_1er_mai_chome, "minutes_1er_mai_chome")
+    eff = positif(minutes_effectuees, "minutes_effectuees") + cp + mai
+    hc, hm, mhc, mhm = _heures_semaine(heures_contrat_semaine_minutes, eff, taux_horaire_centimes,
+                                       majoration_hc_pourcent, majoration_hm_pourcent, False)
+    return resultat_ok(heures_en_plus_semaine_t103.regles, {
+        "minutes_comptees": texte_fraction(eff),
+        "minutes_complementaires": texte_fraction(hc), "minutes_majorees": texte_fraction(hm),
+        "montant_complementaires_centimes": vers_centimes(mhc, "heures complementaires", ["R-HC-02"]),
+        "montant_majorees_centimes": vers_centimes(mhm, "heures majorees", ["R-HC-03"])})
+
+
 @api("R-MENS-05")
 def salaire_du_mois(salaire_mensualise_centimes, montants_heures_en_plus_centimes=(), deduction_absence_centimes=0):
     """R-MENS-05 : salaire du mois = mensualise + heures complementaires et

@@ -143,8 +143,11 @@ class PVHeures(unittest.TestCase):
         self.assertEqual(R(h, "minutes_majorees"), "120")
 
     def test_refus(self):
-        self.assertEqual(m.heures_en_plus_semaine_planning_variable("L1", 1200, None, 1380, 500, 10,
-                                                                    absence_dans_semaine=True)["code"], "A-09")
+        # T-103 (H6) : absence et heures en plus la meme semaine : calculs separes (refus A-09 leve). 23 h faites
+        # pour 20 h prevues : 3 HC x 5 EUR = 15 EUR.
+        self.assertEqual(R(m.heures_en_plus_semaine_planning_variable("L1", 1200, None, 1380, 500, 10,
+                                                                      absence_dans_semaine=True),
+                           "montant_complementaires_centimes"), 1500)
         self.assertEqual(m.heures_en_plus_semaine_planning_variable("L1", 1200, None, 1380, 500, 5)["statut"],
                          "erreur_saisie")
 
@@ -321,21 +324,27 @@ class T076Corrections(unittest.TestCase):
         # Base 15 h ; semaine A de 45 h ; un jour chome de 9 h, 36 h travaillees.
         h = m.heures_en_plus_semaine_planning_variable("L2", 2700, 900, 2160, 500, 25, minutes_1er_mai_chome=540)
         self.assertEqual(R(h, "lectures_montant_complementaires"), [15000, 15000])  # 30 HC, CCN 47.1
+        # T-103 (H2 revu, H3) : CCN 96.4 « heures de travail effectuees » : autre jour paye non travaille non
+        # compte : 21 HC seulement.
         h = m.heures_en_plus_semaine_planning_variable("L2", 2700, 900, 2160, 500, 25, minutes_payees_non_travaillees=540)
-        self.assertEqual(R(h, "lectures_montant_complementaires"), [10500, 15000])  # 21 HC ou 30 HC (CCN 47.2)
+        self.assertEqual(R(h, "lectures_montant_complementaires"), [10500, 10500])
         self.assertEqual(R(h, "montant_complementaires_centimes"), 10500)
 
     def test_d2_absence_retenue(self):
+        # T-103 (H6) : deux calculs separes (retenue de l'art. 111 ; HC sur les heures effectuees) : 36 h faites,
+        # base 15 h : 21 HC x 5 EUR = 105 EUR. Ancien refus PV-L2-ABSENCE-HC leve.
         r = m.heures_en_plus_semaine_planning_variable("L2", 2700, 900, 2160, 500, 25, absence_retenue=True)
-        self.assertEqual(r["code"], "PV-L2-ABSENCE-HC")
+        self.assertEqual(R(r, "montant_complementaires_centimes"), 10500)
         # Semaine prevue egale a la base : pas de HC prevue touchee, calcul normal.
         r = m.heures_en_plus_semaine_planning_variable("L2", 900, 900, 720, 500, 25, absence_retenue=True)
         self.assertEqual(R(r, "montant_complementaires_centimes"), 0)
 
     def test_d4_semaine_incomplete(self):
         # Contrat commence un mercredi d'une semaine A : 27 h prevues et faites ; base 15 h ou 15 x 3/5 = 9 h.
+        # T-103 (H4) : CCN 96.4 « duree de travail hebdomadaire prevue au contrat » : semaine coupee, base au prorata
+        # (9 h) : 18 HC x 5 EUR = 90 EUR (lecture « base entiere » retiree).
         h = m.heures_en_plus_semaine_planning_variable("L2", 1620, 900, 1620, 500, 25, prorata_base=(3, 5))
-        self.assertEqual(R(h, "lectures_montant_complementaires"), [6000, 9000])
+        self.assertEqual(R(h, "lectures_montant_complementaires"), [9000, 9000])
 
     def test_b2_iccp_fin_planning_variable(self):
         # Cycle 45 h / 15 h, 130 h mensualisees a 5 EUR, 12 mois, 30 jours non pris.

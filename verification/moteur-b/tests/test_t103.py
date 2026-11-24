@@ -354,5 +354,48 @@ class C10C13Conges(unittest.TestCase):
         self.assertEqual(m.indemnite_cp(23, 2400, 420, 500000, type_annee="complete")["code"], "A-26")
 
 
+class H1H6Heures(unittest.TestCase):
+    """CCN 96.4 « heures de travail effectuees » ; Cass. soc. 10/09/2025, n° 23-14.455 (H1)."""
+
+    def test_h1_conges_payes_comptes(self):
+        # Contrat 40 h ; 2 jours de CP (16 h) ; 30 h faites : 46 h comptees : 5 HC x 4,20 = 21 EUR ; 1 HM x 4,62.
+        r = m.heures_en_plus_semaine_t103(2400, 1800, 420, 10, minutes_conges_payes=960)
+        self.assertEqual(R(r, "montant_complementaires_centimes"), 2100)
+        self.assertEqual(R(r, "montant_majorees_centimes"), 462)
+
+    def test_h2_h3_h6_jours_non_effectues(self):
+        # 44 h faites, le reste de la semaine non effectue (absence payee, ferie, retenue) : 4 HC.
+        r = m.heures_en_plus_semaine_t103(2400, 2640, 420, 10)
+        self.assertEqual(R(r, "montant_complementaires_centimes"), 1680)
+        # 1er mai chome compte (decision D1) : 36 h faites + 8 h = 44 h : 4 HC.
+        r = m.heures_en_plus_semaine_t103(2400, 2160, 420, 10, minutes_1er_mai_chome=480)
+        self.assertEqual(R(r, "montant_complementaires_centimes"), 1680)
+
+    def test_h4_semaine_coupee(self):
+        # Embauche un mercredi : base de la semaine 24 h ; 33 h faites : 9 HC x 4,20 = 37,80 EUR.
+        self.assertEqual(R(m.heures_en_plus_semaine_t103(1440, 1980, 420, 10), "montant_complementaires_centimes"), 3780)
+
+    def test_a13_garde(self):
+        self.assertEqual(m.heures_en_plus_semaine_t103(2760, 2800, 420, 10)["code"], "A-13")
+
+
+class R1R6Regions(unittest.TestCase):
+
+    def test_r1_vendredi_saint_ordinaire(self):
+        self.assertNotIn(date(2026, 4, 3), m.jours_feries_region(2026, "alsace_moselle"))
+
+    def test_r4_27_avril_mayotte(self):
+        self.assertIn(date(2026, 4, 27), m.jours_feries_region(2026, "mayotte"))
+        self.assertNotIn(date(2026, 4, 27), m.jours_feries_region(2026, "metropole"))
+
+
+class D3Minimum(unittest.TestCase):
+
+    def test_centime_superieur(self):
+        # 0,281 x 10,85 EUR (mai 2022) = 3,04885 EUR : 3,05 EUR ; 0,281 x 10,57 = 2,97017 : 2,98 EUR.
+        self.assertEqual(R(m.minimum_horaire_brut(date(2022, 5, 1)), "minimum_centimes"), 305)
+        self.assertEqual(R(m.minimum_horaire_brut(date(2022, 1, 1)), "minimum_centimes"), 298)
+
+
 if __name__ == "__main__":
     unittest.main()

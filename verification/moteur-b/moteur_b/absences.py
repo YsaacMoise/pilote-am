@@ -81,11 +81,13 @@ def qualifier_absence(type_absence, type_annee, region="metropole"):
     type_annee_valide(type_annee)
     region = region_valide(region)
     if region == "alsace_moselle" and type_absence in ("am_maladie", "am_enfant_malade"):
-        raise NonGere("A77-MAINTIEN-LOCAL", ["T077-R4"], details={
-            "lectures": {"A": "salaire maintenu, moins les indemnites journalieres de la securite sociale (montant "
-                              "connu de l'AM seule)",
-                         "B": "retenue (deductible), comme hors Alsace-Moselle"},
-            "message": MESSAGE_MAINTIEN})
+        # T-103 (R3, decision du DG du 24/11/2026, A3) : maintien du salaire pour toute absence pour maladie de l'AM
+        # ou de son enfant, moins les indemnites journalieres saisies (C. trav. L1226-23 : « a droit au maintien de
+        # son salaire » ; « les indemnites versees par un regime d'assurances sociales obligatoire sont deduites » ;
+        # Cass. soc. 13/04/2005, 04/12/2024, 27/05/2025). Pas de deduction d'absence ; IJ : maintien_droit_local.
+        return resultat_ok(["T103-R3"], {"deductible": False,
+                                         "note": "Alsace-Moselle : salaire maintenu moins les indemnites journalieres "
+                                                 "(maintien_droit_local)."})
     if type_absence in _REFUS:
         code, regles = _REFUS[type_absence]
         raise NonGere(code, regles)
@@ -147,6 +149,19 @@ def absence_enfant_malade(jours_absence, jours_calendaires_consecutifs, jours_ac
     deductibles = max(0, min(j, 5 - c1))
     return resultat_ok(absence_enfant_malade.regles, {"jours_deductibles": deductibles,
                                                       "jours_remuneres": j - deductibles})
+
+
+@api("T103-R3")
+def maintien_droit_local(indemnites_journalieres_centimes=None):
+    """T-103 (R3, decision du DG, A3) : Alsace-Moselle, maladie de l'AM ou de son enfant : salaire maintenu
+    (qualifier_absence : non deductible) moins les indemnites journalieres de l'absence (C. trav. L1226-23, al. 2).
+    indemnites_journalieres_centimes : montant saisi ; absent : refus R3-IJ-MANQUANTES.
+    Sortie : deduction_ij_centimes."""
+    if indemnites_journalieres_centimes is None:
+        raise NonGere("R3-IJ-MANQUANTES", ["T103-R3"], precision=(
+            "Alsace-Moselle : montant des indemnites journalieres de l'absence a saisir (L1226-23)."))
+    return resultat_ok(maintien_droit_local.regles, {
+        "deduction_ij_centimes": entier(indemnites_journalieres_centimes, "indemnites_journalieres_centimes")})
 
 
 @api("R-CP-09", "T103-C15", "T103-C17")
@@ -403,7 +418,7 @@ def ferie_chome(date_ferie, jours_travailles, presence_veille="travaille", prese
         raise ErreurSaisie("date_ferie : date attendue.")
     verifier_date_ccn(date_ferie, ["R-JF-02"])
     region = region_valide(region)
-    feries = jours_feries(date_ferie.year)
+    feries = jours_feries(date_ferie.year, region)  # T-103 (R4) : 27 avril a Mayotte
     locaux = feries_locaux_entre(date_ferie, date_ferie, region)
     jt = set(int(j) for j in jours_travailles)
     jna = set(jours_non_accueil)

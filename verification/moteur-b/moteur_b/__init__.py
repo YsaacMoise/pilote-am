@@ -4,11 +4,13 @@ regles/contre-verification-v0.md, sans lecture du moteur actuel.
 Python 3, bibliotheque standard. Montants en centimes entiers."""
 
 from .commun import DATE_DERNIERE_VERIFICATION, CODES
+from .calendrier import jours_feries as jours_feries_region
 from .baremes import baremes_du_jour, minimum_horaire_brut, verifier_taux_horaire
 from .mensualisation import (type_annee, semaines_programmees, mensualisation, heures_mensualisees,
                              verifier_date_effet_avenant)
-from .heures import temps_de_travail_jour, heures_en_plus_semaine, salaire_du_mois
+from .heures import temps_de_travail_jour, heures_en_plus_semaine, heures_en_plus_semaine_t103, salaire_du_mois
 from .absences import (qualifier_absence, absence_enfant_malade, absences_enfant_malade_art105, absence_retenue_du_jour,
+                       maintien_droit_local,
                        deduction_absence, prevu_du_mois,
                        ferie_chome, ferie_travaille, ferie_local_travaille)
 from .conges import (acquisition_cp, acquisition_cp_periode, jours_enfants_a_charge, jours_fractionnement, decompte_jours_cp,

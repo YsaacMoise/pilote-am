@@ -260,7 +260,7 @@ def decompte_jours_cp(premier_jour_absence, jour_reprise, jours_travailles, feri
     ft = set(feries_travailles)
     feries = {}
     for a in range(premier_jour_absence.year, jour_reprise.year + 1):
-        feries.update(jours_feries(a))
+        feries.update(jours_feries(a, region))  # T-103 (R4) : 27 avril a Mayotte
     # T-077 (R3.4) : lecture A, le ferie local chome n'est pas decompte ; lecture B, il l'est.
     from .regions import region_valide, feries_locaux_entre
     locaux = {d: n for d, n in feries_locaux_entre(premier_jour_absence, jour_reprise, region_valide(region)).items()

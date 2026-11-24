@@ -1906,6 +1906,46 @@ def situations_t103():
             if cpam is not None:
                 k["semaines_cp_am"] = cpam
             ajoute(f"T103-{id_}-{hr}", "congés payés", k, acq, theme="T-103 jours acquis et maintien en 46 semaines (C11, C12)")
+
+    # H1 a H4, H6 : heures complementaires et majorees d'une semaine avec un jour non travaille.
+    def longs(du, au, fin="18:00"):
+        return [{"date": d, "pres": [["08:00", fin]]} for d in jours_ouvres(du, au)]
+
+    hsit = [
+        ("H1-CP-DANS-LA-SEMAINE", kcp, {"absences_am": [conge("cp", "2026-09-14", "2026-09-15")],
+                                        "jours": longs("2026-09-16", "2026-09-18")}),
+        ("H2-ENFANT-ABSENT-PAYE", kcp, {"jours": [{"date": "2026-09-14", "abs": "parents"}]
+                                        + longs("2026-09-15", "2026-09-18", "19:00")}),
+        ("H3-FERIE-11-NOVEMBRE", kcp, {"jours": longs("2026-11-09", "2026-11-10", "19:00")
+                                       + longs("2026-11-12", "2026-11-13", "19:00")}),
+        ("H4-SEMAINE-COUPEE", contrat_grille("C52", "H40", "T420", debut="2026-09-16"),
+         {"jours": longs("2026-09-16", "2026-09-18", "19:00")}),
+        ("H6-AM-MALADE-ET-HEURES", kcp, {"absences_am": [conge("am_malade", "2026-09-14", "2026-09-14")],
+                                         "jours": longs("2026-09-15", "2026-09-18", "19:00")}),
+    ]
+    for id_, k, ev in hsit:
+        mm = "2026-11" if "NOVEMBRE" in id_ else "2026-09"
+        ajoute(f"T103-{id_}", "heures en plus", k, [mois("m", mm)], ev, theme="T-103 heures en plus (H1 a H6)")
+
+    # R1, R3, R4 : regions. Entree : absences_am[].ijSecu pour une maladie de l'AM ou de son enfant en Alsace-Moselle.
+    kam = contrat_grille("C52", "H40", "T420", region="alsace_moselle")
+    ajoute("T103-R1-VENDREDI-SAINT", "régions", kam, [mois("m", "2026-04")], theme="T-103 Vendredi saint ordinaire (R1)")
+    ajoute("T103-R1-26-DECEMBRE", "régions", kam, [mois("m", "2025-12")], theme="T-103 26 décembre ordinaire (R1)")
+    ajoute("T103-R3-MALADIE-IJ", "régions", kam, sep,
+           {"absences_am": [dict(conge("am_malade", "2026-09-14", "2026-09-16"), ijSecu=4500)]},
+           theme="T-103 maladie de l'AM en Alsace-Moselle, IJ saisies (R3)")
+    ajoute("T103-R3-ENFANT-AM-IJ-0", "régions", kam, sep,
+           {"absences_am": [dict(conge("am_enfant_malade", "2026-09-14", "2026-09-15"), ijSecu=0)]},
+           theme="T-103 enfant malade de l'AM en Alsace-Moselle (R3)")
+    ajoute("T103-R3-MALADIE-SANS-IJ", "régions", kam, sep,
+           {"absences_am": [conge("am_malade", "2026-09-14", "2026-09-16")]}, theme="T-103 IJ non saisies (R3)")
+    ajoute("T103-R4-27-AVRIL", "régions", contrat_grille("C52", "H40", "T420", region="mayotte"), [mois("m", "2026-04")],
+           theme="T-103 27 avril à Mayotte (R4)")
+    # D3 : minimum legal 0,281 x SMIC au centime superieur (janvier 2022 : 0,281 x 10,57 = 2,97017 EUR).
+    for d in ("2022-01-01", "2022-05-01", "2026-09-01"):
+        ajoute(f"T103-D3-MINIMUM-{d}", "minimum", contrat_grille("C52", "H40", "T420", debut="2022-01-03"),
+               [{"id": "mn", "type": "minimum_conventionnel", "date": d, "sorties": ["minimum_brut"]}],
+               theme="T-103 minimum légal au centime supérieur (D3)")
     return S
 
 
