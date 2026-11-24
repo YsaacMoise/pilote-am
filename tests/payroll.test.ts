@@ -589,37 +589,38 @@ describe('règles tranchées le 28/10/2026 (texte et fiches officielles)', () =>
     const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-14', 'retrait');
     expect(f.indemniteRupture).toBe(0);
   });
-  // T-103 (C1, C3) : CCN 105, lettre du texte (Cass. soc. 25/03/2020, n° 18-12.467) : seule une absence qui « dure »
-  // 14 jours calendaires consécutifs est l'absence longue ; de 6 à 13 jours, c'est une absence courte (DREETS BFC 2026,
-  // fiche 03 : « Une absence de 9 jours consécutifs devra ainsi être considérée comme une absence courte »).
-  it('enfant malade : 1 jour court puis 10 jours prévus du 9 au 20 mars (certificat du 9 au 20, 12 jours calendaires) : 5 retenus', () => {
-    const mars = ['09', '10', '11', '12', '13', '16', '17', '18', '19', '20'].map((d) => rec(`2026-03-${d}`, { abs: 'malade_certif', certifDu: '2026-03-09', certifAu: '2026-03-20' }));
-    const days = [rec('2026-02-02', { abs: 'malade_certif', certifDu: '2026-02-02', certifAu: '2026-02-02' }), ...mars];
+  // T-033 (A-17) : une absence de plus de 5 jours qui dure moins de 14 jours calendaires se lit de deux façons (art. 105 ;
+  // DREETS BFC 2026 fiche 03 : « Une absence de 9 jours consécutifs devra ainsi être considérée comme une absence
+  // courte et les 4 derniers jours devront faire l'objet d'une rémunération »). Retenu seulement ce que les deux
+  // lectures retiennent ; le reste est à confirmer.
+  it('enfant malade : 1 jour court puis 10 jours prévus du 9 au 20 mars (12 jours calendaires) : 5 retenus, 6 à confirmer', () => {
+    // Lecture 1 : 1 + 10 retenus (absence longue). Lecture 2 : 1 + 4 (fin des 5 jours), 6 payés.
+    const days = ['2026-02-02', ...['09', '10', '11', '12', '13', '16', '17', '18', '19', '20'].map((d) => `2026-03-${d}`)]
+      .map((d) => rec(d, { abs: 'malade_certif' }));
     const ctx = makeCtx(contract(), days, [], '2026-04-01');
     expect(sickDeductible(ctx).size).toBe(5);
-    expect(sickLectures(ctx).demandes.size).toBe(0);
+    expect(sickLectures(ctx).aConfirmer.size).toBe(6);
     const m = monthBase(ctx, '2026-03');
-    expect(m.evenementAConfirmer).toBe(0);
-    expect(m.nonGere).toEqual([]);
+    expect(m.joursMaladieAConfirmer).toBe(6);
+    expect(m.evenementAConfirmer).toBeGreaterThan(0);
+    expect(m.alerts.join(' ')).toMatch(/Enfant malade du 09\/03 au 20\/03 : 6 jours ni payés ni retenus/);
+    expect(m.alerts.join(' ')).toMatch(/Enfant malade : 6 jours ni payés ni retenus/);
   });
-  it('même absence sans les dates du certificat : le certificat peut aller jusqu’au 22/03 (14 jours) : l’app demande les dates', () => {
-    const days = ['2026-02-02', ...['09', '10', '11', '12', '13', '16', '17', '18', '19', '20'].map((d) => `2026-03-${d}`)].map((d) => rec(d, { abs: 'malade_certif' }));
-    const ctx = makeCtx(contract(), days, [], '2026-04-01');
-    expect(sickLectures(ctx).demandes.size).toBeGreaterThan(0);
-    expect(monthBase(ctx, '2026-03').nonGere.join(' ')).toMatch(/indique les dates de début et de fin du certificat médical/);
-  });
-  it('enfant malade : 8 jours (10 jours calendaires) puis 1 jour : 5 retenus, le reste payé (absence courte), sans donnée à demander', () => {
-    const days = [...['09', '10', '11', '12', '13', '16', '17', '18'].map((d) => `2026-03-${d}`), '2026-04-14'].map((d) => rec(d, { abs: 'malade_certif' }));
+  it('enfant malade : 8 jours (10 jours calendaires) puis 1 jour : 5 retenus, 4 à confirmer (l’absence suivante aussi)', () => {
+    // Lecture 1 : 8 (absence longue) + 1 (courte) = 9. Lecture 2 : 5 retenus, 3 payés ; le 14/04 payé (5 jours épuisés).
+    const days = [...['09', '10', '11', '12', '13', '16', '17', '18'].map((d) => `2026-03-${d}`), '2026-04-14']
+      .map((d) => rec(d, { abs: 'malade_certif' }));
     const ctx = makeCtx(contract(), days, [], '2026-05-01');
-    expect([...sickDeductible(ctx)]).toEqual(['2026-03-09', '2026-03-10', '2026-03-11', '2026-03-12', '2026-03-13']);
-    expect(sickLectures(ctx).demandes.size).toBe(0);
+    expect(sickDeductible(ctx).size).toBe(5);
+    expect([...sickLectures(ctx).aConfirmer.keys()]).toEqual(['2026-03-16', '2026-03-17', '2026-03-18', '2026-04-14']);
   });
-  it('enfant malade : absence de 14 jours calendaires ou plus : 14 jours retenus, puis payé', () => {
+  it('enfant malade : absence de 14 jours calendaires ou plus : les deux lectures concordent (14 jours retenus, puis payé)', () => {
     // Du lundi 2 au vendredi 20 mars : 15 jours prévus, 19 jours calendaires. Retenue jusqu'au 15/03 (14 jours calendaires).
-    const days = ['02', '03', '04', '05', '06', '09', '10', '11', '12', '13', '16', '17', '18', '19', '20'].map((d) => rec(`2026-03-${d}`, { abs: 'malade_certif' }));
+    const days = ['02', '03', '04', '05', '06', '09', '10', '11', '12', '13', '16', '17', '18', '19', '20']
+      .map((d) => rec(`2026-03-${d}`, { abs: 'malade_certif' }));
     const ctx = makeCtx(contract(), days, [], '2026-04-01');
     expect(sickDeductible(ctx).size).toBe(10);
-    expect(sickLectures(ctx).demandes.size).toBe(0);
+    expect(sickLectures(ctx).aConfirmer.size).toBe(0);
   });
   it('férié chômé non payé si l’AM est absente (maladie) le jour prévu juste avant', () => {
     // Lundi de Pâques 06/04/2026 ; AM malade le vendredi 03/04

@@ -4,7 +4,6 @@ import { addDays, shortDate, type ISODate } from './dates';
 import { controleFinContrat, jourDispense } from './preavis';
 import { nonGeresCdd } from './cdd';
 import type { AmLeave, Contract } from './model';
-import { statutJourEvenement } from './evenements';
 import { messagePVACompleter, nonGeresContratPV, nonGeresPeriodePV } from './planningVariable';
 
 export const NON_GERE_ALSACE =
@@ -86,12 +85,6 @@ export function contratACompleter(c: Pick<Contract, 'alsaceMoselle' | 'planningV
  * préavis ; `connu`, seulement quand une réponse enregistrée ne concorde pas (jours de congés acquis : aucun montant n'est
  * versé sans passer par le mois ou la fin de contrat, qui font le contrôle complet) ; `non`, contexte de fin.ts déjà contrôlé.
  */
-/** T-103 (C8) : donnée manquante, demandée une fois au contrat */
-export const MESSAGE_REPOS_HEBDO = 'Ton planning prévoit le dimanche : indique dans le contrat ton jour de repos de la semaine (convention, article 46). L’app en a besoin pour compter les jours de ton congé pour événement familial.';
-function planningAvecDimanche(c: Contract): boolean {
-  return [c.planning, ...(c.avenants ?? []).map((x) => x.changes.planning)].some((p) => !!p && (p[7]?.length ?? 0) > 0);
-}
-
 export function nonGeresPeriode(c: Contract, leaves: AmLeave[], from: ISODate, to: ISODate, controleFin: 'tout' | 'connu' | 'non' = 'tout'): string[] {
   const out = nonGeresContrat(c);
   // Décision du DG du 18/11/2026 : sans réponse aux 4 questions, l'app ne sait pas si le cas est géré : rien n'est calculé.
@@ -107,14 +100,6 @@ export function nonGeresPeriode(c: Contract, leaves: AmLeave[], from: ISODate, t
     if (!estAbsenceNonGeree(l) || l.to < a || l.from > b) continue;
     const m = messageAbsenceNonGeree(l);
     if (!out.includes(m)) out.push(m);
-  }
-  // T-103 (C6, C8) : événement familial que l'app ne sait pas lire (avant 2022, ancienne saisie sans durée), et planning
-  // qui prévoit le dimanche sans jour de repos hebdomadaire au contrat (CCN 46, décompte des jours ouvrables).
-  for (const l of leaves) {
-    if (l.type !== 'evenement' || l.joursEvenement === undefined || l.to < a || l.from > b) continue;
-    const st = statutJourEvenement(l, l.from, leaves, c.reposHebdo ?? 7);
-    if (!st.paye && st.nonGere && !out.includes(st.raison)) out.push(st.raison);
-    if (c.reposHebdo === undefined && planningAvecDimanche(c) && !out.includes(MESSAGE_REPOS_HEBDO)) out.push(MESSAGE_REPOS_HEBDO);
   }
   // T-074 (D1) : absence de l'AM (congés, maladie, événement…) un jour du préavis dont les parents l'ont dispensée. Aucun
   // texte ne dit si ce jour est payé comme préavis (art. 64.2) ou traité comme absence, ni si le préavis est suspendu

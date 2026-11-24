@@ -1,0 +1,200 @@
+"""T-103 : regles du tableau valide par le DG le 24/11/2026 (calculateur-arvela,
+rapports/T-103-inventaire.md). Attendus chiffres a la main depuis les textes cites
+(rapport calculateur-arvela/rapports/T-103-moteur-b.md), jamais depuis l'app."""
+
+import os
+import sys
+import unittest
+from datetime import date
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+import moteur_b as m  # noqa: E402
+
+
+def R(s, k):
+    assert s["statut"] in ("ok", "provisoire"), s
+    return s["resultat"][k]
+
+
+SEPT = date(2026, 9, 15)  # MG 4,35 EUR (depuis le 01/06/2026) : 90 % = 391,5 c pour 9 h
+
+
+class M1DureeArt99(unittest.TestCase):
+    """CCN 114.1 « par heure de travail » ; CCN 99 : debut au plus tot de l'heure prevue et de l'arrivee,
+    fin au plus tard de l'heure prevue et du depart."""
+
+    def test_arrivee_avant(self):
+        # Prevu 8 h - 16 h, arrivee 7 h, depart 16 h : 9 h de travail ; 0,50 EUR/h -> 4,50 EUR.
+        j = [{"debut_prevu": 480, "fin_prevue": 960, "arrivee": 420, "depart": 960, "travail_effectif": True}]
+        self.assertEqual(R(m.indemnite_entretien_mois(j, 50, SEPT), "indemnite_centimes"), 450)
+
+    def test_arrivee_apres_depart_avant(self):
+        # Prevu 8 h - 16 h, presence 10 h - 15 h : le travail reste 8 h - 16 h (art. 99) -> 4,00 EUR.
+        j = [{"debut_prevu": 480, "fin_prevue": 960, "arrivee": 600, "depart": 900, "travail_effectif": True}]
+        self.assertEqual(R(m.indemnite_entretien_mois(j, 50, SEPT), "indemnite_centimes"), 400)
+
+    def test_duree_accueil_ignoree(self):
+        j = [{"duree_minutes": 480, "duree_accueil_minutes": 300, "travail_effectif": True}]
+        self.assertEqual(R(m.indemnite_entretien_mois(j, 50, SEPT), "indemnite_centimes"), 400)
+
+    def test_fonction_duree(self):
+        self.assertEqual(m.duree_travail_art99({"debut_prevu": 480, "fin_prevue": 960, "depart": 1110}), 630)
+        self.assertEqual(m.duree_travail_art99({"debut_prevu": None, "fin_prevue": None, "arrivee": 540,
+                                                "depart": 660}), 120)
+
+
+class M2M3MontantParJournee(unittest.TestCase):
+    """Contrat « montant fixe par journee » : du par journee de travail effectif ; minimum de 114.1 sur la duree."""
+
+    def test_jour_long_minimum(self):
+        # 3,00 EUR par jour. 8 h : minimum 391,5 x 8 / 9 = 348 c -> 3,48 EUR. 11 h : 478,5 c -> 4,79 EUR (ARR-01).
+        j = [{"duree_minutes": 480, "travail_effectif": True}, {"duree_minutes": 660, "travail_effectif": True}]
+        r = m.indemnite_entretien_mois(j, None, SEPT, montant_journalier_contrat_centimes=300)
+        self.assertEqual(R(r, "indemnite_centimes"), 348 + 479)
+        self.assertEqual(R(r, "jours_sous_minimum"), [1, 2])
+        self.assertEqual(R(r, "mode_contrat"), "par_journee")
+
+    def test_jour_court_montant_fixe(self):
+        # 4,00 EUR par jour ; journee de 2 h : minimum 2,65 EUR ; le montant du contrat (4,00 EUR) est du.
+        j = [{"duree_minutes": 120, "travail_effectif": True}]
+        r = m.indemnite_entretien_mois(j, None, SEPT, montant_journalier_contrat_centimes=400)
+        self.assertEqual(R(r, "indemnite_centimes"), 400)
+
+    def test_hors_planning(self):
+        # M3 : samedi hors planning, presence 7 h - 18 h (11 h) ; 4,00 EUR par jour < 4,785 -> 4,79 EUR.
+        j = [{"debut_prevu": None, "fin_prevue": None, "arrivee": 420, "depart": 1080, "travail_effectif": True}]
+        r = m.indemnite_entretien_mois(j, None, SEPT, montant_journalier_contrat_centimes=400)
+        self.assertEqual(R(r, "indemnite_centimes"), 479)
+
+    def test_jour_sans_travail(self):
+        j = [{"duree_minutes": 480, "travail_effectif": False}]
+        r = m.indemnite_entretien_mois(j, None, SEPT, montant_journalier_contrat_centimes=400)
+        self.assertEqual(R(r, "indemnite_centimes"), 0)
+
+    def test_deux_montants_refuses(self):
+        j = [{"duree_minutes": 480, "travail_effectif": True}]
+        self.assertEqual(m.indemnite_entretien_mois(j, 50, SEPT, montant_journalier_contrat_centimes=400)["statut"],
+                         "erreur_saisie")
+        self.assertEqual(m.indemnite_entretien_mois(j, None, SEPT)["statut"], "erreur_saisie")
+
+
+class F1F8DatesDuPreavis(unittest.TestCase):
+    """F1 corrige : jour de presentation = 1er jour (CCN 64.1, 120 ; CASF L423-24 ; fiche officielle F2883)."""
+
+    def test_exemple_officiel_f2883(self):
+        # « Le preavis s'effectue du 8 juillet au 7 aout 2026 inclus ».
+        r = m.date_fin_preavis(date(2026, 7, 8), {"mois": 1})
+        self.assertEqual((R(r, "premier_jour"), R(r, "date_fin")), (date(2026, 7, 8), date(2026, 8, 7)))
+
+    def test_jours(self):
+        # Presentee le 15/10, 15 jours : du 15/10 au 29/10 ; 8 jours : du 15/10 au 22/10.
+        self.assertEqual(R(m.date_fin_preavis(date(2026, 10, 15), {"jours": 15}), "date_fin"), date(2026, 10, 29))
+        self.assertEqual(R(m.date_fin_preavis(date(2026, 10, 15), {"jours": 8}), "date_fin"), date(2026, 10, 22))
+
+    def test_mois_apres_le_28(self):
+        self.assertEqual(m.date_fin_preavis(date(2026, 1, 31), {"mois": 1})["code"], "DATE-MOIS")
+        self.assertEqual(R(m.date_fin_preavis(date(2026, 12, 28), {"mois": 1}), "date_fin"), date(2027, 1, 27))
+
+    def test_pas_de_report(self):
+        # Samedi 14/11/2026, 8 jours : samedi 21/11/2026 ; aucun report au jour ouvrable suivant.
+        self.assertEqual(R(m.date_fin_preavis(date(2026, 11, 14), {"jours": 8}), "date_fin"), date(2026, 11, 21))
+
+    def test_duree_preavis_donne_la_date(self):
+        r = m.duree_preavis("employeur", date(2025, 9, 1), date(2026, 10, 14), date(2026, 10, 15))
+        self.assertEqual(R(r, "date_fin_preavis"), date(2026, 11, 14))
+
+    def test_deces(self):
+        # F8 (CCN 119.4.2) : deces le 15/09 ; le 15/09 est paye en salaire ; 15 jours : du 16/09 au 30/09 ;
+        # un mois : du 16/09 au 15/10.
+        r = m.periode_indemnite_deces(date(2026, 9, 15), {"jours": 15})
+        self.assertEqual((R(r, "premier_jour"), R(r, "dernier_jour")), (date(2026, 9, 16), date(2026, 9, 30)))
+        self.assertEqual(R(m.periode_indemnite_deces(date(2026, 9, 15), {"mois": 1}), "dernier_jour"),
+                         date(2026, 10, 15))
+
+
+class F2F3F4Rupture(unittest.TestCase):
+
+    def test_f2_demission_quinze_jours(self):
+        r = m.duree_preavis("am", date(2026, 3, 2), date(2026, 10, 14), date(2026, 10, 15))
+        self.assertEqual(R(r, "preavis"), {"jours": 15})
+
+    def test_f3_neuf_mois_a_la_fin(self):
+        # Debut 05/01/2026 ; lettre 28/09 (moins de 9 mois) ; fin 13/10 (plus de 9 mois) : due. 8 000 / 80 = 100 EUR.
+        r = m.indemnite_rupture("normal", "employeur", date(2026, 1, 5), date(2026, 9, 28), 800000,
+                                date_fin_contrat=date(2026, 10, 13))
+        self.assertEqual(R(r, "indemnite_centimes"), 10000)
+        # Fin avant les 9 mois : non due.
+        r = m.indemnite_rupture("normal", "employeur", date(2026, 1, 5), date(2026, 9, 15), 800000,
+                                date_fin_contrat=date(2026, 9, 30))
+        self.assertEqual(R(r, "indemnite_centimes"), 0)
+
+    def test_f4_preavis_dans_l_assiette(self):
+        # (8 000 + 400 ICCP + 728 ICP) / 80 = 114,10 EUR.
+        r = m.indemnite_rupture("normal", "employeur", date(2025, 1, 5), date(2026, 6, 20), 800000,
+                                iccp_centimes=40000, indemnite_preavis_centimes=72800)
+        self.assertEqual(R(r, "indemnite_centimes"), 11410)
+
+    def test_f4_bulletins_mois_non_couvert(self):
+        # Total 10 000 EUR jusqu'en janvier ; fin le 26/02 ; salaire de fevrier 700 EUR ; ICP 300 EUR ajoutee.
+        v = {"date_fin": date(2026, 2, 26), "salaires_mois_centimes": {"2026-02": 70000}, "iccp_centimes": 0,
+             "regularisation_centimes": 0, "indemnite_preavis_centimes": 30000}
+        r = m.indemnite_rupture_bulletins("normal", "employeur", date(2025, 1, 5), date(2026, 2, 1), [v],
+                                          total_bulletins_centimes=1000000, total_jusqua="2026-01")
+        self.assertEqual(R(r, "assiette_centimes"), 1100000)
+
+
+class F5F6F7PreavisDispenseEtDixieme(unittest.TestCase):
+
+    def test_f5_proportion_art111(self):
+        # 728 EUR ; prevu du mois 10 560 min ; dispense 2 400 min : 728 x 2 400 / 10 560 = 165,4545... -> 165,45 EUR.
+        mo = {"salaire_mensualise_centimes": 72800, "prevu_mois": 10560, "mixte": True, "prevu_dispense": 2400,
+              "minutes_dispense": 2400}
+        self.assertEqual(R(m.indemnite_preavis_dispense("complete", [mo], 420), "indemnite_centimes"), 16545)
+
+    def test_f6_lecture_a(self):
+        # (9 000 + 960) min = 166 h x 5 EUR = 830 EUR dus - 600 EUR verses = 230 EUR.
+        aucune = {c: {"minutes": 0, "incluses": False}
+                  for c in ("feries_chomes_payes", "absences_remunerees", "heures_complementaires")}
+        r = m.regularisation_finale_preavis_dispense([], 60000, 500, 9000, 960, 10000, aucune)
+        self.assertEqual(R(r, "versement_centimes"), 23000)
+
+    def test_f7_iccp_precedente_dans_la_base(self):
+        # Periode 1 : 6 jours ; maintien 6 / 6 x 40 h x 4,61 = 184,40 EUR > dixieme 160 EUR : 184,40 EUR.
+        # Periode 2 : base 1 800 + 184,40 = 1 984,40 EUR ; dixieme 198,44 EUR > 184,40 : 198,44 EUR. Total 382,84 EUR.
+        p = [{"jours_acquis": 6, "jours_payes": 0, "salaires_bruts_periode_centimes": 160000},
+             {"jours_acquis": 6, "jours_payes": 0, "salaires_bruts_periode_centimes": 180000}]
+        r = m.iccp("complete", "normal", p, 2400, 461)
+        self.assertEqual(R(r, "detail_centimes"), [18440, 19844])
+        self.assertEqual(R(r, "iccp_centimes"), 38284)
+
+    def test_f7_casf_l423_6_plancher(self):
+        # 12 jours ; maintien 368,80 EUR ; dixieme CCN (1 600 + 0) / 10 = 160 EUR ; CASF (1 600 + 500) / 10 = 210 EUR :
+        # le plancher legal est sous le resultat de la CCN : 368,80 EUR.
+        r = m.indemnite_cp(12, 2400, 461, 160000, icp_versee_pendant_periode_centimes=0,
+                           icp_annee_precedente_centimes=50000)
+        self.assertEqual(R(r, "indemnite_centimes"), 36880)
+        # Dixieme CCN 400 EUR, CASF 500 EUR > 400 : refus A-28.
+        r = m.indemnite_cp(12, 2400, 461, 400000, icp_versee_pendant_periode_centimes=0,
+                           icp_annee_precedente_centimes=100000)
+        self.assertEqual(r["code"], "A-28")
+
+
+class F9F12CDD(unittest.TestCase):
+
+    def test_f9_plus_haut(self):
+        p = [{"salaires_bruts_periode_centimes": 160000, "jours_acquis": 6, "jours_payes": 0}]
+        self.assertEqual(R(m.iccp_cdd("terme", p, 16000, 160000, 2400, 461), "iccp_centimes"), 18440)
+        # Dixieme plus haut : base 3 000 + 300 = 3 300 EUR, dixieme 330 EUR > maintien 184,40 EUR.
+        p = [{"salaires_bruts_periode_centimes": 300000, "jours_acquis": 6, "jours_payes": 0}]
+        self.assertEqual(R(m.iccp_cdd("terme", p, 30000, 300000, 2400, 461), "iccp_centimes"), 33000)
+
+    def test_f10_ifc_sans_iccp(self):
+        self.assertEqual(R(m.indemnite_fin_cdd(300000, "terme", iccp_centimes=33000), "indemnite_centimes"), 30000)
+
+    def test_f11_f12(self):
+        self.assertEqual(R(m.salaire_mois_cdd_moins_d_un_mois(72800, 20000, 420, 600), "valeur_centimes"), 52800)
+        self.assertFalse(R(m.qualifier_semaine_sans_accueil_cdd("46"), "deductible"))
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -14,13 +14,15 @@ from .conges import (acquisition_cp, jours_enfants_a_charge, jours_fractionnemen
                      indemnite_cp, complement_cp_annee_complete, paiement_cp_annee_incomplete,
                      indemnite_cp_prise_partielle, conges_apres_changement_type)
 from .indemnites import (minimum_entretien_journalier, verifier_entretien_journalier, indemnite_entretien_mois,
-                         indemnite_repas_mois, indemnite_kilometrique, indemnite_kilometrique_mois)
+                         indemnite_repas_mois, indemnite_kilometrique, indemnite_kilometrique_mois,
+                         duree_travail_art99)
 from .fin_contrat import (duree_preavis, indemnite_compensatrice_preavis, indemnite_preavis_dispense,
                           regularisation_finale_preavis_dispense, jours_a_indemniser, iccp,
                           indemnite_rupture, indemnite_rupture_bulletins, dates_fin_preavis_possibles,
+                          date_fin_preavis, periode_indemnite_deces,
                           regularisation_annuelle, regularisation_finale,
                           indemnite_precarite_cdd, solde_de_tout_compte)
-from .evenements import EVENEMENTS, conge_evenement_familial, jours_conge_evenement
+from .evenements import EVENEMENTS, conge_evenement_familial, jours_conge_evenement, conge_deuil
 from .perimetre import verifier_perimetre, convertir_brut_net
 from .regions import REGIONS, brut_depuis_net, repere_net_minimum, feries_locaux, region_du_departement
 from .planning_variable import (semaine_prevue, mensualisation_planning_variable,

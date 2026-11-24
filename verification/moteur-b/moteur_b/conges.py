@@ -139,16 +139,29 @@ def jours_fractionnement(droits_acquis, jours_conge_principal_pris_du_1er_mai_au
 
 @api("R-CP-09", "R-JF-01")
 def decompte_jours_cp(premier_jour_absence, jour_reprise, jours_travailles, feries_travailles=(),
-                      region="metropole"):
+                      region="metropole", jours_arret_maladie=(), date_fin_contrat=None):
     """Jours de CP decomptes (R-CP-09) : du premier jour ouvrable qui aurait du
     etre travaille jusqu'a la veille de la reprise ; chaque jour ouvrable compte
     (lundi a samedi), sauf ferie chome. jours_travailles : 0 = lundi.
     Lundi de Pentecote : ferie ordinaire (T-040).
+    T-103 (C15, A1) : CCN 48.1.1.3 (KALIARTI000043942123) : « les jours de conges
+    payes qui coincident avec la periode de l'arret de travail ne sont pas
+    decomptes » : jours_arret_maladie (dates) ne sont pas comptes.
+    T-103 (C16, A2) : contrat fini avant la reprise : decompte jusqu'a la fin du
+    contrat (date_fin_contrat) ; le reste est paye en indemnite compensatrice
+    (CCN 67).
     Sortie : jours_decomptes, premier_jour_decompte."""
     if not (isinstance(premier_jour_absence, date) and isinstance(jour_reprise, date)):
         raise ErreurSaisie("Dates attendues.")
     if jour_reprise <= premier_jour_absence:
         raise ErreurSaisie("La reprise doit suivre le premier jour d'absence.")
+    if date_fin_contrat is not None:
+        if not isinstance(date_fin_contrat, date) or date_fin_contrat < premier_jour_absence:
+            raise ErreurSaisie("date_fin_contrat : date attendue, apres le premier jour d'absence.")
+        jour_reprise = min(jour_reprise, date_fin_contrat + timedelta(days=1))
+    exclus = set(jours_arret_maladie or ())
+    if any(not isinstance(x, date) for x in exclus):
+        raise ErreurSaisie("jours_arret_maladie : dates attendues.")
     jt = set(int(x) for x in jours_travailles)
     ft = set(feries_travailles)
     feries = {}
@@ -159,19 +172,19 @@ def decompte_jours_cp(premier_jour_absence, jour_reprise, jours_travailles, feri
     locaux = {d: n for d, n in feries_locaux_entre(premier_jour_absence, jour_reprise, region_valide(region)).items()
               if d not in feries}
     if locaux:
-        a = _decompte(premier_jour_absence, jour_reprise, jt, ft, {**feries, **locaux})
-        b = _decompte(premier_jour_absence, jour_reprise, jt, ft, feries)
+        a = _decompte(premier_jour_absence, jour_reprise, jt, ft, {**feries, **locaux}, exclus)
+        b = _decompte(premier_jour_absence, jour_reprise, jt, ft, feries, exclus)
         if a != b:
             raise NonGere("A77-DECOMPTE-CP", ["R-CP-09", "T077-R3"], details={
                 "lectures": {"A": a[0], "B": b[0]},
                 "message": f"Conge a decompte a confirmer : {a[0]} jours si le ferie local est un ferie de l'AM "
                            f"(lecture A), {b[0]} jours sinon (lecture B)."})
-    n, debut = _decompte(premier_jour_absence, jour_reprise, jt, ft, feries)
+    n, debut = _decompte(premier_jour_absence, jour_reprise, jt, ft, feries, exclus)
     return resultat_ok(decompte_jours_cp.regles, {"jours_decomptes": n,
                                                   "premier_jour_decompte": debut.isoformat() if debut < jour_reprise else None})
 
 
-def _decompte(premier_jour_absence, jour_reprise, jt, ft, feries):
+def _decompte(premier_jour_absence, jour_reprise, jt, ft, feries, exclus=frozenset()):
 
     def chome(d):
         return d in feries and d not in ft
@@ -184,7 +197,7 @@ def _decompte(premier_jour_absence, jour_reprise, jt, ft, feries):
     debut = d
     n = 0
     while d < jour_reprise:
-        if d.weekday() <= 5 and not chome(d):
+        if d.weekday() <= 5 and not chome(d) and d not in exclus:
             n += 1
         d += timedelta(days=1)
     return n, debut
@@ -232,8 +245,12 @@ def _indemnite_cp(jours_conges, heures_hebdo_minutes, taux_horaire_centimes, sal
     # Dixieme (R-CP-06) : variantes selon les ambiguites ouvertes.
     dims = ["A-26"]
     options = [maintiens]
+    # T-103 (F7) : CCN 48.1.1.5 : base « y compris celle versee au titre des conges payes pris au cours de ladite
+    # periode » : l'ICP versee pendant la periode (icp1). CASF L423-6 (LEGIARTI000006798032 : dixieme de la
+    # remuneration recue « et [de] l'indemnite de conge paye de l'annee precedente ») est un minimum legal (C. trav.
+    # L2251-1) : controle apres le calcul ; refus A-28 seulement si ce minimum depasse le resultat de la CCN.
     dims.append("A-28")
-    options.append(sorted({icp1, icp2}))
+    options.append([icp1])
     dims.append("CP-SUPP")
     options.append([False, True] if sup else [False])
     amb = sommes_assiette_ambigues or {}
@@ -259,6 +276,12 @@ def _indemnite_cp(jours_conges, heures_hebdo_minutes, taux_horaire_centimes, sal
             "maintien_exact_centimes": [texte_fraction(x) for x in maintiens],
             "dixieme_exact_centimes": sorted(texte_fraction(x) for x in dixiemes)})
     valeur = next(iter(resultats.values()))
+    if icp2 != icp1:
+        legal = (base + icp2 + sum(mt for _, mt in amb_items)) / 10
+        if legal > valeur:
+            raise NonGere("A-28", regles, precision=(
+                "Le dixieme du CASF L423-6 (ICP de l'annee precedente) depasse ici le resultat de la CCN 48.1.1.5."),
+                details={"ccn_exact_centimes": texte_fraction(valeur), "casf_l423_6_exact_centimes": texte_fraction(legal)})
     if all(valeur == m for m in maintiens) and all(valeur > d for d in dixiemes):
         methode = "maintien"
     elif all(valeur == d for d in dixiemes) and all(valeur > m for m in maintiens):

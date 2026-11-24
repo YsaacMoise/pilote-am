@@ -239,14 +239,15 @@ class CDDMensualisation(unittest.TestCase):
         self.assertEqual(m.cdd_moins_d_un_mois(date(2026, 1, 30), date(2026, 2, 10))["code"], "DATE-MOIS")
 
     def test_p1_deux_lectures(self):
-        # Lecture 1 : 600 - 300 = 300 EUR ; lecture 2 : 5 EUR x 72 h = 360 EUR.
+        # T-103 (F11) : lecture 1 seule (CCN 108.1 « quels que soient le nombre d'heures [...] et le nombre de
+        # semaines », C. trav. L1242-14 ; DG 22/11/2026, question n° 9 close) : 600 - 300 = 300 EUR.
         r = m.salaire_mois_cdd_moins_d_un_mois(60000, 30000, 500, 72 * 60)
-        self.assertEqual(R(r, "lectures"), [30000, 36000])
         self.assertEqual(R(r, "valeur_centimes"), 30000)
-        self.assertEqual(R(r, "a_confirmer_centimes"), 6000)
+        self.assertEqual(R(r, "a_confirmer_centimes"), 0)
 
     def test_p2_qualification(self):
-        self.assertTrue(R(m.qualifier_semaine_sans_accueil_cdd("52"), "deductible"))
+        # T-103 (F12) : mode 46 semaines (CCN 97.1, 109.2 par L1242-14) ; la lecture « 52 » est refusee.
+        self.assertEqual(m.qualifier_semaine_sans_accueil_cdd("52")["statut"], "erreur_saisie")
         self.assertFalse(R(m.qualifier_semaine_sans_accueil_cdd("46"), "deductible"))
         r = m.deux_lectures_cdd(52000, 50000, "P2")
         self.assertEqual((R(r, "valeur_centimes"), R(r, "a_confirmer_centimes")), (50000, 2000))
@@ -273,34 +274,34 @@ class CDDFin(unittest.TestCase):
         self.assertEqual(m.indemnite_fin_cdd(160000, "autre")["statut"], "erreur_saisie")
 
     def test_p4(self):
-        # Lecture 1 sans ICCP : 160 EUR ; lecture 2 avec ICCP 176 EUR : 176 EUR ; a confirmer 17,60 EUR.
+        # T-103 (F10) : l'ICCP n'entre pas dans la base de l'IFC (circulaire DRT n° 18/90, § 4.2.3) : 160 EUR.
         r = m.indemnite_fin_cdd(160000, "terme", iccp_centimes=17600)
-        self.assertEqual(R(r, "lectures"), [16000, 17760])
-        self.assertEqual(R(r, "a_confirmer_centimes"), 1760)
+        self.assertEqual(R(r, "indemnite_centimes"), 16000)
+        self.assertEqual(R(r, "a_confirmer_centimes"), 0)
 
     def test_iccp_ifc_dans_la_base_et_plancher(self):
-        # Dixieme : (1 600 + 160) / 10 = 176 EUR = plancher L1242-16. Jours inconnus : lecture 2 non donnee.
+        # Dixieme : (1 600 + 160) / 10 = 176 EUR = plancher L1242-16. T-103 (F9) : jours inconnus : le maintien
+        # a comparer n'est pas connu : refus avec le code de l'acquisition.
         p = [{"salaires_bruts_periode_centimes": 160000, "jours_acquis": None, "jours_payes": 0, "code_jours": "A-23"}]
         r = m.iccp_cdd("terme", p, 16000, 160000, 2400, 461)
-        self.assertEqual(R(r, "iccp_centimes"), 17600)
-        self.assertIsNone(R(r, "lectures"))
-        self.assertEqual(R(r, "code_lecture_2"), "A-23")
-        # 6 jours : maintien = 6 / 6 x 40 h x 4,61 = 184,40 EUR > 176 EUR (P3).
+        self.assertEqual(r["code"], "A-23")
+        # 6 jours : maintien = 6 / 6 x 40 h x 4,61 = 184,40 EUR > 176 EUR. T-103 (F9, CCN 48.1.1.5 « le montant le
+        # plus avantageux ») : 184,40 EUR.
         p[0]["jours_acquis"] = 6
         r = m.iccp_cdd("terme", p, 16000, 160000, 2400, 461)
-        self.assertEqual(R(r, "lectures"), [17600, 18440])
-        self.assertEqual(R(r, "a_confirmer_centimes"), 840)
-        # IFC non due (essai) : base sans IFC, ICCP toujours due (CASF L423-7).
+        self.assertEqual(R(r, "iccp_centimes"), 18440)
+        # IFC non due (essai) : base sans IFC (dixieme 160 EUR) ; maintien 184,40 EUR plus haut.
         r = m.iccp_cdd("essai", p, 0, 160000, 2400, 461)
-        self.assertEqual(R(r, "iccp_centimes"), 16000)
+        self.assertEqual(R(r, "iccp_centimes"), 18440)
 
     def test_iccp_suite_cdi_et_refus(self):
         p = [{"salaires_bruts_periode_centimes": 160000, "jours_acquis": 6, "jours_payes": 0}]
         self.assertEqual(R(m.iccp_cdd("suite_cdi", p, 0, 160000, 2400, 461), "iccp_centimes"), 0)
-        # D10 : deux periodes, part sure donnee = (1 600 + 1 600 + 160) / 10 ; lecture 2 non calculee (A-50).
+        # T-103 (F7, F9) : deux periodes. Periode 1 : max(160 ; 184,40) = 184,40 EUR. Periode 2 : base 1 600 + 184,40
+        # (ICCP de la periode 1, CCN 48.1.1.5) + 160 (IFC) = 1 944,40 EUR, dixieme 194,44 EUR > 184,40.
+        # Total 378,84 EUR > plancher (3 200 + 160) / 10 = 336 EUR. Ancien refus A-50 (D10) leve.
         r = m.iccp_cdd("terme", p + p, 16000, 320000, 2400, 461)
-        self.assertEqual(R(r, "iccp_centimes"), 33600)
-        self.assertEqual(R(r, "code_lecture_2"), "A-50")
+        self.assertEqual(R(r, "iccp_centimes"), 37884)
         self.assertEqual(m.iccp_cdd("terme", [dict(p[0], jours_supplementaires=2)], 16000, 160000, 2400, 461)["code"],
                          "CP-SUPP")
         q = [dict(p[0], jours_payes=6)]

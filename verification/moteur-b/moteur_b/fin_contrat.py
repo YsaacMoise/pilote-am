@@ -46,7 +46,11 @@ _DUREES = {
     # moins d'un an : 1 mois (CASF) contre 15 jours (CCN), refus PREAVIS-DEMISSION-3-12.
     "employeur": {"moins_de_trois_mois": {"jours": 8}, "trois_mois_a_un_an": {"jours": 15},
                   "un_an_et_plus": {"mois": 1}},
-    "am": {"moins_de_trois_mois": {"jours": 8}, "trois_mois_a_un_an": "PREAVIS-DEMISSION-3-12",
+    # T-103 (F2, A2) : demission de 3 mois a moins d'un an : 15 jours calendaires (CCN 120). CASF L423-26
+    # (LEGIARTI000006798054) : preavis d'un mois « a moins que l'employeur n'accepte d'abreger cette duree » ; la CCN,
+    # signee par l'organisation des particuliers employeurs, l'abrege. C. trav. L2251-1 (rendu applicable par CASF
+    # L423-2, 6°) : la convention peut etre plus favorable au salarie. Remplace le refus PREAVIS-DEMISSION-3-12.
+    "am": {"moins_de_trois_mois": {"jours": 8}, "trois_mois_a_un_an": {"jours": 15},
            "un_an_et_plus": {"mois": 1}},
 }
 
@@ -56,15 +60,14 @@ def duree_preavis(auteur, date_debut_accueil, date_envoi, date_premiere_presenta
     """Duree du preavis (R-FIN-02 corrigee par T-027, CCN art. 120).
     auteur : « employeur » (retrait de l'enfant) ou « am » (demission).
     Retrait : 8 jours calendaires (< 3 mois), 15 jours (3 mois a < 1 an), 1 mois.
-    Demission : 8 jours calendaires (< 3 mois) ; 3 mois a < 1 an : refus
-    PREAVIS-DEMISSION-3-12 (CASF L423-26 contre CCN 120) ; 1 mois.
+    Demission : 8 jours calendaires (< 3 mois) ; 3 mois a < 1 an : 15 jours
+    (T-103, F2) ; 1 mois. Sortie aussi : date_fin_preavis (T-103, F1).
     Pas de preavis : periode d'essai, faute grave ou lourde, agrement.
     Deces de l'enfant : duree du retrait, a la date du deces (R-FIN-07).
     Anciennete appreciee « au jour de la date d'envoi de la lettre recommandee ou
     de sa date de remise en main propre » (CCN art. 120, dernier alinea) ; la date
     de premiere presentation fixe seulement le point de depart (non utilisee ici).
-    La date de fin n'est pas calculee (PREAVIS-DATE-FIN).
-    Sortie : preavis (None, {"jours": n} ou {"mois": 1})."""
+    Sortie : preavis (None, {"jours": n} ou {"mois": 1}), date_fin_preavis."""
     regles = ["R-FIN-02"]
     _motif_exclu(motif, regles)
     if auteur not in ("employeur", "am"):
@@ -83,8 +86,14 @@ def duree_preavis(auteur, date_debut_accueil, date_envoi, date_premiere_presenta
     duree = _DUREES[auteur][c_envoi]
     if isinstance(duree, str):
         raise NonGere(duree, regles + ["R-FIN-03"], details={"casf_l423_26": {"mois": 1}, "ccn_120": {"jours": 15}})
-    return resultat_ok(duree_preavis.regles, {"preavis": duree, "anciennete": c_envoi,
-                                              "note": "Date de fin du preavis non calculee (R-FIN-03, methode non ecrite)."})
+    # T-103 (F1, corrige) : dernier jour du preavis ; le jour de la premiere presentation est le 1er jour.
+    res = {"preavis": duree, "anciennete": c_envoi}
+    try:
+        res["date_fin_preavis"] = _fin_delai(date_premiere_presentation, duree)
+    except NonGere as e:  # DATE-MOIS : la duree reste connue, la date de fin non
+        res["date_fin_preavis"] = None
+        res["code_date_fin_preavis"] = e.code
+    return resultat_ok(duree_preavis.regles, res)
 
 
 @api("R-FIN-05", "R-ABS-07", "R-ABS-08")
@@ -137,12 +146,10 @@ def indemnite_preavis_dispense(type_annee, mois, taux_horaire_centimes):
       pour le mois est de l'ICP. ICP = mensualise x (prevu - non payes) / prevu,
       c'est-a-dire le mensualise moins la deduction de l'art. 111 pour les jours
       apres la date de fin (et avant l'embauche). Mois entier : mensualise entier.
-    - Mois « mixte » (jours payes en salaire et jours dispenses) : la part ICP n'est
-      fixee par aucun texte (point 1, « A CONFIRMER », question P-1). Deux lectures :
-      (i) proportion de l'art. 111 : mensualise x prevu dispense / prevu du mois ;
-      (ii) heures dispensees x taux horaire. Si elles different : refus P-1 (les
-      deux totaux sont dans details). Dispense qui couvre une semaine sans accueil
-      dans un mois mixte (annee incomplete) : refus P-1 (aucune lecture ecrite).
+    - Mois « mixte » (jours payes en salaire et jours dispenses) : T-103 (F5) :
+      proportion de l'art. 111 (CCN 122) : mensualise x prevu dispense / prevu du
+      mois. Dispense qui couvre une semaine sans accueil dans un mois mixte (annee
+      incomplete) : refus P-1 garde (cas absent du tableau T-103).
     mois : liste de dicts {"salaire_mensualise_centimes", "prevu_mois" (minutes en
       annee complete, jours en annee incomplete, denominateur de l'art. 111),
       "non_payes" (memes unites : jours du mois apres la fin et avant l'embauche,
@@ -168,9 +175,11 @@ def indemnite_preavis_dispense(type_annee, mois, taux_horaire_centimes):
                 raise NonGere("P-1", regles, precision=(
                     f"Mois {i + 1} : dispense sur une semaine sans accueil dans un mois paye en partie en salaire."))
             vi = vers_centimes(Fraction(s) * pd / pm, f"ICP mois {i + 1}, proportion art. 111", regles)
-            vii = vers_centimes(md * t / 60, f"ICP mois {i + 1}, heures x taux", regles)
-            if vi != vii:
-                p1 = True
+            # T-103 (F5, A1) : CCN 122 (KALIARTI000043942323) : « Si le preavis se termine en cours de mois, le
+            # particulier employeur tient compte de la deduction d'absence prevue a l'article 111 ». La proportion
+            # de l'art. 111 est la methode ecrite ; « heures x taux » n'a pas de texte. Refus P-1 leve (sauf semaine
+            # sans accueil dans la dispense, ci-dessus, non traitee par le tableau).
+            vii = vi
         else:
             npay = positif(mo.get("non_payes", 0), f"mois[{i}].non_payes")
             if npay > pm:
@@ -227,19 +236,15 @@ def regularisation_finale_preavis_dispense(ecarts_annuels_signes_centimes, salai
             raise ErreurSaisie(r.get("message", "regularisation_finale"), regles)
         return r["resultat"]["versement_centimes"]
 
-    va = une(verse, trav + disp)
-    vb = []
     for x in icps:
-        icp = entier(x, "indemnite_preavis_centimes")
-        if icp > verse:
+        if entier(x, "indemnite_preavis_centimes") > verse:
             raise ErreurSaisie("ICP superieure aux salaires verses.", regles)
-        vb.append(une(verse - icp, trav))
-    if any(v != va for v in vb):
-        raise NonGere("D-2", regles, precision=(
-            "Heures du preavis dispense dans la regularisation de fin (CCN art. 124, 109.2) : comptees comme dues "
-            "et payees (a) ou laissees hors du calcul avec l'ICP a part (b), non tranche."),
-            details={"lecture_a_centimes": va, "lecture_b_centimes": vb})
-    return resultat_ok(regles, {"versement_centimes": va, "lectures": {"a": va, "b": vb}})
+    # T-103 (F6, A2) : lecture (a). CCN 124 : regularisation « effectuee a la date de fin du contrat de travail » ;
+    # CCN 64 : cette date est la « date prevue de fin du preavis » ; CCN 66 : l'ICP « correspond a la remuneration
+    # due au salarie jusqu'a la date de fin du contrat ». Les jours dispenses sont dans la periode, comptes comme
+    # dus et payes. Refus D-2 leve.
+    va = une(verse, trav + disp)
+    return resultat_ok(regles, {"versement_centimes": va, "lecture": "a (T-103, F6)"})
 
 
 @api("R-FIN-10")
@@ -311,13 +316,15 @@ def iccp(type_annee, motif, periodes, heures_hebdo_minutes, taux_horaire_centime
                 raise NonGere("ASSIETTE-A-CONFIRMER", regles + ["R-CP-06"], precision=(
                     "Regularisation de fin a confirmer : la base du dixieme de la derniere periode en depend."),
                     details={"sommes_a_confirmer": ["regularisation"]})
+            # T-103 (F7, A1) : CCN 48.1.1.5 : le dixieme porte sur « la remuneration totale brute [...] percue
+            # [...] au cours de la periode de reference [...], y compris celle versee au titre des conges payes ».
+            # L'ICCP de la periode precedente, versee a la fin du contrat (dans la derniere periode), et la
+            # regularisation (salaire, CCN 124) entrent dans la base. Refus A-50 (SUS-04) leve pour l'ICCP.
             base_periode = entier(p.get("salaires_bruts_periode_centimes"),
-                                  f"periodes[{i}].salaires_bruts_periode_centimes") + max(0, reg)
+                                  f"periodes[{i}].salaires_bruts_periode_centimes") + max(0, reg) + precedente
             amb = {}
             for nom, montant in (p.get("sommes_assiette_ambigues") or {}).items():
                 amb[nom] = (montant, "A-50")
-            if precedente:
-                amb["iccp_periode_precedente"] = (precedente, "A-50")
             val, methode, _, _ = _indemnite_cp(
                 a, heures_hebdo_minutes, taux_horaire_centimes, base_periode,
                 p.get("icp_versee_pendant_periode_centimes", 0), p.get("icp_annee_precedente_centimes", 0),
@@ -345,9 +352,8 @@ def indemnite_rupture(motif, auteur, date_debut_accueil, date_reference, salaire
     regularisation definitive (art. 124, soumise a cotisations) sont des
     salaires bruts : ils entrent dans l'assiette. Fiches DDETS 31 du 19/01/2023 :
     11 662,78 EUR (Durand) et 9 148,57 EUR (Bertrand).
+    T-103 (F4) : l'indemnite de preavis entre aussi dans l'assiette.
     Restent refuses :
-    - indemnite de preavis non nulle : A-45 (art. 64.2 non relu par T-050,
-      point rouvert par la direction) ;
     - regularisation negative : A-45 (un solde en faveur de l'employeur n'est
       pas un salaire percu ; aucun texte lu ne dit s'il se retire) ;
     - sommes_a_confirmer non vide (ICCP ou regularisation non calculee) :
@@ -357,16 +363,8 @@ def indemnite_rupture(motif, auteur, date_debut_accueil, date_reference, salaire
     l'art. 121-1 ; service-public F16842 : « cette condition d'anciennete est
     supprimee et l'indemnite est due »). A-47 levee.
     date_reference : date d'envoi de la lettre (ou du deces).
-    T-074 (preavis dispense par l'employeur, regles/t074-preavis-dispense.md,
-    point 5) :
-    - date_fin_contrat (date prevue de fin du preavis, CCN art. 64) : si elle est
-      donnee, les 9 mois sont testes a la date d'envoi (service-public F16842 :
-      « L'anciennete se calcule a la date d'envoi de la lettre ») et a la date de
-      fin (CCN art. 60 et 64.2 : periode dispensee comptee « au titre de
-      l'anciennete »). Si la condition change selon la date : refus D-1.
-    - indemnite de preavis : l'assiette est calculee avec et sans elle (CCN 121.1,
-      « salaires bruts » ; question 4 de l'envoi 1 sans reponse). Si les deux
-      montants different : refus A-45.
+    date_fin_contrat : date de fin du contrat (CCN 64). T-103 (F3) : les 9 mois
+    s'apprecient a cette date (CCN 60, 64.2) ; sans elle, a date_reference.
     Sortie : indemnite_centimes (non soumise a cotisations)."""
     regles = ["R-FIN-06"]
     _motif_exclu(motif, regles)
@@ -383,15 +381,12 @@ def indemnite_rupture(motif, auteur, date_debut_accueil, date_reference, salaire
         regles = ["R-FIN-07"]
         neuf_mois = True  # condition de 9 mois sans objet (CCN 119.4.2 ; F16842)
     else:
-        neuf_mois = anciennete_atteinte(date_debut_accueil, date_reference, 9, regles)
-        if date_fin_contrat is not None and date_fin_contrat != date_reference:
-            neuf_fin = anciennete_atteinte(date_debut_accueil, date_fin_contrat, 9, regles)
-            if neuf_fin != neuf_mois:
-                raise NonGere("D-1", regles + ["T074-RUPTURE"], precision=(
-                    "9 mois d'accueil atteints a la date de fin du contrat ("
-                    + date_fin_contrat.isoformat() + ") mais pas a la date d'envoi ("
-                    + date_reference.isoformat() + ") : date d'appreciation non tranchee (CCN 121.1, 60, 64.2 ; "
-                    "F16842)."))
+        # T-103 (F3, A1) : CCN 60 (KALIARTI000043942169) : l'anciennete « s'arrete a la date a laquelle le contrat
+        # de travail prend fin » ; CCN 64 : fin du preavis, ou « date prevue de fin du preavis » s'il est dispense ;
+        # CCN 64.2 : la periode d'inexecution compte « au titre de l'anciennete ». Les 9 mois s'apprecient a la fin
+        # du contrat (date_fin_contrat). Refus D-1 leve. Sans date_fin_contrat : date_reference, que l'appelant
+        # doit alors prendre egale a la fin du contrat.
+        neuf_mois = anciennete_atteinte(date_debut_accueil, date_fin_contrat or date_reference, 9, regles)
     if not neuf_mois:
         return resultat_ok(indemnite_rupture.regles, {"indemnite_centimes": 0, "raison": "moins de 9 mois d'accueil"})
     a_confirmer = sorted(str(x) for x in (sommes_a_confirmer or ()))
@@ -405,56 +400,88 @@ def indemnite_rupture(motif, auteur, date_debut_accueil, date_reference, salaire
             and regularisation_centimes < 0:
         raise NonGere("A-45", regles, precision="Regularisation negative : effet sur l'assiette non ecrit.",
                       details={"sommes_ambigues_centimes": {"regularisation_centimes": regularisation_centimes}})
+    # T-103 (F4, A1) : CCN 121.1 exclut seulement les « indemnites non soumises a contributions et cotisations
+    # sociales ». L'indemnite de preavis est « soumise a contributions et cotisations sociales » (CCN 64.2) : elle
+    # entre dans l'assiette, comme l'ICCP (48.1.1.5) et la regularisation (124). Refus A-45 leve pour le preavis.
     incluses = {n: entier(v, n) for n, v in (("iccp_centimes", iccp_centimes), ("icp_centimes", icp_centimes),
                                               ("regularisation_centimes", regularisation_centimes))}
-    assiette = base + sum(incluses.values())
+    assiette = base + sum(incluses.values()) + preavis
     montant = vers_centimes(Fraction(assiette, 80), "indemnite de rupture", regles)
-    if preavis:
-        # T-074 (point 5) : avec et sans l'indemnite de preavis (envoi 1, question 4).
-        avec = vers_centimes(Fraction(assiette + preavis, 80), "indemnite de rupture avec preavis", regles)
-        if avec != montant:
-            raise NonGere("A-45", regles + ["T074-RUPTURE"], precision=(
-                "Indemnite de preavis dans l'assiette du 1/80 (CCN 121.1 « salaires bruts », 64.2 « soumise a "
-                "contributions et cotisations sociales ») : question 4 de l'envoi 1 sans reponse."),
-                details={"sommes_ambigues_centimes": {"indemnite_preavis_centimes": preavis},
-                         "sans_preavis_centimes": montant, "avec_preavis_centimes": avec})
-        return resultat_ok(indemnite_rupture.regles, {"indemnite_centimes": montant,
-                                                      "assiette_centimes": assiette,
-                                                      "note": "meme montant avec ou sans l'indemnite de preavis"})
     return resultat_ok(indemnite_rupture.regles,
                        {"indemnite_centimes": montant, "assiette_centimes": assiette})
 
 
-@api("R-FIN-03")
-def dates_fin_preavis_possibles(date_premiere_presentation, preavis):
-    """T-072 : dates de fin possibles d'un preavis execute.
-    CCN art. 64.1 (socle commun) : le preavis est « un delai prefix commencant a
-    courir a compter de la date de la premiere presentation de la lettre
-    recommandee [...] ou de la date de remise en mains propres ». CCN art. 120 :
-    durees en « jours calendaires » ou « un mois ». Aucun texte ne dit si le jour
-    de depart compte (regles/t021-convention.md 2.4, PREAVIS-DATE-FIN) ; la fiche
-    anciennete de la branche (valeur indicative, non conventionnelle) le compte.
-    B ne tranche pas : il rend les deux lectures, triees.
-    - {"jours": n} : presentation + n - 1 (jour de depart compte) et presentation + n.
-    - {"mois": 1} : meme quantieme le mois suivant, moins un jour, et ce quantieme ;
-      refus DATE-MOIS apres le 28 (fin de mois non ecrite).
-    Sortie : dates (liste de datetime.date)."""
-    regles = ["R-FIN-03"]
-    if not isinstance(date_premiere_presentation, date):
-        raise ErreurSaisie("date_premiere_presentation : date attendue.")
+TEXTE_DELAIS = (
+    "CCN 64.1 (KALIARTI000050724233) : « un delai prefix commencant a courir a compter de la date de la premiere "
+    "presentation » ; CCN 120 : la date de premiere presentation « fixe le point de depart du preavis » ; CASF "
+    "L423-24 : « La date de presentation de la lettre recommandee fixe le point de depart du preavis ». Fiche "
+    "officielle F2883 (code.travail.gouv.fr, mise a jour du 07/08/2026, verifiee par la direction) : lettre "
+    "presentee le 8 juillet, « Le preavis s'effectue du 8 juillet au 7 aout 2026 inclus ». Le jour de presentation "
+    "est le 1er jour du preavis (tableau T-103, F1 corrige apres la porte-verite).")
+
+
+def _fin_preavis(premier_jour, preavis):
+    """Dernier jour d'un preavis dont premier_jour est le 1er jour (T-103, F1 corrige ; F8).
+    Jours : premier_jour + n - 1. Mois : veille du meme quantieme n mois plus tard. Depart apres le 28 pour un
+    preavis en mois : refus DATE-MOIS (aucun texte ni exemple officiel pour la veille d'un quantieme absent)."""
+    if not isinstance(premier_jour, date):
+        raise ErreurSaisie("premier jour du preavis : date attendue.")
     if not isinstance(preavis, dict) or len(preavis) != 1:
-        raise ErreurSaisie("preavis : {'jours': n} ou {'mois': 1}.")
+        raise ErreurSaisie("preavis : {'jours': n} ou {'mois': n}.")
     if "jours" in preavis:
-        n = entier(preavis["jours"], "preavis.jours", 1)
-        dates = [date_premiere_presentation + timedelta(days=n - 1), date_premiere_presentation + timedelta(days=n)]
-    elif preavis.get("mois") == 1:
+        return premier_jour + timedelta(days=entier(preavis["jours"], "preavis.jours", 1) - 1)
+    if "mois" in preavis:
         from .calendrier import ajouter_mois
-        quantieme = ajouter_mois(date_premiere_presentation, 1)
-        dates = [quantieme - timedelta(days=1), quantieme]
-    else:
-        raise ErreurSaisie("preavis : {'jours': n} ou {'mois': 1}.")
-    return resultat_ok(dates_fin_preavis_possibles.regles, {"dates": dates},
-                       notes=["Deux lectures : le jour de la premiere presentation compte ou non (CCN 64.1, 120)."])
+        return ajouter_mois(premier_jour, entier(preavis["mois"], "preavis.mois", 1)) - timedelta(days=1)
+    raise ErreurSaisie("preavis : {'jours': n} ou {'mois': n}.")
+
+
+# Ancien nom garde pour les appels internes (duree_preavis).
+_fin_delai = _fin_preavis
+
+
+@api("R-FIN-03", "T103-F1")
+def date_fin_preavis(date_premiere_presentation, preavis):
+    """T-103 (F1, A2, corrige apres la porte-verite) : dernier jour du preavis.
+    Le jour de la premiere presentation (ou de la remise en main propre) est le
+    1er jour du preavis :
+    - {"jours": n} : presentation + n - 1 (lettre du 15/10, 15 jours : 29/10) ;
+    - {"mois": n} : veille du meme quantieme (08/07 : 07/08 ; 15/10 : 14/11) ;
+      depart apres le 28 : refus DATE-MOIS.
+    Pas de report un samedi, un dimanche ou un ferie (aucun texte ne le prevoit).
+    Textes : TEXTE_DELAIS.
+    Sortie : date_fin (datetime.date), premier_jour (jour de la presentation)."""
+    fin = _fin_preavis(date_premiere_presentation, preavis)
+    return resultat_ok(date_fin_preavis.regles, {"date_fin": fin, "premier_jour": date_premiere_presentation,
+                                                 "texte": TEXTE_DELAIS})
+
+
+@api("R-FIN-03", "T103-F1")
+def dates_fin_preavis_possibles(date_premiere_presentation, preavis):
+    """T-072, modifiee par T-103 (F1) : une seule date de fin, celle de
+    date_fin_preavis (jour de presentation compte comme 1er jour). Gardee pour
+    les appels existants. Sortie : dates (liste d'une date)."""
+    fin = _fin_preavis(date_premiere_presentation, preavis)
+    return resultat_ok(dates_fin_preavis_possibles.regles, {"dates": [fin], "texte": TEXTE_DELAIS})
+
+
+@api("R-FIN-07", "T103-F8")
+def periode_indemnite_deces(date_deces, preavis):
+    """T-103 (F8, A2) : periode de l'indemnite egale au preavis apres le deces de
+    l'enfant. CCN 119.4.2 (KALIARTI000043942317) : rupture « au jour du deces » ;
+    versement « du dernier salaire du au jour du deces » et « d'une indemnite egale
+    a l'indemnite compensatrice de preavis definie a l'article 122 [...], qui ne
+    peut etre execute du fait du deces ». Le jour du deces est paye en salaire ;
+    la periode de l'indemnite commence le lendemain et dure le preavis (compte
+    comme F1, le lendemain etant le 1er jour). preavis : sortie de
+    duree_preavis(motif="deces_enfant").
+    Sortie : premier_jour (lendemain du deces), dernier_jour."""
+    if not isinstance(date_deces, date):
+        raise ErreurSaisie("date_deces : date attendue.")
+    premier = date_deces + timedelta(days=1)
+    return resultat_ok(periode_indemnite_deces.regles, {"premier_jour": premier,
+                                                        "dernier_jour": _fin_preavis(premier, preavis),
+                                                        "texte": "CCN 119.4.2 ; " + TEXTE_DELAIS})
 
 
 def _mois_cle(d):
@@ -507,7 +534,11 @@ def indemnite_rupture_bulletins(motif, auteur, date_debut_accueil, date_referenc
     refus FIN-DATE-A-CONFIRMER (aucun texte ne fixe le dernier jour du preavis).
     Sortie : indemnite_centimes, assiette_centimes."""
     regles = ["R-FIN-06"]
-    essai = indemnite_rupture.interne(motif, auteur, date_debut_accueil, date_reference, 0)
+    # T-103 (F3) : 9 mois apprecies a la fin du contrat (date de fin des variantes, si elle est unique).
+    fins = {v.get("date_fin") for v in (variantes or [])}
+    fin_unique = fins.pop() if len(fins) == 1 else None
+    essai = indemnite_rupture.interne(motif, auteur, date_debut_accueil, date_reference, 0,
+                                      date_fin_contrat=fin_unique if isinstance(fin_unique, date) else None)
     if essai["resultat"].get("raison"):
         return resultat_ok(indemnite_rupture_bulletins.regles, essai["resultat"])
     if motif == "deces_enfant":
@@ -562,8 +593,8 @@ def indemnite_rupture_bulletins(motif, auteur, date_debut_accueil, date_referenc
         cle_v = fin.isoformat()
         if pre is None:
             manque.append("indemnite de preavis")
-        elif entier(pre, "indemnite_preavis_centimes"):
-            ambigus[cle_v] = {"indemnite_preavis_centimes": pre}
+        # T-103 (F4) : l'indemnite de preavis entre dans l'assiette (CCN 121.1, 64.2) : comprise dans le dernier
+        # bulletin s'il est couvert, ajoutee sinon (ci-dessous). Plus de refus A-45 pour elle.
         if reg is None:
             manque.append("regularisation")
         elif isinstance(reg, int) and not isinstance(reg, bool) and reg < 0:
@@ -576,13 +607,15 @@ def indemnite_rupture_bulletins(motif, auteur, date_debut_accueil, date_referenc
                 assiette += entier(iccp_v, "iccp_centimes")
             if reg is not None and reg > 0:
                 assiette += entier(reg, "regularisation_centimes")
+            if pre is not None:
+                assiette += entier(pre, "indemnite_preavis_centimes")
         if manque:
             a_confirmer[cle_v] = manque
         else:
             assiettes[cle_v] = assiette
     if ambigus:
         raise NonGere("A-45", regles, precision=(
-            "Indemnite de preavis ou regularisation negative dans l'assiette du 1/80 : point non tranche."),
+            "Regularisation negative dans l'assiette du 1/80 : point non tranche."),
             details={"sommes_ambigues_centimes": ambigus})
     if a_confirmer:
         raise NonGere("ASSIETTE-A-CONFIRMER", regles, precision="Assiette du 1/80 incomplete pour au moins une date de fin.",

@@ -29,6 +29,9 @@ _TYPES = {
     "am_solidarite_familiale": (True, ["M-07"]),
     "am_proche_aidant": (True, ["M-07"]),
     "am_formation_obligatoire": (False, ["M-08"]),
+    # T-103 (C9) : conge de deuil (CCN 48.1.3.1.2) : salaire maintenu sous deduction des indemnites journalieres
+    # (CCN 48.1.3.1.3) : pas de deduction d'absence ; le montant des IJ se retire a part (conge_deuil).
+    "am_deuil_complementaire": (False, ["R-ABS-06", "T103-C9"]),
     "fin_contrat_en_cours_de_mois": (True, ["R-FIN-12"]),
     # T-035a : fiches DREETS Occitanie du 19/01/2023 (52 s, p. 2 ; 46 s, p. 3) :
     # « Embauche et fin de contrat en cours de mois » parmi les absences non
@@ -44,7 +47,6 @@ _NOTE_ENFANT_SANS_SOLDE = (
 _REFUS = {
     "am_evenement_familial": ("R-ABS-06", ["R-ABS-06"]),
     "am_evenement_familial_indemnise_secu": ("M-05", ["R-ABS-06"]),
-    "am_deuil_complementaire": ("M-06", ["R-ABS-06"]),
     "maternite": ("EXCLU-MATERNITE", []),
     "paternite": ("EXCLU-MATERNITE", []),
     "adoption": ("EXCLU-MATERNITE", []),

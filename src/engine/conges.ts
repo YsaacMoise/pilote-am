@@ -4,7 +4,7 @@ import { holidayName } from './holidays';
 import { ferieLocal, regionDe } from './regions';
 import { euros } from './money';
 import {
-  H45, absencesL2NonGerees, daysPerWeek, messageAbsenceL2, inContract, libelleSalaireAConfirmer, makeCtx, monthBase, plannedPlages, planningBrutMin, semainesSansAccueilAnnee, termsAt,
+  H45, absencesL2NonGerees, daysPerWeek, messageAbsenceL2, inContract, libelleSalaireAConfirmer, makeCtx, monthBase, plannedPlages, planningBrutMin, salaireMensualise, semainesSansAccueilAnnee, termsAt,
   toutesSemainesSansAccueil, weeklyMinutes, weeksPerYear, type Ctx,
 } from './payroll';
 import type { AmLeave, Contract } from './model';
@@ -875,12 +875,18 @@ export function indemnite(ctx: Ctx, y: number, enfants = 0): IndemniteCP {
     let mt = maintien(ctx, acq.jours, at, y);
     let pv: IndemniteCP['pv'];
     if (pvActif(termsAt(ctx.c, at))) {
-      // T-103 (C13) : Cass. soc. 09/05/2019, n° 17-26.232 (AM) : rechercher « la durée normale habituelle d'accueil de l'enfant
-      // […] pendant toute la période de référence ». Une seule méthode : C1, heures prévues moyennes de la période.
+      // T-076 (spécification, section 1, P-PV-5) : part sûre = max(dixième ; min(C1, C2)) ; à confirmer = max(dixième ;
+      // max(C1, C2)) − part sûre. C2 pas encore connue en entier (congés pas tous saisis) : borne basse des jours connus.
+      const c1 = mt;
       const c2 = maintienC2(ctx, y, acq.jours, at);
+      mt = Math.min(c1, c2.montant);
+      const haut = Math.max(dix, c1, c2.montant);
       const tAt = termsAt(ctx.c, at);
       const verse = Math.round(((acq.jours / 6) * ((tAt.heuresMensualisees ?? 0) * 60 * 12 / semainesParAn(tAt)) * tAt.rateNet) / 60);
-      pv = { c1: mt, c2: c2.montant, c2Complet: c2.complet, aConfirmer: 0, verseDansSalaire: verse };
+      pv = { c1, c2: c2.montant, c2Complet: c2.complet, aConfirmer: haut - Math.max(dix, mt), verseDansSalaire: verse };
+      if (pv.aConfirmer > 0) {
+        pv.message = `Congés payés, horaires variables : deux méthodes du maintien de salaire sont possibles. ${euros(c1)} sur tes heures prévues moyennes de la période, ou ${euros(c2.montant)} sur les heures prévues des jours de congé pris${c2.complet ? '' : ` (${c2.connus} jour${c2.connus > 1 ? 's' : ''} saisi${c2.connus > 1 ? 's' : ''} sur ${Math.ceil(acq.jours - 1e-9)} : ce montant augmentera avec les congés suivants)`}. Le dixième vaut ${euros(dix)}. L’app retient la part sûre ; ${euros(pv.aConfirmer)} restent à confirmer, non compris dans le total. La convention (article 48.1.1.5) ne tranche pas ; la question est posée à la DDETS.`;
+      }
     }
     const out: IndemniteCP = {
       startYear: y, jours: acq.jours, dixieme: dix, maintien: mt, montant: Math.max(dix, mt),
@@ -898,11 +904,35 @@ export function indemnite(ctx: Ctx, y: number, enfants = 0): IndemniteCP {
     } else if (baseAC) {
       out.aConfirmer = { message: 'Indemnité de congés payés à confirmer : la règle du dixième compte l’indemnité de l’an dernier, qui est elle-même à confirmer.', montants: [], tous: [], baseSure: false };
     }
-    // T-103 (C12) : année incomplète, une seule formule du maintien. CCN 48.1.1.5 : « la rémunération brute que le salarié aurait
-    // perçue pour une durée de travail égale à celle du congé payé ». Cass. soc. 09/05/2019, n° 17-26.232 (AM) : « la durée
-    // normale habituelle d'accueil de l'enfant […] la rémunération que la salariée aurait perçue pendant la période de congé si
-    // elle avait continué à travailler ». Donc jours ÷ 6 × heures par semaine × taux (`maintien`). Le 1/26 du salaire
-    // mensualisé (fiche DREETS BFC) suppose un salaire versé pendant le congé, ce qui n'existe pas en 46 semaines (109.2).
+    // T-030 (A-26, C-CPI-13) : année incomplète, formule du maintien non tranchée. CCN 48.1.1.5 : « la rémunération brute
+    // que le salarié aurait perçue pour une durée de travail égale à celle du congé payé », sans formule ; 102.1.2.2 renvoie
+    // à 48.1.1.5. Urssaf (C-CPI-07) et DREETS Occitanie (C-CPI-03, C-CPI-04) : jours ÷ 6 × heures par semaine × taux.
+    // DREETS Bourgogne-Franche-Comté (fiche 08, C-CPI-13 à C-CPI-15) : jours ÷ 26 × salaire mensualisé. Les deux formules
+    // coïncident en année complète, pas en année incomplète : si l'indemnité change, elle est à confirmer.
+    const tAt = termsAt(ctx.c, at);
+    if (tAt.yearType === 'incomplete') {
+      const sm = salaireMensualise(tAt);
+      const m26 = (j: number) => Math.max(dix, Math.round((j * sm) / 26));
+      const l26 = 'maintien au 1/26 du salaire mensualisé (DREETS Bourgogne-Franche-Comté)';
+      if (out.aConfirmer) {
+        if (out.aConfirmer.baseSure) {
+          const extra = [...out.aConfirmer.montants.map((x) => x.jours), ...(acq.aConfirmer?.controles ?? [])].map((j) => ({ jours: j, montant: m26(j) }));
+          if (extra.some((x) => !out.aConfirmer!.tous.some((t) => t.jours === x.jours && t.montant === x.montant))) {
+            out.aConfirmer = { ...out.aConfirmer, tous: [...out.aConfirmer.tous, ...extra],
+              message: `${out.aConfirmer.message} La formule du maintien de salaire n’est pas tranchée non plus en année incomplète (jours ÷ 6 × heures par semaine, ou ${l26}).` };
+          }
+        }
+      } else if (m26(acq.jours) !== out.montant) {
+        const montants = [
+          { libelle: 'maintien en semaines : jours ÷ 6 × heures par semaine × taux (Urssaf, DREETS Occitanie)', jours: acq.jours, montant: out.montant },
+          { libelle: l26, jours: acq.jours, montant: m26(acq.jours) },
+        ];
+        out.aConfirmer = {
+          message: `Indemnité de congés payés à confirmer : la formule du maintien de salaire n’est pas tranchée en année incomplète. ${euros(out.montant)} (${montants[0].libelle}), ou ${euros(m26(acq.jours))} (${l26}). Aucun texte ne dit laquelle retenir. En attendant une réponse officielle, mets-toi d’accord par écrit avec les parents.`,
+          montants, tous: montants, baseSure: !baseAC,
+        };
+      }
+    }
     // T-025 C-5 : si le salaire d'événement à confirmer change l'indemnité (le dixième l'emporte), l'indemnité est à
     // confirmer, avec les deux montants. S'il ne la change pas (le maintien l'emporte dans les deux cas), rien ne change.
     if (evAC > 0) {
