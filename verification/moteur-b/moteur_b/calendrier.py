@@ -26,14 +26,11 @@ def paques(annee):
     return date(annee, mois, jour)
 
 
-def jours_feries(annee, region="metropole"):
-    """R-JF-01 : jours feries ordinaires (CCN art. 47.2, Code du travail L3133-1). Renvoie {date: nom}.
-    T-103 (R1, A1) : Alsace-Moselle : memes jours qu'en metropole ; le Vendredi saint et le 26 decembre (L3134-13)
-    ne sont pas des feries de l'AM (L3134-1, al. 2 : le chapitre ne s'applique pas « a l'education des enfants »
-    ni « aux emplois a domicile par une personne physique » ; CASF L423-2 ne le rend pas applicable).
-    T-103 (R4, A2) : Mayotte : le 27 avril s'ajoute (C. trav. L3422-2, 1° : « sont des jours feries » ; CCN 47.2)."""
+def jours_feries(annee):
+    """R-JF-01 : jours feries ordinaires (CCN art. 47.2, Code du travail L3133-1),
+    hors Alsace-Moselle. Renvoie {date: nom}."""
     p = paques(annee)
-    out = {
+    return {
         date(annee, 1, 1): "1er janvier",
         p + timedelta(days=1): "lundi de Paques",
         date(annee, 5, 1): "1er mai",
@@ -46,9 +43,6 @@ def jours_feries(annee, region="metropole"):
         date(annee, 11, 11): "11 novembre",
         date(annee, 12, 25): "Noel",
     }
-    if region == "mayotte":
-        out[date(annee, 4, 27)] = "27 avril (abolition de l'esclavage, L3422-2)"
-    return out
 
 
 def est_ferie(d):

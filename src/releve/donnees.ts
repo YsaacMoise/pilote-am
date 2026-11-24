@@ -92,9 +92,7 @@ export function releveDonnees(
     let reel = '';
     let absence = '';
     if (di.kind === 'am' && di.amLeave) { absence = AM_ABS_LABEL[di.amLeave]; if (di.plannedMin > 0) absAm++; }
-    // T-077 (R3) : un férié local ou un férié qui en dépend est à confirmer, jamais compté comme férié chômé certain.
-    else if (di.kind === 'ferie' && !di.ferie) absence = `Férié local à confirmer : ${di.ferieLocal}`;
-    else if (di.kind === 'ferie') { absence = `Férié : ${di.ferie}${di.aConfirmer ? ' (à confirmer)' : ''}`; if (!di.aConfirmer) feries++; }
+    else if (di.kind === 'ferie') { absence = `Férié : ${di.ferie}${di.deducted ? ' (non payé)' : ''}`; feries++; }
     else if (di.kind === 'absent' && di.rec?.abs) {
       absence = CHILD_ABS_LABEL[di.rec.abs] + (di.deducted ? ', retenu' : ', payé');
       if (di.plannedMin > 0) absEnfant++;
@@ -126,7 +124,7 @@ export function releveDonnees(
     mois: m,
     moisLabel: moisL,
     provisoire,
-    titre: provisoire ? 'Relevé du mois, provisoire' : 'Relevé du mois',
+    titre: provisoire ? `Relevé du mois en cours, au ${aujourdhui.slice(8, 10)}/${aujourdhui.slice(5, 7)}` : 'Relevé du mois',
     enfant: c.child,
     famille: c.family,
     am: o.amName.trim(),

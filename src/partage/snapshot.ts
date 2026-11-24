@@ -77,8 +77,7 @@ function jourParent(ctx: Ctx, d: ISODate, am: string): JourParent | null {
   switch (di.kind) {
     case 'hors': return pres.length ? { ...base, statut: 'parti' } : null;
     case 'am': return di.plannedMin ? { ...base, minutes: 0, statut: 'am', motif: motifAm(di.amLeave!, am) } : null;
-    // T-077 (R3) : férié local d'Alsace-Moselle ou de Mayotte, ou férié qui en dépend : à confirmer.
-    case 'ferie': return { ...base, minutes: 0, statut: 'ferie', motif: di.ferie ? `Jour férié (${di.ferie})${di.aConfirmer ? ', à confirmer' : ''}` : `Jour férié local (${di.ferieLocal}), à confirmer` };
+    case 'ferie': return { ...base, minutes: 0, statut: 'ferie', motif: `Jour férié (${di.ferie})${di.deducted ? ', non payé' : ''}` };
     case 'absent': return { ...base, minutes: 0, statut: 'absent', motif: CHILD_ABS_LABEL[di.rec!.abs!] };
     case 'present': return { ...base, statut: di.enCours ? 'present' : 'parti' };
     case 'prevu': return { ...base, statut: d < ctx.today ? 'prevu' : 'attendu', minutes: d < ctx.today ? di.plannedMin : 0 };

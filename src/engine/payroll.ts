@@ -3,14 +3,14 @@ import {
   addDays, eachDay, firstDay, monthsBetween, lastDay, minutes, monthOf, mondayOf, daysBetween, addMonthsToDate,
   type ISODate, type Month,
 } from './dates';
-import { holidayName, isMayDay } from './holidays';
+import { isMayDay } from './holidays';
 import { entretienPlancher, MESSAGE_PERIODE_NON_GEREE, netToBrut } from './rates';
 import { statutJourEvenement } from './evenements';
 import { controleKm, indemniteKmJour } from './km';
 import { euros } from './money';
-import { cpAConfirmerEntre, cpExces, cpExcesAConfirmer, MESSAGE_CP_AU_DELA_A_CONFIRMER } from './conges';
+import { cpDemandesEntre, cpDroitsInconnus, cpExces } from './conges';
 import { nonGeresPeriode } from './nonGeres';
-import { ferieLocal, MESSAGE_MAINTIEN_LOCAL, pourquoiFerieLocal, regionDe } from './regions';
+import { ferieDe, MESSAGE_IJ_MAINTIEN_LOCAL, MESSAGE_MAINTIEN_LOCAL, regionDe } from './regions';
 import { jourDispense } from './preavis';
 import { baseHebdoMin, formePV, lecturePV, mensuelMinutesPV, messageBasePV, minutesPlanning, plagesDuJour, pvActif } from './planningVariable';
 import { cddDeuxLectures, estCddMoinsUnMois, estCddSemainesSansAccueil, joursApresTermeRefuses, messageApresTerme, messageMoisApresTerme, messageTermeAVenir } from './cdd';
@@ -122,8 +122,14 @@ export function amLeaveOn(leaves: AmLeave[], d: ISODate): AmAbs | undefined {
 }
 
 export function amLeaveAt(leaves: AmLeave[], d: ISODate): AmLeave | undefined {
-  for (const l of leaves) if (d >= l.from && d <= l.to) return l;
-  return undefined;
+  let found: AmLeave | undefined;
+  for (const l of leaves) {
+    if (d < l.from || d > l.to) continue;
+    // T-103 (C15) : un arrêt maladie de l'AM pendant ses congés l'emporte : ce jour n'est pas un jour de congé (CCN 48.1.1.3).
+    if (l.type === 'am_malade') return l;
+    found ??= l;
+  }
+  return found;
 }
 
 /** Plages prévues au planning ce jour-là (hors semaines sans accueil, hors contrat) */
@@ -179,12 +185,12 @@ export interface DayInfo {
   aConfirmer?: string;
   /** T-035b : absence de l'enfant notée « sans solde » (ancienne option), désormais payée */
   sansSoldeEnfantPaye?: boolean;
-  /** T-077 (R3) : jour férié local (Alsace-Moselle, Mayotte), férié dans une lecture et jour ordinaire dans l'autre */
-  ferieLocal?: string;
-  /** T-077 (R3) : férié local non travaillé, ou férié national dont la condition de l'art. 47.2 dépend d'un férié local : à confirmer */
-  ferieLocalAConfirmer?: boolean;
-  /** T-077 (R4) : absence de l'AM pour sa maladie ou celle de son enfant, en Alsace-Moselle (L1226-23) : à confirmer */
-  maintienAConfirmer?: boolean;
+  /** T-103 (C3, C5) : donnée à saisir pour calculer ce jour ; le mois n'est pas calculé tant qu'elle manque */
+  donneeManquante?: string;
+  /** T-103 : jour retenu avec une raison à dire dans le mois (jour d'événement familial au-delà de la durée) */
+  raisonRetenue?: string;
+  /** T-103 (R3) : absence de l'AM pour sa maladie ou celle de son enfant, en Alsace-Moselle : salaire maintenu (L1226-23) */
+  maintienLocal?: boolean;
   /** T-074 : jour d'un préavis dont les parents ont dispensé l'AM : payé, sans entretien (CCN art. 64.2, 114.1) */
   dispense?: boolean;
 }
@@ -229,17 +235,19 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
   const rec = ctx.days.get(d);
   const planned = plannedPlages(c, d);
   const plannedMin = planned.reduce((s, p) => s + plageMin(p), 0);
-  const ferie = holidayName(d);
   const region = regionDe(c);
-  const ferieLoc = ferieLocal(region, d);
+  // T-103 (R1, R4) : fériés de l'AM selon la région (regions.ts, ferieDe).
+  const ferie = ferieDe(region, d);
   const amLeave = inContract(c, d) ? amLeaveOn(ctx.leaves, d) : undefined;
   const info: DayInfo = {
     date: d, kind: 'hors', planned, plannedMin, presentMin: 0, extraMin: 0, ferie,
     ferieTravaille: !!rec?.ferieTravaille, amLeave, rec, departOublie: false, enCours: false,
     deducted: false, inDivisor: false,
   };
-  if (ferieLoc) info.ferieLocal = ferieLoc;
   if (!inContract(c, d)) return info;
+  // T-103 (K1) : CCN 113, partage au prorata des enfants transportés seulement si plusieurs employeurs demandent le trajet.
+  // Sans les deux réponses, le jour attend la saisie (B) : jamais des km « à confirmer ».
+  if (rec?.km && indemniteKmJour(rec.km, c.kmTaux, rec.kmPartage, rec.kmEnfants) === undefined) info.donneeManquante = messageKmACompleter(d);
 
   if (amLeave) {
     info.kind = 'am';
@@ -251,16 +259,17 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
         info.deducted = true;
         info.inDivisor = true;
         info.cpSansDroits = true;
-      } else if (amLeave === 'cp' && termsAt(c, d).yearType === 'complete' && cpExcesAConfirmer(ctx).has(d)) {
-        // T-030 (A-23) : droits à confirmer, ce jour est payé dans une lecture et sans solde dans l'autre.
+      } else if (amLeave === 'cp' && termsAt(c, d).yearType === 'complete' && cpDroitsInconnus(ctx).has(d)) {
+        // T-103 (C14) : droits de la période précédente non calculés (donnée à saisir ou cas non géré) : ce jour est payé
+        // ou sans solde selon ces droits. Le mois attend la donnée (B), jamais « à confirmer ».
         info.inDivisor = true;
-        info.aConfirmer = MESSAGE_CP_AU_DELA_A_CONFIRMER;
-        info.cpAConfirmer = true;
+        info.donneeManquante = cpDroitsInconnus(ctx).get(d);
       } else if (region === 'alsaceMoselle' && (amLeave === 'am_malade' || amLeave === 'am_enfant_malade')) {
-        // T-077 (R4) : maintien de salaire du droit local (CT L1226-23) dans une lecture, retenue dans l'autre : à confirmer.
+        // T-103 (R3, décision du DG du 24/11/2026) : salaire maintenu (C. trav. L1226-23), moins les indemnités journalières
+        // saisies (déduites dans le mois, plus bas). Sans leur montant, le mois attend la saisie (B).
         info.inDivisor = true;
-        info.aConfirmer = MESSAGE_MAINTIEN_LOCAL;
-        info.maintienAConfirmer = true;
+        info.maintienLocal = true;
+        if (amLeaveAt(ctx.leaves, d)?.ijSecu === undefined) info.donneeManquante = MESSAGE_IJ_MAINTIEN_LOCAL;
       } else if (amLeave === 'am_malade' || amLeave === 'am_enfant_malade' || amLeave === 'sans_solde') {
         // T-034 : congé sans solde = absence non rémunérée, retenue par la déduction d'absence de l'art. 111. Fiches DREETS
         // Occitanie du 19/01/2023, section 3 : « Absence du salarié pour congés sans solde » ; Urssaf « gérer les absences
@@ -270,26 +279,12 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
         info.inDivisor = true;
       } else if (amLeave === 'evenement') {
         info.inDivisor = true;
-        const st = statutJourEvenement(amLeaveAt(ctx.leaves, d)!, d, ctx.leaves);
-        if (!st.paye) info.aConfirmer = st.raison;
+        const st = statutJourEvenement(amLeaveAt(ctx.leaves, d)!, d, ctx.leaves, c.reposHebdo ?? 7);
+        // T-103 (C6 à C8) : un jour au-delà de la durée est retenu (absence non payée), avec la raison ; une saisie que l'app
+        // ne sait pas lire refuse le mois (nonGeresPeriode).
+        if (!st.paye && !st.nonGere) { info.deducted = true; info.raisonRetenue = st.raison; }
       }
     }
-    return info;
-  }
-
-  // T-077 (R3) : férié local d'un jour prévu. Non travaillé : payé si c'est un férié (lecture A, sauf absence la veille ou le
-  // lendemain) ; jour ordinaire sinon (lecture B), payé seulement si les parents n'ont pas confié l'enfant. L'app ne sait pas
-  // qui a décidé : le jour est à confirmer (ni payé ni retenu). Travaillé : la majoration de 10 % est à confirmer (mois).
-  // Absence de l'enfant saisie (hors maladie avec certificat) : payée dans la lecture B ; dans la lecture A aussi, sauf si la
-  // condition de l'art. 47.2 manque. Elle n'est alors à confirmer que dans ce cas.
-  const absPayeeB = !!rec?.abs && rec.abs !== 'malade_certif';
-  // T-074 : un jour de préavis dispensé par les parents est payé dans les deux lectures : la branche de la dispense le traite.
-  if (ferieLoc && !ferie && plannedMin > 0 && !rec?.ferieTravaille && !rec?.pres?.some((p) => p.a) && !jourDispense(c, d)
-    && (!absPayeeB || ferieNonPaye(ctx, d, true))) {
-    info.kind = 'ferie';
-    info.inDivisor = true;
-    info.aConfirmer = messageFerieLocal(region, ferieLoc, d);
-    info.ferieLocalAConfirmer = true;
     return info;
   }
 
@@ -301,12 +296,7 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
     // Art. 47 : payé si l'AM a travaillé le dernier jour prévu avant et le premier jour prévu après,
     // sauf absence autorisée au préalable (congés, événement familial, absence voulue par les parents).
     if (!d.endsWith('-05-01')) {
-      const nonPaye = ferieNonPaye(ctx, d);
-      // T-077 (R3, point 3) : un férié local voisin change la condition de l'art. 47.2 d'une lecture à l'autre.
-      if (region !== 'metropole' && ferieNonPaye(ctx, d, true) !== nonPaye) {
-        info.aConfirmer = messageFerieVoisin(region, d);
-        info.ferieLocalAConfirmer = true;
-      } else if (nonPaye) { info.deducted = true; info.ferieNonPaye = true; }
+      if (ferieNonPaye(ctx, d)) { info.deducted = true; info.ferieNonPaye = true; }
     }
     return info;
   }
@@ -333,8 +323,8 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
       if (rec.abs === 'malade_certif') {
         const sick = sickLectures(ctx);
         info.deducted = sick.retenus.has(d);
-        const raison = sick.aConfirmer.get(d);
-        if (raison) { info.aConfirmer = raison; info.maladieAConfirmer = true; }
+        const demande = sick.demandes.get(d);
+        if (demande) info.donneeManquante = demande;
       }
     }
     return info;
@@ -380,37 +370,39 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
 
 const ABSENCES_NON_AUTORISEES: AmAbs[] = ['am_malade', 'am_enfant_malade'];
 
-const jjmmD = (d: ISODate) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
-/** T-077 (R3) : messages des fériés locaux (regles/t077-decisions.md) */
-export function messageFerieLocal(region: ReturnType<typeof regionDe>, nom: string, d: ISODate): string {
-  return `${nom.replace(/^./, (x) => x.toUpperCase())} (${jjmmD(d)}), jour prévu non travaillé : ni payé ni retenu. ${pourquoiFerieLocal(region, nom)} Si c’est un férié, ce jour est payé (sauf absence de ta part le jour prévu juste avant ou juste après). Sinon, c’est un jour ordinaire : il est payé si ce sont les parents qui n’ont pas confié l’enfant, et retenu si c’est toi qui n’as pas travaillé. Mets-toi d’accord avec les parents, par écrit.`;
-}
-export function messageFerieLocalTravaille(region: ReturnType<typeof regionDe>, nom: string, d: ISODate, maj: number): string {
-  return `${nom.replace(/^./, (x) => x.toUpperCase())} (${jjmmD(d)}) travaillé : majoration de 10 % à confirmer, ${euros(maj)}, non comprise dans le total. ${pourquoiFerieLocal(region, nom)} Si c’est un férié, la convention (article 47.2) majore ces heures de 10 % ; sinon, rien. Mets-toi d’accord avec les parents, par écrit.`;
-}
-export function messageFerieVoisin(region: ReturnType<typeof regionDe>, d: ISODate): string {
-  return `Férié du ${jjmmD(d)} : ni payé ni retenu. La convention (article 47.2) le paie si tu as travaillé le jour prévu juste avant et le jour prévu juste après. ${region === 'alsaceMoselle' ? 'Le 26 décembre ou le Vendredi saint' : 'Le 27 avril'} compte, ou non, comme ce jour selon qu’il est férié pour toi : aucun texte ne le dit, la question sera posée à la DDETS. Selon la lecture, ce férié est payé ou retenu. Mets-toi d’accord avec les parents, par écrit.`;
-}
-
-function jourPrevuVoisin(ctx: Ctx, d: ISODate, sens: 1 | -1, avecLocaux = false): ISODate | undefined {
+function jourPrevuVoisin(ctx: Ctx, d: ISODate, sens: 1 | -1): ISODate | undefined {
   const { c } = ctx;
   const region = regionDe(c);
   for (let i = 1, x = addDays(d, sens); i <= 14; i++, x = addDays(x, sens)) {
     if (!inContract(c, x)) return undefined;
     if (plannedPlages(c, x).length === 0) continue;
-    if ((holidayName(x) || (avecLocaux && ferieLocal(region, x))) && !ctx.days.get(x)?.ferieTravaille) continue;
+    if (ferieDe(region, x) && !ctx.days.get(x)?.ferieTravaille) continue;
     return x;
   }
   return undefined;
 }
 
 /**
- * Férié chômé non payé : absence non autorisée de l'AM le jour prévu juste avant ou juste après. `avecLocaux` (T-077,
- * lecture A de R3) : les fériés locaux chômés sont sautés comme les autres fériés.
+ * T-103 (D7) : férié chômé dont la condition de l'art. 47.2 (travail le jour prévu juste avant et juste après) n'est pas
+ * encore connue : l'un de ces jours n'est pas passé. L'écran dit la condition, jamais « à confirmer ».
  */
-export function ferieNonPaye(ctx: Ctx, d: ISODate, avecLocaux = false): boolean {
+export function ferieEnAttente(ctx: Ctx, d: ISODate): boolean {
+  const apres = jourPrevuVoisin(ctx, d, 1);
+  return !ferieNonPaye(ctx, d) && (d >= ctx.today || (!!apres && apres >= ctx.today));
+}
+export const libelleFerie = (ctx: Ctx, di: Pick<DayInfo, 'date' | 'ferie' | 'deducted'>): string =>
+  di.deducted ? `Férié : ${di.ferie} (non payé : absence le jour prévu juste avant ou juste après)`
+    : ferieEnAttente(ctx, di.date) ? `Férié : ${di.ferie} (payé si tu travailles le jour prévu juste avant et juste après)`
+      : `Férié : ${di.ferie} (payé)`;
+
+/** T-103 (K1) : km d'un jour sans les réponses sur le partage du trajet */
+export const messageKmACompleter = (d: ISODate): string =>
+  `Frais kilométriques du ${d.slice(8, 10)}/${d.slice(5, 7)} : indique si une autre famille a aussi demandé ce trajet et, si oui, combien d’enfants étaient dans la voiture (convention, article 113). L’app ne calcule pas ce mois sans ces réponses.`;
+
+/** Férié chômé non payé : absence non autorisée de l'AM le jour prévu juste avant ou juste après (CCN 47.2). */
+export function ferieNonPaye(ctx: Ctx, d: ISODate): boolean {
   for (const sens of [-1, 1] as const) {
-    const x = jourPrevuVoisin(ctx, d, sens, avecLocaux);
+    const x = jourPrevuVoisin(ctx, d, sens);
     const abs = x ? amLeaveOn(ctx.leaves, x) : undefined;
     if (abs && ABSENCES_NON_AUTORISEES.includes(abs)) return true;
   }
@@ -425,165 +417,123 @@ export function sickDeductible(ctx: Ctx): Set<ISODate> {
 }
 
 /**
- * T-033 (A-15, A-17 ; regles/t020-comparatifs.md). CCN art. 105 : « en cas de courtes absences de l'enfant, pas
- * nécessairement consécutives, dans la limite de 5 jours d'absence » ; « en cas d'absence durant 14 jours calendaires
- * consécutifs ». Le texte ne dit pas où classer une absence de plus de 5 jours qui dure moins de 14 jours calendaires.
- * - Lecture 1 (app avant T-033) : toute absence de plus de 5 jours est l'absence longue, retenue en entier (14 jours
- *   calendaires au plus), sans entamer les 5 jours.
- * - Lecture 2 (DREETS BFC 2026, fiche 03, IV : « Une absence de 9 jours consécutifs devra ainsi être considérée comme
- *   une absence courte et les 4 derniers jours devront faire l'objet d'une rémunération ») : seule une absence d'au moins
- *   14 jours calendaires consécutifs est l'absence longue ; une absence plus courte entame les 5 jours, le reste est payé.
- * Un jour retenu dans les deux lectures est retenu ; payé dans les deux, payé ; sinon « à confirmer » (ni payé ni
- * retenu). Le choix de l'une modifie aussi les absences suivantes de la même période de 12 mois : elles sont comparées
- * de la même façon.
+ * T-103 (C1 à C5, décision du DG du 24/11/2026) : jours d'enfant malade retenus (CCN 105), une seule lecture, celle de la
+ * lettre du texte (méthode de la Cour de cassation : Cass. soc. 25/03/2020, n° 18-12.467) :
+ * - « courtes absences […] dans la limite de 5 jours d'absence » : jours d'accueil prévus, par période de 12 mois ;
+ * - « absence durant 14 jours calendaires consécutifs » : seule une absence qui dure 14 jours calendaires ou plus est
+ *   l'absence longue (C1 : une absence de 6 à 13 jours est une absence courte ; C2 : 14 jours ou plus, même avec 5 jours
+ *   d'accueil ou moins, est l'absence longue), retenue sur 14 jours calendaires au plus ;
+ * - « appréciées par période de 12 mois glissants à compter de la date d'effet de l'embauche ou de sa date anniversaire » :
+ *   chaque jour compte dans sa période (C4) ;
+ * - les jours calendaires se comptent du premier au dernier jour du certificat (C3, `certifDu`, `certifAu`) ; deux
+ *   épisodes séparés par des jours sans accueil prévu forment une seule absence si un même certificat les couvre ;
+ * - jours déjà retenus avant le suivi par l'app : `balances.maladieDeduitsLongue` (C5).
+ * `demandes` : jours dont le résultat dépend d'une donnée non saisie (dates du certificat, origine des jours déjà retenus).
+ * Le mois n'est pas calculé tant qu'elle manque (B : l'app la demande, jamais « à confirmer »).
  */
-export function sickLectures(ctx: Ctx): { retenus: Set<ISODate>; aConfirmer: Map<ISODate, string> } {
+export function sickLectures(ctx: Ctx): { retenus: Set<ISODate>; demandes: Map<ISODate, string> } {
   return memo(ctx, 'sick', () => {
     const { c } = ctx;
     const prevu = (x: ISODate) => plannedPlages(c, x).length > 0;
-    // Jour prévu où l'enfant n'est pas attendu : férié chômé ou congé de l'AM. Le certificat peut le couvrir ou non.
-    const sansAccueilPrevu = (x: ISODate): 'ferie' | 'conge' | undefined =>
-      !prevu(x) ? undefined : holidayName(x) && !ctx.days.get(x)?.ferieTravaille ? 'ferie' : amLeaveOn(ctx.leaves, x) ? 'conge' : undefined;
-    const sansAccueil = (x: ISODate) => !prevu(x) || !!sansAccueilPrevu(x);
-    const certDays = [...ctx.days.values()]
-      .filter((r) => r.abs === 'malade_certif' && prevu(r.date) && !sansAccueilPrevu(r.date))
-      .map((r) => r.date)
-      .sort();
-    // Épisodes : jours certifiés consécutifs, en sautant les jours sans accueil prévu. `joindre` : en sautant aussi les
-    // fériés chômés et les congés de l'AM (un même certificat peut les couvrir, ou deux certificats les encadrer).
-    // `couper` (T-041 suite 2, ambiguïté a) : une absence qui chevauche la date anniversaire du contrat est coupée en deux,
-    // chaque partie comptant dans sa période de 12 mois.
-    const episodesDe = (joindre: boolean, couper = false): ISODate[][] => {
-      const episodes: ISODate[][] = [];
+    const sansAccueilPrevu = (x: ISODate): boolean =>
+      !prevu(x) ? false : (!!ferieDe(regionDe(c), x) && !ctx.days.get(x)?.ferieTravaille) || !!amLeaveOn(ctx.leaves, x);
+    const sansAccueil = (x: ISODate) => !prevu(x) || sansAccueilPrevu(x);
+    const recs = [...ctx.days.values()].filter((r) => r.abs === 'malade_certif' && prevu(r.date) && !sansAccueilPrevu(r.date)).sort((x, y) => (x.date < y.date ? -1 : 1));
+    const certDays = recs.map((r) => r.date);
+    const recOf = new Map(recs.map((r) => [r.date, r]));
+    // Certificat d'un épisode : la plus large des dates saisies sur ses jours ; `undefined` si aucune n'est saisie.
+    const certif = (ep: ISODate[]) => {
+      const du = ep.map((d) => recOf.get(d)?.certifDu).filter((x): x is ISODate => !!x).sort()[0];
+      const au = ep.map((d) => recOf.get(d)?.certifAu).filter((x): x is ISODate => !!x).sort().at(-1);
+      return { du, au };
+    };
+    // Épisodes : jours certifiés consécutifs en sautant les jours sans accueil prévu ; coupés à la date anniversaire (C4).
+    // Deux épisodes séparés par un férié chômé ou un congé de l'AM sont joints si le certificat de l'un couvre l'autre ;
+    // sans certificat saisi (`joindreInconnu`), la variante jointe sert seulement à savoir si la donnée compte.
+    const episodesDe = (joindreInconnu: boolean): ISODate[][] => {
+      const eps: ISODate[][] = [];
       for (const d of certDays) {
-        const last = episodes.at(-1);
+        const last = eps.at(-1);
         if (last) {
           const prev = last.at(-1)!;
-          let joined = !couper || contractYearIndex(c, prev) === contractYearIndex(c, d);
+          let joined = contractYearIndex(c, prev) === contractYearIndex(c, d);
+          let trou = false;
           for (let x = addDays(prev, 1); joined && x < d; x = addDays(x, 1)) {
-            if (prevu(x) && !(joindre && sansAccueilPrevu(x))) { joined = false; break; }
+            if (!prevu(x)) continue;
+            if (!sansAccueilPrevu(x)) { joined = false; break; }
+            trou = true;
+          }
+          if (joined && trou) {
+            const ce = certif(last), ce2 = certif([d]);
+            const couvert = (ce.au && ce.au >= d) || (ce2.du && ce2.du <= prev);
+            const inconnu = !ce.au && !ce2.du;
+            joined = !!couvert || (joindreInconnu && inconnu);
           }
           if (joined) { last.push(d); continue; }
         }
-        episodes.push([d]);
+        eps.push([d]);
       }
-      return episodes;
+      return eps;
     };
-    // T-041 suite : dates du certificat que l'app ne connaît pas. Le certificat peut commencer dès le lendemain du dernier
-    // jour d'accueil prévu avant l'absence, et finir la veille du suivant (13 jours au plus de chaque côté).
-    const debutAuPlusTot = (d: ISODate, memePeriode = false): ISODate => {
+    // Bornes possibles quand le certificat manque : il peut commencer dès le lendemain du dernier jour d'accueil prévu
+    // avant l'absence (13 jours au plus) et finir la veille du suivant. Servent seulement à savoir si la donnée compte.
+    const debutAuPlusTot = (d: ISODate): ISODate => {
       let s = d;
-      for (let x = addDays(d, -1), n = 0; n < 13 && x >= c.start && sansAccueil(x) && (!memePeriode || contractYearIndex(c, x) === contractYearIndex(c, d)); x = addDays(x, -1), n++) s = x;
+      for (let x = addDays(d, -1), n = 0; n < 13 && x >= c.start && sansAccueil(x) && contractYearIndex(c, x) === contractYearIndex(c, d); x = addDays(x, -1), n++) s = x;
       return s;
     };
-    const finAuPlusTard = (d: ISODate, memePeriode = false): ISODate => {
+    const finAuPlusTard = (d: ISODate): ISODate => {
       let e = d;
-      for (let x = addDays(d, 1), n = 0; n < 13 && (!c.end || x <= c.end) && sansAccueil(x) && (!memePeriode || contractYearIndex(c, x) === contractYearIndex(c, d)); x = addDays(x, 1), n++) e = x;
+      for (let x = addDays(d, 1), n = 0; n < 13 && (!c.end || x <= c.end) && sansAccueil(x) && contractYearIndex(c, x) === contractYearIndex(c, d); x = addDays(x, 1), n++) e = x;
       return e;
     };
     const trackedYear = contractYearIndex(c, c.trackedFrom);
-    // T-041 suite 2. `longue14` (ambiguïté b) : une absence de 14 jours calendaires ou plus qui ne compte que 5 jours
-    // d'accueil ou moins est l'absence longue (sinon : absence courte). `soldeLong` (ambiguïté c) : les jours déjà retenus
-    // avant l'app viennent d'une absence longue (sinon : d'absences courtes, et d'une absence longue au-delà de 5).
-    type Variante = { longueSiPlusDe5: boolean; debutTot: boolean; finTard: boolean; joindre: boolean; couper: boolean; longue14: boolean; soldeLong: boolean };
     const deja = c.balances.maladieDeduits;
-    const lecture = (v: Variante): Set<ISODate> => {
+    const lecture = (tot: boolean, tard: boolean, soldeLong: boolean, joindre: boolean): Set<ISODate> => {
       const out = new Set<ISODate>();
       const yearState = new Map<number, { left: number; longUsed: boolean }>();
-      for (const ep of episodesDe(v.joindre, v.couper)) {
-        const debut = v.debutTot ? debutAuPlusTot(ep[0], v.couper) : ep[0];
-        const fin = v.finTard ? finAuPlusTard(ep.at(-1)!, v.couper) : ep.at(-1)!;
-        const y = contractYearIndex(c, debut);
+      for (const ep of episodesDe(joindre)) {
+        const ce = certif(ep);
+        const debut = ce.du && ce.du <= ep[0] ? ce.du : tot ? debutAuPlusTot(ep[0]) : ep[0];
+        const fin = ce.au && ce.au >= ep.at(-1)! ? ce.au : tard ? finAuPlusTard(ep.at(-1)!) : ep.at(-1)!;
+        const y = contractYearIndex(c, ep[0]);
         let st = yearState.get(y);
         if (!st) {
           st = y !== trackedYear || deja <= 0 ? { left: 5, longUsed: false }
-            : v.soldeLong ? { left: 5, longUsed: true } : { left: 5 - Math.min(5, deja), longUsed: deja > 5 };
+            : soldeLong ? { left: 5, longUsed: true } : { left: 5 - Math.min(5, deja), longUsed: deja > 5 };
           yearState.set(y, st);
         }
         const calendaires = daysBetween(debut, fin) + 1;
-        const longue = (ep.length > 5 && (v.longueSiPlusDe5 || calendaires >= 14)) || (v.longue14 && calendaires >= 14);
-        if (v.longue14 && ep.length <= 5 && calendaires >= 14 && !st.longUsed) {
-          const limit = addDays(debut, 13);
-          ep.filter((d) => d <= limit).forEach((d) => out.add(d));
-          st.longUsed = true;
-        } else if (ep.length <= st.left) {
-          ep.forEach((d) => out.add(d));
-          st.left -= ep.length;
-        } else if (longue && !st.longUsed) {
+        if (calendaires >= 14 && !st.longUsed) {
           // L'absence longue : retenue sur 14 jours calendaires consécutifs au plus, sans entamer les 5 jours.
           const limit = addDays(debut, 13);
           ep.filter((d) => d <= limit).forEach((d) => out.add(d));
           st.longUsed = true;
         } else {
           ep.slice(0, st.left).forEach((d) => out.add(d));
-          st.left = 0;
+          st.left = Math.max(0, st.left - ep.length);
         }
       }
       return out;
     };
-    // Toutes les combinaisons : deux lectures du texte × dates du certificat (début, fin, férié ou congé couvert).
-    const variantes: (Variante & { res: Set<ISODate> })[] = [];
-    const B = [false, true];
-    for (const longueSiPlusDe5 of [true, false]) for (const debutTot of B) for (const finTard of B) for (const joindre of B)
-      for (const couper of B) for (const longue14 of B) for (const soldeLong of deja > 0 ? B : [false]) {
-        const v = { longueSiPlusDe5, debutTot, finTard, joindre, couper, longue14, soldeLong };
-        variantes.push({ ...v, res: lecture(v) });
-      }
-    const CLES = ['longueSiPlusDe5', 'debutTot', 'finTard', 'joindre', 'couper', 'longue14', 'soldeLong'] as const;
-    const base = (l: boolean) => variantes.find((v) => v.longueSiPlusDe5 === l && CLES.slice(1).every((k) => !v[k]))!.res;
-    const l1 = base(true), l2 = base(false);
-    const retenus = new Set([...l1].filter((d) => variantes.every((v) => v.res.has(d))));
-    // Une dimension compte pour un jour si, à lecture et autres dates égales, la changer change le jour.
-    const compte = (d: ISODate, dim: (typeof CLES)[number]) => variantes.some((v) => {
-      const w = variantes.find((x) => CLES.every((k) => k === dim ? x[k] !== v[k] : x[k] === v[k]));
-      return !!w && v.res.has(d) !== w.res.has(d);
-    });
-    const aConfirmer = new Map<ISODate, string>();
+    const soldeConnu = c.balances.maladieDeduitsLongue;
+    const soldes = deja > 0 && soldeConnu === undefined ? [false, true] : [soldeConnu ?? false];
+    const variantes: Set<ISODate>[] = [];
+    for (const tot of [false, true]) for (const tard of [false, true]) for (const s of soldes) for (const j of [false, true]) variantes.push(lecture(tot, tard, s, j));
+    const base = variantes[0];
+    const retenus = new Set([...base]);
+    const demandes = new Map<ISODate, string>();
     for (const ep of episodesDe(false)) {
-      const diff = ep.filter((d) => !variantes.every((v) => v.res.has(d) === l1.has(d)));
+      const diff = ep.filter((d) => !variantes.every((v) => v.has(d) === base.has(d)));
       if (!diff.length) continue;
-      const fin = ep.at(-1)!;
-      const parties: string[] = [];
-      if (diff.some((d) => l1.has(d) !== l2.has(d))) {
-        parties.push('La convention (article 105) prévoit 5 jours d’absences courtes et une absence de 14 jours calendaires consécutifs. Elle ne dit pas où classer une absence de plus de 5 jours qui dure moins de 14 jours, ni comment cela compte pour les absences suivantes. Selon la lecture, ces jours sont retenus ou payés, et aucune source officielle ne tranche.');
-      }
-      const dates: string[] = [];
-      const joint = diff.some((d) => compte(d, 'joindre'));
-      // Bornes affichées : celles de l'absence réunie quand un férié ou un congé peut la relier à une autre.
-      const tous = joint ? episodesDe(true).find((e) => e.includes(ep[0]))! : ep;
-      if (diff.some((d) => compte(d, 'debutTot'))) dates.push(`le premier jour du certificat (entre le ${jjmm(debutAuPlusTot(tous[0]))} et le ${jjmm(tous[0])})`);
-      if (diff.some((d) => compte(d, 'finTard'))) dates.push(`le dernier jour du certificat (entre le ${jjmm(tous.at(-1)!)} et le ${jjmm(finAuPlusTard(tous.at(-1)!))})`);
-      if (joint) {
-        const trous: string[] = [];
-        for (let x = tous[0]; x <= tous.at(-1)!; x = addDays(x, 1)) {
-          const k = sansAccueilPrevu(x);
-          if (k) trous.push(`${k === 'ferie' ? 'le férié' : 'le congé'} du ${jjmm(x)}`);
-        }
-        dates.push(`si un même certificat couvre aussi ${trous.join(', ')} (une seule absence) ou non`);
-      }
-      const lectures: string[] = [];
-      if (diff.some((d) => compte(d, 'couper'))) {
-        // Date anniversaire qui tombe dans l'absence la plus large possible (dates du certificat et férié compris).
-        const touche = episodesDe(true).find((e) => e.includes(ep[0]))!;
-        const a = addMonthsToDate(c.start, 12 * contractYearIndex(c, finAuPlusTard(touche.at(-1)!)));
-        lectures.push(`l’absence chevauche la date anniversaire du contrat (${jjmm(a)}) : la convention apprécie les limites « par période de 12 mois glissants » sans dire dans quelle période compter une absence qui touche les deux`);
-      }
-      if (diff.some((d) => compte(d, 'longue14'))) {
-        lectures.push('l’absence dure 14 jours calendaires ou plus mais compte 5 jours d’accueil ou moins : la convention ne dit pas si c’est une absence courte (dans la limite des 5 jours) ou l’absence de 14 jours calendaires consécutifs');
-      }
-      if (diff.some((d) => compte(d, 'soldeLong'))) {
-        lectures.push(`${dayCountLabel(deja)} déjà retenus avant le suivi par l’app : l’app ne sait pas s’ils venaient d’absences courtes ou d’une absence de 14 jours calendaires, et cela change les limites restantes`);
-      }
-      if (lectures.length) parties.push(`${parties.length ? 'Autres points que' : 'Points que'} la convention (article 105) ne tranche pas : ${lectures.join(' ; ')}.`);
-      if (dates.length) {
-        parties.push(`Le résultat dépend ${parties.length ? 'aussi ' : ''}de dates que l’app ne connaît pas : ${dates.join(' ; ')}. La convention (article 105) compte 14 jours calendaires consécutifs et ne dit pas si les jours sans accueil couverts par le certificat en font partie. L’app ne devine pas : ces jours restent à confirmer.`);
-      }
-      const nb = variantes.map((v) => ep.filter((d) => v.res.has(d)).length);
-      parties.push(`Selon la lecture et les dates, ${Math.min(...nb)} à ${Math.max(...nb)} jours de cette absence sont retenus.`);
-      const raison = `Enfant malade du ${jjmm(ep[0])} au ${jjmm(fin)} : ${dayCountLabel(diff.length)} ni payé${diff.length > 1 ? 's' : ''} ni retenu${diff.length > 1 ? 's' : ''}. ${parties.join(' ')} Mets-toi d’accord avec les parents, par écrit, avant de déclarer.`;
-      for (const d of diff) aConfirmer.set(d, raison);
+      const ce = certif(ep);
+      const manque: string[] = [];
+      if (!ce.du || !ce.au) manque.push(`les dates de début et de fin du certificat médical de l’absence du ${jjmm(ep[0])} au ${jjmm(ep.at(-1)!)} (saisis-les sur un des jours de l’absence)`);
+      if (soldes.length > 1) manque.push('dans le contrat, si les jours d’enfant malade déjà retenus avant le suivi par l’app venaient d’absences courtes ou d’une absence de 14 jours');
+      const msg = `Enfant malade : indique ${manque.join(', et ')}. La convention (article 105) compte « 14 jours calendaires consécutifs » : le résultat en dépend. L’app calcule ce mois dès que c’est saisi.`;
+      for (const d of diff) demandes.set(d, msg);
     }
-    return { retenus, aConfirmer };
+    return { retenus, demandes };
   });
 }
 
@@ -819,12 +769,9 @@ export interface MonthBase {
   ferieLocalAConfirmer: number;
   /** Kilomètres saisis sans le nombre d'enfants transportés (CCN art. 113) : non payés, à confirmer (T-017) */
   kmAConfirmer: number;
-  /** T-044 : part de l'indemnité d'entretien qui dépend d'une lecture non tranchée (tarif par jour, jour d'une autre durée) ; hors du total */
-  entretienAConfirmer: number;
-  /** T-044c : jours dont l'entretien est à confirmer, par raison (durée d'accueil ou de travail ; tarif par jour et durée différente du planning ; jour hors planning au tarif par jour) */
-  entretienJoursDuree: number;
-  entretienJoursTarifJour: number;
-  entretienJoursHorsPlanning: number;
+
+  /** T-103 (C9) : indemnités journalières de la Sécurité sociale déduites du salaire de ce mois (CCN 48.1.3.1.3) */
+  ijDeduites?: number;
   /** Salaire net hors congés payés */
   net: number;
   /** Régularisation versée avec un avenant (année incomplète qui se termine) */
@@ -859,6 +806,15 @@ export function monthBase(ctx: Ctx, m: Month): MonthBase {
     }
     // T-076, D2 : planning variable en lecture L2, absence retenue dans une semaine au-delà de la base.
     if (r.active && !r.fromHistory) { const j = absencesL2NonGerees(ctx, firstDay(m), lastDay(m)); if (j.length) r.nonGere.push(messageAbsenceL2(j)); }
+    // T-103 (C3, C5) : donnée à saisir (dates du certificat, origine des jours déjà retenus) : le mois attend la saisie.
+    // T-103 (C14, R3) : même règle pour les droits à congés non calculés et les indemnités journalières à saisir.
+    if (r.active && !r.fromHistory) {
+      const dem = sickLectures(ctx).demandes;
+      for (const x of cpDemandesEntre(ctx, firstDay(m), lastDay(m))) if (!r.nonGere.includes(x)) r.nonGere.push(x);
+      for (const d of eachDay(firstDay(m), lastDay(m))) {
+        for (const x of [dem.get(d), dayInfo(ctx, d).donneeManquante]) if (x && !r.nonGere.includes(x)) r.nonGere.push(x);
+      }
+    }
     return r;
   });
 }
@@ -868,7 +824,7 @@ function emptyBase(m: Month): MonthBase {
     month: m, active: false, fromHistory: false, missing: false, salaireMens: 0, mensuelMin: 0, divisorDays: 0,
     divisorMin: 0, contractDays: 0, contractMin: 0, deductedDays: 0, deductedMin: 0, paidFraction: 0, base: 0,
     retenue: 0, heuresNormales: 0, joursActivite: 0, complMin: 0, majMin: 0, majContratMin: 0, majContratAmount: 0, complAmount: 0, majAmount: 0,
-    ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, evenementAConfirmer: 0, joursCpAConfirmer: 0, joursEvenementAConfirmer: 0, joursMaladieAConfirmer: 0, joursFerieLocalAConfirmer: 0, joursMaintienAConfirmer: 0, ferieLocalAConfirmer: 0, kmAConfirmer: 0, entretienAConfirmer: 0, entretienJoursDuree: 0, entretienJoursTarifJour: 0, entretienJoursHorsPlanning: 0, net: 0,
+    ferieAmount: 0, ferieDays: [], presenceDays: 0, extraDays: 0, entretien: 0, repas: 0, km: 0, evenementAConfirmer: 0, joursCpAConfirmer: 0, joursEvenementAConfirmer: 0, joursMaladieAConfirmer: 0, joursFerieLocalAConfirmer: 0, joursMaintienAConfirmer: 0, ferieLocalAConfirmer: 0, kmAConfirmer: 0, net: 0,
     alerts: [], forgotten: [], sickPaidNotice: false, nonGere: [],
   };
 }
@@ -1051,7 +1007,7 @@ function hoursMin(min: number): string {
 }
 
 const SUM_KEYS = ['base', 'retenue', 'majContratMin', 'majContratAmount', 'joursActivite', 'complMin', 'majMin', 'complAmount', 'majAmount', 'complPrevuMin', 'complAConfirmerMin', 'complAConfirmerAmount', 'ferieAmount',
-  'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'evenementAConfirmer', 'joursCpAConfirmer', 'joursEvenementAConfirmer', 'joursMaladieAConfirmer', 'joursFerieLocalAConfirmer', 'joursMaintienAConfirmer', 'ferieLocalAConfirmer', 'kmAConfirmer', 'entretienAConfirmer', 'entretienJoursDuree', 'entretienJoursTarifJour', 'entretienJoursHorsPlanning', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
+  'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'evenementAConfirmer', 'joursCpAConfirmer', 'joursEvenementAConfirmer', 'joursMaladieAConfirmer', 'joursFerieLocalAConfirmer', 'joursMaintienAConfirmer', 'ferieLocalAConfirmer', 'kmAConfirmer', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
 
 function mergeParts(m: Month, parts: MonthBase[], cuts: ISODate[]): MonthBase {
   const r = emptyBase(m);
@@ -1130,8 +1086,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   let entretienNonVerifie = false;
   let entretienSousMin = 0, entretienMinVerse = 0;
   // T-044 : montants exacts (centimes non arrondis), arrondis une seule fois sur le mois.
-  let entretienExact = 0, entretienExactNonArrondi = 0, entretienAConfExact = 0, entretienJoursAConf = 0;
-  const entretienCauses = new Set<'base' | 'jour' | 'hors'>();
+  let entretienExact = 0;
   let suspDays = 0, suspMin = 0, kmJours = 0, sansSoldePayes = 0;
   const suspRaisons: string[] = [];
   const forgotten: ISODate[] = [];
@@ -1143,7 +1098,6 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     if (di.aConfirmer && di.plannedMin > 0) {
       suspDays++; suspMin += di.plannedMin;
       if (di.cpAConfirmer) r.joursCpAConfirmer++; else if (di.maladieAConfirmer) r.joursMaladieAConfirmer++;
-      else if (di.ferieLocalAConfirmer) r.joursFerieLocalAConfirmer++; else if (di.maintienAConfirmer) r.joursMaintienAConfirmer++;
       else r.joursEvenementAConfirmer++;
       if (!suspRaisons.includes(di.aConfirmer)) suspRaisons.push(di.aConfirmer);
     }
@@ -1155,58 +1109,29 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     if (di.departOublie) forgotten.push(d);
     // T-074 (P-1) : mois avec des jours de préavis dispensés par les parents : déclaration Pajemploi à confirmer.
     if (di.dispense && !r.alerts.includes(MESSAGE_DISPENSE_PAJEMPLOI)) r.alerts.push(MESSAGE_DISPENSE_PAJEMPLOI);
+    if (di.raisonRetenue && !r.alerts.includes(di.raisonRetenue)) r.alerts.push(di.raisonRetenue);
     if (di.ferieNonPaye) r.alerts.push(`Férié du ${d.slice(8, 10)}/${d.slice(5, 7)} non payé : tu étais absente le jour prévu juste avant ou juste après (article 47 de la convention).`);
     if (di.rec?.abs === 'malade_certif' && !di.deducted && di.plannedMin > 0) r.sickPaidNotice = true;
     if (di.kind === 'present' || di.kind === 'prevu') {
       if (di.presentMin > 0) {
         r.presenceDays++;
         if (di.plannedMin === 0) r.extraDays++;
-        // T-044b. Montant de l'entretien du jour : toutes les lectures non tranchées sont calculées, chacune arrondie au
-        // centime le plus proche (décision ARR-01 du DG, 18/11/2026, comme les km jour par jour). Le plus bas est versé,
-        // l'écart est « à confirmer », hors du total.
-        // Durée du jour, deux lectures (relecture V5, P2-B1) :
-        // - accueil : présence de l'enfant (CCN 98.1.1 « Les périodes de travail correspondent au temps d'accueil de
-        //   l'enfant » ; CASF D423-7 « durée effective d'accueil quotidien » ; Urssaf « nombre d'heures d'accueil par
-        //   jour » ; service-public F12812 « durée d'accueil ») ;
-        // - travail : CCN 99, heures prévues plus présence hors des plages prévues ; hors planning, la présence.
-        const durees = [...new Set([di.presentMin, di.plannedMin > 0 ? di.plannedMin + di.extraMin : di.presentMin])];
-        const planchers = durees.map((m) => entretienPlancher(d, m));
+        // T-103 (décision du DG du 24/11/2026, rapports/T-103-inventaire.md, M1 à M3). Un seul montant par jour :
+        // - durée : temps de travail de l'art. 99 (CCN 114.1 : « versée en cas de travail effectif, par heure de travail » ;
+        //   « Il varie en fonction de la durée de travail effectif ») : heures prévues plus présence hors des plages prévues ;
+        //   hors planning, la présence de l'enfant ;
+        // - contrat par heure : montant horaire × durée ; contrat « montant fixe par journée » : ce montant, quelle que soit
+        //   la durée (clause du contrat) ;
+        // - au moins le minimum de l'art. 114.1 sur cette durée. Arrondi au centime le plus proche (ARR-01).
+        const duree = di.plannedMin > 0 ? di.plannedMin + di.extraMin : di.presentMin;
+        const plancher = entretienPlancher(d, duree);
         // T-023 : avant les barèmes vérifiés, le plancher légal n'est pas connu. L'app retient le montant du contrat et le dit.
-        if (planchers.some((x) => x === undefined)) entretienNonVerifie = true;
+        if (plancher === undefined) entretienNonVerifie = true;
         const parHeure = (c.entretienMode ?? (c.entretienHeure ? 'heure' : 'jour')) === 'heure';
-        // Chaque lecture : [montant brut du contrat, plancher]. `undefined` : lecture sans durée de référence (hors planning).
-        const lectures: { brut?: number; p: number; cause: 'base' | 'jour' | 'hors' }[] = [];
-        durees.forEach((m, k) => {
-          const p = planchers[k] ?? 0;
-          if (parHeure) {
-            // CCN 114.1 : « versée en cas de travail effectif, par heure de travail » ; montant horaire prévu au contrat.
-            lectures.push({ brut: ((c.entretienHeure ?? 0) * m) / 60, p, cause: 'base' });
-          } else {
-            // Tarif par jour. Lecture 1 : il vaut pour la journée, quelle que soit sa durée. Lecture 2 : il vaut pour les
-            // heures prévues ce jour-là et suit la durée (« Il varie en fonction de la durée de travail effectif »).
-            // Hors planning, aucune durée de référence : seul le minimum est certain.
-            lectures.push({ brut: c.entretienJour, p, cause: 'jour' });
-            lectures.push(di.plannedMin > 0 ? { brut: (c.entretienJour * m) / di.plannedMin, p, cause: 'jour' } : { p, cause: 'hors' });
-          }
-        });
-        const montants = lectures.map((l) => Math.round(Math.max(l.brut ?? (planchers.includes(undefined) ? c.entretienJour : 0), l.p)));
-        const exacts = lectures.map((l) => Math.max(l.brut ?? (planchers.includes(undefined) ? c.entretienJour : 0), l.p));
-        // Le montant de la lecture « hors planning » sans durée de référence est inconnu : borne haute = tarif du jour.
-        const hauts = lectures.map((l, k) => (l.cause === 'hors' ? Math.round(Math.max(c.entretienJour, l.p)) : montants[k]));
-        const certain = Math.min(...montants);
-        const ecart = Math.max(...hauts) - certain;
-        entretienExact += certain;
-        entretienExactNonArrondi += Math.min(...exacts);
-        // T-034 (ENTRETIEN-SOUS-MINIMUM), sur la présence de l'enfant (base d'avant T-044) : tarif du contrat sous le minimum.
-        const pAccueil = planchers[0];
-        const brutAccueil = parHeure ? ((c.entretienHeure ?? 0) * durees[0]) / 60 : c.entretienJour;
-        if (pAccueil !== undefined && brutAccueil < pAccueil) { entretienSousMin++; entretienMinVerse += pAccueil - brutAccueil; }
-        if (ecart > 0) {
-          entretienAConfExact += ecart; entretienJoursAConf++;
-          if (durees.length > 1) { entretienCauses.add('base'); r.entretienJoursDuree++; }
-          if (!parHeure && di.plannedMin > 0 && di.presentMin !== di.plannedMin) { entretienCauses.add('jour'); r.entretienJoursTarifJour++; }
-          if (lectures.some((l) => l.cause === 'hors')) { entretienCauses.add('hors'); r.entretienJoursHorsPlanning++; }
-        }
+        const brutJour = parHeure ? ((c.entretienHeure ?? 0) * duree) / 60 : c.entretienJour;
+        entretienExact += Math.round(Math.max(brutJour, plancher ?? 0));
+        // T-034 (ENTRETIEN-SOUS-MINIMUM) : tarif du contrat sous le minimum.
+        if (plancher !== undefined && brutJour < plancher) { entretienSousMin++; entretienMinVerse += plancher - brutJour; }
         const nbRepas = di.rec?.repas ?? c.repasParJour;
         r.repas += nbRepas * c.repasPrix;
       }
@@ -1214,20 +1139,12 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
         const pct = isMayDay(d) ? 100 : 10;
         r.ferieAmount += Math.round((di.presentMin * c.rateNet * pct) / 100 / 60);
         r.ferieDays.push(d);
-      } else if (di.ferieLocal && (di.ferieTravaille || di.kind === 'present') && di.presentMin > 0) {
-        // T-077 (R3, point 2) : majoration de 10 % (CCN 47.2) dans la lecture A seulement : à confirmer, hors du total.
-        const maj = Math.round((di.presentMin * c.rateNet * 10) / 100 / 60);
-        r.ferieLocalAConfirmer += maj;
-        r.alerts.push(messageFerieLocalTravaille(regionDe(c), di.ferieLocal, d, maj));
       }
     }
-    // CCN art. 113 : partage au prorata des enfants transportés seulement si plusieurs employeurs demandent le trajet
-    // (T-025 C-2). Donnée manquante : km à confirmer, rien n'est payé en silence.
+    // CCN art. 113 (T-025 C-2) : donnée manquante, le jour porte `donneeManquante` (computeDay) et le mois attend.
     if (di.rec?.km) {
       kmJours++;
-      const part = indemniteKmJour(di.rec.km, c.kmTaux, di.rec.kmPartage, di.rec.kmEnfants);
-      if (part !== undefined) r.km += part;
-      else r.kmAConfirmer += di.rec.km;
+      r.km += indemniteKmJour(di.rec.km, c.kmTaux, di.rec.kmPartage, di.rec.kmEnfants) ?? 0;
     }
   }
   // Jours (heures) de la période payés par la mensualisation, avant retenues
@@ -1284,15 +1201,11 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     const objet = joindre(naturesAConfirmer(r).map((n) => ({ evenement: 'événement familial', cp: 'congés', maladie: 'enfant malade', ferieLocal: 'jour férié local', maintien: 'absence pour maladie' })[n])).replace(/^./, (x) => x.toUpperCase());
     r.alerts.push(`${objet} : ${dayCountLabel(suspDays)} ni payé${suspDays > 1 ? 's' : ''} ni retenu${suspDays > 1 ? 's' : ''}, ${euros(r.evenementAConfirmer)} de salaire à confirmer (non compris dans le total).`);
   }
-  // ARR-01 (décision du DG du 18/11/2026, jusqu'à la réponse de la DDETS) : chaque montant du jour est arrondi au centime le
-  // plus proche, comme les km jour par jour. Si l'arrondi du total du mois donne un autre montant, l'app le dit.
+  // ARR-01 (décision du DG du 18/11/2026) : chaque montant du jour est arrondi au centime le plus proche (CCN 114.1 fixe un
+  // montant journalier), comme les km jour par jour.
   r.entretien = entretienExact;
-  r.entretienAConfirmer = Math.round(entretienAConfExact);
-  const auMois = Math.round(entretienExactNonArrondi);
-  if (auMois !== r.entretien) r.alerts.push(`Indemnité d’entretien : ${euros(r.entretien)} en arrondissant chaque jour au centime le plus proche. En arrondissant seulement le total du mois, elle serait de ${euros(auMois)}. Aucun texte ne dit à quel moment arrondir : l’app arrondit chaque jour en attendant une réponse officielle.`);
-  if (r.kmAConfirmer) r.alerts.push(`${r.kmAConfirmer} km à confirmer, non comptés. Pour chaque jour, indique si une autre famille a aussi demandé le trajet. Si oui, indique aussi les enfants dans la voiture : l’indemnité est alors partagée entre eux (article 113 de la convention). Si non, elle est due en entier.`);
   // T-025 C-7 : mois terminé, peut-être déjà déclaré à Pajemploi avant la mise à jour qui a rendu ces montants « à confirmer ».
-  if ((r.evenementAConfirmer || r.kmAConfirmer || r.entretienAConfirmer || r.ferieLocalAConfirmer) && to < ctx.today && !r.alerts.includes(MESSAGE_MOIS_DEJA_DECLARE)) r.alerts.push(MESSAGE_MOIS_DEJA_DECLARE);
+  if ((r.evenementAConfirmer || r.kmAConfirmer || r.ferieLocalAConfirmer) && to < ctx.today && !r.alerts.includes(MESSAGE_MOIS_DEJA_DECLARE)) r.alerts.push(MESSAGE_MOIS_DEJA_DECLARE);
   // T-038 (G-1, relecture V4 du diff m8) : mois terminé avec des jours notés « sans solde » avant la mise à jour T-035b. Il a
   // pu être déclaré à Pajemploi avec la retenue ; son salaire affiché est maintenant plus haut. Le dire, et quoi faire.
   if (sansSoldePayes && to < ctx.today) {
@@ -1302,17 +1215,9 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   if (kmJours && c.kmTaux > 0) for (const m of controleKm(ctx.c.kmCv, c.kmTaux, segFrom).messages) if (!r.alerts.includes(m)) r.alerts.push(m);
   // CCN art. 114.1 : « le montant journalier de cette indemnité ne peut pas être inférieur à 2,65 € » et le montant horaire
   // ne peut être « inférieur à 90 % du minimum garanti lorsque la durée de travail journalière est de 9 heures ».
-  if (r.entretienAConfirmer) {
-    const causes: string[] = [];
-    if (entretienCauses.has('base')) causes.push('la durée du jour se compte en temps de présence de l’enfant (articles 98.1.1 et 114.1 de la convention, code de l’action sociale, Urssaf) ou en temps de travail (article 99 : heures prévues, plus la présence en dehors) ; aucun texte ne dit laquelle retenir pour l’entretien');
-    if (entretienCauses.has('jour')) causes.push('le contrat donne un montant par jour, alors que la convention (article 114.1) prévoit un montant par heure : il peut valoir pour la journée entière ou pour les heures prévues ce jour-là');
-    if (entretienCauses.has('hors')) causes.push('un jour hors planning n’a pas de durée de référence pour le montant par jour : seul le minimum est certain');
-    r.alerts.push(`Indemnité d’entretien : ${euros(r.entretienAConfirmer)} à confirmer, non compris dans le total, pour ${dayCountLabel(entretienJoursAConf)}. L’app verse ${euros(r.entretien)}, le plus bas des calculs possibles et au moins le minimum ; selon la lecture, le mois va jusqu’à ${euros(r.entretien + r.entretienAConfirmer)}. Pourquoi : ${causes.join(' ; ')}. Mets-toi d’accord avec les parents, par écrit${entretienCauses.has('jour') ? ' ; le plus simple est un avenant qui fixe un montant par heure' : ''}.`);
-  }
   if (entretienSousMin) r.alerts.push(`Indemnité d’entretien : le montant du contrat (${c.entretienHeure ? `${euros(c.entretienHeure)} par heure` : `${euros(c.entretienJour)} par jour`}) est sous le minimum de la convention (article 114.1) pour ${dayCountLabel(entretienSousMin)}. L’app verse le minimum, soit ${euros(Math.round(entretienMinVerse))} de plus que le contrat ce mois-ci. Fais corriger le contrat avec les parents, par un avenant.`);
   if (entretienNonVerifie) r.alerts.push(`${MESSAGE_PERIODE_NON_GEREE} Indemnité d’entretien : l’app retient le montant du contrat, sans contrôle du minimum légal ; vérifie-le avec les parents.`);
   // R-CP-09 : un congé dont le décompte reste ambigu est signalé, pas tranché (T-019).
-  for (const a of cpAConfirmerEntre(ctx, segFrom, segTo)) if (!r.alerts.includes(a)) r.alerts.push(a);
   if (cpSansDroits) {
     r.alerts.push(`${dayCountLabel(cpSansDroits)} de congés pris au-delà de tes droits acquis : retenu${cpSansDroits > 1 ? 's' : ''} comme congés sans solde. Si ton solde de congés au début du suivi est faux, corrige-le dans le contrat ; si les parents ont accepté par écrit des congés par anticipation, signale-le avec « Ça coince ».`);
   }
@@ -1406,6 +1311,24 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     r.majContratMin = majorees;
     r.majContratAmount = Math.round((majorees * c.rateNet * (100 + c.majoration)) / 100 / 60);
     r.joursActivite = joursFaits + r.extraDays;
+  }
+  // T-103 (C9) : congé indemnisé par la Sécurité sociale (congé de deuil, CCN 48.1.3.1.3) : « le particulier employeur maintient
+  // le salaire sous déduction des indemnités journalières versées ». Montant saisi par l'AM (AmLeave.ijSecu), réparti sur les
+  // mois au prorata des jours calendaires du congé.
+  // T-103 (R3) : en Alsace-Moselle, même déduction pour l'absence de l'AM pour sa maladie ou celle de son enfant (L1226-23).
+  const maintienLocal = regionDe(ctx.c) === 'alsaceMoselle';
+  for (const l of ctx.leaves) {
+    const local = maintienLocal && (l.type === 'am_malade' || l.type === 'am_enfant_malade');
+    if ((l.type !== 'evenement' && !local) || !l.ijSecu || l.to < segFrom || l.from > segTo) continue;
+    const tous = daysBetween(l.from, l.to) + 1;
+    const ici = daysBetween(l.from > segFrom ? l.from : segFrom, l.to < segTo ? l.to : segTo) + 1;
+    const part = Math.round((l.ijSecu * ici) / tous);
+    if (!part) continue;
+    r.base = Math.max(0, r.base - part);
+    r.ijDeduites = (r.ijDeduites ?? 0) + part;
+    r.alerts.push(local
+      ? `${MESSAGE_MAINTIEN_LOCAL} ${euros(part)} d’indemnités journalières déduits du salaire de ce mois.`
+      : `Congé indemnisé par la Sécurité sociale : ${euros(part)} d’indemnités journalières déduits du salaire de ce mois (convention, article 48.1.3.1.3 : salaire maintenu « sous déduction des indemnités journalières versées »).`);
   }
   r.net = r.base + r.complAmount + r.majAmount + r.ferieAmount;
   if (forgotten.length) r.alerts.push(`${forgotten.length} départ${forgotten.length > 1 ? 's' : ''} non pointé${forgotten.length > 1 ? 's' : ''} : l’heure prévue a été retenue.`);

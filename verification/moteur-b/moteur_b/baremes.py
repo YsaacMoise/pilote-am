@@ -166,11 +166,9 @@ def smic(d, region="metropole"):
 
 def _titre_region(titre_am_ap, region):
     """T-077 (R2) : majoration de 4 % du titre a Mayotte : Urssaf « Non concerne », aucun texte lu ne l'ecarte."""
-    # T-103 (R5, A1) : CCN art. 2 : la convention « est egalement applicable a Mayotte » pour les AM ; l'annexe 5
-    # ne fait aucune exception ; la page Urssaf contraire n'est pas un texte. La majoration s'applique : refus
-    # A77-TITRE-MAYOTTE leve.
     from .regions import region_valide
-    region_valide(region)
+    if titre_am_ap and region_valide(region) == "mayotte":
+        raise NonGere("A77-TITRE-MAYOTTE", ["R-SAL-05", "T077-R2"])
 
 
 def minimum_garanti(d):
@@ -218,8 +216,8 @@ def minimum_horaire_brut(d, titre_am_ap=False, titre_obtenu_dans_le_mois=False, 
     """Minimum horaire brut applicable (R-SAL-04 : max(minimum legal ; minimum
     conventionnel)). Entree : d, titre_am_ap, titre_obtenu_dans_le_mois.
     Sortie : minimum_centimes (entier si exact), composantes et sources.
-    T-103 (D3) : minimum legal en centimes = 0,281 x SMIC arrondi au centime
-    superieur ; la comparaison du taux reste exacte (verifier_taux_horaire).
+    Le minimum legal 0,281 x SMIC n'est jamais arrondi : il n'est utilise que
+    pour la comparaison exacte.
     T-077 (R2) : a Mayotte, minimum legal = 0,281 x SMIC de Mayotte (CASF R544-2 XV) ;
     grille de l'annexe 5 identique (CCN art. 2)."""
     if titre_obtenu_dans_le_mois:
@@ -232,11 +230,9 @@ def minimum_horaire_brut(d, titre_am_ap=False, titre_obtenu_dans_le_mois=False, 
     if mini == c:
         valeur = c
     else:
-        # T-103 (D3, A1) : CASF D423-9 : la remuneration « ne peut etre inferieure a 0,281 fois le montant du
-        # salaire minimum de croissance ». Un taux en centimes sous la valeur exacte lui est inferieur : minimum
-        # en centimes = valeur exacte arrondie au centime superieur (et non au plus proche, ARR-01).
-        import math
-        valeur = math.ceil(mini)
+        # Le minimum legal l'emporte : son arrondi n'est pas ecrit (R-SAL-03).
+        from .commun import vers_centimes
+        valeur = vers_centimes(mini, "minimum legal 0,281 x SMIC", ["R-SAL-03"])
     res = {
         "minimum_centimes": valeur,
         "origine": "conventionnel" if mini == c else "legal",

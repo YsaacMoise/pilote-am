@@ -196,11 +196,11 @@ describe('C-008 : brut estimé affiché comme une estimation, brut réel demand�
     // congés payés de la rupture entre dans l'assiette ; le lot 3 donnait 10 125,42 € avec elle. Ici, elle est « à
     // confirmer » (A-23, T-030 : 16 ou 15 jours en cours) : elle n'est pas encore ajoutée, le total reste 9 117,10 € et
     // l'indemnité de rupture est « à confirmer », avec cette raison. Le cas des congés non pris sûrs : tests/t050b.test.ts.
+    // T-103 (C10) : les congés non pris ne sont plus « à confirmer » : ils entrent dans l'assiette (A-45).
     expect(f.totalBrut).toBe(f0.totalBrut);
-    expect(f.cpAConfirmer).toBeDefined();
-    expect(f.ruptureAConfirmer).toBe(true);
-    expect(f.alertes.join(' ')).toMatch(/l’indemnité de congés non pris à confirmer/);
-    expect(f.totalBrut).toBe(911710);
+    expect(f.cpAConfirmer).toBeUndefined();
+    expect(f.ruptureAConfirmer).toBe(false);
+    expect(f.totalBrut).toBeGreaterThan(911710);
   });
   it('arrondi à l’euro : 1 234,50 € → « 1 235 € », 154,31 € → « 154 € »', () => {
     expect(eurosArrondis(123450)).toBe('1\u00a0235\u00a0€');
