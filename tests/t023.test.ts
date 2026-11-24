@@ -401,23 +401,20 @@ describe('T-025 C-3 : minimum horaire brut = le plus haut de la grille et de 0,2
   it('mai-juin 2022 : 0,281 × 10,85 € = 3,04885 € → 3,05 € dans toute lecture de l’arrondi, au-dessus de 2,97 €', () => {
     const m = minimumBrut('2022-05-15')!;
     expect(m.certain).toBe(305);
-    expect(m.doute).toBeUndefined();
     expect(m.source).toBe('legal');
   });
-  it('août 2022 : 0,281 × 11,07 € = 3,11067 € → 3,11 € certain, 3,12 € si arrondi au centime supérieur', () => {
+  it('août 2022 : 0,281 × 11,07 € = 3,11067 € → 3,12 € (T-103, D3 : un taux de 3,11 € est inférieur au minimum)', () => {
     const m = minimumBrut('2022-08-15')!;
-    expect(m.certain).toBe(311);
-    expect(m.doute).toBe(312);
+    expect(m.certain).toBe(312);
   });
-  it('janvier-avril 2022 : 0,281 × 10,57 € = 2,97017 € : la grille de 2,97 € vaut, 2,98 € si arrondi au centime supérieur', () => {
+  it('janvier-avril 2022 : 0,281 × 10,57 € = 2,97017 € → 2,98 €, au-dessus de la grille de 2,97 € (T-103, D3)', () => {
     const m = minimumBrut('2022-03-15')!;
-    expect(m.certain).toBe(297);
-    expect(m.doute).toBe(298);
-    expect(m.source).toBe('grille');
+    expect(m.certain).toBe(298);
+    expect(m.source).toBe('legal');
   });
   it('juillet 2022 : grille de 3,06 € au-dessus de 3,04885 € ; octobre 2026 : grille de 4,20 € au-dessus de 0,281 × 12,31 €', () => {
-    expect(minimumBrut('2022-07-15')).toMatchObject({ certain: 306, doute: undefined, source: 'grille' });
-    expect(minimumBrut('2026-10-15')).toMatchObject({ certain: 420, doute: undefined, source: 'grille' });
+    expect(minimumBrut('2022-07-15')).toMatchObject({ certain: 306, source: 'grille' });
+    expect(minimumBrut('2026-10-15')).toMatchObject({ certain: 420, source: 'grille' });
   });
   it('contrôle d’un bulletin de juin 2022 : le repère donné est 3,05 € (minimum légal), pas 2,97 €', () => {
     const c = contract({ start: '2022-01-03', trackedFrom: '2022-01-03', rateNet: 240 });
