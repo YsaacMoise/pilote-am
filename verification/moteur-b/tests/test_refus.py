@@ -86,7 +86,11 @@ class Refus(unittest.TestCase):
         self.refus(m.qualifier_absence("am_evenement_familial_indemnise_secu", "complete"), "M-05")
 
     def test_M_06(self):
-        self.refus(m.qualifier_absence("am_deuil_complementaire", "complete"), "M-06")
+        # T-103 (C9) : CCN 48.1.3.1.3 : « maintient le salaire sous deduction des indemnites journalieres » : pas de
+        # deduction d'absence ; les IJ (donnee demandee) se retirent par conge_deuil, refus C9-IJ-MANQUANTES sans elles.
+        r = m.qualifier_absence("am_deuil_complementaire", "complete")
+        self.assertFalse(r["resultat"]["deductible"])
+        self.refus(m.conge_deuil(date(2026, 9, 10)), "C9-IJ-MANQUANTES")
 
     def test_exclus_absences(self):
         self.refus(m.qualifier_absence("maternite", "complete"), "EXCLU-MATERNITE")
@@ -176,9 +180,11 @@ class Refus(unittest.TestCase):
         self.refus(m.duree_preavis("employeur", date(2026, 1, 31), date(2026, 6, 5), date(2026, 6, 6)), "DATE-MOIS")
 
     def test_A_45(self):
-        # T-050b : l'ICCP entre dans l'assiette ; seul le preavis reste refuse (art. 64.2 non relu).
+        # T-103 (F4) : le preavis entre dans l'assiette (CCN 121.1 : seules les indemnites « non soumises a
+        # contributions et cotisations sociales » sont exclues ; CCN 64.2 : l'ICP y est « soumise »).
+        # A-45 reste pour une regularisation negative seulement.
         self.refus(m.indemnite_rupture("normal", "employeur", date(2025, 1, 5), date(2026, 6, 20), 800000,
-                                       indemnite_preavis_centimes=40000), "A-45")
+                                       regularisation_centimes=-1000), "A-45")
 
     def test_ASSIETTE_A_CONFIRMER(self):
         self.refus(m.indemnite_rupture("normal", "employeur", date(2025, 1, 5), date(2026, 6, 20), 800000,

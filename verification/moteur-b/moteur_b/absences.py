@@ -29,6 +29,9 @@ _TYPES = {
     "am_solidarite_familiale": (True, ["M-07"]),
     "am_proche_aidant": (True, ["M-07"]),
     "am_formation_obligatoire": (False, ["M-08"]),
+    # T-103 (C9) : conge de deuil (CCN 48.1.3.1.2) : salaire maintenu sous deduction des indemnites journalieres
+    # (CCN 48.1.3.1.3) : pas de deduction d'absence ; le montant des IJ se retire a part (conge_deuil).
+    "am_deuil_complementaire": (False, ["R-ABS-06", "T103-C9"]),
     "fin_contrat_en_cours_de_mois": (True, ["R-FIN-12"]),
     # T-035a : fiches DREETS Occitanie du 19/01/2023 (52 s, p. 2 ; 46 s, p. 3) :
     # « Embauche et fin de contrat en cours de mois » parmi les absences non
@@ -44,7 +47,6 @@ _NOTE_ENFANT_SANS_SOLDE = (
 _REFUS = {
     "am_evenement_familial": ("R-ABS-06", ["R-ABS-06"]),
     "am_evenement_familial_indemnise_secu": ("M-05", ["R-ABS-06"]),
-    "am_deuil_complementaire": ("M-06", ["R-ABS-06"]),
     "maternite": ("EXCLU-MATERNITE", []),
     "paternite": ("EXCLU-MATERNITE", []),
     "adoption": ("EXCLU-MATERNITE", []),
@@ -79,11 +81,13 @@ def qualifier_absence(type_absence, type_annee, region="metropole"):
     type_annee_valide(type_annee)
     region = region_valide(region)
     if region == "alsace_moselle" and type_absence in ("am_maladie", "am_enfant_malade"):
-        raise NonGere("A77-MAINTIEN-LOCAL", ["T077-R4"], details={
-            "lectures": {"A": "salaire maintenu, moins les indemnites journalieres de la securite sociale (montant "
-                              "connu de l'AM seule)",
-                         "B": "retenue (deductible), comme hors Alsace-Moselle"},
-            "message": MESSAGE_MAINTIEN})
+        # T-103 (R3, decision du DG du 24/11/2026, A3) : maintien du salaire pour toute absence pour maladie de l'AM
+        # ou de son enfant, moins les indemnites journalieres saisies (C. trav. L1226-23 : « a droit au maintien de
+        # son salaire » ; « les indemnites versees par un regime d'assurances sociales obligatoire sont deduites » ;
+        # Cass. soc. 13/04/2005, 04/12/2024, 27/05/2025). Pas de deduction d'absence ; IJ : maintien_droit_local.
+        return resultat_ok(["T103-R3"], {"deductible": False,
+                                         "note": "Alsace-Moselle : salaire maintenu moins les indemnites journalieres "
+                                                 "(maintien_droit_local)."})
     if type_absence in _REFUS:
         code, regles = _REFUS[type_absence]
         raise NonGere(code, regles)
@@ -145,6 +149,151 @@ def absence_enfant_malade(jours_absence, jours_calendaires_consecutifs, jours_ac
     deductibles = max(0, min(j, 5 - c1))
     return resultat_ok(absence_enfant_malade.regles, {"jours_deductibles": deductibles,
                                                       "jours_remuneres": j - deductibles})
+
+
+@api("T103-R3")
+def maintien_droit_local(indemnites_journalieres_centimes=None):
+    """T-103 (R3, decision du DG, A3) : Alsace-Moselle, maladie de l'AM ou de son enfant : salaire maintenu
+    (qualifier_absence : non deductible) moins les indemnites journalieres de l'absence (C. trav. L1226-23, al. 2).
+    indemnites_journalieres_centimes : montant saisi ; absent : refus R3-IJ-MANQUANTES.
+    Sortie : deduction_ij_centimes."""
+    if indemnites_journalieres_centimes is None:
+        raise NonGere("R3-IJ-MANQUANTES", ["T103-R3"], precision=(
+            "Alsace-Moselle : montant des indemnites journalieres de l'absence a saisir (L1226-23)."))
+    return resultat_ok(maintien_droit_local.regles, {
+        "deduction_ij_centimes": entier(indemnites_journalieres_centimes, "indemnites_journalieres_centimes")})
+
+
+@api("R-CP-09", "T103-C15", "T103-C17")
+def absence_retenue_du_jour(types_saisis):
+    """T-103 (C15, C17) : plusieurs absences de l'AM saisies sur un meme jour.
+    - Conge paye et arret maladie (« am_maladie ») : l'arret l'emporte. CCN 48.1.1.3 : « les jours de conges payes
+      qui coincident avec la periode de l'arret de travail ne sont pas decomptes [...] l'absence du salarie est
+      traitee comme une absence pour maladie » (C15, A1).
+    - Toute autre double saisie : refus C17-SAISIE-CONTRADICTOIRE (C17, B : l'utilisatrice choisit).
+    types_saisis : liste des types (cp, am_malade, am_enfant_malade, sans_solde, evenement...).
+    Sortie : type (le type retenu)."""
+    t = sorted(set(types_saisis or ()))
+    if not t:
+        raise ErreurSaisie("types_saisis : au moins un type.")
+    if len(t) == 1:
+        return resultat_ok(["R-CP-09"], {"type": t[0]})
+    if t == ["am_malade", "cp"]:
+        return resultat_ok(absence_retenue_du_jour.regles, {"type": "am_malade",
+                                                            "note": "Arret maladie pendant le conge (CCN 48.1.1.3)."})
+    raise NonGere("C17-SAISIE-CONTRADICTOIRE", ["R-CP-09"], precision="Absences saisies le meme jour : " + ", ".join(t))
+
+
+def _anniversaire(debut, k):
+    """Debut de la k-ieme periode de 12 mois a compter de la date d'effet de l'embauche (CCN 105). Un 29 fevrier
+    sans 29 fevrier l'annee k : refus DATE-MOIS (cas non ecrit)."""
+    try:
+        return debut.replace(year=debut.year + k)
+    except ValueError:
+        raise NonGere("DATE-MOIS", ["R-ABS-04"], precision="Embauche un 29 fevrier : date anniversaire non ecrite.")
+
+
+def _periode_105(debut, d):
+    """Index et bornes de la periode de 12 mois qui contient d (C4 : chaque jour compte dans sa periode)."""
+    k = max(0, d.year - debut.year - 1)
+    while _anniversaire(debut, k + 1) <= d:
+        k += 1
+    return k
+
+
+@api("R-ABS-01", "R-ABS-02", "R-ABS-03", "R-ABS-04", "T103-C1", "T103-C5")
+def absences_enfant_malade_art105(date_debut_contrat, certificats, jours_absence, deja_retenus=None,
+                                  date_debut_suivi=None):
+    """T-103 (C1 a C5) : absences de l'enfant justifiees (CCN 105, KALIARTI000043942278).
+    Texte : l'AM « n'est pas remunere au titre de la periode d'absence dans les limites suivantes : – en cas de
+    courtes absences de l'enfant, pas necessairement consecutives, dans la limite de 5 jours d'absence. Au-dela
+    [...] le particulier employeur doit proceder au paiement du salaire ; – en cas d'absence durant 14 jours
+    calendaires consecutifs. Au-dela [...] doit reprendre le paiement du salaire [...]. Ces limites sont appreciees
+    par periode de 12 mois glissants a compter de la date d'effet de l'embauche ou de sa date anniversaire. »
+    - C3 (B) : chaque absence porte les dates du certificat (du, au), obligatoires : sans elles, refus
+      C3-DATES-CERTIFICAT. La duree de l'absence est celle du certificat.
+    - C1, C2 (A2, lettre du texte) : certificat de 14 jours calendaires ou plus : absence longue (non payee sur
+      ses 14 premiers jours calendaires, payee au-dela), quel que soit le nombre de jours d'accueil ; moins de
+      14 jours : courtes absences, 5 jours d'absence par periode, payes au-dela.
+    - Jour d'absence : jour d'accueil prevu ou l'enfant est absent (jours_absence) ; un jour sans accueil prevu
+      n'est pas une absence de l'enfant. Demi-journee : refus A-15 (hors tableau).
+    - C4 (A2) : chaque jour compte dans la periode de 12 mois qui le contient (date anniversaire).
+    - Deux absences longues dans la meme periode : refus A-18 (hors tableau, non tranche).
+    - C5 (B) : deja_retenus = {"jours": n, "longue": bool} pour la periode qui contient date_debut_suivi (jours
+      deja retenus avant le suivi). n > 0 sans « longue » : refus C5-ORIGINE-MANQUANTE. longue False : n jours
+      deja pris sur la limite de 5 ; longue True : l'absence longue de la periode est deja faite.
+    certificats : liste de {"du": date, "au": date, "demi_journee": False}. jours_absence : dates.
+    Sortie : jours = {date iso : "retenu" | "paye"}, absences (classe et jours par certificat), jours_retenus."""
+    if not isinstance(date_debut_contrat, date):
+        raise ErreurSaisie("date_debut_contrat : date attendue.")
+    certs = []
+    for i, c in enumerate(certificats or []):
+        du, au = c.get("du"), c.get("au")
+        if du is None or au is None:
+            raise NonGere("C3-DATES-CERTIFICAT", ["R-ABS-02"], precision=(
+                f"Certificat {i + 1} : dates « du ... au ... » obligatoires (T-103, C3)."))
+        if not (isinstance(du, date) and isinstance(au, date)) or au < du:
+            raise ErreurSaisie(f"certificats[{i}] : dates du et au, dans l'ordre.")
+        if c.get("demi_journee"):
+            raise NonGere("A-15", ["R-ABS-02"], precision="Demi-journee d'absence : non tranche (hors tableau T-103).")
+        certs.append((du, au))
+    certs.sort()
+    for (a1, b1), (a2, b2) in zip(certs, certs[1:]):
+        if a2 <= b1:
+            raise ErreurSaisie("Certificats qui se chevauchent.")
+    jours = sorted(set(jours_absence or ()))
+    for d in jours:
+        if not isinstance(d, date):
+            raise ErreurSaisie("jours_absence : dates attendues.")
+        if not any(a <= d <= b for a, b in certs):
+            raise NonGere("C3-DATES-CERTIFICAT", ["R-ABS-02"], precision=(
+                f"Jour d'absence du {d.isoformat()} hors de tout certificat : dates du certificat a saisir."))
+    courtes = {}
+    longues = set()
+    if deja_retenus:
+        n = entier(deja_retenus.get("jours", 0), "deja_retenus.jours")
+        lg = deja_retenus.get("longue")
+        if n and lg is None:
+            raise NonGere("C5-ORIGINE-MANQUANTE", ["R-ABS-04"], precision=(
+                "Jours deja retenus avant le suivi : absences courtes ou absence de 14 jours ? (T-103, C5)"))
+        if not isinstance(date_debut_suivi, date):
+            raise ErreurSaisie("date_debut_suivi : date attendue avec deja_retenus.")
+        p = _periode_105(date_debut_contrat, date_debut_suivi)
+        if lg:
+            longues.add(p)
+        else:
+            courtes[p] = n
+    statut = {}
+    detail = []
+    for du, au in certs:
+        dans = [d for d in jours if du <= d <= au]
+        duree = (au - du).days + 1
+        if duree >= 14:
+            limite = du + timedelta(days=13)
+            periodes = {_periode_105(date_debut_contrat, d) for d in dans if d <= limite} or \
+                {_periode_105(date_debut_contrat, du)}
+            if periodes & longues:
+                raise NonGere("A-18", ["R-ABS-03"], precision=(
+                    f"Deuxieme absence de 14 jours dans la meme periode de 12 mois (certificat du {du.isoformat()})."))
+            longues |= periodes
+            for d in dans:
+                statut[d] = "retenu" if d <= limite else "paye"
+            classe = "longue"
+        else:
+            for d in dans:
+                p = _periode_105(date_debut_contrat, d)
+                if courtes.get(p, 0) < 5:
+                    courtes[p] = courtes.get(p, 0) + 1
+                    statut[d] = "retenu"
+                else:
+                    statut[d] = "paye"
+            classe = "courte"
+        detail.append({"du": du.isoformat(), "au": au.isoformat(), "jours_calendaires": duree, "classe": classe,
+                       "jours_retenus": sum(1 for d in dans if statut[d] == "retenu"),
+                       "jours_payes": sum(1 for d in dans if statut[d] == "paye")})
+    return resultat_ok(absences_enfant_malade_art105.regles, {
+        "jours": {d.isoformat(): s for d, s in sorted(statut.items())}, "absences": detail,
+        "jours_retenus": sum(1 for s in statut.values() if s == "retenu")})
 
 
 def _deduction(type_annee, salaire_mensualise_centimes, non_travaille, prevu_sans_absence,
@@ -269,7 +418,7 @@ def ferie_chome(date_ferie, jours_travailles, presence_veille="travaille", prese
         raise ErreurSaisie("date_ferie : date attendue.")
     verifier_date_ccn(date_ferie, ["R-JF-02"])
     region = region_valide(region)
-    feries = jours_feries(date_ferie.year)
+    feries = jours_feries(date_ferie.year, region)  # T-103 (R4) : 27 avril a Mayotte
     locaux = feries_locaux_entre(date_ferie, date_ferie, region)
     jt = set(int(j) for j in jours_travailles)
     jna = set(jours_non_accueil)

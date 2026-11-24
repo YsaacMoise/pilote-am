@@ -44,10 +44,13 @@ class A45AssietteRupture(unittest.TestCase):
         self.assertEqual(R(r, "indemnite_centimes"), 10000)
 
     def test_preavis_reste_refuse(self):
+        # T-103 (F4) : CCN 121.1 « hors indemnites non soumises a contributions et cotisations sociales » ;
+        # CCN 64.2 : l'ICP est « soumise a contributions et cotisations sociales ». Elle entre dans l'assiette :
+        # (8 000 + 400 + 500) / 80 = 111,25 EUR.
         r = m.indemnite_rupture("normal", "employeur", date(2025, 1, 5), date(2026, 6, 20), 800000,
                                 iccp_centimes=40000, indemnite_preavis_centimes=50000)
-        self.assertEqual(r["statut"], "non_gere")
-        self.assertEqual(r["code"], "A-45")
+        self.assertEqual(r["resultat"]["indemnite_centimes"], 11125)
+        self.assertEqual(r["resultat"]["assiette_centimes"], 890000)
 
     def test_regularisation_negative_refusee(self):
         r = m.indemnite_rupture("normal", "employeur", date(2025, 1, 5), date(2026, 6, 20), 800000,

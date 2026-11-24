@@ -108,90 +108,73 @@ class R2Minimum(Base):
         self.refus(m.minimum_horaire_brut(date(2026, 12, 1), region="mayotte"), "A-52")
 
     def test_titre_mayotte(self):
-        self.refus(m.minimum_horaire_brut(date(2026, 6, 15), titre_am_ap=True, region="mayotte"), "A77-TITRE-MAYOTTE")
+        # T-103 (R5) : CCN art. 2 (KALIARTI000043941800) : « également applicable à Mayotte » pour les AM ; annexe 5
+        # sans exception : minimum avec titre 4,37 EUR (> 0,281 x 9,56 EUR). Ancien refus A77-TITRE-MAYOTTE.
+        r = m.minimum_horaire_brut(date(2026, 6, 15), titre_am_ap=True, region="mayotte")
+        self.assertEqual(r["resultat"]["minimum_centimes"], 437)
 
 
 class R3FeriesLocaux(Base):
-    """R3 : 26/12 et Vendredi saint (Alsace-Moselle), 27/04 (Mayotte) : deux lectures."""
+    """T-103 (R1, R4) remplace les deux lectures de T-077 (R3).
+    R1 : C. trav. L3134-1, al. 2 : le chapitre du droit local (dont L3134-13) ne s'applique pas « a l'education des
+    enfants » ni « aux emplois a domicile par une personne physique » : Vendredi saint et 26/12 = jours ordinaires.
+    R4 : C. trav. L3422-2, 1° : le 27 avril a Mayotte « [est un jour ferie] » ; CCN 47.2 : ferie ordinaire."""
 
     def test_liste(self):
-        self.assertEqual(set(m.feries_locaux(2026, "alsace_moselle")), {date(2026, 4, 3), date(2026, 12, 26)})
-        self.assertEqual(set(m.feries_locaux(2025, "alsace_moselle")), {date(2025, 4, 18), date(2025, 12, 26)})
-        self.assertEqual(set(m.feries_locaux(2026, "mayotte")), {date(2026, 4, 27)})
+        self.assertEqual(m.feries_locaux(2026, "alsace_moselle"), {})
+        self.assertEqual(m.feries_locaux(2026, "mayotte"), {})
         self.assertEqual(m.feries_locaux(2026, "metropole"), {})
 
     def test_jour_prevu_non_travaille_a_confirmer(self):
-        det = self.refus(m.ferie_chome(date(2026, 4, 3), MAR_VEN, region="alsace_moselle"), "A77-FERIE-LOCAL")
-        # Lecture A : jours de condition jeudi 02/04 et mardi 07/04 (lundi non prevu).
-        self.assertIn("2026-04-02", det["lectures"]["A"])
-        self.assertIn("2026-04-07", det["lectures"]["A"])
-        self.refus(m.ferie_chome(date(2026, 4, 27), LUN_VEN, region="mayotte"), "A77-FERIE-LOCAL")
-        # Lecture A, 26/12/2025 (vendredi) : le jour voisin 25/12 est ferie -> A-32 dans cette lecture.
-        det = self.refus(m.ferie_chome(date(2025, 12, 26), LUN_VEN, region="alsace_moselle"), "A77-FERIE-LOCAL")
-        self.assertTrue(det["lectures"]["A"].startswith("A-32"))
+        # Alsace-Moselle : le Vendredi saint n'est pas un ferie (erreur de saisie s'il est donne comme ferie).
+        self.assertEqual(m.ferie_chome(date(2026, 4, 3), MAR_VEN, region="alsace_moselle")["statut"], "erreur_saisie")
+        # Mayotte : 27/04/2026 (lundi), voisins vendredi 24/04 et mardi 28/04 : maintenu.
+        r = m.ferie_chome(date(2026, 4, 27), LUN_VEN, region="mayotte")
+        self.assertEqual(R(r, "jours_condition"), ["2026-04-24", "2026-04-28"])
+        self.assertTrue(R(r, "remuneration_maintenue"))
 
     def test_jour_non_prevu_sans_effet(self):
-        # 26/12/2026 est un samedi ; 27/04/2025 un dimanche : sans effet dans les deux lectures.
-        self.assertFalse(R(m.ferie_chome(date(2026, 12, 26), LUN_VEN, region="alsace_moselle"),
-                           "jour_habituellement_travaille"))
         self.assertFalse(R(m.ferie_chome(date(2025, 4, 27), LUN_VEN, region="mayotte"), "jour_habituellement_travaille"))
 
     def test_pas_un_ferie_en_metropole(self):
         self.assertEqual(m.ferie_chome(date(2026, 4, 3), LUN_VEN)["statut"], "erreur_saisie")
+        self.assertEqual(m.ferie_chome(date(2026, 4, 27), LUN_VEN)["statut"], "erreur_saisie")
 
     def test_ferie_national_voisin(self):
-        # Lundi de Paques 06/04/2026 : jour de travail precedent vendredi 03/04 = Vendredi saint.
-        det = self.refus(m.ferie_chome(date(2026, 4, 6), LUN_VEN, region="alsace_moselle"), "A77-FERIE-VOISIN")
-        self.assertEqual(det["jours_condition"], ["2026-04-03", "2026-04-07"])
-        self.assertTrue(R(m.ferie_chome(date(2026, 4, 6), LUN_VEN), "remuneration_maintenue"))
-        # Lundi a jeudi : le 26/12/2025 (vendredi) n'est pas prevu ; 25/12 jeudi, voisins 24/12 et 29/12.
-        s = m.ferie_chome(date(2025, 12, 25), LUN_JEU, region="alsace_moselle")
-        self.assertEqual(R(s, "jours_condition"), ["2025-12-24", "2025-12-29"])
-        self.assertTrue(R(s, "remuneration_maintenue"))
+        # Lundi de Paques 06/04/2026 : le vendredi 03/04 est un jour ordinaire en Alsace-Moselle.
+        self.assertTrue(R(m.ferie_chome(date(2026, 4, 6), LUN_VEN, region="alsace_moselle"), "remuneration_maintenue"))
         s = m.ferie_chome(date(2025, 12, 25), LUN_JEU, presence_veille="absence_am", region="alsace_moselle")
         self.assertFalse(R(s, "remuneration_maintenue"))
-        # Mayotte : le Vendredi saint est un jour ordinaire, le lundi de Paques se traite comme en metropole.
         self.assertTrue(R(m.ferie_chome(date(2026, 4, 6), LUN_VEN, region="mayotte"), "remuneration_maintenue"))
 
     def test_ferie_local_travaille(self):
-        # 8 h a 5,00 EUR : 480 x 500 x 10 / 100 / 60 = 400 centimes (4,00 EUR) en lecture A ; 0 en lecture B.
-        det = self.refus(m.ferie_local_travaille(date(2026, 4, 27), "mayotte", 480, 500), "A77-FERIE-LOCAL-TRAVAILLE")
-        self.assertEqual(det["lectures"], {"A": 400, "B": 0})
-        # 7 h 30 a 4,37 EUR : 450 x 437 / 600 = 327,75 -> 328 centimes (ARR-01).
-        det = self.refus(m.ferie_local_travaille(date(2025, 12, 26), "alsace_moselle", 450, 437),
-                         "A77-FERIE-LOCAL-TRAVAILLE")
-        self.assertEqual(det["lectures"]["A"], 328)
+        # Plus de ferie « local » : la fonction refuse la saisie ; le 27/04 travaille a Mayotte suit ferie_travaille.
+        self.assertEqual(m.ferie_local_travaille(date(2026, 4, 27), "mayotte", 480, 500)["statut"], "erreur_saisie")
+        self.assertEqual(m.ferie_travaille(date(2026, 4, 27))["code"], "A-33")
 
     def test_decompte_cp(self):
-        # Du lundi 22/12/2025 a la reprise du lundi 05/01/2026 : ouvrables 22, 23, 24, 26, 27, 29, 30, 31/12, 02, 03/01
-        # (25/12 et 01/01 feries) = 10 jours ; sans le 26/12 (lecture A) = 9.
-        det = self.refus(m.decompte_jours_cp(date(2025, 12, 22), date(2026, 1, 5), LUN_VEN, region="alsace_moselle"),
-                         "A77-DECOMPTE-CP")
-        self.assertEqual(det["lectures"], {"A": 9, "B": 10})
-        self.assertEqual(R(m.decompte_jours_cp(date(2025, 12, 22), date(2026, 1, 5), LUN_VEN), "jours_decomptes"), 10)
-        # Mayotte, du 20/04 au 04/05/2026 : 20-25, 27-30/04, 02/05 = 11 jours ; sans le 27/04 = 10.
-        det = self.refus(m.decompte_jours_cp(date(2026, 4, 20), date(2026, 5, 4), LUN_VEN, region="mayotte"),
-                         "A77-DECOMPTE-CP")
-        self.assertEqual(det["lectures"], {"A": 10, "B": 11})
-        # 26/12/2026 est un samedi, jour ouvrable : il change aussi le decompte (21/12/2026 -> 04/01/2027 : 10 ou 9).
-        det = self.refus(m.decompte_jours_cp(date(2026, 12, 21), date(2027, 1, 4), LUN_VEN, region="alsace_moselle"),
-                         "A77-DECOMPTE-CP")
-        self.assertEqual(det["lectures"], {"A": 9, "B": 10})
+        # Alsace-Moselle, du 22/12/2025 a la reprise du 05/01/2026 : 26/12 ordinaire : 10 jours.
+        self.assertEqual(R(m.decompte_jours_cp(date(2025, 12, 22), date(2026, 1, 5), LUN_VEN, region="alsace_moselle"),
+                           "jours_decomptes"), 10)
+        # Mayotte, du 20/04 au 04/05/2026 : 27/04 et 01/05 feries : 20-25, 28-30/04, 02/05 = 10 jours.
+        self.assertEqual(R(m.decompte_jours_cp(date(2026, 4, 20), date(2026, 5, 4), LUN_VEN, region="mayotte"),
+                           "jours_decomptes"), 10)
 
     def test_decompte_sans_ferie_local(self):
-        # Semaine du 07/09/2026 : 6 jours ouvrables, rien a confirmer.
         self.assertEqual(R(m.decompte_jours_cp(date(2026, 9, 7), date(2026, 9, 14), LUN_VEN, region="alsace_moselle"),
                            "jours_decomptes"), 6)
 
 
 class R4MaintienDroitLocal(Base):
-    """R4 : maladie de l'AM ou enfant de l'AM malade en Alsace-Moselle : maintien (L1226-23) ou retenue."""
+    """T-103 (R3, decision du DG du 24/11/2026) : maladie de l'AM ou de son enfant en Alsace-Moselle : salaire
+    maintenu (L1226-23), moins les indemnites journalieres saisies."""
 
     def test_alsace_moselle_a_confirmer(self):
         for t in ("am_maladie", "am_enfant_malade"):
             for an in ("complete", "incomplete"):
-                det = self.refus(m.qualifier_absence(t, an, "alsace_moselle"), "A77-MAINTIEN-LOCAL")
-                self.assertIn("A", det["lectures"])
+                self.assertFalse(R(m.qualifier_absence(t, an, "alsace_moselle"), "deductible"))
+        self.assertEqual(R(m.maintien_droit_local(4200), "deduction_ij_centimes"), 4200)
+        self.refus(m.maintien_droit_local(), "R3-IJ-MANQUANTES")
 
     def test_mayotte_et_metropole_retenue(self):
         for reg in ("mayotte", "metropole"):
@@ -201,6 +184,8 @@ class R4MaintienDroitLocal(Base):
     def test_autres_absences_inchangees(self):
         self.assertTrue(R(m.qualifier_absence("am_convenance_personnelle", "complete", "alsace_moselle"), "deductible"))
         self.assertFalse(R(m.qualifier_absence("enfant_non_prevue", "complete", "alsace_moselle"), "deductible"))
+
+class R4Montant(Base):
 
     def test_montant_a_confirmer(self):
         # Montant a confirmer = salaire des jours selon l'art. 111. 52 semaines x 40 h x 5,00 EUR / 12 = 866,67 EUR ;

@@ -120,14 +120,12 @@ class Baremes2022a2025(unittest.TestCase):
         self.assertEqual(R(m.minimum_horaire_brut(date(2024, 2, 1)), "minimum_centimes"), 345)
 
     def test_minimum_legal_depasse_en_janvier_2022(self):
-        # 0,281 x 10,57 = 2,97017 EUR > 2,97 EUR : T-040d, centime le plus proche = 2,97 EUR,
-        # valeur exacte gardee dans details.
+        # 0,281 x 10,57 = 2,97017 EUR > 2,97 EUR. T-103 (D3) : CASF D423-9 « ne peut etre inferieure a 0,281
+        # fois » le SMIC : 2,97 EUR lui serait inferieur ; minimum en centimes au centime superieur = 2,98 EUR.
         r = m.minimum_horaire_brut(date(2022, 1, 1))
-        self.assertEqual(R(r, "minimum_centimes"), 297)
+        self.assertEqual(R(r, "minimum_centimes"), 298)
         self.assertEqual(R(r, "origine"), "legal")
-        a = r["details"]["arrondis_arr01"][0]
-        self.assertEqual(a["valeur_exacte_centimes"], "297017/1000")
-        self.assertIn("decision ARR-01", a["mention"])
+        self.assertEqual(R(r, "minimum_legal_exact_centimes"), "297017/1000")
 
 
 ARR01 = "arrondi au centime le plus proche, decision ARR-01 du DG du 18/11/2026 dans l'attente de la DDETS"
@@ -247,12 +245,12 @@ class T040eEntretienJourEtDuree(unittest.TestCase):
         self.assertEqual([x["valeur_exacte_centimes"] for x in a], ["2002/5", "2002/5"])
 
     def test_duree_accueil_differente_montants_differents(self):
-        # 0,60 EUR/h ; 5 h de travail (art. 99) contre 3 h d'accueil : 3,00 EUR contre 2,65 EUR (plancher).
+        # T-103 (M1, A1) : ancien refus ENTRETIEN-DUREE-ACCUEIL-OU-TRAVAIL leve. CCN 114.1
+        # (KALIARTI000043942300) : « versee en cas de travail effectif, par heure de travail » ;
+        # CCN 99 (KALIARTI000043942263) definit le temps de travail. Seule la duree de travail compte.
+        # 0,60 EUR/h ; 5 h de travail (art. 99) contre 3 h d'accueil : 3,00 EUR.
         j = [{"duree_minutes": 300, "duree_accueil_minutes": 180, "travail_effectif": True}]
-        r = m.indemnite_entretien_mois(j, 60, self.D)
-        self.assertEqual(r["code"], "ENTRETIEN-DUREE-ACCUEIL-OU-TRAVAIL")
-        self.assertEqual(r["details"]["montant_duree_de_travail_art99_centimes"], 300)
-        self.assertEqual(r["details"]["montant_duree_d_accueil_centimes"], 265)
+        self.assertEqual(R(m.indemnite_entretien_mois(j, 60, self.D), "indemnite_centimes"), 300)
 
     def test_duree_accueil_differente_meme_montant(self):
         # 0,50 EUR/h : 5 h donne 2,50 EUR et 3 h 1,50 EUR, tous deux releves au plancher de 2,65 EUR.
