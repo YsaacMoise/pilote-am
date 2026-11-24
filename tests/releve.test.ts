@@ -65,10 +65,11 @@ describe('relevé du mois : données', () => {
     expect(t).not.toMatch(/brut|cotisation|imposable|bulletin/i);
     expect(d.mention).toMatch(/Il ne remplace pas le bulletin de salaire Pajemploi, qui fait foi\./);
   });
-  it('mois en cours : titre « provisoire », jours à venir sans horaires réels', () => {
+  it('mois en cours : titre « en cours, au JJ/MM » (T-103), jours à venir sans horaires réels', () => {
     const p = releveDonnees(makeCtx(contract(), recs, [], '2026-10-15'), '2026-10', { amName: 'Sophie', now, version: 'x' });
     expect(p.provisoire).toBe(true);
-    expect(p.titre).toBe('Relevé du mois, provisoire');
+    expect(p.titre).toMatch(/^Relevé du mois en cours, au \d\d\/\d\d$/);
+    expect(p.titre).not.toMatch(/provisoire/);
     expect(p.lignes.find((l) => l.date === '2026-10-20')?.reel).toBe('');
     expect(p.totaux[1].label).toBe('Heures d’accueil à ce jour');
   });
