@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { Contract, Planning } from '../src/engine/model';
 import { makeCtx } from '../src/engine/payroll';
 import { finDeContrat } from '../src/engine/fin';
+import { euros } from '../src/engine/money';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
   const p: Planning = {};
@@ -85,7 +86,7 @@ describe('T-050d, B-1 : la variante de date de fin ne compte jamais deux fois l�
 });
 
 describe('T-050d, C-3 : base du dixième incomplète, le message donne un minimum', () => {
-  it('S50B-I46-F1-2P-DECES (revu par la T-103) : base du dixième complète avec l’indemnité de l’an dernier, montant sans réserve', () => {
+  it('S50B-I46-F1-2P-DECES : « le dixième vaut au moins 202,30 € », jamais « vaut 202,30 € »', () => {
     // Situation du comparateur : mercredi 8 h-18 h, 4,20 € net, 46 semaines, du 01/11/2025 au 31/05/2027, décès le 31/05/2027.
     // Salaire mensualisé : 10 h × 46 ÷ 12 × 4,20 € = 161,00 € ; période 2026-2027 : 12 × 161,00 = 1 932,00 €.
     // Dixième sans l'indemnité de l'an dernier (à confirmer) : (1 932,00 + régularisation) ÷ 10, soit un minimum.
@@ -96,10 +97,11 @@ describe('T-050d, C-3 : base du dixième incomplète, le message donne un minimu
     });
     const f = finDeContrat(makeCtx(c, [], [], '2027-12-31'), '2027-05-31', 'deces');
     expect(f.regularisation).toBe(9100);
-    // T-103 (F7, C12) : l'indemnité de l'an dernier n'est plus à confirmer ; CASF L423-6 la met dans la base du dixième.
-    expect(f.cpDixiemeEnCours).toBeGreaterThan(Math.round((193200 + f.regularisation) / 10));
-    expect(f.cpDixiemeEnCours).toBe(21490);
-    expect(f.cpAConfirmer).toBeUndefined();
-    expect(f.cpIndemnite).toBeGreaterThanOrEqual(21490);
+    expect(f.cpDixiemeEnCours).toBe(Math.round((193200 + f.regularisation) / 10));
+    expect(f.cpDixiemeEnCours).toBe(20230);
+    expect(f.cpIndemnite).toBe(0);
+    expect(f.cpAConfirmer).toContain('l’indemnité de l’an dernier, qui est elle-même à confirmer');
+    expect(f.cpAConfirmer).toContain(`avec elle, le dixième vaut au moins ${euros(20230)}`);
+    expect(f.cpAConfirmer).not.toContain(`le dixième vaut ${euros(20230)}`);
   });
 });

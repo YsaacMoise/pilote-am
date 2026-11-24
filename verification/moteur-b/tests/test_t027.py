@@ -139,7 +139,9 @@ class Evenements(Base):
         self.assertEqual(self.duree("deces_enfant_majore", date(2024, 1, 10)), 14)
 
     def test_deuil(self):
-        self.refus(m.conge_evenement_familial("deuil_complementaire", date(2026, 9, 10)), "M-06")
+        # T-103 (C9) : CCN 48.1.3.1.2 : « congé complémentaire de deuil de 8 jours ouvrables » ; 48.1.3.1.3 : salaire
+        # maintenu « sous déduction des indemnités journalières » (montant demandé : conge_deuil). Ancien refus M-06.
+        self.assertEqual(self.duree("deuil_complementaire", date(2026, 9, 10)), 8)
 
     def test_600_km(self):
         r = self.ok(m.conge_evenement_familial("naissance", date(2026, 9, 10), deplacement_plus_600km=True))
@@ -157,8 +159,11 @@ class Evenements(Base):
         self.assertEqual(r["jours"]["2026-09-14"], "non_remunere")
 
     def test_ferie(self):
-        self.refus(m.jours_conge_evenement("mariage_pacs", date(2026, 11, 9), date(2026, 11, 9), date(2026, 11, 12)),
-                   "EVT-FERIE")
+        # T-103 (C7) : CCN 48, liminaire : jours ouvrables « a l'exception [...] des jours feries chomes » ; L3142-4 :
+        # jours ouvrables. Le 11/11 ne compte pas : mariage (4 jours) du 09/11 au 13/11. Ancien refus EVT-FERIE.
+        r = self.ok(m.jours_conge_evenement("mariage_pacs", date(2026, 11, 9), date(2026, 11, 9), date(2026, 11, 13)))
+        self.assertEqual(r["jours"], {"2026-11-09": "remunere", "2026-11-10": "remunere", "2026-11-11": "ferie",
+                                      "2026-11-12": "remunere", "2026-11-13": "remunere"})
 
 
 class Preavis(Base):
@@ -167,8 +172,12 @@ class Preavis(Base):
         self.assertEqual(r["preavis"], {"jours": 8})
 
     def test_demission_3_mois_a_1_an(self):
-        self.refus(m.duree_preavis("am", date(2026, 3, 2), date(2026, 7, 15), date(2026, 7, 16)),
-                   "PREAVIS-DEMISSION-3-12")
+        # T-103 (F2) : CASF L423-26 : un mois « a moins que l'employeur n'accepte d'abreger cette duree » ;
+        # CCN 120 : 15 jours calendaires ; C. trav. L2251-1 (par CASF L423-2, 6°) : plus favorable permis.
+        r = self.ok(m.duree_preavis("am", date(2026, 3, 2), date(2026, 7, 15), date(2026, 7, 16)))
+        self.assertEqual(r["preavis"], {"jours": 15})
+        # F1 (corrige) : presentation le 16/07 = 1er jour ; 15 jours : 30/07 (fiche F2883).
+        self.assertEqual(r["date_fin_preavis"], date(2026, 7, 30))
 
     def test_demission_un_an(self):
         r = self.ok(m.duree_preavis("am", date(2025, 1, 5), date(2026, 6, 5), date(2026, 6, 6)))

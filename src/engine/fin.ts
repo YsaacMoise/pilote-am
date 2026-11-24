@@ -2,7 +2,7 @@
 // indemnité de congés non pris. Aucun document officiel n'est produit.
 import { nonGeresPeriode } from './nonGeres';
 import { pvActif } from './planningVariable';
-import { finPreavis, finsAdmises, preavisEmployeur } from './preavis';
+import { finPreavis, finPreavisLocal, finsAdmises, preavisEmployeur } from './preavis';
 import { FINS_CDD, FINS_CDD_NON_GEREES, type DemandeurInexecution, type FinCdd, type FinCddNonGere, type Motif, type Rupture } from './model';
 import { finEssaiCdd, libelleLecturesCdd, messagesCdd, MESSAGE_CDD_12_MOIS, MESSAGE_CDD_DEVIENT_CDI } from './cdd';
 import { euros } from './money';
@@ -198,10 +198,7 @@ function icpDispense(c: Ctx['c'], from: ISODate, to: ISODate): { net: number; br
     for (let x = from > debutMois ? from : debutMois; x <= to && x <= lastDay(m); x = addDays(x, 1)) dispMin += planningBrutMin(termsAt(c, x), x);
     autre += avant > 0 ? Math.round((dispMin * termsAt(c, from).rateNet) / 60) : b;
   }
-  // T-103 (F5) : CCN 122, « le particulier employeur tient compte de la déduction d'absence prévue à l'article 111 » : la
-  // proportion de l'art. 111 est la seule méthode écrite ; « heures × taux » (`autre`) n'est plus proposée.
-  void autre;
-  return { net, brut };
+  return autre !== net ? { net, brut, autre } : { net, brut };
 }
 
 /**
@@ -244,13 +241,13 @@ export function congesNonPris(endCtx: Ctx, c: Ctx['c'], dernierJour: ISODate, en
   // et « Régularisation » du 05/11/2024 : « la somme due est à intégrer dans la base de calcul de l'ICCP selon la méthode du
   // dixième » ; fiche « Accueil sur 46 semaines ou moins » : 285,71 € dans la base. Un solde en faveur de l'employeur ne
   // se retire pas de la base (art. 124 : versement « au profit de l'assistant maternel »).
-  // T-103 (F7) : l'indemnité de la période précédente encore due à la fin y est ajoutée. CASF L423-6 : « indemnité représentative
-  // du congé annuel payé qui est égale au dixième du total formé par la rémunération reçue […] et par l'indemnité de congé payé
-  // de l'année précédente » (fiche DDETS 31 « Accueil sur 46 semaines ou moins », p. 11 : 400 € dans la base).
+  // L'ICCP de la période précédente n'y est PAS ajoutée : les sources se contredisent (M-5, SUS-04, question à la DDETS n° 5).
   // Point 1 de T-050 (direction) : dixième = base ÷ 10, sans prorata des jours pour enfants.
   const indCur = indemnite(endCtx, y, enfants);
   const joursCur = acq.joursADate;
   const regulDue = Math.max(0, regul);
+  const dixiemeEnCours = regulDue > 0 ? Math.round((baseDixieme(endCtx, y, enfants).base + regulDue) / 10) : Math.round(indCur.dixieme);
+  const curMontant = Math.max(dixiemeEnCours, maintien(endCtx, joursCur, dernierJour));
   // Période précédente : jours restants, moins ce qui a déjà été versé.
   let precMontant = 0;
   if (restantsPrec > 0) {
@@ -278,8 +275,6 @@ export function congesNonPris(endCtx: Ctx, c: Ctx['c'], dernierJour: ISODate, en
       }
     }
   }
-  const dixiemeEnCours = regulDue > 0 || precMontant > 0 ? Math.round((baseDixieme(endCtx, y, enfants).base + regulDue + precMontant) / 10) : Math.round(indCur.dixieme);
-  const curMontant = Math.max(dixiemeEnCours, maintien(endCtx, joursCur, dernierJour));
   let cpIndemnite = curMontant + precMontant;
   let cpExplication = `${joursCur} jour${joursCur > 1 ? 's' : ''} acquis depuis le 1er juin (${cpPeriod(y).from.slice(0, 4)})` +
     (restantsPrec ? ` et ${restantsPrec} jour${restantsPrec > 1 ? 's' : ''} de la période précédente non pris` : '') +
@@ -360,17 +355,16 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     const p = preavisEmployeur(anc);
     preavisLabel = p.label;
     preavisFin = finPreavis(depart, p);
-    // T-103 (F1, F2 ; décision du DG du 24/11/2026) : une seule date de fin. Le jour de la première présentation est le premier
-    // jour du préavis (CCN 64.1 et 120 ; CASF L423-24 ; fiche officielle F2883 : présentée le 8 juillet, préavis d'un mois
-    // « du 8 juillet au 7 août 2026 inclus »). Démission de 3 mois à moins d'un an : 15 jours (CCN 120, plus favorable que
-    // CASF L423-26, qui permet à l'employeur d'abréger le mois ; C. trav. L2251-1).
-    demission312 = false;
+    demission312 = motif === 'demission' && anc >= 3 && anc < 12;
+    preavisFinAConfirmer = demission312
+      ? `${MESSAGE_PREAVIS_DEMISSION_3_12} ${MESSAGE_PREAVIS_FIN}`
+      : MESSAGE_PREAVIS_FIN;
   }
   // Décès de l'enfant (R-FIN-07, CCN art. 119.4.2 ; Urssaf « motifs de fin de contrat » ; service-public.fr F16842) :
   // le contrat s'arrête le jour du décès, sans préavis à faire ; l'employeur verse une indemnité égale à l'indemnité
   // compensatrice de préavis (R-FIN-05), de la durée d'un retrait de l'enfant à la date du décès (R-FIN-02).
-  // T-103 (F8) : CCN 119.4.2, le contrat est rompu « au jour du décès » et l'AM reçoit « le dernier salaire dû au jour du
-  // décès » : le jour du décès est payé en salaire, la période de l'indemnité part du lendemain.
+  // Choix de l'app, à valider (aucun texte ne fixe le premier jour) : la période part du lendemain du décès, car le jour
+  // du décès est payé avec le dernier salaire.
   let indemnitePreavis = 0;
   let indemnitePreavisExplication: string | undefined;
   let indemnitePreavisAConfirmer: string | undefined;
@@ -381,10 +375,38 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     indemnitePreavis = indemniteCompensatricePreavis(c, debut, fin);
     preavisLabel = `${p.label} : pas de préavis à faire, les parents te versent une indemnité égale au préavis`;
     indemnitePreavisExplication = `Égale au salaire que tu aurais touché pendant ${p.jours ? `${p.jours} jours` : 'un mois'}, du ${shortDate(debut)} au ${shortDate(fin)}.`;
-    alertes.push(`Décès de l’enfant : l’indemnité égale au préavis couvre ${p.jours ? `${p.jours} jours` : 'un mois'} à partir du lendemain du décès, du ${shortDate(debut)} au ${shortDate(fin)} ; le jour du décès est payé avec le dernier salaire (convention, article 119.4.2).`);
+    // T-038 (R-1, relecture V4) : le premier jour n'est fixé par aucun texte. Seconde lecture : la période part du jour du
+    // décès. Si le montant change, il n'est ni donné ni compté.
+    const fin2 = finPreavis(notif, p);
+    const autre = indemniteCompensatricePreavis(c, notif, fin2);
+    if (autre !== indemnitePreavis) {
+      indemnitePreavisAConfirmer = `Indemnité égale au préavis à confirmer : aucun texte ne fixe son premier jour. Du ${shortDate(debut)} au ${shortDate(fin)} (lendemain du décès) : ${euros(indemnitePreavis)} ; du ${shortDate(notif)} au ${shortDate(fin2)} (jour du décès) : ${euros(autre)}. Elle n'est pas comptée dans le total. Vois-la avec les parents.`;
+      indemnitePreavis = 0;
+      indemnitePreavisExplication = 'À confirmer : le montant dépend du premier jour retenu.';
+    } else {
+      alertes.push(`Décès de l’enfant : l’indemnité égale au préavis est calculée du ${shortDate(debut)} au ${shortDate(fin)}. Aucun texte ne fixe le premier jour ; à partir du jour du décès, le montant serait le même.`);
+    }
   }
-  // T-103 (R2) : Alsace-Moselle, pas de préavis local de six semaines pour l'AM : C. trav. L1234-16 vise les « personnes
-  // employées chez des particuliers » (l'AM travaille chez elle) ; le CASF fixe son propre préavis (L423-25, L423-26).
+  // T-077 (R5) : Alsace-Moselle, préavis du droit local (six semaines, CT L1234-16 1°) dans la lecture B. L'app garde celui de la
+  // convention (lecture A) et chiffre l'écart : salaire des jours en plus, ou indemnité en plus après un décès.
+  let preavisLocalAConfirmer: string | undefined;
+  // T-078 (R2 de la relecture 18 h 46) : fin du préavis local (lecture B), gardée pour l'indemnité de rupture (bloc D4).
+  let finLocalRetrait: ISODate | undefined;
+  if (regionDe(c) === 'alsaceMoselle') {
+    const QUESTION = 'En Alsace-Moselle, le code du travail (article L1234-16) prévoit six semaines de préavis pour les « personnes employées chez des particuliers », aussi en cas de démission. Aucun texte ne dit s’il vaut pour une assistante maternelle, qui travaille chez elle. La question sera posée à la DDETS.';
+    const local = finPreavisLocal(c.start, { motif: motif === 'deces' ? 'retrait' : motif, notif: motif === 'deces' ? addDays(notif, 1) : notif, presentation: motif === 'deces' ? undefined : presentation });
+    if (local && (motif === 'retrait' || motif === 'demission')) {
+      if (motif === 'retrait') finLocalRetrait = local;
+      const ecart = indemniteCompensatricePreavis(c, addDays(preavisFin, 1), local);
+      preavisLocalAConfirmer = `Préavis à confirmer. ${QUESTION} L’app applique celui de la convention (${preavisLabel}, fin le ${shortDate(preavisFin)}). Avec six semaines, il finirait le ${shortDate(local)} : ${euros(ecart)} de salaire en plus${motif === 'retrait' ? ', ou d’indemnité si les parents te dispensent de ces jours' : ''}.`;
+    } else if (local && motif === 'deces') {
+      const debut = addDays(notif, 1);
+      const ecart = indemniteCompensatricePreavis(c, debut, local) - indemniteCompensatricePreavis(c, debut, finPreavis(debut, preavisEmployeur(anc)));
+      if (ecart > 0) preavisLocalAConfirmer = `Indemnité égale au préavis à confirmer. ${QUESTION} L’app la calcule avec le préavis de la convention. Avec six semaines (jusqu’au ${shortDate(local)}), elle serait de ${euros(ecart)} de plus.`;
+    }
+    if (preavisLocalAConfirmer) alertes.push(preavisLocalAConfirmer);
+  }
+
   // T-045 : préavis non exécuté. Art. 64 : la date de fin est « la date prévue de fin du préavis » si l'inexécution est à
   // l'initiative de l'employeur, « le dernier jour travaillé » si elle est à l'initiative du salarié. Art. 64.2, al. 2 : avec
   // l'accord de l'employeur, « le contrat de travail prend fin au dernier jour travaillé » ; aucune indemnité n'est prévue
@@ -475,7 +497,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
       ? ` : ${icp.aConfirmer.replace(/^Indemnité de préavis à confirmer : /, 'montant à confirmer, ')}`
       : ` : ${euros(icp.net)} net, soit environ ${euros(icp.brut)} brut${icp.autre != null ? ` (ou ${euros(icp.autre)} net en comptant les heures dispensées au taux horaire : la part du salaire qui est l’indemnité est à confirmer)` : ''}.`;
     alertes.push(`Préavis non fait en entier, à la demande des parents : tu as accueilli l’enfant jusqu’au ${shortDate(inexecution!.dernierJourTravaille)}. Le contrat finit le ${shortDate(dernierJour)}, date prévue de fin du préavis (convention, article 64). Pour les jours dispensés (${jours}), les parents te versent une indemnité compensatrice de préavis égale au salaire de ces jours${montantIcp} Elle est comprise dans tes salaires des mois du préavis, pas en plus, et soumise aux cotisations. Ces jours comptent pour tes congés et ton ancienneté (article 64.2). Pas d’indemnité d’entretien ni de repas ces jours-là (article 114). Garde par écrit que ce sont les parents qui t’ont dispensée : si c’est toi qui as demandé à partir, le contrat finit à ton dernier jour travaillé et ces jours ne sont pas payés.`);
-    alertes.push('Déclaration à Pajemploi : mets le montant de l’indemnité de préavis dans la case « indemnité compensatrice de préavis non effectué » (documentation officielle de la déclaration Pajemploi). Les jours dispensés ne sont ni des heures ni des jours d’activité : rien n’y est travaillé. Le total à verser ne change pas.');
+    alertes.push('Déclaration à Pajemploi : la part du salaire à mettre dans la case de l’indemnité de préavis, et les heures et jours à déclarer pour les jours dispensés, sont à confirmer avec le service Pajemploi. Le total à verser, lui, ne change pas.');
   }
   // T-078 (D1 bis, même règle T-038) : dispense déclarée, dernier jour travaillé = date de fin retenue : aucun jour dispensé à
   // cette date, mais une autre date de fin possible (lendemain, préavis d'un mois) en ferait, payés (art. 64.2 et 66). Si elle
@@ -691,15 +713,11 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
       ruptureExplication = `Inaptitude : pas d’indemnité, moins de 9 mois d’ancienneté (${anc} mois).`;
     }
   } else if (motif === 'retrait') {
-    // T-103 (F3) : CCN 60, l'ancienneté « s'arrête à la date à laquelle le contrat de travail prend fin » ; CCN 64 et 64.2 : la
-    // fin est la fin du préavis, ou sa date prévue s'il est dispensé, et la période dispensée compte. La seule exception écrite
-    // (CCN 120, ancienneté « au jour de la date d'envoi de la lettre ») vise la durée du préavis.
-    const ancFinContrat = fullMonthsBetween(c.start, addDays(dernierJour, 1));
-    if (ancFinContrat >= 9) {
+    if (anc >= 9) {
       indemniteRupture = Math.round(totalBrut / 80);
-      ruptureExplication = `1/80e des salaires bruts perçus depuis le début du contrat (9 mois d’ancienneté atteints à la fin du contrat : ${ancFinContrat} mois).`;
+      ruptureExplication = '1/80e des salaires bruts perçus depuis le début du contrat (9 mois d’ancienneté atteints à l’envoi de la lettre).';
     } else {
-      ruptureExplication = `Pas d’indemnité : moins de 9 mois d’ancienneté à la fin du contrat (${ancFinContrat} mois).`;
+      ruptureExplication = `Pas d’indemnité : moins de 9 mois d’ancienneté à l’envoi de la lettre (${anc} mois).`;
     }
   } else if (motif === 'demission') {
     ruptureExplication = 'Pas d’indemnité de rupture en cas de démission.';
@@ -763,9 +781,54 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     }
   }
 
-  // T-103 (F3, F4) : préavis dispensé par les parents : l'ancienneté se compte à la fin du contrat (bloc « retrait » plus haut)
-  // et l'indemnité de préavis, « soumise à contributions et cotisations sociales » (CCN 64.2), est dans les salaires bruts du
-  // 1/80 (CCN 121.1 n'exclut que les sommes non soumises). Plus de seconde lecture.
+  // T-074 : indemnité de rupture quand les parents ont dispensé l'AM d'une partie du préavis. Deux points ouverts
+  // (regles/t074-preavis-dispense.md, point 5) : l'indemnité de préavis entre-t-elle dans les « salaires bruts perçus » du
+  // 1/80 (CCN art. 121.1 ; envoi 1 à la DDETS, question 4) ? les 9 mois se comptent-ils à la remise de la lettre (service-public
+  // F16842) ou à la fin du contrat, préavis compris (CCN art. 60 et 64.2 ; question D-1) ? Si les lectures diffèrent,
+  // « à confirmer » avec leurs valeurs, jamais comptée.
+  // T-078 (D4, règle T-038) : l'ancienneté de fin et l'assiette sont prises pour chaque date de fin possible du préavis ; le
+  // bloc tourne aussi quand aucun jour n'est dispensé à la date de l'app mais qu'une autre date en donne (D1 bis).
+  if (((dispense && icp) || sansJourDispense) && motif === 'retrait') {
+    const duDisp = dispense?.du ?? sansJourDispense!.du;
+    const icpBrutPour = (fin: ISODate) => (fin < duDisp ? 0 : fin === dernierJour && icp ? icp.brut : icpDispense(c, duDisp, fin).brut);
+    // R3 : sommes de la fin encore à confirmer, absentes du total des bruts. T-078 (D2) : seulement celles qui en sont vraiment
+    // absentes (mêmes conditions que l'assiette : un bulletin qui couvre le dernier mois les contient, sauf une régularisation
+    // non calculée) ; la régularisation n'est citée que si elle est à confirmer ou non calculée.
+    const absentes = [iccpManquante ? 'l’indemnité de congés non pris' : '', regulManquante ? 'la régularisation de la fin' : ''].filter(Boolean);
+    const sansFin = absentes.length ? ` (sans ${absentes.join(' ni ')}, ${regulNonCalculee ? 'à confirmer : la régularisation n’est pas calculée' : 'encore à confirmer'})` : '';
+    const ancFin = fullMonthsBetween(c.start, addDays(dernierJour, 1));
+    const avec = Math.round(totalBrut / 80);
+    const sans = Math.round((totalBrut - icpBrutPour(dernierJour)) / 80);
+    // T-078 (R2, règle T-038) : en Alsace-Moselle, la fin du préavis local de six semaines (lecture B de T-077, CT L1234-16)
+    // est une date de fin possible de plus : les 9 mois peuvent être atteints à cette date seulement.
+    const finsRupture = finLocalRetrait && !variantes.some((v) => v.fin === finLocalRetrait)
+      ? [...variantes, { fin: finLocalRetrait, libelle: `préavis local de six semaines (Alsace-Moselle, à confirmer), fin le ${shortDate(finLocalRetrait)}` }]
+      : variantes;
+    const ancVariantes = finsRupture.map((v) => ({ ...v, anc: fullMonthsBetween(c.start, addDays(v.fin, 1)) }));
+    let msg = '';
+    // D4 : valeur de chaque date de fin possible si l'ancienneté se compte à la fin du contrat.
+    const valeur = (v: (typeof ancVariantes)[number]) => {
+      if (v.anc < 9) return `pas d’indemnité (${v.anc} mois)`;
+      const t = totalBrutPour(v.fin);
+      if (t == null) return texteDeplacees(v.fin);
+      const a = Math.round(t / 80), b = Math.round((t - icpBrutPour(v.fin)) / 80);
+      return a === b ? euros(a) : `${euros(a)} avec l’indemnité de préavis dans les salaires bruts, ${euros(b)} sans elle`;
+    };
+    const valeursFin = anc < 9 && ancVariantes.some((v) => v.anc >= 9) ? ancVariantes.map(valeur) : [];
+    if (new Set(valeursFin).size > 1) {
+      // D4 (règle T-038) : la valeur change d'une date de fin possible à l'autre (9 mois atteints ou non, jours dispensés) : par date.
+      msg = `Indemnité de rupture à confirmer : il faut 9 mois d’ancienneté, et aucun texte ne dit s’ils se comptent à la remise de la lettre ou à la fin du contrat, préavis dispensé compris (convention, articles 60, 64.2 et 121.1 ; question pour la DDETS) ; la date de fin du préavis est elle-même à confirmer. À la remise de la lettre (${anc} mois) : pas d’indemnité ; à la fin du contrat, ${ancVariantes.map((v, i) => `${v.libelle} : ${valeursFin[i]}`).join(' ; ')}${sansFin}. Elle n'est pas comptée dans le total.`;
+    } else if (anc >= 9 && avec !== sans) {
+      msg = `Indemnité de rupture à confirmer : aucun texte ne dit si l’indemnité de préavis compte dans les salaires bruts qui servent au calcul (convention, article 121.1 ; question posée à la DDETS). Avec elle : ${euros(avec)} ; sans elle : ${euros(sans)}${sansFin}. Elle n'est pas comptée dans le total.`;
+    } else if (anc < 9 && ancFin >= 9) {
+      msg = `Indemnité de rupture à confirmer : il faut 9 mois d’ancienneté, et aucun texte ne dit s’ils se comptent à la remise de la lettre ou à la fin du contrat, préavis dispensé compris (convention, articles 60, 64.2 et 121.1 ; question pour la DDETS). À la remise de la lettre (${anc} mois) : pas d’indemnité ; à la fin du contrat : ${avec === sans ? euros(avec) : `${euros(avec)} avec l’indemnité de préavis dans les salaires bruts, ${euros(sans)} sans elle`}${sansFin}. Elle n'est pas comptée dans le total.`;
+    }
+    if (msg) {
+      ruptureVariantes = ruptureVariantes ? `${ruptureVariantes} ${msg}` : msg;
+      ruptureAConfirmer = true;
+      if (anc < 9) ruptureExplication = 'À confirmer : l’ancienneté de 9 mois se compte peut-être jusqu’à la fin du contrat (voir l’encadré plus haut).';
+    }
+  }
   // T-078 (D3) : la régularisation non calculée entre dans l'assiette de l'indemnité de rupture (CCN art. 121.1 et 124).
   if (regularisationNonCalculee && ruptureAConfirmer) {
     regularisationNonCalculee = `${regularisationNonCalculee} L’indemnité de rupture aussi, même si tes bulletins couvrent le dernier mois.`;
@@ -788,7 +851,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   }
   return {
     ancienneteMois: anc, preavisLabel, preavisFin, preavisFinAConfirmer, dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, ruptureVariantes, totalBrut, brutsEstimes,
-    indemnitePreavis, indemnitePreavisExplication, indemnitePreavisAConfirmer,
+    indemnitePreavis, indemnitePreavisExplication, indemnitePreavisAConfirmer, preavisLocalAConfirmer,
     regularisation: regularisation_, regulMinutes, cpJoursRestants, cpIndemnite, cpDixiemeEnCours, cpExplication, cpAConfirmer, regularisationAConfirmer, regularisationNonCalculee, manquants, alertes,
     ...(dispense && icp ? { dispense: { ...dispense, ...icp } } : sansJourDispense ? { dispense: sansJourDispense } : {}),
   };

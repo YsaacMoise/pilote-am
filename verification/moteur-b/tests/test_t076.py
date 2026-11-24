@@ -201,24 +201,25 @@ class PVConges(unittest.TestCase):
     def test_c1_c2(self):
         # Periode : 26 A + 26 B = 101 400 min sur 52 semaines (32,5 h) ; C1 = 5 x 32,5 x 30 / 6 = 812,50 EUR.
         # Conges : 3 A + 2 B = 10 500 min = 175 h ; C2 = 875 EUR. Dixieme : 12 x 70 417 / 10 = 84 500,4 c.
+        # T-103 (C13) : lecture C1 seule (Cass. soc. 09/05/2019, n° 17-26.232 : « duree normale habituelle
+        # d'accueil [...] pendant toute la periode de reference ») : max(812,50 ; 845,004) = 845,00 EUR.
         r = m.indemnite_cp_planning_variable(30, 500, 101400, 52, 10500, 12 * 70417)
-        self.assertEqual(R(r, "lectures"), [84500, 87500])
         self.assertEqual(R(r, "indemnite_centimes"), 84500)
-        self.assertEqual(R(r, "a_confirmer_centimes"), 3000)
-        self.assertEqual(R(r, "methodes"), ["dixieme", "maintien"])
+        self.assertEqual(R(r, "a_confirmer_centimes"), 0)
+        self.assertEqual(R(r, "methodes"), ["dixieme", "dixieme"])
         self.assertEqual(m.complement_cp_planning_variable(r)["code"], "A-29")
 
     def test_maintien_egal(self):
-        # C1 = C2 = 812,50 EUR > dixieme : complement nul.
-        r = m.indemnite_cp_planning_variable(30, 500, 101400, 52, 9750, 700000)
-        self.assertEqual(R(r, "lectures"), [81250, 81250])
-        self.assertEqual(R(m.complement_cp_planning_variable(r), "complement_centimes"), 0)
-        r = m.indemnite_cp_planning_variable(30, 500, 101400, 52, 10500, 700000)
-        self.assertEqual(m.complement_cp_planning_variable(r)["code"], "P-PV-5")
+        # C1 = 812,50 EUR > dixieme : complement nul, quelles que soient les heures des jours pris (T-103, C13).
+        for hc in (9750, 10500):
+            r = m.indemnite_cp_planning_variable(30, 500, 101400, 52, hc, 700000)
+            self.assertEqual(R(r, "indemnite_centimes"), 81250)
+            self.assertEqual(R(m.complement_cp_planning_variable(r), "complement_centimes"), 0)
 
     def test_refus(self):
-        self.assertEqual(m.indemnite_cp_planning_variable(30, 500, 101400, 52, None, 700000)["code"],
-                         "PV-C2-DROIT-NON-PRIS")
+        # T-103 (C13) : heures des jours pris non necessaires (ancien refus PV-C2-DROIT-NON-PRIS leve).
+        self.assertEqual(R(m.indemnite_cp_planning_variable(30, 500, 101400, 52, None, 700000), "indemnite_centimes"),
+                         81250)
         self.assertEqual(m.indemnite_cp_planning_variable(30, 500, 101400, 52, 10500, 845004,
                                                           icp_versee_pendant_periode_centimes=0,
                                                           icp_annee_precedente_centimes=90000)["code"], "A-28")
@@ -239,14 +240,15 @@ class CDDMensualisation(unittest.TestCase):
         self.assertEqual(m.cdd_moins_d_un_mois(date(2026, 1, 30), date(2026, 2, 10))["code"], "DATE-MOIS")
 
     def test_p1_deux_lectures(self):
-        # Lecture 1 : 600 - 300 = 300 EUR ; lecture 2 : 5 EUR x 72 h = 360 EUR.
+        # T-103 (F11) : lecture 1 seule (CCN 108.1 « quels que soient le nombre d'heures [...] et le nombre de
+        # semaines », C. trav. L1242-14 ; DG 22/11/2026, question n° 9 close) : 600 - 300 = 300 EUR.
         r = m.salaire_mois_cdd_moins_d_un_mois(60000, 30000, 500, 72 * 60)
-        self.assertEqual(R(r, "lectures"), [30000, 36000])
         self.assertEqual(R(r, "valeur_centimes"), 30000)
-        self.assertEqual(R(r, "a_confirmer_centimes"), 6000)
+        self.assertEqual(R(r, "a_confirmer_centimes"), 0)
 
     def test_p2_qualification(self):
-        self.assertTrue(R(m.qualifier_semaine_sans_accueil_cdd("52"), "deductible"))
+        # T-103 (F12) : mode 46 semaines (CCN 97.1, 109.2 par L1242-14) ; la lecture « 52 » est refusee.
+        self.assertEqual(m.qualifier_semaine_sans_accueil_cdd("52")["statut"], "erreur_saisie")
         self.assertFalse(R(m.qualifier_semaine_sans_accueil_cdd("46"), "deductible"))
         r = m.deux_lectures_cdd(52000, 50000, "P2")
         self.assertEqual((R(r, "valeur_centimes"), R(r, "a_confirmer_centimes")), (50000, 2000))
@@ -273,34 +275,34 @@ class CDDFin(unittest.TestCase):
         self.assertEqual(m.indemnite_fin_cdd(160000, "autre")["statut"], "erreur_saisie")
 
     def test_p4(self):
-        # Lecture 1 sans ICCP : 160 EUR ; lecture 2 avec ICCP 176 EUR : 176 EUR ; a confirmer 17,60 EUR.
+        # T-103 (F10) : l'ICCP n'entre pas dans la base de l'IFC (circulaire DRT n° 18/90, § 4.2.3) : 160 EUR.
         r = m.indemnite_fin_cdd(160000, "terme", iccp_centimes=17600)
-        self.assertEqual(R(r, "lectures"), [16000, 17760])
-        self.assertEqual(R(r, "a_confirmer_centimes"), 1760)
+        self.assertEqual(R(r, "indemnite_centimes"), 16000)
+        self.assertEqual(R(r, "a_confirmer_centimes"), 0)
 
     def test_iccp_ifc_dans_la_base_et_plancher(self):
-        # Dixieme : (1 600 + 160) / 10 = 176 EUR = plancher L1242-16. Jours inconnus : lecture 2 non donnee.
+        # Dixieme : (1 600 + 160) / 10 = 176 EUR = plancher L1242-16. T-103 (F9) : jours inconnus : le maintien
+        # a comparer n'est pas connu : refus avec le code de l'acquisition.
         p = [{"salaires_bruts_periode_centimes": 160000, "jours_acquis": None, "jours_payes": 0, "code_jours": "A-23"}]
         r = m.iccp_cdd("terme", p, 16000, 160000, 2400, 461)
-        self.assertEqual(R(r, "iccp_centimes"), 17600)
-        self.assertIsNone(R(r, "lectures"))
-        self.assertEqual(R(r, "code_lecture_2"), "A-23")
-        # 6 jours : maintien = 6 / 6 x 40 h x 4,61 = 184,40 EUR > 176 EUR (P3).
+        self.assertEqual(r["code"], "A-23")
+        # 6 jours : maintien = 6 / 6 x 40 h x 4,61 = 184,40 EUR > 176 EUR. T-103 (F9, CCN 48.1.1.5 « le montant le
+        # plus avantageux ») : 184,40 EUR.
         p[0]["jours_acquis"] = 6
         r = m.iccp_cdd("terme", p, 16000, 160000, 2400, 461)
-        self.assertEqual(R(r, "lectures"), [17600, 18440])
-        self.assertEqual(R(r, "a_confirmer_centimes"), 840)
-        # IFC non due (essai) : base sans IFC, ICCP toujours due (CASF L423-7).
+        self.assertEqual(R(r, "iccp_centimes"), 18440)
+        # IFC non due (essai) : base sans IFC (dixieme 160 EUR) ; maintien 184,40 EUR plus haut.
         r = m.iccp_cdd("essai", p, 0, 160000, 2400, 461)
-        self.assertEqual(R(r, "iccp_centimes"), 16000)
+        self.assertEqual(R(r, "iccp_centimes"), 18440)
 
     def test_iccp_suite_cdi_et_refus(self):
         p = [{"salaires_bruts_periode_centimes": 160000, "jours_acquis": 6, "jours_payes": 0}]
         self.assertEqual(R(m.iccp_cdd("suite_cdi", p, 0, 160000, 2400, 461), "iccp_centimes"), 0)
-        # D10 : deux periodes, part sure donnee = (1 600 + 1 600 + 160) / 10 ; lecture 2 non calculee (A-50).
+        # T-103 (F7, F9) : deux periodes. Periode 1 : max(160 ; 184,40) = 184,40 EUR. Periode 2 : base 1 600 + 184,40
+        # (ICCP de la periode 1, CCN 48.1.1.5) + 160 (IFC) = 1 944,40 EUR, dixieme 194,44 EUR > 184,40.
+        # Total 378,84 EUR > plancher (3 200 + 160) / 10 = 336 EUR. Ancien refus A-50 (D10) leve.
         r = m.iccp_cdd("terme", p + p, 16000, 320000, 2400, 461)
-        self.assertEqual(R(r, "iccp_centimes"), 33600)
-        self.assertEqual(R(r, "code_lecture_2"), "A-50")
+        self.assertEqual(R(r, "iccp_centimes"), 37884)
         self.assertEqual(m.iccp_cdd("terme", [dict(p[0], jours_supplementaires=2)], 16000, 160000, 2400, 461)["code"],
                          "CP-SUPP")
         q = [dict(p[0], jours_payes=6)]

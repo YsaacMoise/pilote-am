@@ -40,7 +40,10 @@ export function controle(b: Bulletin, r: MonthResult, rateNet: number, region: R
   }
   if (b.entretien != null) {
     const diff = b.entretien - r.entretien;
-    if (Math.abs(diff) <= tol) out.push({ level: 'ok', title: 'Entretien conforme', detail: euros(b.entretien) });
+    // T-044 : une part de l'entretien peut être à confirmer (tarif par jour) : tout montant entre les deux lectures est admis.
+    const haut = r.entretien + (r.entretienAConfirmer ?? 0);
+    if (r.entretienAConfirmer && b.entretien >= r.entretien - tol && b.entretien <= haut + tol) out.push({ level: 'info', title: 'Entretien dans la fourchette à confirmer', detail: `${euros(b.entretien)} déclarés, entre ${euros(r.entretien)} et ${euros(haut)} selon la lecture du tarif par jour.` });
+    else if (Math.abs(diff) <= tol) out.push({ level: 'ok', title: 'Entretien conforme', detail: euros(b.entretien) });
     else out.push({ level: diff < 0 ? 'warn' : 'info', title: 'Indemnités d’entretien différentes', detail: `${euros(b.entretien)} déclarés, ${euros(r.entretien)} calculés.` });
   }
 
@@ -62,6 +65,8 @@ export function controle(b: Bulletin, r: MonthResult, rateNet: number, region: R
       // T-025 C-3 : minimum = le plus haut de la grille et de 0,281 × SMIC (CASF D423-9).
       if (brutHoraire + 1 < minB.certain) {
         out.push({ level: 'warn', title: 'Brut horaire sous le minimum', detail: `Environ ${euros(brutHoraire)} brut de l’heure, le minimum est ${libelleMinimumBrut(minB)}. ${MINIMUM_SANS_TITRE}` });
+      } else if (minB.doute && brutHoraire + 1 < minB.doute) {
+        out.push({ level: 'info', title: 'Minimum à confirmer', detail: `Environ ${euros(brutHoraire)} brut de l’heure. Minimum : ${libelleMinimumBrut(minB)}. L’arrondi n’est pas fixé par le texte : vérifie avec les parents. ${MINIMUM_SANS_TITRE}` });
       }
     }
   }

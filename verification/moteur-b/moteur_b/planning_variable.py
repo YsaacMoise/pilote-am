@@ -407,44 +407,38 @@ def indemnite_cp_planning_variable(jours_conges, taux_horaire_centimes, heures_p
     (enfants a charge, fractionnement) : refus CP-SUPP s'ils changent le resultat.
     Sortie : indemnite_centimes (part sure), a_confirmer_centimes, lectures
     [C1 : max(dixieme, C1) ; C2 : max(dixieme, C2)], methode par lecture."""
-    regles = ["R-PV-10", "P-PV-5"]
+    # T-103 (C13, A2) : lecture C1 seule. Cass. soc. 09/05/2019, n° 17-26.232 : « la duree normale habituelle
+    # d'accueil de l'enfant [...] pendant toute la periode de reference » : moyenne des heures prevues de la periode.
+    # heures_prevues_jours_conge_minutes n'est plus lue (refus PV-C2-DROIT-NON-PRIS leve). T-103 (F7) : base du
+    # dixieme avec l'ICP versee pendant la periode ; CASF L423-6 en plancher (A-28 s'il depasse).
+    regles = ["R-PV-10", "T103-C13"]
     j = entier(jours_conges, "jours_conges", 1)
     t = positif(taux_horaire_centimes, "taux_horaire_centimes")
     hp = entier(heures_prevues_periode_minutes, "heures_prevues_periode_minutes")
     n = entier(semaines_prevues_travaillees, "semaines_prevues_travaillees", 1)
-    if heures_prevues_jours_conge_minutes is None:
-        raise NonGere("PV-C2-DROIT-NON-PRIS", regles,
-                      precision="Lecture C2 : heures prevues des jours de conge inconnues tant que le droit n'est pas pris.")
-    hc = entier(heures_prevues_jours_conge_minutes, "heures_prevues_jours_conge_minutes")
     sal = entier(salaires_bruts_periode_centimes, "salaires_bruts_periode_centimes")
     icp1 = entier(icp_versee_pendant_periode_centimes, "icp_versee_pendant_periode_centimes")
     icp2 = entier(icp_annee_precedente_centimes, "icp_annee_precedente_centimes")
     sup = entier(jours_supplementaires, "jours_supplementaires")
     if sup >= j:
         raise ErreurSaisie("jours_supplementaires doit etre inferieur a jours_conges.")
-    variantes = {}
-    for icp in sorted({icp1, icp2}):
-        for echelle in ([False, True] if sup else [False]):
-            c1, c2, dix = _lectures_cp(j, t, hp, n, hc, sal + icp)
-            if echelle:
-                dix = dix * j / (j - sup)  # CP-SUPP : jours supplementaires hors du dixieme (comme R-CP-06)
-            variantes[(icp, echelle)] = (max(dix, c1), max(dix, c2), dix)
-    if len({(a, b) for a, b, _ in variantes.values()}) != 1:
-        codes = {("A-28" if k1[0] != k2[0] else "CP-SUPP") for k1 in variantes for k2 in variantes
-                 if variantes[k1][:2] != variantes[k2][:2]}
-        raise NonGere("A-28" if "A-28" in codes else "CP-SUPP", regles + ["R-CP-06"])
-    variantes = set(variantes.values())
-    l1, l2, dix = next(iter(variantes))
-    c1, c2, _ = _lectures_cp(j, t, hp, n, hc, sal + icp1)
-    v1 = vers_centimes(l1, "indemnite de CP, lecture C1", regles)
-    v2 = vers_centimes(l2, "indemnite de CP, lecture C2", regles)
-    sure = min(v1, v2)
+    vals = set()
+    for echelle in ([False, True] if sup else [False]):
+        c1, _, dix = _lectures_cp(j, t, hp, n, 0, sal + icp1)
+        if echelle:
+            dix = dix * j / (j - sup)  # CP-SUPP : jours supplementaires hors du dixieme (comme R-CP-06)
+        vals.add((max(dix, c1), dix))
+    if len({v for v, _ in vals}) != 1:
+        raise NonGere("CP-SUPP", regles + ["R-CP-06"])
+    l1, dix = next(iter(vals))
+    if icp2 != icp1 and Fraction(sal + icp2, 10) > l1:
+        raise NonGere("A-28", regles + ["R-CP-06"], precision="Le dixieme du CASF L423-6 depasse le resultat de la CCN.")
+    c1, _, _ = _lectures_cp(j, t, hp, n, 0, sal + icp1)
+    v1 = vers_centimes(l1, "indemnite de CP (maintien C1 ou dixieme)", regles)
+    meth = "dixieme" if dix > c1 else ("egalite" if dix == c1 else "maintien")
     return resultat_ok(indemnite_cp_planning_variable.regles, {
-        "indemnite_centimes": sure, "a_confirmer_centimes": max(v1, v2) - sure, "lectures": [v1, v2],
-        "methodes": ["dixieme" if dix > c1 else ("egalite" if dix == c1 else "maintien"),
-                     "dixieme" if dix > c2 else ("egalite" if dix == c2 else "maintien")],
-        "maintien_c1_exact_centimes": texte_fraction(c1), "maintien_c2_exact_centimes": texte_fraction(c2),
-        "dixieme_exact_centimes": texte_fraction(dix), "question": QUESTION_P_PV_5})
+        "indemnite_centimes": v1, "a_confirmer_centimes": 0, "lectures": [v1, v1], "methodes": [meth, meth],
+        "maintien_c1_exact_centimes": texte_fraction(c1), "dixieme_exact_centimes": texte_fraction(dix)})
 
 
 @api("R-PV-10", "R-CP-07", "P-PV-5")
@@ -513,26 +507,20 @@ def iccp_planning_variable(type_annee, motif, periodes, taux_horaire_centimes):
             hp = entier(p.get("heures_prevues_periode_minutes"), "heures_prevues_periode_minutes")
             n = entier(p.get("semaines_prevues_travaillees"), "semaines_prevues_travaillees", 1)
             c1 = t * Fraction(hp, 60) / n * Fraction(a, 6)
-            vals = {}
-            for icp in sorted({icp1, icp2}):
-                for prec in sorted({0, precedente}):
-                    for ech in ([False, True] if sup else [False]):
-                        dix = Fraction(sal + icp + reg + prec, 10)
-                        if ech:
-                            dix = dix * a / (a - sup)
-                        vals[(icp, prec, ech)] = max(dix, c1)
-            if len(set(vals.values())) != 1:
-                ks = list(vals)
-                code = "A-50"
-                for k1 in ks:
-                    for k2 in ks:
-                        if vals[k1] != vals[k2]:
-                            if k1[0] != k2[0] and k1[1:] == k2[1:]:
-                                code = "A-28"
-                            elif k1[2] != k2[2] and k1[:2] == k2[:2] and code != "A-28":
-                                code = "CP-SUPP"
-                raise NonGere(code, regles)
-            v = vers_centimes(next(iter(vals.values())), f"ICCP periode {i + 1}", regles)
+            # T-103 (F7) : ICCP de la periode precedente dans la base ; ICP versee pendant la periode (CCN
+            # 48.1.1.5) ; CASF L423-6 en plancher (A-28 s'il depasse).
+            vals = set()
+            for ech in ([False, True] if sup else [False]):
+                dix = Fraction(sal + icp1 + reg + precedente, 10)
+                if ech:
+                    dix = dix * a / (a - sup)
+                vals.add(max(dix, c1))
+            if len(vals) != 1:
+                raise NonGere("CP-SUPP", regles)
+            val = vals.pop()
+            if icp2 != icp1 and Fraction(sal + icp2 + reg + precedente, 10) > val:
+                raise NonGere("A-28", regles)
+            v = vers_centimes(val, f"ICCP periode {i + 1}", regles)
         total += v
         detail.append(v)
         precedente = v

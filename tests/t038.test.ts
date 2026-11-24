@@ -15,7 +15,6 @@ import { NON_GERE_MAYOTTE, nonGeresContrat } from '../src/engine/nonGeres';
 import { acquisition } from '../src/engine/conges';
 import { libelleDureeSaisie, statutJourEvenement } from '../src/engine/evenements';
 import { normaliserAbsence } from '../src/engine/absences';
-import { computeMonth as computeMonthRef } from '../src/engine/month';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
   const p: Planning = {};
@@ -43,17 +42,37 @@ const EVENEMENT: AmLeave = { id: 'e', type: 'evenement', from: '2026-03-10', to:
 const SANS_SOLDE: AmLeave = { id: 's', type: 'sans_solde', from: '2026-03-10', to: '2026-03-11' };
 const fin = (leaves: AmLeave[], c = contract()) => finDeContrat(makeCtx(c, [], leaves, '2026-11-18'), '2026-10-28', 'retrait');
 
-describe('T-038 B-1, revu par la T-103 : plus de jours « à confirmer » à faire entrer dans la régularisation', () => {
-  it('ancienne saisie d’événement sans durée (0) : le mois est refusé avec la consigne, rien n’est « à confirmer »', () => {
+describe('T-038 B-1 : la régularisation ne verse jamais en silence un salaire « à confirmer »', () => {
+  it('mars 2026 : 2 jours d’événement à confirmer, 54,55 € sortis du salaire (art. 111 : 600 × 2 ÷ 22)', () => {
     expect(salaireMensualise(contract())).toBe(60000);
     const b = monthBase(makeCtx(contract(), [], [EVENEMENT], '2026-11-18'), '2026-03');
-    expect(b.evenementAConfirmer).toBe(0);
-    expect(computeMonthRef(makeCtx(contract(), [], [EVENEMENT], '2026-11-18'), '2026-03').nonGere.join(' ')).toMatch(/saisie ancienne sans durée/);
+    expect(b.evenementAConfirmer).toBe(5455);
+    expect(b.base).toBe(60000 - 5455);
   });
-  it('fin de contrat avec un congé sans solde : régularisation calculée, sans « à confirmer »', () => {
-    const f = fin([SANS_SOLDE]);
-    expect(f.regularisationAConfirmer).toBeUndefined();
-    expect(f.regularisation).toBeLessThan(fin([]).regularisation);
+  it('fin de contrat (sonde S1) : régularisation à confirmer, ni comptée ni donnée, avec les deux lectures', () => {
+    const sans = fin([]);
+    const retenu = fin([SANS_SOLDE]);
+    const f = fin([EVENEMENT]);
+    expect(sans.regularisationAConfirmer).toBeUndefined();
+    expect(sans.regularisation).toBeGreaterThan(0);
+    // Avant la correction : sans.regularisation + 54,55 € comptés dans le total.
+    expect(f.regularisation).toBe(0);
+    expect(f.regularisationAConfirmer).toContain(`${euros(sans.regularisation)} si les jours à confirmer sont dus`);
+    expect(f.regularisationAConfirmer).toContain(`${euros(retenu.regularisation)} s’ils ne le sont pas`);
+    // Le congé sans solde retient les mêmes 2 jours : la lecture « non dus » est plus basse que la lecture « dus ».
+    expect(retenu.regularisation).toBeLessThan(sans.regularisation);
+  });
+  it('avenant qui passe en année complète au 01/09/2026 : rien n’est versé, les deux montants sont dans l’alerte', () => {
+    const av = { avenants: [{ id: 'a1', from: '2026-09-01', changes: { yearType: 'complete' as const, weeks: 52 } }] };
+    const ref = monthBase(makeCtx(contract(av), [], [], '2026-11-18'), '2026-09');
+    const retenu = monthBase(makeCtx(contract(av), [], [SANS_SOLDE], '2026-11-18'), '2026-09');
+    const b = monthBase(makeCtx(contract(av), [], [EVENEMENT], '2026-11-18'), '2026-09');
+    expect(ref.regulAvenant).toBeGreaterThan(0);
+    expect(b.regulAvenant).toBeUndefined();
+    expect(b.net).toBe(ref.net - ref.regulAvenant!);
+    const alerte = b.alerts.find((a) => a.startsWith('Régularisation à l’avenant du 01/09 à confirmer'));
+    expect(alerte).toContain(`${euros(ref.regulAvenant!)} si les jours à confirmer sont dus`);
+    expect(alerte).toContain(`${euros(retenu.regulAvenant!)} s’ils ne le sont pas`);
   });
 });
 
@@ -148,20 +167,21 @@ describe('T-038 point 10 (G-6) : un jour de l’enfant noté « sans solde » ne
 describe('T-038 AC-3 : écran de saisie d’un événement familial, le texte suit le moteur', () => {
   const statut = (nature: Parameters<typeof libelleDureeSaisie>[0], from: string) =>
     statutJourEvenement(normaliserAbsence({ id: 'e', type: 'evenement', from, to: from, nature }), from);
-  it('décès d’un enfant en 2022 (T-103, C6) : payé, l’écran annonce 5 jours ouvrables payés', () => {
-    expect(statut('deces_enfant', '2022-06-01').paye).toBe(true);
-    expect(libelleDureeSaisie('deces_enfant', '2022-06-01')).toBe('5 jours ouvrables payés');
+  it('décès d’un enfant en 2022 : le moteur met « à confirmer », l’écran n’annonce plus « 5 jours ouvrables payés »', () => {
+    expect(statut('deces_enfant', '2022-06-01').paye).toBe(false);
+    expect(libelleDureeSaisie('deces_enfant', '2022-06-01')).toBe('Période non gérée (avant le 01/05/2024) : durée à vérifier avec les parents');
   });
-  it('décès d’un enfant de moins de 25 ans en 2023 (T-103) : 9 jours ouvrables, qui couvrent les 7 jours ouvrés de la loi', () => {
-    expect(libelleDureeSaisie('deces_enfant_14', '2023-03-01')).toBe('9 jours ouvrables payés');
+  it('décès d’un enfant de moins de 25 ans en 2023 (jours ouvrés contre ouvrables) : plus de « Indemnisé par la Sécurité sociale »', () => {
+    expect(libelleDureeSaisie('deces_enfant_14', '2023-03-01')).not.toMatch(/Sécurité sociale/);
+    expect(libelleDureeSaisie('deces_enfant_14', '2023-03-01')).toMatch(/^Période non gérée/);
   });
   it('mariage en 2026 : payé par le moteur, l’écran annonce 4 jours ouvrables payés (CCN 48.1.3.1.1, L3142-4 1°)', () => {
     expect(statut('mariage', '2026-10-05').paye).toBe(true);
     expect(libelleDureeSaisie('mariage', '2026-10-05')).toBe('4 jours ouvrables payés');
   });
-  it('congé de deuil en 2026 (T-103, C9) : payé, l’écran demande le montant des indemnités journalières', () => {
-    expect(statut('deuil', '2026-10-05').paye).toBe(true);
-    expect(libelleDureeSaisie('deuil', '2026-10-05')).toMatch(/^8 jours ouvrables, salaire maintenu moins les indemnités journalières/);
+  it('congé de deuil en 2026 : non géré par le moteur, l’écran le dit', () => {
+    expect(statut('deuil', '2026-10-05').paye).toBe(false);
+    expect(libelleDureeSaisie('deuil', '2026-10-05')).toMatch(/^Non géré par l’app/);
   });
 });
 
