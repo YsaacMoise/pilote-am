@@ -1396,8 +1396,12 @@ def indemnite_deces_b(ctx, deces, dernier_jour):
                       contient_semaine_non_accueil=contient)
         prevu = p["resultat"]["prevu_minutes"] if ctx.type == "complete" else p["resultat"]["prevu_jours"]
         periode = [d for d in jours if deces < d <= dernier_jour]
+        # T-109 (comparateur, 2.2 et 7.2) : CCN 111, dernier alinea : « les semaines de non-accueil [...] sont comptabilises
+        # dans les heures et les jours qui auraient ete travailles » : les jours d'une semaine sans accueil situes apres la
+        # fin de la periode sont deduits comme les autres (denominateur et jours non payes dans la meme unite).
+        u111 = (lambda d: 1 if ctx.plan_jour(d) else 0) if ctx.type == "incomplete" else u
         mois_l.append({"salaire_mensualise_centimes": mens, "prevu_mois": prevu,
-                       "non_payes": sum(u(d) for d in jours if d < ctx.debut or d > dernier_jour),
+                       "non_payes": sum(u111(d) for d in jours if d < ctx.debut or d > dernier_jour),
                        "mixte": any(ctx.debut <= d <= deces and u(d) for d in jours),
                        "prevu_dispense": sum(u(d) for d in periode),
                        "minutes_dispense": sum(ctx.prevu_hors_dates(d) for d in periode),
@@ -1751,7 +1755,8 @@ def fin_b(ctx, k):
                 raise out["preavis"]
             if out.get("preavis"):
                 dj = appel("periode_indemnite_deces", env, out["preavis"])["resultat"]["dernier_jour"]
-                pre_deces = sum(_brut_comme_a(v, ctx, m) for m, v in indemnite_deces_b(ctx, env, dj).items())
+                # T-109 : brut de la somme versee sur le dernier bulletin, comme l'ICCP (A : une conversion, mois de fin).
+                pre_deces = _brut_comme_a(sum(indemnite_deces_b(ctx, env, dj).values()), ctx, mf)
         r = appel("indemnite_rupture", motif_b, auteur, ctx.debut, env, sal, iccp_centimes=iccp_brut, icp_centimes=icp,
                   indemnite_preavis_centimes=pre_deces,
                   regularisation_centimes=reg_brut, sommes_a_confirmer=a_confirmer, date_fin_contrat=fin)

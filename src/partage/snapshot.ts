@@ -4,7 +4,7 @@
 // les présences, le carnet et les montants du mois.
 import { addDays, monthOf, addMonths, type ISODate, type Month } from '../engine/dates';
 import { dayInfo, inContract, type Ctx } from '../engine/payroll';
-import { computeMonth, declarationLines } from '../engine/month';
+import { computeMonth, declarationLines, reductionVersee, totalAVerser } from '../engine/month';
 import { baremesAttendus } from '../engine/rates';
 import { CHILD_ABS_LABEL, type Journal, type Plage, type Presence } from '../engine/model';
 import { detailReveilOublie, reveilOublie } from '../engine/carnet';
@@ -38,6 +38,8 @@ export interface MoisParent {
   termine: boolean;
   total: number;
   net: number;
+  /** T-109 : réduction de cotisations des heures complémentaires et majorées, versée en plus du net (CSS L241-17) */
+  reduction?: number;
   entretien: number;
   repas: number;
   km: number;
@@ -95,8 +97,9 @@ function moisParent(ctx: Ctx, m: Month, enfants: number): MoisParent | null {
   return {
     month: m,
     termine: m < monthOf(ctx.today),
-    total: r.netTotal + r.entretien + r.repas + r.km,
+    total: totalAVerser(r),
     net: r.netTotal,
+    ...(reductionVersee(r) ? { reduction: reductionVersee(r) } : {}),
     entretien: r.entretien,
     repas: r.repas,
     km: r.km,

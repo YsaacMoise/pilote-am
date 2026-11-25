@@ -2,7 +2,7 @@ import { AVERTISSEMENT_CALCUL, PAJEMPLOI_PLUS_DATE, PAJEMPLOI_PLUS_RAPPEL } from
 import { useState } from 'preact/hooks';
 import { ctxFor, logUsage, toast, useStore, state } from '../store';
 import { addMonths, dayLabel, eachDay, firstDay, lastDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
-import { computeMonth, declarationLines, declarationText, moisEnCoursAu, totalAVerser } from '../engine/month';
+import { computeMonth, declarationLines, declarationText, MESSAGE_REDUCTION_HS_BRUT, moisEnCoursAu, totalAVerser } from '../engine/month';
 import { dayInfo, termsAt } from '../engine/payroll';
 import { euros, hoursLabel } from '../engine/money';
 import { baremesAttendus, messageBaremesAttendus } from '../engine/rates';
@@ -156,6 +156,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
         <span class="summary-label" id="tot">À verser par la famille {c.family ? `(${c.family})` : ''}</span>
         <span class="total">{euros(totalVerse)}</span>
         <span class="summary-sub">dont salaire net {euros(r.netTotal)}{r.brutConnu ? `, soit ${euros(r.brutEstime)} brut` : ''}</span>
+        {r.brutConnu && r.reductionHS > 0 && <span class="summary-sub">et réduction de cotisations des heures complémentaires et majorées {euros(r.reductionHS)}</span>}
         {!r.brutConnu && <span class="summary-note">Brut : <a href={`#/contrat/${c.id}`}>indique ton taux horaire brut dans le contrat</a></span>}
         {current && moisEnCoursAu(ctx.today, month) && <span class="summary-note">Mois en cours : entretien et repas comptés jusqu’au {moisEnCoursAu(ctx.today, month)}</span>}
       </section>
@@ -212,18 +213,20 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
             <dd>{termsAt(c, `${month}-01`).yearType === 'complete' ? hoursLabel(r.divisorMin) : r.divisorDays}</dd></>)}
             {r.retenue > 0 && (<><dt>Retenue ({termsAt(c, `${month}-01`).yearType === 'complete' ? hoursLabel(r.deductedMin) : `${r.deductedDays} j`} non payés)</dt><dd>−{euros(r.retenue)}</dd></>)}
             {!!r.regulAvenant && (<><dt>Régularisation à l’avenant</dt><dd>{euros(r.regulAvenant)}</dd></>)}
-            {(r.normalesPlusAmount ?? 0) > 0 && (<><dt>Heures en plus la semaine d’une absence retenue ({hoursLabel(r.normalesPlusMin ?? 0)}, taux du contrat)</dt><dd>{euros(r.normalesPlusAmount ?? 0)}</dd></>)}
+            {(r.normalesPlusAmount ?? 0) > 0 && (<><dt>Heures en plus la semaine d’une absence ({hoursLabel(r.normalesPlusMin ?? 0)}, taux du contrat)</dt><dd>{euros(r.normalesPlusAmount ?? 0)}</dd></>)}
             {r.complAmount > 0 && (<><dt>Heures complémentaires ({hoursLabel(r.complMin)})</dt><dd>{euros(r.complAmount)}</dd></>)}
             {r.majAmount > 0 && (<><dt>Heures majorées en plus ({hoursLabel(r.majMin)})</dt><dd>{euros(r.majAmount)}</dd></>)}
             {r.ferieAmount > 0 && (<><dt>Fériés travaillés</dt><dd>{euros(r.ferieAmount)}</dd></>)}
             {r.cpIndemnite > 0 && (<><dt>Congés payés</dt><dd>{euros(r.cpIndemnite)}</dd></>)}
             {r.cpComplement > 0 && (<><dt>Complément congés</dt><dd>{euros(r.cpComplement)}</dd></>)}
             <dt>Salaire net</dt><dd>{euros(r.netTotal)}</dd>
+            {r.brutConnu && r.reductionHS > 0 && (<><dt>Réduction de cotisations des heures complémentaires et majorées</dt><dd>{euros(r.reductionHS)}</dd></>)}
             <dt>Entretien ({r.presenceDays} j)</dt><dd>{euros(r.entretien)}</dd>
             {r.repas > 0 && (<><dt>Repas</dt><dd>{euros(r.repas)}</dd></>)}
             {r.km > 0 && (<><dt>Kilomètres</dt><dd>{euros(r.km)}</dd></>)}
           </dl>
-          {r.reductionHS > 0 && <p class="muted small">Heures complémentaires et majorées : elles ouvrent une réduction de tes cotisations{r.brutConnu ? ` de ${euros(r.reductionHS)}` : ''} (11,31 % de leur brut, art. L241-17 du code de la sécurité sociale), que Pajemploi ajoute à la somme à verser : vérifie-la sur ton bulletin.{r.brutConnu ? '' : ' Pour le montant, indique ton taux horaire brut dans le contrat.'} Ces heures sont aussi exonérées d’impôt, dans la limite de 7 500 € par an.</p>}
+          {r.brutConnu && r.reductionHS > 0 && <p class="muted small">Heures complémentaires et majorées : elles ouvrent une réduction de tes cotisations de {euros(r.reductionHS)} (11,31 % de leur brut, code de la sécurité sociale, art. L241-17 et D241-21), comptée dans le total à verser. Ces heures sont aussi exonérées d’impôt, dans la limite de 7 500 € par an.</p>}
+          {r.reductionHSManquante && <p class="muted small">{MESSAGE_REDUCTION_HS_BRUT}</p>}
           <p class="muted small">
             {c.accueilOccasionnel ? 'Accueil occasionnel : heures d’accueil du mois × taux horaire ; congés payés : 10 % des salaires de l’accueil, versés à sa fin (art. 109.3 et 102.1.2.3).' : termsAt(c, `${month}-01`).yearType === 'complete'
               ? 'Année complète : retenue = salaire mensualisé × heures non payées ÷ heures prévues dans le mois (art. 111).'

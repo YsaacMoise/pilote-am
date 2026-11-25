@@ -133,11 +133,11 @@ ARR01 = "arrondi au centime le plus proche, decision ARR-01 du DG du 18/11/2026 
 
 class T040bEntretienProportionnel(unittest.TestCase):
     """A-35 leve (T-040b) : max(2,65 EUR ; 90 % du MG x duree / 9 h).
-    A-36 leve (T-040c) : centime le plus proche, decision ARR-01 du DG."""
+    T-109 : centime superieur (CCN 114.1, « sans pouvoir etre inferieur a ») ; remplace le plus proche (ARR-01)."""
 
     def minimum(self, d, dur):
         r = m.minimum_entretien_journalier(d, dur)
-        self.assertIn(ARR01, R(r, "details")["arrondi"])
+        self.assertIn("arrondi au centime superieur", R(r, "details")["arrondi"])
         return R(r, "minimum_centimes"), R(r, "details")
 
     def test_minimum_6h_plancher(self):
@@ -156,42 +156,42 @@ class T040bEntretienProportionnel(unittest.TestCase):
 
     def test_9h45_2026(self):
         v, det = self.minimum(date(2026, 9, 1), 585)
-        self.assertEqual(v, 424)
+        self.assertEqual(v, 425)
         self.assertTrue(det["arrondi"].endswith("le minimum exact est 4,24125 EUR"))
         self.assertEqual(det["minimum_exact_centimes"], "3393/8")
 
-    def test_9h_2022_plus_proche(self):
-        # 90 % x 3,76 = 3,384 EUR -> 3,38 EUR (C-IND-04) ; Urssaf affiche 3,39 EUR (contradiction listee).
+    def test_9h_2022_superieur(self):
+        # 90 % x 3,76 = 3,384 EUR -> 3,39 EUR, comme l'Urssaf (la fiche Grand Est, C-IND-04, donne 3,38 : sous le minimum).
         v, det = self.minimum(date(2022, 1, 3), 540)
-        self.assertEqual(v, 338)
+        self.assertEqual(v, 339)
         self.assertTrue(det["arrondi"].endswith("3,384 EUR"))
 
-    def test_9h_2023_plus_proche(self):
-        # 90 % x 4,01 = 3,609 EUR -> 3,61 EUR ; Urssaf affiche 3,60 EUR (contradiction listee).
+    def test_9h_2023_superieur(self):
+        # 90 % x 4,01 = 3,609 EUR -> 3,61 EUR ; Urssaf affiche 3,60 EUR, sous le minimum du texte.
         self.assertEqual(self.minimum(date(2023, 1, 2), 540)[0], 361)
 
     def test_9h_2026_inchange(self):
         self.assertEqual(self.minimum(date(2026, 6, 1), 540)[0], 392)
         self.assertEqual(self.minimum(date(2026, 3, 1), 540)[0], 383)
 
-    def test_mois_9h45_sous_minimum_paye_au_plus_proche(self):
+    def test_mois_9h45_sous_minimum_paye_au_superieur(self):
         r = m.indemnite_entretien_mois([{"duree_minutes": 585, "travail_effectif": True}], f"{400 * 60}/585", date(2026, 9, 1))
-        self.assertEqual(R(r, "indemnite_centimes"), 424)
+        self.assertEqual(R(r, "indemnite_centimes"), 425)
         self.assertEqual(R(r, "jours_sous_minimum"), [1])
-        self.assertEqual(R(r, "ecart_minimum"), "24")
-        self.assertIn(ARR01, R(r, "details")[1]["arrondi"])
+        self.assertEqual(R(r, "ecart_minimum"), "25")
+        self.assertIn("arrondi au centime superieur", R(r, "details")[1]["arrondi"])
 
     def test_mois_contrat_entre_arrondi_et_exact(self):
         # 4,2410 EUR : sous le minimum exact (4,24125) mais au-dessus de 4,24 : le contrat est paye, ecart signale.
         r = m.indemnite_entretien_mois([{"duree_minutes": 585, "travail_effectif": True}],
                                        f"{Fraction(4241, 10) * 60}/585", date(2026, 9, 1))
-        # Le contrat (424,1 centimes) est garde, car plus haut que 424 ; total arrondi au plus proche (T-040d).
-        self.assertEqual(R(r, "indemnite_centimes"), 424)
+        # T-109 : le minimum paye (4,25 EUR, centime superieur) est plus haut que le contrat (424,1 centimes).
+        self.assertEqual(R(r, "indemnite_centimes"), 425)
         self.assertEqual(R(r, "jours_sous_minimum"), [1])
 
     def test_mois_9h_2022(self):
         r = m.indemnite_entretien_mois([{"duree_minutes": 540, "travail_effectif": True}], "300/9", date(2022, 1, 3))
-        self.assertEqual(R(r, "indemnite_centimes"), 338)
+        self.assertEqual(R(r, "indemnite_centimes"), 339)
 
     def test_verifier_journalier(self):
         self.assertTrue(R(m.verifier_entretien_journalier(450, date(2026, 9, 1), 585), "conforme"))

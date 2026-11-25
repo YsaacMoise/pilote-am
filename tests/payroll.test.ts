@@ -182,9 +182,13 @@ describe('seuil des 45 h selon les absences de la semaine (art. 96-4, 99 ; Cass.
 
   // T-103 (H2, revu après la porte-vérité) : CCN 96.4, heures « de travail effectuées » : une absence de l'enfant, même
   // payée, n'est pas une heure effectuée ; elle ne compte pas dans le seuil des 45 h.
-  it('absence voulue par les parents : payée, le jour ne compte pas, les 4 h sont au taux du contrat (T-103, H2)', () => {
+  // T-109 (comparateur, 2.1) : 36 h effectuées sur 45 h au contrat : aucune heure complémentaire ; les 4 h faites en plus
+  // sont payées en heures normales, au taux du contrat : 4 × 3,50 € = 14,00 €.
+  it('absence voulue par les parents : payée, le jour ne compte pas, les 4 h sont des heures normales payées en plus (T-103 H2, T-109)', () => {
     const b = semaine([rec('2026-10-05', { abs: 'parents' }), ...plus4h]);
-    expect(b.complMin).toBe(240);
+    expect(b.complMin).toBe(0);
+    expect(b.normalesPlusMin).toBe(240);
+    expect(b.normalesPlusAmount).toBe(1400);
     expect(b.majMin).toBe(0);
   });
   it('enfant malade sans certificat (payé) : le jour ne compte pas (T-103, H2)', () => {
@@ -205,7 +209,8 @@ describe('seuil des 45 h selon les absences de la semaine (art. 96-4, 99 ; Cass.
   // comme l'absence voulue par les parents.
   it('absence de l’enfant notée « sans solde » : payée, le jour ne compte pas, comme une absence voulue par les parents', () => {
     const b = semaine([rec('2026-10-05', { abs: 'sans_solde_enfant' }), ...plus4h]);
-    expect(b.complMin).toBe(240);
+    expect(b.complMin).toBe(0);
+    expect(b.normalesPlusMin).toBe(240);
     expect(b.majMin).toBe(0);
   });
   it('congés payés de l’AM avec droits acquis : le jour compte (Cass. soc. 10/09/2025)', () => {
@@ -213,7 +218,7 @@ describe('seuil des 45 h selon les absences de la semaine (art. 96-4, 99 ; Cass.
     const b = semaine(plus4h, cp, { balances: { cpRestants: 10, cpEnCours: 0, maladieDeduits: 0 } });
     expect(b.majMin).toBe(240);
   });
-  it('AM malade, enfant malade de l’AM, sans solde (retenus) : heures normales ; événement familial (payé) : heures complémentaires (T-103, H9)', () => {
+  it('AM malade, enfant malade de l’AM, sans solde (retenus) : heures normales ; événement familial (payé) : heures normales aussi (T-103 H9, T-109)', () => {
     for (const type of ['am_malade', 'am_enfant_malade', 'sans_solde'] as const) {
       const b = semaine(plus4h, [{ id: 'l', type, from: '2026-10-05', to: '2026-10-05' }]);
       expect(b.complMin, type).toBe(0);
@@ -221,13 +226,15 @@ describe('seuil des 45 h selon les absences de la semaine (art. 96-4, 99 ; Cass.
       expect(b.majMin, type).toBe(0);
     }
     const ev = semaine(plus4h, [{ id: 'l', type: 'evenement', from: '2026-10-05', to: '2026-10-05', joursEvenement: 4 }]);
-    expect(ev.complMin).toBe(240);
-    expect(ev.normalesPlusMin ?? 0).toBe(0);
+    // T-109 : 36 h effectuées sous les 45 h du contrat : heures normales payées en plus, pas des heures complémentaires.
+    expect(ev.complMin).toBe(0);
+    expect(ev.normalesPlusMin).toBe(240);
   });
   it('férié chômé (mercredi 11 novembre 2026) : le jour ne compte pas', () => {
     const recs = ['2026-11-09', '2026-11-10', '2026-11-12', '2026-11-13'].map((d) => rec(d, { pres: [{ a: '08:00', d: '18:00' }] }));
     const b = monthBase(makeCtx(contract(), recs, [], '2026-12-15'), '2026-11');
-    expect(b.complMin).toBe(240);
+    expect(b.complMin).toBe(0); // T-109 : 36 h effectuées, sous la durée du contrat
+    expect(b.normalesPlusMin).toBe(240);
     expect(b.majMin).toBe(0);
     expect(b.base).toBe(68250); // férié payé : salaire maintenu
   });
@@ -242,13 +249,14 @@ describe('seuil des 45 h selon les absences de la semaine (art. 96-4, 99 ; Cass.
     expect(jours.length).toBe(22);
     const recs = jours.map((d) => absents.includes(d) ? rec(d, { abs: 'parents' }) : rec(d, { pres: [{ a: '08:00', d: '18:00' }] }));
     const b = monthBase(makeCtx(contract({ rateNet: 745, entretienJour: 422 }), recs, [], '2026-11-15'), '2026-10');
-    expect(b.heuresNormales).toBe(195);
+    expect(b.heuresNormales).toBe(212); // 195 h mensualisées + 17 h normales payées en plus
     expect(b.joursActivite).toBe(22);
-    // T-103 (H2) : chaque semaine a une absence des parents (9 h non effectuées) : 36 h + 4 h en plus, sous 45 h. Les 17 h
-    // sont des heures complémentaires au taux du contrat : 17 × 7,45 = 126,65 €.
+    // T-103 (H2) : chaque semaine a une absence des parents (9 h non effectuées) : 36 h + 4 h en plus, sous 45 h. T-109 : les
+    // 17 h ne dépassent pas la durée du contrat (CCN 96.4) : heures normales payées en plus, 17 × 7,45 = 126,65 €.
     expect(b.majMin).toBe(0);
-    expect(b.complMin).toBe(17 * 60);
-    expect(b.complAmount).toBe(12665);
+    expect(b.complMin).toBe(0);
+    expect(b.normalesPlusMin).toBe(17 * 60);
+    expect(b.normalesPlusAmount).toBe(12665);
     expect(b.net).toBe(145275 + 12665);
     expect(b.entretien).toBe(17 * 435); // journées de 10 h : plancher 4,35 € > 4,22 € du contrat
   });

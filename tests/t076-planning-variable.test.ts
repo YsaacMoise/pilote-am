@@ -248,13 +248,15 @@ describe('T-076 : absences, congés, fériés, indemnités (R-PV-08 à R-PV-12)'
     // Dixième : 12 mois × 563,32 € = 6 759,84 € → 675,98 €.
     expect(ind.dixieme).toBe(67598);
     // C1 : période 01/06/2026-31/05/2027 = 365 jours, 26 semaines A + 26 semaines B + lundi 31/05/2027 (A, 9 h)
-    // = 1 699 h = 101 940 min ; semaines = 365 ÷ 7. C1 = 30 ÷ 6 × (101 940 × 7 ÷ 365) min × 4,00 € = 651,6712 → 651,67 €.
-    expect(maintien(ctx, 30, '2027-06-01', 2026)).toBe(65167);
+    // = 1 699 h = 101 940 min. T-109 (comparateur, correction 4 ; Cass. soc. 09/05/2019, n° 17-26.232) : la semaine du
+    // 31/05/2027 compte pour 1 de ses 5 jours prévus : 52,2 semaines (avant : 365 ÷ 7 jours civils).
+    // C1 = 30 ÷ 6 × (101 940 ÷ 52,2) min × 4,00 € = 650,9579 → 650,96 €.
+    expect(maintien(ctx, 30, '2027-06-01', 2026)).toBe(65096);
     // C2 : 5 semaines A × 45 h (samedis non prévus) = 225 h × 4,00 € = 900,00 €.
-    expect(ind.pv?.c1).toBe(65167);
+    expect(ind.pv?.c1).toBe(65096);
     expect(ind.pv?.c2).toBe(90000);
     expect(ind.pv?.c2Complet).toBe(true);
-    // T-103 (C13) : une seule méthode, C1 (durée habituelle sur la période, Cass. soc. 09/05/2019) : max(675,98 ; 651,67).
+    // T-103 (C13) : une seule méthode, C1 (durée habituelle sur la période, Cass. soc. 09/05/2019) : max(675,98 ; 650,96).
     expect(ind.montant).toBe(67598);
     // Juin 2027 : maintien déjà versé par le salaire = 5 semaines × (140,83 × 60 × 12 ÷ 52 = 1 949,9538 min) × 4,00 €
     // = 649,98 € ; complément = 675,98 − 649,98 = 26,00 €, sans part à confirmer.
@@ -273,8 +275,9 @@ describe('T-076 : régularisation et fin (R-PV-07, R-PV-13)', () => {
     expect(f.regularisation).toBe(0);
     // Maintien utilisé par la fin (fin.ts, congesNonPris) pour 6 jours, période en cours (01/06/2026-31/05/2027) :
     // 01/06/2026 = semaine B (21 semaines après le 05/01) ; 26 B + 26 A = 1 690 h, plus lundi 31/05/2027 (B, 5 h) = 1 695 h
-    // = 101 700 min ; C1 = 6 ÷ 6 × (101 700 × 7 ÷ 365) min × 4,00 € = 130,0274 → 130,03 €.
-    expect(maintien(ctx, 6, '2026-10-15')).toBe(13003);
+    // = 101 700 min. T-109 : la semaine B du 31/05/2027 (4 jours prévus) compte pour 1/4 : 52,25 semaines.
+    // C1 = 6 ÷ 6 × (101 700 ÷ 52,25) min × 4,00 € = 129,7608 → 129,76 €.
+    expect(maintien(ctx, 6, '2026-10-15')).toBe(12976);
   });
   it('46 semaines, L2 : formule existante, heures prévues payées en HC comptées comme versées', () => {
     // Cycle A 45 h / B 25 h, 46 semaines, heures mensualisées 115 → B = 115 × 12 ÷ 46 = 30 h ; L2 (35 × 46 ÷ 12 = 134,17 > 115).

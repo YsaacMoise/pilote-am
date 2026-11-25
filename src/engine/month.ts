@@ -26,8 +26,14 @@ export interface MonthResult extends MonthBase {
   hsNet: number;
   /** Brut estimé de ces heures */
   hsBrut: number;
-  /** Réduction de cotisations salariales de ces heures, versée en plus du net déclaré (estimation) */
+  /**
+   * Réduction de cotisations salariales de ces heures (CSS L241-17, I, 7° ; D241-21 : 11,31 % de leur brut). T-109 : elle
+   * s'ajoute au net déclaré dans la somme versée à l'AM (totalAVerser, `reductionVersee`). Comptée dans le total seulement
+   * sur le brut exact (`brutConnu`) ; sans le taux horaire brut du contrat, l'écran le demande (`reductionHSManquante`).
+   */
   reductionHS: number;
+  /** T-109 : heures complémentaires ou majorées ce mois, mais brut inconnu : la réduction attend le taux horaire brut */
+  reductionHSManquante: boolean;
 }
 
 /** Mois calculé (T-103 : une seule lecture, aussi pour un CDD : F11, F12) */
@@ -48,6 +54,7 @@ function computeMonthLecture(ctx: Ctx, m: Month, enfants = 0): MonthResult {
   if (mayotte && b.complAmount + b.majAmount + b.majContratAmount > 0) alerts.push(MESSAGE_REDUCTION_HS_MAYOTTE);
   const hsNet = b.complAmount + b.majAmount + b.majContratAmount;
   const hsBrut = brutDuNet(ctx.c, hsNet, lastDay(m));
+  const exact = !!b.brut || brutConnu(ctx.c, lastDay(m));
   return {
     ...b,
     alerts,
@@ -62,6 +69,7 @@ function computeMonthLecture(ctx: Ctx, m: Month, enfants = 0): MonthResult {
     hsNet,
     hsBrut,
     reductionHS: mayotte ? 0 : Math.round(hsBrut * REDUCTION_HS),
+    reductionHSManquante: !mayotte && !exact && hsNet > 0,
   };
 }
 
@@ -75,9 +83,20 @@ export function moisEnCoursAu(today: string, m: Month): string | undefined {
   return today.slice(0, 7) === m && today < lastDay(m) ? `${today.slice(8, 10)}/${today.slice(5, 7)}` : undefined;
 }
 
+/**
+ * T-109 (comparateur, correction 1) : la réduction de cotisations des heures complémentaires et majorées (CSS L241-17, I, 7° ;
+ * D241-21) est versée à l'AM en plus du net déclaré : elle entre dans le total.
+ */
 export function totalAVerser(r: MonthResult): number {
-  return r.netTotal + r.entretien + r.repas + r.km;
+  return r.netTotal + reductionVersee(r) + r.entretien + r.repas + r.km;
 }
+
+/** T-109 : réduction comptée dans le total (brut exact seulement : jamais un montant estimé) */
+export function reductionVersee(r: MonthResult): number {
+  return r.brutConnu ? (r.reductionHS ?? 0) : 0;
+}
+
+export const MESSAGE_REDUCTION_HS_BRUT = 'Heures complémentaires ou majorées ce mois : leur réduction de cotisations (11,31 % de leur brut) s’ajoute à la somme à verser. Indique ton taux horaire brut dans le contrat pour qu’elle soit comptée dans le total.';
 
 export interface DeclLine { label: string; value: string; hint?: string }
 
@@ -140,13 +159,14 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   if (c.accueilOccasionnel) out.push(`• Salaire des heures d’accueil du mois : ${euros(r.base)}`);
   else out.push(`• Salaire mensualisé : ${euros(r.salaireMens)}`);
   if (r.retenue) out.push(`• Retenue pour absence : −${euros(r.retenue)}`);
-  if (r.normalesPlusAmount) out.push(`• Heures faites en plus la semaine d’une absence retenue, au taux du contrat : ${euros(r.normalesPlusAmount)}`);
+  if (r.normalesPlusAmount) out.push(`• Heures faites en plus la semaine d’une absence, au taux du contrat : ${euros(r.normalesPlusAmount)}`);
   if (r.complAmount) out.push(`• Heures complémentaires : ${euros(r.complAmount)}`);
   if (r.majAmount) out.push(`• Heures majorées en plus du contrat : ${euros(r.majAmount)}`);
   if (r.regulAvenant) out.push(`• Régularisation à l’avenant : ${euros(r.regulAvenant)}`);
   if (r.ferieAmount) out.push(`• Majoration jours fériés travaillés : ${euros(r.ferieAmount)}`);
   if (r.cpIndemnite) out.push(`• Indemnité de congés payés : ${euros(r.cpIndemnite)}`);
   if (r.cpComplement) out.push(`• Complément de congés payés : ${euros(r.cpComplement)}`);
+  if (reductionVersee(r)) out.push(`• Réduction de cotisations des heures complémentaires et majorées, versée en plus du salaire net : ${euros(reductionVersee(r))}`);
   out.push('');
   out.push(`Total à me verser : ${euros(totalAVerser(r))}`);
   out.push('');

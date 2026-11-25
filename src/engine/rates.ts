@@ -186,11 +186,15 @@ function eurosCts(c: number): string {
   return `${(c / 100).toFixed(2).replace('.', ',')} €`;
 }
 
-/** Plancher d'entretien pour une journée de `min` minutes d'accueil : max(2,65 €, MG/10 par heure). `undefined` : période non gérée. */
+/**
+ * Plancher d'entretien pour une journée de `min` minutes d'accueil : max(2,65 €, MG/10 par heure). `undefined` : période non gérée.
+ * T-109 (comparateur, correction 3) : CCN 114.1, journée de 9 h : « sans pouvoir être inférieur à 90 % du minimum garanti »,
+ * au prorata au-delà : un plancher ne s'arrondit pas en dessous : centime supérieur (MG 4,35 € : 9 h 15 → 4,03 €).
+ */
 export function entretienPlancher(d: ISODate, min: number): number | undefined {
   const r = ratesAt(d);
   if (!r) return undefined;
-  return Math.max(r.entretienPlancherJour, Math.round((r.mg * min) / 600));
+  return Math.max(r.entretienPlancherJour, Math.ceil((r.mg * min) / 600 - 1e-9));
 }
 
 /** Brut estimé à partir du net */

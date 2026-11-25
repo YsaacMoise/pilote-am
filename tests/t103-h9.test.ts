@@ -4,7 +4,9 @@
 // guide des assistants maternels, juin 2026 : absences payées comptées dans les heures réellement effectuées, pour éviter une
 // compensation) ; elle ne compte pas pour le seuil des 45 h (H2 : heures supplémentaires = « heures de travail effectif »
 // au-delà de 45 h, Code du travail numérique, fiche 3239 « Heures supplémentaires », 08/01/2026 ; Cass. soc. 04/04/2012,
-// n° 10-10.701, jours fériés). Une absence retenue (art. 111) est compensée d'abord par les heures en plus de la semaine :
+// n° 10-10.701, jours fériés). T-109 (comparateur des vérifications, 2.1) : seules les heures « de travail effectuées » au-delà
+// de la durée du contrat sont des heures complémentaires (CCN 96.4) ; les heures en plus dans la limite des heures prévues non
+// travaillées (absence payée ou retenue) sont des heures normales payées en plus, au taux du contrat. Une absence retenue (art. 111) est compensée d'abord par les heures en plus de la semaine :
 // heures normales au taux du contrat (CCN 96.4 : rien au-delà de la durée prévue au contrat) ; aucune heure travaillée sans paie.
 import { describe, expect, it } from 'vitest';
 import type { AmLeave, Contract, DayRec, Planning } from '../src/engine/model';
@@ -28,13 +30,15 @@ const mois = (c: Contract, recs: DayRec[], leaves: AmLeave[], m = '2026-10') => 
 // 40 h (8 h × 5), 5,00 € net : 866,67 € mensualisés ; octobre 2026 : 22 jours × 8 h = 176 h.
 
 describe('T-103 (H9) : absence payée, pas de compensation', () => {
-  it('lundi 12/10 enfant absent (payé), mardi-vendredi 11 h : 12 HC, aucune heure majorée (32 + 12 = 44 h effectuées)', () => {
+  it('lundi 12/10 enfant absent (payé), mardi-vendredi 11 h : 44 h effectuées : 4 HC et 8 h normales payées en plus (T-109)', () => {
     const b = mois(ct(), [rec('2026-10-12', { abs: 'parents' }), ...MAR_VEN.map((d) => pres(d, '19:00'))], []);
     expect(b.retenue).toBe(0);
-    expect(b.complMin).toBe(12 * 60);
-    expect(b.complAmount).toBe(6000);
+    expect(b.complMin).toBe(4 * 60);
+    expect(b.complAmount).toBe(2000);
+    expect(b.normalesPlusMin).toBe(8 * 60);
+    expect(b.normalesPlusAmount).toBe(4000);
     expect(b.majMin).toBe(0);
-    expect(b.normalesPlusMin ?? 0).toBe(0);
+    expect(b.net).toBe(86667 + 2000 + 4000); // les 12 h sont toutes payées
   });
   it('même semaine sans absence (lundi 8 h) : 52 h effectuées, 5 HC et 7 heures majorées', () => {
     const b = mois(ct(), MAR_VEN.map((d) => pres(d, '19:00')), []);
@@ -42,9 +46,16 @@ describe('T-103 (H9) : absence payée, pas de compensation', () => {
     expect(b.majMin).toBe(7 * 60);
     expect(b.majAmount).toBe(3850); // 7 × 5,00 × 1,10
   });
-  it('heures complémentaires majorées au contrat (25 %) : la majoration reste due après une absence payée', () => {
+  it('heures complémentaires majorées au contrat (25 %) : 35 h effectuées, les 3 h en plus sont des heures normales (T-109)', () => {
     const b = mois(ct({ majorationCompl: 25 }), [rec('2026-10-12', { abs: 'parents' }), pres('2026-10-13', '19:00')], []);
-    expect(b.complAmount).toBe(1875); // 3 × 5,00 × 1,25
+    expect(b.complAmount).toBe(0);
+    expect(b.normalesPlusAmount).toBe(1500); // 3 × 5,00, sans majoration
+  });
+  it("comparateur, 2.1 : HC majorées de 25 %, lundi absent payé, 11 h du mardi au vendredi : 4 HC majorées et 8 h normales", () => {
+    // Montants du comparateur à 4,20 € : 4 HC × 5,25 = 21,00 € et 8 h × 4,20 = 33,60 € ; ici à 5,00 € net.
+    const b = mois(ct({ majorationCompl: 25 }), [rec('2026-10-12', { abs: 'parents' }), ...MAR_VEN.map((d) => pres(d, '19:00'))], []);
+    expect(b.complAmount).toBe(2500); // 4 × 5,00 × 1,25
+    expect(b.normalesPlusAmount).toBe(4000); // 8 × 5,00
   });
 });
 

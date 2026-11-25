@@ -385,7 +385,7 @@ describe('Non-régression : un CDI donne exactement les mêmes sorties qu’avan
     // T-103 : champs retirés (parts « à confirmer », toutes à 0 dans la fixture) et champs nouveaux `brutConnu` (D1) et
     // `periodeDecesFin` (F8, date de fin de la période indemnisée d'un décès, déjà dite dans l'explication), sans effet
     // sur les montants : hors de la comparaison.
-    const HORS = new Set(['brutConnu', 'periodeDecesFin', 'normalesPlusMin', 'normalesPlusAmount', 'evenementAConfirmer', 'ferieLocalAConfirmer', 'joursCpAConfirmer', 'joursEvenementAConfirmer', 'joursFerieLocalAConfirmer', 'joursMaintienAConfirmer', 'joursMaladieAConfirmer', 'kmAConfirmer']);
+    const HORS = new Set(['brutConnu', 'reductionHSManquante', 'periodeDecesFin', 'normalesPlusMin', 'normalesPlusAmount', 'evenementAConfirmer', 'ferieLocalAConfirmer', 'joursCpAConfirmer', 'joursEvenementAConfirmer', 'joursFerieLocalAConfirmer', 'joursMaintienAConfirmer', 'joursMaladieAConfirmer', 'kmAConfirmer']);
     const filtre = (x: unknown) => JSON.parse(JSON.stringify(x, (k, v) => (HORS.has(k) ? undefined : v)));
     // Recapture (T-103, après relecture des écarts) : T076_RECAPTURE=1 npx vitest run tests/t076-cdd.test.ts
     if (process.env.T076_RECAPTURE === '1') writeFileSync(new URL('./fixtures/t076-cdi-avant.json', import.meta.url), JSON.stringify(apres));

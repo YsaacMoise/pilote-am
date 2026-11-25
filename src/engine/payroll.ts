@@ -637,10 +637,11 @@ export function weekOvertime(ctx: Ctx, monday: ISODate): Map<ISODate, { compl: n
  */
 export function weekOvertimeDetail(ctx: Ctx, monday: ISODate): { parJour: Map<ISODate, { compl: number; maj: number; complPrevu?: number; normal?: number }> } {
   return memo(ctx, 'wkd' + monday, () => {
-    const base = weekOvertimeL1(ctx, monday);
     const t = termsAt(ctx.c, monday);
-    if (!pvActif(t) || (lecturePV(t) !== 'L2' && formePV(t) !== 'remis')) return { parJour: base };
-    return { parJour: weekOvertimeL2(ctx, monday, baseHebdoMin(t), base) };
+    if (!pvActif(t) || (lecturePV(t) !== 'L2' && formePV(t) !== 'remis')) return { parJour: weekOvertimeL1(ctx, monday) };
+    // T-109 : lecture L2 et planning remis : la paie prévue d'un jour d'absence payée est maintenue, heures complémentaires
+    // prévues au-delà de la base comprises (CCN 105, 47.2) : seule l'absence retenue se compense en heures normales.
+    return { parJour: weekOvertimeL2(ctx, monday, baseHebdoMin(t), weekOvertimeL1(ctx, monday, false)) };
   });
 }
 
@@ -687,25 +688,32 @@ function weekOvertimeL2(ctx: Ctx, monday: ISODate, B: number, base: Map<ISODate,
   return out;
 }
 
-function weekOvertimeL1(ctx: Ctx, monday: ISODate): Map<ISODate, { compl: number; maj: number; normal?: number }> {
-  return memo(ctx, 'wk' + monday, () => {
+function weekOvertimeL1(ctx: Ctx, monday: ISODate, avecPayees = true): Map<ISODate, { compl: number; maj: number; normal?: number }> {
+  return memo(ctx, (avecPayees ? 'wk' : 'wkr') + monday, () => {
     const out = new Map<ISODate, { compl: number; maj: number; normal?: number }>();
     // Base de la semaine : heures prévues qui comptent comme heures de travail (voir minutesSeuil45).
     // Les heures en plus sous ce seuil sont payées au taux du contrat ; seules celles au-delà de 45 h sont majorées.
-    // T-103 (H9) : une absence payée (enfant absent, férié chômé, événement familial) ne se compense pas avec les heures
-    // faites en plus un autre jour : elles restent des heures complémentaires (DREETS Bourgogne-Franche-Comté, guide des
-    // assistants maternels, juin 2026 : les absences payées « doivent être comptées dans les heures réellement effectuées »
-    // pour éviter « une compensation » avec des heures travaillées non payées). Une absence retenue (art. 111) l'est : les
-    // heures faites en plus la même semaine, jusqu'aux heures retenues, ne dépassent pas « la durée de travail
-    // hebdomadaire prévue au contrat » (CCN 96.4) : ce sont des heures normales, payées au taux du contrat, sans majoration
-    // ni exonération des heures complémentaires. Aucune heure travaillée sans paie.
+    // T-103 (H9), qualification corrigée par T-109 (comparateur des vérifications, section 2.1 ; regles/t109-corrections.md,
+    // C2). Une absence payée (enfant absent, férié chômé, événement familial, formation) ne se compense pas avec les heures
+    // faites en plus un autre jour : elles sont toutes payées (CCN 105 ; DREETS Bourgogne-Franche-Comté, guide de juin
+    // 2026, p. 43 : éviter « une compensation » avec des heures travaillées non payées). Mais seules les heures « de
+    // travail effectuées » au-delà de la durée du contrat sont des heures complémentaires (CCN 96.4 ; Cass. soc.
+    // 04/04/2012, n° 10-10.701 : pas de travail effectif sans texte ; CSS L241-17, I, 7° : HC « accomplies au sens de la
+    // convention collective »). Les heures faites en plus jusqu'aux heures prévues non travaillées de la semaine (absence
+    // payée ou retenue, art. 111) restent sous la durée du contrat : ce sont des heures normales, payées au taux du
+    // contrat, sans majoration ni réduction de cotisations. Exemple : contrat de 40 h, lundi absent payé (8 h), 11 h du
+    // mardi au vendredi : 4 heures complémentaires et 8 heures normales payées en plus.
+    // `avecPayees` faux (lecture L2, planning remis) : seule l'absence retenue se compense (voir weekOvertimeDetail).
     let cum = 0;
     let retenu = 0;
     for (let i = 0; i < 7; i++) {
       const d = addDays(monday, i);
-      cum += minutesSeuil45(ctx, d);
+      const seuil = minutesSeuil45(ctx, d);
+      cum += seuil;
       const di = dayInfo(ctx, d);
-      if (di.deducted && inContract(ctx.c, d)) retenu += di.plannedMin;
+      if (!inContract(ctx.c, d) || di.plannedMin <= 0) continue;
+      if (di.deducted) retenu += di.plannedMin;
+      else if (avecPayees && seuil === 0) retenu += di.plannedMin;
     }
     for (let i = 0; i < 7; i++) {
       const d = addDays(monday, i);
@@ -745,7 +753,7 @@ export interface MonthBase {
   heuresNormales: number;
   joursActivite: number;
   complMin: number;
-  /** T-103 (H9) : heures faites en plus qui compensent une absence retenue la même semaine (minutes, montant net) */
+  /** T-103 (H9), T-109 : heures faites en plus sous la durée du contrat la semaine d’une absence payée ou retenue (minutes, montant net) */
   normalesPlusMin?: number;
   normalesPlusAmount?: number;
   /** Heures en plus occasionnelles au-delà de 45 h (payées en plus du salaire mensualisé) */
@@ -1192,7 +1200,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     t0.compl += v.compl; t0.maj += v.maj; t0.prevu += v.complPrevu ?? 0; t0.normal += v.normal ?? 0;
   }
   r.complMin = t0.compl; r.majMin = t0.maj;
-  // T-103 (H9) : heures faites en plus qui compensent une absence retenue la même semaine : heures normales au taux du contrat.
+  // T-103 (H9), T-109 : heures faites en plus sous la durée du contrat la semaine d’une absence : heures normales au taux du contrat.
   r.normalesPlusMin = t0.normal;
   r.normalesPlusAmount = Math.round((t0.normal * c.rateNet) / 60);
   r.normalesMin = (r.normalesMin ?? 0) + t0.normal;

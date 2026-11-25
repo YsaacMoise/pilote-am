@@ -693,8 +693,10 @@ export function maintien(ctx: Ctx, jours: number, at: ISODate = ctx.today, refY?
  * T-076, P-PV-5 lecture C1 : maintien = taux × (heures prévues de la période de référence ÷ semaines prévues travaillées de
  * la période) × jours ÷ 6. Jours de la période compris dans le contrat ; heures prévues : planning de la semaine de chaque
  * jour (congés, absences et fériés compris, hors semaines sans accueil de l'année incomplète) ; semaines prévues travaillées :
- * nombre de jours des semaines dont le planning n'est pas vide, divisé par 7 (une semaine coupée par la période compte pour
- * sa part). S2 : un jour dont la semaine n'a pas de planning saisi n'est compté nulle part.
+ * semaines dont le planning n'est pas vide ; une semaine coupée par la période compte pour la part de ses jours prévus au
+ * planning (T-109, comparateur, correction 4 : Cass. soc. 09/05/2019, n° 17-26.232, « durée normale habituelle d'accueil »
+ * sur la période : un dimanche hors planning n'est pas une part de semaine d'accueil ; avant : jours civils ÷ 7). S2 : un jour
+ * dont la semaine n'a pas de planning saisi n'est compté nulle part.
  */
 export function maintienC1(ctx: Ctx, jours: number, refY: number, at: ISODate): number {
   const c = ctx.c;
@@ -702,9 +704,10 @@ export function maintienC1(ctx: Ctx, jours: number, refY: number, at: ISODate): 
   const a = c.start > p.from ? c.start : p.from;
   const b = c.end && c.end < p.to ? c.end : p.to;
   const off = toutesSemainesSansAccueil(c);
-  let total = 0, joursSemaines = 0;
+  let total = 0;
   // T-103 (H5) : heures d'une semaine prévues au-delà de 45 h, majorées comme dans le salaire (CCN 110.1, 48.1.1.5).
-  const parSemaine = new Map<ISODate, { min: number; maj: number }>();
+  // T-109 : `dans` et `prevus` : jours prévus de la semaine dans la période, et en tout.
+  const parSemaine = new Map<ISODate, { min: number; maj: number; dans: number; prevus: number }>();
   for (const d of b < a ? [] : eachDay(a, b)) {
     const t = termsAt(c, d);
     const l = mondayOf(d);
@@ -713,13 +716,23 @@ export function maintienC1(ctx: Ctx, jours: number, refY: number, at: ISODate): 
     if (h <= 0) continue;
     const m = planningBrutMin(t, d);
     total += m;
-    const w = parSemaine.get(l) ?? { min: 0, maj: t.majoration };
-    w.min += m; parSemaine.set(l, w);
-    joursSemaines++;
+    let w = parSemaine.get(l);
+    if (!w) {
+      let prevus = 0;
+      for (let i = 0; i < 7; i++) { const x = addDays(l, i); if (planningBrutMin(t, x) > 0) prevus++; }
+      w = { min: 0, maj: t.majoration, dans: 0, prevus };
+      parSemaine.set(l, w);
+    }
+    w.min += m;
+    if (m > 0) w.dans++;
   }
-  for (const w of parSemaine.values()) total += (Math.max(0, w.min - H45) * w.maj) / 100;
+  let semaines = 0;
+  for (const w of parSemaine.values()) {
+    total += (Math.max(0, w.min - H45) * w.maj) / 100;
+    if (w.prevus) semaines += w.dans / w.prevus;
+  }
   const rate = termsAt(c, at).rateNet;
-  return joursSemaines ? Math.round(((jours / 6) * (total / (joursSemaines / 7)) * rate) / 60) : 0;
+  return semaines ? Math.round(((jours / 6) * (total / semaines) * rate) / 60) : 0;
 }
 
 /**

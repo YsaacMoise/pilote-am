@@ -39,6 +39,8 @@ JOURNEE_9H = 9 * 60
 
 ARRONDI_ARR01 = ("arrondi au centime le plus proche, decision ARR-01 du DG du 18/11/2026 "
                  "dans l'attente de la DDETS ; le minimum exact est {} EUR")
+ARRONDI_SUPERIEUR = ("arrondi au centime superieur (CCN 114.1 : « sans pouvoir etre inferieur a 90 % du minimum "
+                     "garanti ») ; le minimum exact est {} EUR")
 
 
 def _demi_haut(x):
@@ -72,13 +74,16 @@ def _minimum_entretien(d, duree_minutes):
         raise ErreurSaisie("Duree d'accueil nulle : aucune indemnite (R-ABS-10).")
     plancher = Fraction(PLANCHER_ENTRETIEN_JOURNALIER)
     exact_min = max(plancher, neuf * dur / JOURNEE_9H)
-    paye = _demi_haut(exact_min)
+    # T-109 (comparateur des verifications, correction 3) : CCN 114.1, « sans pouvoir etre inferieur a 90 % du minimum
+    # garanti » : un plancher ne s'arrondit pas en dessous : centime superieur (Urssaf : 3,39 EUR au 01/01/2022 pour
+    # 3,384 EUR). Remplace l'arrondi au plus proche (ARR-01) pour ce minimum.
+    paye = math.ceil(exact_min)
     details = {
-        "arrondi": ARRONDI_ARR01.format(_euros_exacts(exact_min)),
+        "arrondi": ARRONDI_SUPERIEUR.format(_euros_exacts(exact_min)),
         "minimum_exact_centimes": texte_fraction(exact_min),
         "source_mg": src,
         "autres_lectures_centimes": {
-            "centime_superieur": math.ceil(exact_min),
+            "centime_le_plus_proche": _demi_haut(exact_min),
             "simulateur_service_public": max(PLANCHER_ENTRETIEN_JOURNALIER,
                                              _demi_haut(Fraction(_demi_haut(neuf)) * dur / JOURNEE_9H)),
         },
@@ -89,8 +94,8 @@ def _minimum_entretien(d, duree_minutes):
 @api("R-IND-01", "R-IND-02", "R-SAL-02")
 def minimum_entretien_journalier(d, duree_minutes):
     """Minimum journalier d'entretien pour une duree donnee (R-IND-02, T-040b) :
-    max(2,65 EUR ; 90 % du MG x duree / 9 h), arrondi au centime le plus proche
-    (decision ARR-01 du DG, T-040c). Sortie : minimum_centimes, details."""
+    max(2,65 EUR ; 90 % du MG x duree / 9 h), arrondi au centime superieur
+    (CCN 114.1, T-109 ; avant : plus proche, ARR-01). Sortie : minimum_centimes, details."""
     exact_min, paye, details, prov = _minimum_entretien(d, duree_minutes)
     return resultat_ok(minimum_entretien_journalier.regles,
                        {"minimum_centimes": paye, "details": details}, provisoire=prov)

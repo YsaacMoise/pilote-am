@@ -328,6 +328,7 @@ function MoisVue({ mois, am }: { mois: MoisParent; am: string }) {
   }
   const detail = [
     `salaire net ${euros(mois.net)}`,
+    mois.reduction ? `réduction de cotisations des heures complémentaires ${euros(mois.reduction)}` : '',
     mois.entretien ? `entretien ${euros(mois.entretien)}` : '',
     mois.repas ? `repas ${euros(mois.repas)}` : '',
     mois.km ? `kilomètres ${euros(mois.km)}` : '',

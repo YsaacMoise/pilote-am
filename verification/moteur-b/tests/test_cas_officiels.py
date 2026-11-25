@@ -403,10 +403,10 @@ class Indemnites(unittest.TestCase):
         self.assertEqual(R(m.minimum_entretien_journalier(date(2024, 2, 1), 360), "minimum_centimes"), 265)
 
     def test_C_IND_04(self):
-        """C-IND-04, R-IND-02 : janvier 2022, 9 h : 3,38 € ; moins de 9 h : 2,65 €.
-        BAREME-ABSENT leve (T-040), A-36 leve (T-040c) : 3,384 EUR au plus proche = 3,38 EUR (decision ARR-01).
-        Contradiction : l'Urssaf affiche 3,39 EUR au 01/01/2022 ; le cas officiel reste la reference du test."""
-        self.assertEqual(R(m.minimum_entretien_journalier(date(2022, 1, 1), 540), "minimum_centimes"), 338)
+        """C-IND-04, R-IND-02 : janvier 2022, 9 h ; la fiche Grand Est donne 3,38 EUR, sous le minimum de 3,384 EUR.
+        T-109 : la reference a tort. CCN 114.1 « sans pouvoir etre inferieur a 90 % du minimum garanti » ; l'Urssaf
+        affiche 3,39 EUR au 01/01/2022 : centime superieur."""
+        self.assertEqual(R(m.minimum_entretien_journalier(date(2022, 1, 1), 540), "minimum_centimes"), 339)
 
 
 # ---------------------------------------------------------------- Regularisation

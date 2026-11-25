@@ -87,15 +87,16 @@ describe('Cas 4 : CDD à horaires variables', () => {
     expect(r.complMin).toBe(60 * 60);
     expect(r.net).toBe(54728);
   });
-  it('fin au terme : indemnité de fin de contrat 54,73 € ; congés non pris 64,47 € (maintien, plus favorable que le dixième)', () => {
+  it('fin au terme : indemnité de fin de contrat 54,73 € ; congés non pris 60,20 € (dixième, plus favorable que le maintien, T-109)', () => {
     const f = finDeCdd(makeCtx(r1(), [], [], T), '2026-03-20', 'terme');
     expect(f.nonGere ?? []).toEqual([]);
     // 10 % × 547,28 € = 54,728 €, arrondi 54,73 €.
     expect(f.ifcNet).toBe(5473);
-    // 2 jours acquis. Dixième : (547,28 + 54,73) ÷ 10 = 60,20 €. Maintien C1 : 105 h ÷ (19 jours ÷ 7) = 38,68 h par semaine,
-    // × 2 ÷ 6 × 5 € = 64,47 €. Le plus favorable : 64,47 € (CCN 48.1.1.5) ; au-dessus du minimum L1242-16 (60,20 €).
+    // 2 jours acquis. Dixième : (547,28 + 54,73) ÷ 10 = 60,20 €. Maintien C1 (T-109, Cass. soc. 09/05/2019 : durée habituelle) :
+    // 105 h ÷ 3 semaines entières (avant : 19 jours civils ÷ 7) = 35 h par semaine, × 2 ÷ 6 × 5 € = 58,33 €.
+    // Le plus favorable : le dixième, 60,20 € (CCN 48.1.1.5 ; minimum L1242-16).
     expect(f.cpJoursRestants).toBe(2);
-    expect(f.cpIndemnite).toBe(6447);
+    expect(f.cpIndemnite).toBe(6020);
   });
   it('scénario R3 de la relecture T-076 : CDD du 02/06/2025 au 30/09/2026, congés pris payés par le salaire de la base B', () => {
     const c = base({

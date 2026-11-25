@@ -2,7 +2,7 @@
 // Aucun nouveau calcul : tout vient de computeMonth, declarationLines et dayInfo, comme l'écran Mois.
 // Ce n'est pas un bulletin de salaire : ni brut, ni cotisations, ni net imposable.
 import { eachDay, firstDay, lastDay, monthLabel, monthOf, shortDate, type ISODate, type Month } from '../engine/dates';
-import { computeMonth, declarationLines, totalAVerser, type DeclLine } from '../engine/month';
+import { computeMonth, declarationLines, reductionVersee, totalAVerser, type DeclLine } from '../engine/month';
 import { dayInfo, inContract, type Ctx } from '../engine/payroll';
 import { euros, hoursLabel } from '../engine/money';
 import { AM_ABS_LABEL, CHILD_ABS_LABEL } from '../engine/model';
@@ -116,6 +116,7 @@ export function releveDonnees(
   if (feries) totaux.push({ label: 'Jours fériés chômés', value: `${feries}` });
   const montants: ReleveDonnees['montants'] = [
     { label: 'Salaire net', value: euros(r.netTotal) },
+    ...(reductionVersee(r) ? [{ label: 'Réduction de cotisations des heures complémentaires et majorées', value: euros(reductionVersee(r)) }] : []),
     { label: 'Indemnités d’entretien', value: euros(r.entretien) },
     { label: 'Repas', value: euros(r.repas) },
     { label: 'Kilomètres', value: euros(r.km) },
