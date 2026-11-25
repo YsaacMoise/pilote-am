@@ -676,15 +676,21 @@ export function maintienC1(ctx: Ctx, jours: number, refY: number, at: ISODate): 
   const b = c.end && c.end < p.to ? c.end : p.to;
   const off = toutesSemainesSansAccueil(c);
   let total = 0, joursSemaines = 0;
+  // T-103 (H5) : heures d'une semaine prévues au-delà de 45 h, majorées comme dans le salaire (CCN 110.1, 48.1.1.5).
+  const parSemaine = new Map<ISODate, { min: number; maj: number }>();
   for (const d of b < a ? [] : eachDay(a, b)) {
     const t = termsAt(c, d);
     const l = mondayOf(d);
     if (t.yearType === 'incomplete' && off.has(l)) continue;
     const h = minutesPlanning(planningSemainePV(t, l));
     if (h <= 0) continue;
-    total += planningBrutMin(t, d);
+    const m = planningBrutMin(t, d);
+    total += m;
+    const w = parSemaine.get(l) ?? { min: 0, maj: t.majoration };
+    w.min += m; parSemaine.set(l, w);
     joursSemaines++;
   }
+  for (const w of parSemaine.values()) total += (Math.max(0, w.min - H45) * w.maj) / 100;
   const rate = termsAt(c, at).rateNet;
   return joursSemaines ? Math.round(((jours / 6) * (total / (joursSemaines / 7)) * rate) / 60) : 0;
 }

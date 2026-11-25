@@ -3,7 +3,7 @@
 // Chaque attendu est calculé à la main, en commentaire, à partir des formules du rapport.
 import { describe, expect, it } from 'vitest';
 import type { AmLeave, Contract, DayRec, Planning } from '../src/engine/model';
-import { dayInfo, makeCtx, mensuelMinutes, monthBase, regularisation, salaireMensualise } from '../src/engine/payroll';
+import { dayInfo, makeCtx, mensuelMajoreesMinutes, mensuelMinutes, monthBase, regularisation, salaireMensualise } from '../src/engine/payroll';
 import { computeMonth, declarationLines } from '../src/engine/month';
 import { acquisition, cpForMonth, decompteConge, indemnite, maintien } from '../src/engine/conges';
 import { finDeContrat } from '../src/engine/fin';
@@ -53,10 +53,15 @@ describe('T-076 : données et refus (nonGeres)', () => {
     expect(nonGeresContrat(c)).toEqual([]);
     expect(computeMonth(makeCtx(c, [], [], T), '2026-03').nonGere).toEqual([]);
   });
-  it('R-PV-05 / P-PV-3 : semaine type prévue au-delà de 45 h, contrat refusé avec un message précis', () => {
-    const c = s1({ cycle: [week('08:00', '18:00'), B20] }); // A = 5 × 10 h = 50 h
-    expect(nonGeresContrat(c).join(' ')).toMatch(/Semaine prévue au-delà de 45 h \(semaine 1 du cycle, 50 h\)/);
-    expect(declarationLines(makeCtx(c, [], [], T), computeMonth(makeCtx(c, [], [], T), '2026-03'))).toEqual([]);
+  it('T-103 (H5) : semaine type du cycle prévue au-delà de 45 h : calculée, majoration dans le salaire mensualisé (CCN 108.1, 110.1)', () => {
+    // Cycle A 50 h (5 × 10 h) / B 20 h, 151,67 h payées par mois (≥ total prévu : 35 h × 52 ÷ 12) : lecture L1.
+    // Heures au-delà de 45 h : (5 + 0) ÷ 2 × 52 ÷ 12 = 10,83 h par mois, majorées de 10 % : 10,833 × 4,00 € × 10 % = 4,33 €.
+    // Salaire : 151,67 × 4,00 € + 4,33 € = 611,01 €.
+    const c = s1({ cycle: [week('08:00', '18:00'), B20], heuresMensualisees: 151.67 });
+    expect(nonGeresContrat(c)).toEqual([]);
+    expect(salaireMensualise(c)).toBe(61101);
+    expect(mensuelMajoreesMinutes(c)).toBeCloseTo(650, 6);
+    expect(declarationLines(makeCtx(c, [], [], T), computeMonth(makeCtx(c, [], [], T), '2026-03')).length).toBeGreaterThan(0);
   });
   it('S2 : semaine sans planning, ce mois refusé (planning demandé), le mois d’avant calculé', () => {
     const ps: Record<string, Planning> = {};
@@ -67,13 +72,19 @@ describe('T-076 : données et refus (nonGeres)', () => {
     expect(monthBase(ctx, '2026-01').nonGere).toEqual([]);
     expect(monthBase(ctx, '2026-02').nonGere.join(' ')).toMatch(/Planning des semaines du 09\/02\/2026, du 16\/02\/2026, du 23\/02\/2026 non saisi/);
   });
-  it('S2 : semaine prévue au-delà de 45 h, seul le mois qu’elle touche est refusé', () => {
+  it('T-103 (H5) : planning remis, semaine prévue de 50 h : 15 HC (base 30 h → 45 h) et 5 heures majorées, dans le mois de la semaine', () => {
     const ps: Record<string, Planning> = {};
     for (let i = 0; i < 9; i++) ps[new Date(Date.UTC(2026, 0, 5 + 7 * i)).toISOString().slice(0, 10)] = week('08:00', '14:00');
     ps['2026-02-16'] = week('08:00', '18:00'); // 50 h
+    // 130 h par mois sur 52 semaines : base 30 h. Semaine du 16/02 : 30 → 45 h = 15 HC (60,00 €), au-delà de 45 h = 5 h
+    // majorées de 10 % (5 × 4,00 × 1,10 = 22,00 €) ; les autres semaines (30 h) : rien.
     const ctx = makeCtx(contract({ planningVariable: true, planningsSemaines: ps, heuresMensualisees: 130 }), [], [], T);
     expect(monthBase(ctx, '2026-01').nonGere).toEqual([]);
-    expect(monthBase(ctx, '2026-02').nonGere.join(' ')).toMatch(/Semaine prévue au-delà de 45 h \(semaine du 16\/02\/2026, 50 h\)/);
+    const b = monthBase(ctx, '2026-02');
+    expect(b.nonGere).toEqual([]);
+    expect(b.complMin).toBe(15 * 60);
+    expect(b.majMin).toBe(5 * 60);
+    expect(b.majAmount).toBe(2200);
   });
   it('avenant qui change les horaires d’un planning variable : refusé', () => {
     const c = s1({ avenants: [{ id: 'a', from: '2026-04-01', changes: { planning: B25 } }] });

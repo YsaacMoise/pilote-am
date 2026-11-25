@@ -111,9 +111,24 @@ export function mensuelMinutes(c: Contract): number {
 
 /** Part des heures mensualisées au-delà de 45 h par semaine (en minutes) : à déclarer en « heures majorées » (art. 96.4) */
 export function mensuelMajoreesMinutes(c: Contract): number {
-  // T-076 : planning variable, aucune semaine prévue au-delà de 45 h n'est calculée (refus, P-PV-3) : rien de majoré ici.
-  if (pvActif(c)) return 0;
+  if (pvActif(c)) return mensuelMajoreesMinutesPV(c);
   return (Math.max(0, weeklyMinutes(c.planning) - H45) * weeksPerYear(c)) / 12;
+}
+
+/**
+ * T-103 (H5, tableau validé le 24/11/2026) : horaires variables, heures au-delà de 45 h comprises dans les heures payées
+ * chaque mois. CCN 108.1 : salaire mensualisé « quels que soient le nombre d'heures de travail par semaine » ; 110.1 :
+ * majoration des heures au-delà de 45 h. Comme pour un planning fixe, elles entrent dans la mensualisation avec leur
+ * majoration. Lecture L1 (cycle, heures payées au moins égales au total prévu) : moyenne du cycle des heures au-delà de
+ * 45 h × semaines ÷ 12. Lecture L2 ou planning remis : base de la semaine au-delà de 45 h × semaines ÷ 12 ; les heures
+ * prévues au-delà de la base et de 45 h sont des heures majorées de la semaine (weekOvertimeL2).
+ */
+export function mensuelMajoreesMinutesPV(c: Contract): number {
+  const N = weeksPerYear(c);
+  if (formePV(c) === 'cycle' && c.cycle?.length && lecturePV(c) === 'L1') {
+    return (c.cycle.reduce((t, p) => t + Math.max(0, minutesPlanning(p) - H45), 0) / c.cycle.length) * N / 12;
+  }
+  return (Math.max(0, baseHebdoMin(c) - H45) * N) / 12;
 }
 
 export function weeksPerYear(c: Contract): number {
@@ -123,7 +138,7 @@ export function weeksPerYear(c: Contract): number {
 /** Salaire de base mensualisé (net, centimes). Les heures contractuelles au-delà de 45 h/semaine sont majorées. */
 export function salaireMensualise(c: Contract): number {
   // T-076 (spécification, section 1) : salaire mensualisé = heures mensualisées × taux (R-PV-03, règle commune).
-  if (pvActif(c)) return Math.round(Math.round((c.heuresMensualisees ?? 0) * c.rateNet * 1e6) / 1e6);
+  if (pvActif(c)) return Math.round(Math.round(((c.heuresMensualisees ?? 0) * c.rateNet + (mensuelMajoreesMinutesPV(c) / 60) * c.rateNet * (c.majoration / 100)) * 1e6) / 1e6);
   const h = weeklyMinutes(c.planning);
   const base = Math.min(h, H45) * c.rateNet + Math.max(0, h - H45) * c.rateNet * (1 + c.majoration / 100);
   return Math.round((base * weeksPerYear(c)) / 12 / 60);
@@ -610,13 +625,25 @@ function weekOvertimeL2(ctx: Ctx, monday: ISODate, B: number, base: Map<ISODate,
   // normales, calculées par weekOvertimeL1 : `normal`).
   const seuilContrat = (d: ISODate) => { const di = dayInfo(ctx, d); return di.plannedMin > 0 && inContract(c, d) && !di.deducted ? Math.max(di.plannedMin, minutesSeuil45(ctx, d)) : 0; };
   const morceaux = jours.map((d) => ({ d, prevu: seuilContrat(d), extra: dayInfo(ctx, d).extraMin - (base.get(d)?.normal ?? 0), normal: base.get(d)?.normal ?? 0 }));
-  const total = Math.max(0, morceaux.reduce((a, x) => a + x.prevu + x.extra, 0) - b - hm);
+  // T-103 (H5) : heures prévues de la semaine au-delà de 45 h (heures de travail qui comptent, minutesSeuil45) et de la base :
+  // heures majorées (CCN 96.4, 110.1), rangées sur les derniers jours prévus de la semaine.
+  const seuilMaj = Math.max(H45, b);
+  const prevu45 = jours.reduce((a, d) => a + minutesSeuil45(ctx, d), 0);
+  let hmPrevu = Math.max(0, prevu45 - seuilMaj);
+  const majPrevu = new Map<ISODate, number>();
+  for (const d of [...jours].reverse()) {
+    if (!hmPrevu) break;
+    const k = Math.min(hmPrevu, minutesSeuil45(ctx, d));
+    if (k) { majPrevu.set(d, k); hmPrevu -= k; }
+  }
+  const totalMajPrevu = [...majPrevu.values()].reduce((a, k) => a + k, 0);
+  const total = Math.max(0, morceaux.reduce((a, x) => a + x.prevu + x.extra, 0) - b - hm - totalMajPrevu);
   let pos = 0;
   const part = (n: number) => { const a = pos, e = pos + n; pos = e; return Math.max(0, Math.min(e, b + total) - Math.max(a, b)); };
   const out = new Map<ISODate, { compl: number; maj: number; complPrevu?: number; normal?: number }>();
   for (const x of morceaux) {
-    const p = part(x.prevu), e = part(x.extra), m = base.get(x.d);
-    if (p || e || m) out.set(x.d, { compl: p + e, maj: m?.maj ?? 0, complPrevu: p, ...(x.normal ? { normal: x.normal } : {}) });
+    const p = part(Math.max(0, x.prevu - (majPrevu.get(x.d) ?? 0))), e = part(x.extra), m = base.get(x.d), mp = majPrevu.get(x.d) ?? 0;
+    if (p || e || m || mp) out.set(x.d, { compl: p + e, maj: (m?.maj ?? 0) + mp, complPrevu: p, ...(x.normal ? { normal: x.normal } : {}) });
   }
   return out;
 }

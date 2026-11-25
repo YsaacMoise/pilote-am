@@ -4,7 +4,6 @@
 import { daysBetween, eachDay, minutes, mondayOf, shortDate, weekday, type ISODate } from './dates';
 import type { Contract, Plage, Planning } from './model';
 
-const H45 = 45 * 60;
 const minPlage = (p: Plage) => Math.max(0, minutes(p.end) - minutes(p.start));
 
 /** Minutes d'un planning d'une semaine */
@@ -128,26 +127,17 @@ export const NON_GERE_PV_AVENANT =
 export function nonGeresContratPV(c: Contract): string[] {
   if (!pvActif(c)) return [];
   const out: string[] = [];
-  if (formePV(c) === 'cycle') {
-    const longues = c.cycle!.map((p, i) => ({ i, m: minutesPlanning(p) })).filter((x) => x.m > H45);
-    if (longues.length) out.push(messageSemaine45(longues.map((x) => `semaine ${x.i + 1} du cycle, ${fmtH(x.m)}`), 'Fais la paie sans l’app.'));
-  }
-  if (mensuelMinutesPV(c) * 12 / semainesParAn(c) > H45 + 1e-9) {
-    out.push('Heures payées chaque mois au-delà de 45 h par semaine en moyenne : non géré. La convention ne dit pas comment majorer ces heures dans le salaire mensualisé. Fais la paie sans l’app.');
-  }
+  // T-103 (H5) : semaines prévues au-delà de 45 h et heures payées au-delà de 45 h en moyenne : calculées (payroll.ts,
+  // mensuelMajoreesMinutesPV et weekOvertimeL2), plus de refus.
   if ((c.avenants ?? []).some((a) => a.changes.planning !== undefined || a.changes.yearType !== undefined || a.changes.weeks !== undefined || a.changes.weeksOff !== undefined)) {
     out.push(NON_GERE_PV_AVENANT);
   }
   return out;
 }
 
-function messageSemaine45(quoi: string[], fin = 'Fais ces mois sans l’app.'): string {
-  return `Semaine prévue au-delà de 45 h (${quoi.join(' ; ')}) : non géré pour l’instant. L’app ne sait pas encore mettre la majoration de ces heures dans le salaire mensualisé quand les horaires changent d’une semaine à l’autre (convention, articles 108.1 et 110.1). ${fin}`;
-}
-
 /**
- * Refus d'une période [from, to] (déjà limitée au contrat et au suivi) : S2, semaine sans planning saisi, ou semaine
- * prévue au-delà de 45 h. Le reste du contrat est calculé.
+ * Refus d'une période [from, to] (déjà limitée au contrat et au suivi) : S2, semaine sans planning saisi (donnée à saisir).
+ * Le reste du contrat est calculé.
  */
 export function nonGeresPeriodePV(c: Contract, from: ISODate, to: ISODate): string[] {
   if (!pvActif(c) || formePV(c) !== 'remis' || to < from) return [];
@@ -159,8 +149,6 @@ export function nonGeresPeriodePV(c: Contract, from: ISODate, to: ISODate): stri
   if (manquants.length) {
     out.push(`Planning ${manquants.length > 1 ? 'des semaines du' : 'de la semaine du'} ${manquants.map(shortDate).join(', du ')} non saisi : l’app ne calcule pas ce mois sans lui. Ouvre le contrat et saisis le planning remis par les parents pour ${manquants.length > 1 ? 'ces semaines' : 'cette semaine'}, ou « sans accueil ». Une semaine de congé ou d’absence a aussi son planning.`);
   }
-  const longues = lundis.filter((l) => minutesPlanning(c.planningsSemaines?.[l]) > H45);
-  if (longues.length) out.push(messageSemaine45(longues.map((l) => `semaine du ${shortDate(l)}, ${fmtH(minutesPlanning(c.planningsSemaines![l]))}`)));
   return out;
 }
 
