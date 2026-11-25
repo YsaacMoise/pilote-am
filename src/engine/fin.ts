@@ -46,6 +46,8 @@ export interface FinResult {
   ancienneteMois: number;
   preavisLabel: string;
   preavisFin: ISODate;
+  /** T-103 (F8) : décès de l'enfant, dernier jour de la période couverte par l'indemnité égale au préavis (CCN 119.4.2) */
+  periodeDecesFin?: ISODate;
   dernierJour: ISODate;
   indemniteRupture: number;
   ruptureExplication: string;
@@ -285,10 +287,12 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // décès » : le jour du décès est payé en salaire, la période de l'indemnité part du lendemain.
   let indemnitePreavis = 0;
   let indemnitePreavisExplication: string | undefined;
+  let periodeDecesFin: ISODate | undefined;
   if (motif === 'deces') {
     const p = preavisEmployeur(anc);
     const debut = addDays(notif, 1);
     const fin = finPreavis(debut, p);
+    periodeDecesFin = fin;
     indemnitePreavis = indemniteCompensatricePreavis(c, debut, fin);
     preavisLabel = `${p.label} : pas de préavis à faire, les parents te versent une indemnité égale au préavis`;
     indemnitePreavisExplication = `Égale au salaire que tu aurais touché pendant ${p.jours ? `${p.jours} jours` : 'un mois'}, du ${shortDate(debut)} au ${shortDate(fin)}.`;
@@ -523,7 +527,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     };
   }
   return {
-    ancienneteMois: anc, preavisLabel, preavisFin, dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, totalBrut, brutsEstimes,
+    ancienneteMois: anc, preavisLabel, preavisFin, ...(periodeDecesFin ? { periodeDecesFin } : {}), dernierJour, indemniteRupture, ruptureExplication, ruptureAConfirmer, totalBrut, brutsEstimes,
     indemnitePreavis, indemnitePreavisExplication,
     regularisation: regularisation_, regulMinutes, cpJoursRestants, cpIndemnite, cpDixiemeEnCours, cpExplication, cpAConfirmer, regularisationNonCalculee, manquants, alertes,
     ...(dispense && icp ? { dispense: { ...dispense, ...icp } } : {}),

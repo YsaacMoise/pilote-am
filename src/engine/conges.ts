@@ -195,15 +195,20 @@ function semainesToutesSaisies(c: Contract, s: ISODate, e: ISODate): boolean {
 
 /** Jours ouvrables de congés payés pris dans [s, e] pendant des semaines sans accueil, dans la limite des droits */
 function cpAssimiles(ctx: Ctx, s: ISODate, e: ISODate, off: Set<ISODate>): number {
-  let n = 0;
+  return cpAssimilesJours(ctx, s, e, off).size;
+}
+
+/** Les mêmes jours, en dates (T-103, C10 : décompte de l'arrêt de 1980) */
+function cpAssimilesJours(ctx: Ctx, s: ISODate, e: ISODate, off: Set<ISODate>): Set<ISODate> {
+  const out = new Set<ISODate>();
   for (let y = cpPeriodStartYear(s); y <= cpPeriodStartYear(e); y++) {
     if (y < cpPeriodStartYear(ctx.c.trackedFrom)) continue;
     const p = cpPeriod(y);
     const droits = Math.max(0, Math.ceil(droitsAPrendre(ctx, y) - 1e-9));
     const payes = cpPrisEntre(ctx, debutDecompte(ctx, y), p.to).slice(0, droits);
-    n += payes.filter((d) => d >= s && d <= e && off.has(mondayOf(d))).length;
+    for (const d of payes) if (d >= s && d <= e && off.has(mondayOf(d))) out.add(d);
   }
-  return n;
+  return out;
 }
 
 function weeksIn(ctx: Ctx, from: ISODate, to: ISODate): number {
@@ -261,12 +266,12 @@ export const CP_MALADIE_PLAFOND = 24;
  *   semaines supplémentaires groupées par quatre et enfin celui des jours restants groupés par vingt-quatre » ;
  * - CCN 48.1.1.2 : « 2,5 jours ouvrables […] à l'issue de chaque mois de travail ou de chaque période équivalente » (C. trav.
  *   L3141-4 : « quatre semaines ou vingt-quatre jours de travail »), calcul « pro rata temporis, en cas d'embauche, de départ ou
- *   d'absence non assimilée » : ce qui reste après les mois complets compte au prorata (jours calendaires de travail ÷ 28,
- *   soit 4 semaines), au lieu d'être perdu ;
- * - mois de travail : mois civil entier de la période, sans jour hors travail. Semaine sans accueil de l'année incomplète :
- *   hors travail (ni travail effectif ni assimilée, L3141-5), sauf les congés payés qui y sont pris (assimilés, 6 jours
- *   ouvrables = 1 semaine) ;
- * - arrêt maladie non professionnel : 2 jours ouvrables par mois (mois entier d'arrêt, ou au prorata), 24 au plus
+ *   d'absence » : les semaines au-delà des groupes de 4 et les jours au-delà des groupes de 24 comptent au prorata
+ *   (2,5 × (mois + semaines ÷ 4 + jours ÷ 24)), au lieu d'être perdus ;
+ * - mois de travail : mois civil entier de la période, sans jour hors travail (dont congé sans solde et enfant malade de
+ *   l'AM, absences non assimilées). Semaine sans accueil de l'année incomplète :
+ *   hors travail (ni travail effectif ni assimilée, L3141-5), sauf les congés payés qui y sont pris (assimilés) ;
+ * - arrêt maladie non professionnel : 2 jours ouvrables par mois, même décompte, 24 au plus
  *   (L3141-5-1, applicable par CASF L423-2, 11°).
  * Le total est arrondi au jour supérieur par `round` (CCN 48.1.1.2, L3141-7).
  */
@@ -278,24 +283,48 @@ function joursAcquis(ctx: Ctx, from: ISODate, to: ISODate): number {
   const off = toutesSemainesSansAccueil(c);
   const malade = new Set<ISODate>();
   for (const l of ctx.leaves) if (l.type === 'am_malade') for (const d of eachDay(l.from > a ? l.from : a, l.to < b ? l.to : b)) malade.add(d);
+  // T-103 (C10) : absence non assimilée à du travail effectif (L3141-5 ne la cite pas) : congé sans solde, enfant malade de
+  // l'AM. CCN 48.1.1.2 : calcul « pro rata temporis, en cas […] d'absence » : ces jours sortent du mois de travail.
+  const nonAssimile = new Set<ISODate>();
+  for (const l of ctx.leaves) if (l.type === 'sans_solde' || l.type === 'am_enfant_malade') for (const d of eachDay(l.from > a ? l.from : a, l.to < b ? l.to : b)) nonAssimile.add(d);
+  // Congés payés pris pendant des semaines sans accueil (année incomplète, semaines toutes saisies) : assimilés à du
+  // travail effectif (L3141-5, 1° ; CCN 48.1.1.3). Une semaine dont le lundi au samedi sont des congés payés compte entière.
+  const cpPayes = off.size && semainesSaisiesCP(c, a, b) ? cpAssimilesJours(ctx, a, b, off) : new Set<ISODate>();
+  const cpSemaine = (d: ISODate) => { const l = mondayOf(d); return [0, 1, 2, 3, 4, 5].every((i) => cpPayes.has(addDays(l, i)) || !!holidayName(addDays(l, i))); };
   const sorte = (d: ISODate): 'travail' | 'maladie' | 'hors' => {
     if (malade.has(d)) return 'maladie';
-    return termsAt(c, d).yearType === 'incomplete' && off.has(mondayOf(d)) ? 'hors' : 'travail';
+    if (nonAssimile.has(d)) return 'hors';
+    if (termsAt(c, d).yearType === 'incomplete' && off.has(mondayOf(d))) return cpPayes.has(d) || ((weekday(d) === 7 || !!holidayName(d)) && cpSemaine(d)) ? 'travail' : 'hors';
+    return 'travail';
   };
-  let mois = 0, moisMaladie = 0, resteTravail = 0, resteMaladie = 0;
+  const travail = compte1980(a, b, (d) => sorte(d) === 'travail');
+  const arret = malade.size ? compte1980(a, b, (d) => sorte(d) === 'maladie') : { mois: 0, semaines: 0, jours: 0 };
+  const periodes = travail.mois + travail.semaines / 4 + travail.jours / 24;
+  const maladie = Math.min(CP_MALADIE_PLAFOND, (arret.mois + arret.semaines / 4 + arret.jours / 24) * CP_MALADIE_PAR_4_SEMAINES);
+  return periodes * 2.5 + maladie;
+}
+
+/**
+ * T-103 (C10) : décompte de l'arrêt Cass. soc. 10/01/1980 sur [a, b] : « d'abord le nombre des mois complets de travail,
+ * puis celui des semaines supplémentaires […] et enfin celui des jours restants ». Mois complet : mois civil entier dans
+ * [a, b] dont chaque jour compte. Semaine : lundi à dimanche dans [a, b], hors des mois complets, dont chaque jour compte.
+ * Jour restant : jour ouvrable (lundi à samedi, L3141-4 « vingt-quatre jours ») qui compte.
+ */
+function compte1980(a: ISODate, b: ISODate, compte: (d: ISODate) => boolean): { mois: number; semaines: number; jours: number } {
+  const pris = new Set<ISODate>();
+  let mois = 0, semaines = 0, jours = 0;
   for (const m of monthsBetween(monthOf(a), monthOf(b))) {
     const premier = `${m}-01`, dernier = lastOf(m);
-    const jours = eachDay(premier > a ? premier : a, dernier < b ? dernier : b).map(sorte);
-    const entier = premier >= a && dernier <= b;
-    if (entier && jours.every((k) => k === 'travail')) { mois++; continue; }
-    if (entier && jours.every((k) => k === 'maladie')) { moisMaladie++; continue; }
-    for (const k of jours) { if (k === 'travail') resteTravail++; else if (k === 'maladie') resteMaladie++; }
+    if (premier < a || dernier > b) continue;
+    const j = eachDay(premier, dernier);
+    if (j.every(compte)) { mois++; j.forEach((d) => pris.add(d)); }
   }
-  // Congés payés pris pendant des semaines sans accueil (année incomplète, semaines toutes saisies) : assimilés.
-  const cpHors = off.size && semainesSaisiesCP(c, a, b) ? cpAssimiles(ctx, a, b, off) : 0;
-  const periodes = mois + (resteTravail / 7 + cpHors / 6) / 4;
-  const maladie = Math.min(CP_MALADIE_PLAFOND, (moisMaladie + resteMaladie / 28) * CP_MALADIE_PAR_4_SEMAINES);
-  return periodes * 2.5 + maladie;
+  for (let l = mondayOf(a); l <= b; l = addDays(l, 7)) {
+    const sem = [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(l, i));
+    if (sem.every((d) => d >= a && d <= b && !pris.has(d) && compte(d))) { semaines++; sem.forEach((d) => pris.add(d)); }
+  }
+  for (const d of eachDay(a, b)) if (!pris.has(d) && weekday(d) !== 7 && compte(d)) jours++;
+  return { mois, semaines, jours };
 }
 
 /**
