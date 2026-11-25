@@ -110,29 +110,42 @@ def heures_en_plus_semaine_t103(heures_contrat_semaine_minutes, minutes_effectue
 
 
 def calcul_h9(reference_minutes, minutes_effectuees, minutes_conges_payes, minutes_1er_mai_chome,
-              minutes_payees_non_travaillees, minutes_retenues, minutes_en_plus_des_jours):
-    """Verification independante du 25/11/2026 (B-3, B-4 ; H9 et H2 de T-103). Minutes exactes (Fraction).
+              minutes_payees_non_travaillees, minutes_retenues, minutes_en_plus_des_jours,
+              absences_payees_dans_base=False):
+    """Verification independante du 25/11/2026 (B-3, B-4 ; H9 et H2 de T-103), qualification corrigee par la
+    session T-109 (comparateur, section 2.1 ; regle de verif-2, commit c57a9fb, partie B-3). Minutes exactes.
     E = heures effectuees ; CP = conges payes de la semaine ; M = 1er mai chome ; P = autres absences payees
-    (enfant absent, ferie chome, evenement familial) ; R = heures prevues retenues (art. 111).
-    - Seuil de la duree du contrat (CCN 96.4) : E + CP + M + P. Une absence payee n'est pas compensee par des heures
-      faites en plus : CCN 105 (« les temps d'absence non prevus sont remuneres »), CCN 47.2 (« maintien de la
-      remuneration brute habituelle »), guide DREETS Bourgogne-Franche-Comte de juin 2026, p. 43 (heures des feries
-      chomes et des absences maintenues comptees « afin d'eviter une compensation avec des heures reellement
-      travaillees mais non remunerees »). Lecture jugee ORANGE (rapport verif-1) : aucun arret publie.
-    - Seuil des 45 h (heures majorees, CCN 96.4, 110.1) : E + CP + M seulement (travail effectif ; CP : Cass. soc.
-      10/09/2025, n° 23-14.455 ; 1er mai : decision D1).
-    - Absence retenue : les heures faites en plus jusqu'a la duree du contrat compensent d'abord les heures retenues
-      (CCN 111 : seules les heures « non travaillees » se deduisent) : heures normales, sans majoration.
-    X = minutes faites au-dela des heures prevues des jours travailles. Seules les heures de X situees sous la duree
-    du contrat compensent la retenue : hn = min(R ; X ; reference - (E + CP + M + P - X)).
+    (enfant absent, ferie chome, evenement familial) ; R = heures prevues retenues (art. 111) ;
+    X = minutes faites au-dela des heures prevues des jours travailles.
+    - Heures complementaires (CCN 96.4) : heures « de travail effectuees » au-dela de la duree du contrat et jusqu'a
+      45 h : seuil sur E + CP + M (CP : Cass. soc. 10/09/2025, n° 23-14.455 ; 1er mai : decision D1). L'absence
+      payee P n'est pas du travail effectue (Cass. soc. 04/04/2012, n° 10-10.701 : pas de travail effectif sans
+      texte) : elle ne compte pas pour ce seuil. CSS L241-17, I, 7° : reduction sur les HC « accomplies au sens de
+      la convention collective ».
+    - Heures majorees (CCN 96.4, 110.1) : au-dela de 45 h de E + CP + M.
+    - Heures normales payees en plus : les heures X situees sous la duree du contrat, dans la limite des heures
+      prevues non travaillees de la semaine (P + R). Elles sont payees au taux du contrat, sans majoration :
+      l'absence payee n'est pas compensee par des heures faites en plus (CCN 105 ; CCN 47.2 ; guide DREETS
+      Bourgogne-Franche-Comte de juin 2026, p. 43 : eviter « une compensation avec des heures reellement
+      travaillees mais non remunerees ») ; la retenue ne vise que les heures « non travaillees » (CCN 111).
+      hn = min(P + R ; X ; reference - (E + CP + M - X)).
+    - Planning variable, lecture L2 (absences_payees_dans_base) : la paie prevue de la semaine est maintenue, HC
+      prevues au-dela de la base comprises (CCN 105, 47.2 ; verif-2, B-3 en lecture L2) : P compte pour le seuil de
+      la base, pas pour celui des 45 h ; hn = min(R ; X ; reference - (E + CP + M + P - X)).
+    Exemple (comparateur 2.1) : contrat 40 h, lundi absent paye (8 h), 11 h du mardi au vendredi : E = 44, X = 12,
+    P = 8 : hc = 4, hn = 8.
     Renvoie (hn, hc, hm) en minutes."""
     E, CP, M, P, R = minutes_effectuees, minutes_conges_payes, minutes_1er_mai_chome, minutes_payees_non_travaillees, \
         minutes_retenues
-    c1 = E + CP + M + P
-    hm = max(Fraction(0), E + CP + M - SEUIL_45H)
-    hc = max(Fraction(0), c1 - reference_minutes - hm)
+    c = E + CP + M
+    hm = max(Fraction(0), c - SEUIL_45H)
+    hc = max(Fraction(0), c - reference_minutes - hm)
     X = minutes_en_plus_des_jours
-    hn = max(Fraction(0), min(R, X, reference_minutes - (c1 - X)))
+    if absences_payees_dans_base:
+        hc = max(Fraction(0), c + P - reference_minutes - hm)
+        hn = max(Fraction(0), min(R, X, reference_minutes - (c + P - X)))
+        return hn, hc, hm
+    hn = max(Fraction(0), min(P + R, X, reference_minutes - (c - X)))
     return hn, hc, hm
 
 

@@ -863,7 +863,8 @@ def mois_b(ctx, m):
                     if ctx.pv_base_contrat is not None:
                         ref = Fraction(ctx.pv_base_contrat)  # verif-1 (B-5) : reference = duree du contrat
                 if sum(calcul_h9(Fraction(ref), Fraction(reelles), Fraction(cp_min), Fraction(mai), Fraction(p_h9),
-                                 Fraction(ret_min), Fraction(extra))) == 0:
+                                 Fraction(ret_min), Fraction(extra),
+                                 absences_payees_dans_base=(ctx.pv_lecture != "L1"))) == 0:
                     continue
                 if lu < a or lu + timedelta(days=6) > b:
                     raise Refus("HORS-COMPARATEUR", "heures", {"motif": "semaine a cheval sur deux mois"})
@@ -1096,6 +1097,10 @@ def acquisition_b(ctx, y):
             sa = sorted(x for x in ctx.sans_accueil if x + timedelta(days=6) >= a and x <= b) \
                 if ctx.type == "incomplete" else []
             cpam = None if ctx.k.get("semaines_cp_am") is None else [d_(x) for x in ctx.k["semaines_cp_am"] if d_(x) in sa]
+            if cpam is None and sa and ctx.debut >= p0:
+                # T-109 (regle de verif-2, B-2, C11 bis ; comparateur, section 4) : premiere periode du contrat, aucun
+                # droit anterieur : aucune semaine sans accueil n'est un conge paye (CCN 102.1.2.2, 102.2).
+                cpam = []
             kw_cp = {}
             if cpam:
                 # verif-1 (B-2) : droits acquis sur la periode precedente (pris pendant celle-ci), calcules par B.

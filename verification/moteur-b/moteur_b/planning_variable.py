@@ -219,8 +219,9 @@ def heures_en_plus_semaine_planning_variable(lecture, heures_prevues_semaine_min
     # - B-5 (CCN 96.4 : HC « au-dela de la duree de travail hebdomadaire prevue au contrat ») : planning remis, une
     #   seule reference, la duree hebdomadaire du contrat (base_contrat_minutes) ; le planning remis ne la remplace
     #   pas (CCN 98.1.2 al. 3 autorise des heures au-dela du planning sans les qualifier).
-    # - B-3, B-4 (calcul_h9) : absence payee comptee pour la duree du contrat, pas pour les 45 h ; absence retenue
-    #   compensee d'abord par les heures faites en plus (heures normales).
+    # - B-3, B-4 (calcul_h9) : en L1, comme en planning fixe, HC = heures effectuees au-dela de la reference (CCN 96.4 ;
+    #   session T-109, comparateur 2.1) ; heures en plus sous la reference, dans la limite des absences payees ou
+    #   retenues : heures normales. En L2 : absence payee comptee pour la base (paie prevue maintenue), pas pour 45 h.
     if lecture == "L1":
         ref = prevu if base_contrat_minutes is None else positif(base_contrat_minutes, "base_contrat_minutes")
     else:
@@ -231,7 +232,8 @@ def heures_en_plus_semaine_planning_variable(lecture, heures_prevues_semaine_min
             if dnm == 0 or n > dnm:
                 raise ErreurSaisie("prorata_base : (jours dans le contrat, jours prevus de la semaine).")
             ref = ref * n / dnm
-    hn, hc, hm = calcul_h9(ref, reelles, cp, mai, pay, ret, positif(minutes_en_plus_des_jours, "minutes_en_plus_des_jours"))
+    hn, hc, hm = calcul_h9(ref, reelles, cp, mai, pay, ret, positif(minutes_en_plus_des_jours, "minutes_en_plus_des_jours"),
+                           absences_payees_dans_base=(lecture == "L2"))
     m_hc = vers_centimes(hc / 60 * t * (1 + maj_hc / 100), "heures complementaires", regles)
     return resultat_ok(heures_en_plus_semaine_planning_variable.regles, {
         "reference_minutes": texte_fraction(ref),

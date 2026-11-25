@@ -27,16 +27,18 @@ class H9(unittest.TestCase):
     """Tableau de rapports/T-103-H9-H2-preuves.md, refait sur B (contrat 40 h, 5,00 EUR de l'heure)."""
 
     def test_a_absence_payee(self):
-        # Lundi enfant absent paye (8 h), mardi a vendredi 11 h : 44 h faites, 12 h en plus : 12 HC.
-        self.assertEqual(sem(40, 44, pay_h=8, x_h=12), (0, 6000, 0))
+        # Lundi enfant absent paye (8 h), mardi a vendredi 11 h : 44 h faites, 12 h en plus : 4 HC (effectuees
+        # au-dela de 40 h, CCN 96.4) et 8 h normales payees en plus (T-109, comparateur 2.1).
+        self.assertEqual(sem(40, 44, pay_h=8, x_h=12), (4000, 2000, 0))
 
     def test_a0_sans_absence(self):
         # 5 x 10 h 24 = 52 h : 5 HC + 7 HM (majoration 10 %).
         self.assertEqual(sem(40, 52, x_h=12), (0, 2500, 3850))
 
     def test_c_ferie_45h(self):
-        # 45 h, ferie chome 9 h, 4 jours de 10 h : 4 HC, pas de HM (40 h de travail effectif).
-        self.assertEqual(sem(45, 40, pay_h=9, x_h=4), (0, 2000, 0))
+        # 45 h, ferie chome 9 h, 4 jours de 10 h : 40 h de travail effectif : ni HC ni HM ; 4 h normales payees
+        # en plus (T-109).
+        self.assertEqual(sem(45, 40, pay_h=9, x_h=4), (2000, 0, 0))
 
     def test_d_conge_paye_45h(self):
         # 45 h, lundi CP (9 h), mardi a vendredi 11 h : 44 + 9 = 53 h : 8 HM (Cass. soc. 10/09/2025).
@@ -55,8 +57,9 @@ class H9(unittest.TestCase):
         self.assertEqual(sem(45, 36, pay_h=9, ret_h=9, x_h=9), (4500, 0, 0))
 
     def test_k_l_majoration_hc(self):
-        # HC majorees de 25 % : absence payee + 3 h en plus : 3 HC a 6,25 ; retenue + 3 h : 3 h normales a 5,00.
-        self.assertEqual(sem(40, 35, pay_h=8, x_h=3, maj_hc=25), (0, 1875, 0))
+        # HC majorees de 25 % : absence payee + 3 h en plus : 35 h effectuees, 3 h normales a 5,00 (T-109) ;
+        # retenue + 3 h : 3 h normales a 5,00.
+        self.assertEqual(sem(40, 35, pay_h=8, x_h=3, maj_hc=25), (1500, 0, 0))
         self.assertEqual(sem(40, 35, ret_h=8, x_h=3, maj_hc=25), (1500, 0, 0))
 
     def test_planning_variable_l2(self):
