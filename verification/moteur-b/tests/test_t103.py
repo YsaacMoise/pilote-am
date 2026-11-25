@@ -328,7 +328,10 @@ class C10C13Conges(unittest.TestCase):
         na2 = [date(2026, 2, 9) + __import__("datetime").timedelta(days=i) for i in range(12)]
         r = m.acquisition_cp_periode("complete", date(2025, 6, 1), date(2026, 5, 31), jours_non_assimiles=na2)
         self.assertEqual(R(r, "decompte")["mois"], 11)
-        self.assertEqual(R(r, "jours_acquis"), 29)
+        # verif-1 (B-1, F18260) : decompte le plus favorable : 50 semaines de travail / 4 x 2,5 = 31,25 -> 30
+        # (le decompte mensuel donnait 29).
+        self.assertEqual(R(r, "jours_acquis"), 30)
+        self.assertEqual(R(r, "decompte")["methodes"]["hebdomadaire"], "125/4")
 
     def test_c11_semaines_sans_accueil(self):
         lundis = [date(2025, 8, 4), date(2025, 8, 11), date(2025, 8, 18), date(2025, 8, 25), date(2025, 12, 22),
@@ -336,22 +339,34 @@ class C10C13Conges(unittest.TestCase):
         r = m.acquisition_cp_periode("incomplete", date(2025, 6, 1), date(2026, 5, 31), semaines_sans_accueil=lundis)
         self.assertEqual(r["code"], "C11-SEMAINES-CP-AM")
         # Toutes ces semaines sont des CP de l'AM (assimilees, L3141-5 1°) : 30 jours.
+        self.assertEqual(m.acquisition_cp_periode("incomplete", date(2025, 6, 1), date(2026, 5, 31),
+                                                  semaines_sans_accueil=lundis, semaines_cp_am=lundis)["code"],
+                         "C11-DROITS-CP-AM")
         self.assertEqual(self.acq("incomplete", date(2025, 6, 1), date(2026, 5, 31), semaines_sans_accueil=lundis,
-                                  semaines_cp_am=lundis), 30)
+                                  semaines_cp_am=lundis, droits_cp_disponibles=36), 30)
+        # verif-1 (B-2) : sans droits acquis (premiere annee), une semaine sans accueil n'est pas un conge paye.
+        r0 = m.acquisition_cp_periode("incomplete", date(2025, 6, 1), date(2026, 5, 31), semaines_sans_accueil=lundis,
+                                      semaines_cp_am=lundis, droits_cp_disponibles=0)
+        r1 = m.acquisition_cp_periode("incomplete", date(2025, 6, 1), date(2026, 5, 31), semaines_sans_accueil=lundis,
+                                      semaines_cp_am=[])
+        self.assertEqual(R(r0, "jours_acquis"), R(r1, "jours_acquis"))
         # Aucune : aout, decembre et janvier (semaine du 29/12 au 04/01) ne sont pas des mois complets : 9 mois ;
         # semaines : 1-21/12 (3), 5-25/01 (3) ; jours : 1er et 2 aout, 26-31/01 (6) : 2,5 x (9 + 6/4 + 8/24)
         # = 27,08... -> 28.
         r = m.acquisition_cp_periode("incomplete", date(2025, 6, 1), date(2026, 5, 31), semaines_sans_accueil=lundis,
                                      semaines_cp_am=[])
         self.assertEqual((R(r, "decompte")["mois"], R(r, "decompte")["semaines"], R(r, "decompte")["jours"]), (9, 6, 8))
-        self.assertEqual(R(r, "jours_acquis"), 28)
+        # verif-1 (B-1) : hebdomadaire : 52 semaines civiles touchent la periode ; 46 entieres qui comptent :
+        # 46 / 4 x 2,5 = 28,75 -> 29, plus favorable que le mensuel (28).
+        self.assertEqual(R(r, "jours_acquis"), 29)
 
     def test_c12_maintien_46_semaines(self):
         # 23 jours, 40 h, 4,20 EUR : 23 / 6 x 40 x 4,20 = 644 EUR (plus de refus A-26 en 46 semaines).
         r = m.indemnite_cp(23, 2400, 420, 500000, type_annee="incomplete")
         self.assertEqual(R(r, "indemnite_centimes"), 64400)
         # 52 semaines : A-26 garde (le tableau ne tranche que pour 46 semaines ou moins).
-        self.assertEqual(m.indemnite_cp(23, 2400, 420, 500000, type_annee="complete")["code"], "A-26")
+        # verif-1 (B-7) : 52 semaines aussi : 23 / 6 x 40 h x 4,20 EUR = 644 EUR.
+        self.assertEqual(R(m.indemnite_cp(23, 2400, 420, 500000, type_annee="complete"), "indemnite_centimes"), 64400)
 
 
 class H1H6Heures(unittest.TestCase):

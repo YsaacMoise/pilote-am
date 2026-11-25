@@ -109,6 +109,65 @@ def heures_en_plus_semaine_t103(heures_contrat_semaine_minutes, minutes_effectue
         "montant_majorees_centimes": vers_centimes(mhm, "heures majorees", ["R-HC-03"])})
 
 
+def calcul_h9(reference_minutes, minutes_effectuees, minutes_conges_payes, minutes_1er_mai_chome,
+              minutes_payees_non_travaillees, minutes_retenues, minutes_en_plus_des_jours):
+    """Verification independante du 25/11/2026 (B-3, B-4 ; H9 et H2 de T-103). Minutes exactes (Fraction).
+    E = heures effectuees ; CP = conges payes de la semaine ; M = 1er mai chome ; P = autres absences payees
+    (enfant absent, ferie chome, evenement familial) ; R = heures prevues retenues (art. 111).
+    - Seuil de la duree du contrat (CCN 96.4) : E + CP + M + P. Une absence payee n'est pas compensee par des heures
+      faites en plus : CCN 105 (« les temps d'absence non prevus sont remuneres »), CCN 47.2 (« maintien de la
+      remuneration brute habituelle »), guide DREETS Bourgogne-Franche-Comte de juin 2026, p. 43 (heures des feries
+      chomes et des absences maintenues comptees « afin d'eviter une compensation avec des heures reellement
+      travaillees mais non remunerees »). Lecture jugee ORANGE (rapport verif-1) : aucun arret publie.
+    - Seuil des 45 h (heures majorees, CCN 96.4, 110.1) : E + CP + M seulement (travail effectif ; CP : Cass. soc.
+      10/09/2025, n° 23-14.455 ; 1er mai : decision D1).
+    - Absence retenue : les heures faites en plus jusqu'a la duree du contrat compensent d'abord les heures retenues
+      (CCN 111 : seules les heures « non travaillees » se deduisent) : heures normales, sans majoration.
+    X = minutes faites au-dela des heures prevues des jours travailles. Seules les heures de X situees sous la duree
+    du contrat compensent la retenue : hn = min(R ; X ; reference - (E + CP + M + P - X)).
+    Renvoie (hn, hc, hm) en minutes."""
+    E, CP, M, P, R = minutes_effectuees, minutes_conges_payes, minutes_1er_mai_chome, minutes_payees_non_travaillees, \
+        minutes_retenues
+    c1 = E + CP + M + P
+    hm = max(Fraction(0), E + CP + M - SEUIL_45H)
+    hc = max(Fraction(0), c1 - reference_minutes - hm)
+    X = minutes_en_plus_des_jours
+    hn = max(Fraction(0), min(R, X, reference_minutes - (c1 - X)))
+    return hn, hc, hm
+
+
+@api("R-HC-01", "R-HC-02", "R-HC-03", "T103-H1", "T103-H6", "VERIF1-B3", "VERIF1-B4")
+def heures_en_plus_semaine_h9(heures_contrat_semaine_minutes, minutes_effectuees, taux_horaire_centimes,
+                              majoration_hm_pourcent, majoration_hc_pourcent=0, minutes_conges_payes=0,
+                              minutes_1er_mai_chome=0, minutes_payees_non_travaillees=0, minutes_retenues=0,
+                              minutes_en_plus_des_jours=0, date_paie=None):
+    """Heures normales (compensation d'une retenue), complementaires et majorees d'une semaine a planning fixe
+    (voir calcul_h9). Remplace heures_en_plus_semaine_t103 (verification independante du 25/11/2026).
+    Refus garde : A-13 (contrat au-dela de 45 h)."""
+    verifier_date_ccn(date_paie, ["R-HC-02"])
+    ref = positif(heures_contrat_semaine_minutes, "heures_contrat_semaine_minutes")
+    t = positif(taux_horaire_centimes, "taux_horaire_centimes")
+    maj_hc = positif(majoration_hc_pourcent, "majoration_hc_pourcent")
+    maj_hm = positif(majoration_hm_pourcent, "majoration_hm_pourcent")
+    if ref > SEUIL_45H:
+        raise NonGere("A-13", ["R-HC-02"])
+    if maj_hm < MAJORATION_MINIMALE_HM:
+        raise ErreurSaisie("Taux de majoration des heures majorees inferieur a 10 % (CCN art. 110.1).", ["R-HC-03"])
+    hn, hc, hm = calcul_h9(ref, positif(minutes_effectuees, "minutes_effectuees"),
+                           positif(minutes_conges_payes, "minutes_conges_payes"),
+                           positif(minutes_1er_mai_chome, "minutes_1er_mai_chome"),
+                           positif(minutes_payees_non_travaillees, "minutes_payees_non_travaillees"),
+                           positif(minutes_retenues, "minutes_retenues"),
+                           positif(minutes_en_plus_des_jours, "minutes_en_plus_des_jours"))
+    return resultat_ok(heures_en_plus_semaine_h9.regles, {
+        "minutes_normales": texte_fraction(hn), "minutes_complementaires": texte_fraction(hc),
+        "minutes_majorees": texte_fraction(hm),
+        "montant_normales_centimes": vers_centimes(hn / 60 * t, "heures normales", ["VERIF1-B4"]),
+        "montant_complementaires_centimes": vers_centimes(hc / 60 * t * (1 + maj_hc / 100), "heures complementaires",
+                                                          ["R-HC-02"]),
+        "montant_majorees_centimes": vers_centimes(hm / 60 * t * (1 + maj_hm / 100), "heures majorees", ["R-HC-03"])})
+
+
 @api("R-MENS-05")
 def salaire_du_mois(salaire_mensualise_centimes, montants_heures_en_plus_centimes=(), deduction_absence_centimes=0):
     """R-MENS-05 : salaire du mois = mensualise + heures complementaires et

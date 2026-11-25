@@ -125,7 +125,8 @@ def _compte_1980(a, b, dans):
 
 @api("R-CP-01", "R-CP-02", "T103-C10", "T103-C11")
 def acquisition_cp_periode(type_annee, debut, fin, jours_non_assimiles=(), jours_arret_maladie=(),
-                           semaines_sans_accueil=(), semaines_cp_am=None, accident_travail=False, report=False):
+                           semaines_sans_accueil=(), semaines_cp_am=None, accident_travail=False, report=False,
+                           droits_cp_disponibles=None, jours_travail_semaine=None):
     """T-103 (C10, C11, A2) : jours de CP acquis sur une periode de reference [debut, fin] (bornes de la periode,
     du contrat inclus : CCN 48.1.1.1).
     Cass. soc. 10/01/1980, n° 78-41.140, publie (JURITEXT000007004681) : « retenir d'abord le nombre des mois
@@ -145,7 +146,19 @@ def acquisition_cp_periode(type_annee, debut, fin, jours_non_assimiles=(), jours
       que la periode contient des semaines sans accueil : refus C11-SEMAINES-CP-AM.
     - Maladie non professionnelle (loi, A-24 levee ; depuis le 24/04/2024) : jours_arret_maladie ; meme methode
       avec 2 jours par mois, plafond 24 (comme acquisition_cp).
-    Plafond total : 30. Sortie : jours_acquis, decompte (mois, semaines, jours ; maladie)."""
+    Plafond total : 30. Sortie : jours_acquis, decompte (mois, semaines, jours ; maladie).
+    Verification independante du 25/11/2026 :
+    - B-2 (C11 bis) : L3141-5, 1° vise « les periodes de conge paye ». Une semaine sans accueil n'est un conge paye
+      que dans la limite des droits acquis : droits_cp_disponibles (jours ouvrables acquis avant la periode et
+      utilisables pendant celle-ci). Les jours ouvrables (lundi a samedi) des semaines_cp_am, dans l'ordre, comptent
+      tant qu'il reste des droits ; le dimanche suit le samedi. Sans droits_cp_disponibles : refus C11-DROITS-CP-AM.
+    - B-1 (C10 bis) : service-public F18260 (verifie le 20/02/2026) : « Si le salarie est absent durant la periode
+      de reference, le decompte de ses conges payes s'effectue [...] selon la regle qui lui est la plus favorable » :
+      mensuel (decompte de 1980 ci-dessus), hebdomadaire (2,5 jours par 4 semaines de travail effectif : semaines
+      civiles entieres qui comptent) ou journalier (2,5 jours par 24 jours, 20 jours sur 5 jours par semaine, 22 sur
+      5,5 ; jours de travail prevus qui comptent ; jours_travail_semaine = jours du planning, 0 = lundi). C. trav.
+      L3141-4 (4 semaines ou 24 jours equivalent a un mois). S'applique quand la periode contient une absence non
+      assimilee, un arret maladie ou une semaine sans accueil non comptee ; sinon, decompte mensuel."""
     type_annee_valide(type_annee)
     regles = ["R-CP-01", "R-CP-02"]
     if accident_travail:
@@ -170,12 +183,49 @@ def acquisition_cp_periode(type_annee, debut, fin, jours_non_assimiles=(), jours
     if cp_am and not cp_am <= lundis:
         raise ErreurSaisie("semaines_cp_am : lundis parmi les semaines sans accueil.")
 
+    jours_cp_am = set()
+    if cp_am:
+        if droits_cp_disponibles is None:
+            raise NonGere("C11-DROITS-CP-AM", regles, precision=(
+                "Droits a conges acquis avant la periode : necessaires pour savoir quelles semaines sans accueil sont "
+                "des conges payes (L3141-5, 1°)."))
+        reste = entier(droits_cp_disponibles, "droits_cp_disponibles")
+        for lu in sorted(cp_am):
+            for i in range(6):
+                if reste > 0:
+                    jours_cp_am.add(lu + timedelta(days=i))
+                    reste -= 1
+            if lu + timedelta(days=5) in jours_cp_am:
+                jours_cp_am.add(lu + timedelta(days=6))
+
     def sans_accueil(d):
         lu = d - timedelta(days=d.weekday())
-        return lu in lundis and lu not in cp_am
+        return lu in lundis and d not in jours_cp_am
 
-    m, s, j = _compte_1980(debut, fin, lambda d: d not in na and d not in mal and not sans_accueil(d))
+    def compte(d):
+        return d not in na and d not in mal and not sans_accueil(d)
+
+    m, s, j = _compte_1980(debut, fin, compte)
     trav = Fraction(5, 2) * (m + Fraction(s, 4) + Fraction(j, 24))
+    methodes = {"mensuel": trav}
+    if na or mal or any(sans_accueil(d) for d in (debut + timedelta(days=i) for i in range((fin - debut).days + 1))):
+        # B-1 : decomptes hebdomadaire et journalier, le plus favorable l'emporte (F18260).
+        sem = 0
+        lu = debut - timedelta(days=debut.weekday())
+        while lu <= fin:
+            jours7 = [lu + timedelta(days=i) for i in range(7)]
+            if all(debut <= x <= fin and compte(x) for x in jours7):
+                sem += 1
+            lu += timedelta(days=7)
+        methodes["hebdomadaire"] = Fraction(5, 2) * Fraction(sem, 4)
+        if jours_travail_semaine is not None:
+            jts = set(jours_travail_semaine)
+            diviseur = {5: 20, 6: 24}.get(len(jts))
+            if diviseur is not None:
+                nj = sum(1 for i in range((fin - debut).days + 1)
+                         for x in [debut + timedelta(days=i)] if x.weekday() in jts and compte(x))
+                methodes["journalier"] = Fraction(5, 2) * Fraction(nj, diviseur)
+        trav = max(methodes.values())
     mm, sm, jm = _compte_1980(debut, fin, lambda d: d in mal) if mal else (0, 0, 0)
     maladie = min(Fraction(2) * (mm + Fraction(sm, 4) + Fraction(jm, 24)), Fraction(24))
     a, b = _ceil(trav) + _ceil(maladie), _ceil(trav + maladie)
@@ -184,6 +234,7 @@ def acquisition_cp_periode(type_annee, debut, fin, jours_non_assimiles=(), jours
     return resultat_ok(acquisition_cp_periode.regles, {
         "jours_acquis": min(30, a),
         "decompte": {"mois": m, "semaines": s, "jours": j, "part_travail_exacte": texte_fraction(trav),
+                     "methodes": {k: texte_fraction(v) for k, v in methodes.items()},
                      "maladie": {"mois": mm, "semaines": sm, "jours": jm}, "part_maladie_exacte": texte_fraction(maladie)}})
 
 
@@ -327,8 +378,13 @@ def _indemnite_cp(jours_conges, heures_hebdo_minutes, taux_horaire_centimes, sal
     # T-103 (C12, A2) : annee incomplete : maintien = jours / 6 x heures habituelles par semaine x taux (CCN
     # 48.1.1.5 ; Cass. soc. 09/05/2019, n° 17-26.232 : « duree normale habituelle d'accueil [...] pendant toute la
     # periode de reference »). Le decompte reel n'est plus une lecture : refus A-26 leve en annee incomplete.
-    if j % 6 == 0 or type_annee == "incomplete":
-        m2 = m1  # semaines entieres : les deux lectures concordent.
+    # verif-1 (B-7, A-26) : 52 semaines aussi : CCN 48.1.1.5 (« remuneration brute que le salarie aurait percue pour
+    # une duree de travail egale a celle du conge ») lue avec Cass. soc. 09/05/2019, n° 17-26.232, publie (« duree
+    # normale habituelle d'accueil [...] pendant toute la periode de reference ») : jours ouvrables / 6 x salaire
+    # d'une semaine habituelle, quel que soit le nombre de jours. Le decompte reel des heures du conge n'est pas la
+    # duree habituelle : il n'est plus une lecture. Refus A-26 leve.
+    if True:
+        m2 = m1
     elif heures_conge_minutes is not None:
         m2 = positif(heures_conge_minutes, "heures_conge_minutes") / 60 * t
     else:
@@ -503,3 +559,25 @@ def conges_apres_changement_type(types_periode_acquisition, type_annee_prise):
                   + type_annee_prise + " ».",
                   details={"types_acquisition": sorted(set(types)), "type_prise": type_annee_prise,
                            "consigne": "ni paye ni retenu tant que ce n'est pas confirme"})
+
+
+@api("VERIF1-OCC")
+def salaire_accueil_occasionnel(minutes_accueil_du_mois, taux_horaire_centimes):
+    """verif-1 (T-104, cas 2) : CCN 108.2 (pas de mensualisation), 109.3 (« salaire horaire brut x nombre d'heures
+    d'accueil [effectuees au cours du mois] ») ; CASF L423-19 (« versee au moins une fois par mois »).
+    Sortie : salaire_centimes."""
+    m = positif(minutes_accueil_du_mois, "minutes_accueil_du_mois")
+    t = positif(taux_horaire_centimes, "taux_horaire_centimes")
+    return resultat_ok(["VERIF1-OCC"], {"salaire_centimes": vers_centimes(m / 60 * t, "salaire occasionnel", ["VERIF1-OCC"])})
+
+
+@api("VERIF1-OCC")
+def conges_accueil_occasionnel(salaires_bruts_periode_centimes, jours_calendaires_periode):
+    """verif-1 (T-104, cas 2) : CCN 102.1.2.3 : indemnite de CP par « la regle du dixieme », « versee au terme de
+    l'accueil occasionnel » (pas de comparaison avec le maintien). Jours declares : semaines x 2,5 / 4 (Urssaf,
+    « La gestion des conges payes », 15/09/2026), arrondi a l'entier superieur (L3141-7), 30 au plus.
+    Sortie : indemnite_centimes, jours."""
+    base = entier(salaires_bruts_periode_centimes, "salaires_bruts_periode_centimes")
+    j = entier(jours_calendaires_periode, "jours_calendaires_periode", 1)
+    return resultat_ok(["VERIF1-OCC"], {"indemnite_centimes": vers_centimes(Fraction(base, 10), "CP occasionnel", ["VERIF1-OCC"]),
+                                        "jours": min(30, _ceil(Fraction(j, 7) * Fraction(5, 2) / 4))})

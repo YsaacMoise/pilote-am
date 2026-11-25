@@ -273,8 +273,10 @@ class CDDFin(unittest.TestCase):
         for fin, v in att.items():
             self.assertEqual(R(m.indemnite_fin_cdd(160000, fin), "indemnite_centimes"), v, fin)
             self.assertEqual(R(m.ifc_due(fin), "due"), v > 0, fin)
-        for fin in ("force_majeure", "inaptitude", "jeune_vacances", "saisonnier"):
-            self.assertEqual(m.indemnite_fin_cdd(160000, fin)["code"], "CDD-FIN-NON-GEREE")
+        # verif-1 (T-107) : fins levees a partir de L1243-10 et L1243-1 ; CDD d'usage impossible (D1242-1).
+        for fin, v in (("force_majeure", 0), ("inaptitude", 16000), ("jeune_vacances", 0), ("saisonnier", 0)):
+            self.assertEqual(R(m.indemnite_fin_cdd(160000, fin), "indemnite_centimes"), v, fin)
+        self.assertEqual(m.indemnite_fin_cdd(160000, "usage")["code"], "CDD-FIN-NON-GEREE")
         self.assertEqual(m.indemnite_fin_cdd(160000, "autre")["statut"], "erreur_saisie")
 
     def test_p4(self):
@@ -301,11 +303,11 @@ class CDDFin(unittest.TestCase):
     def test_iccp_suite_cdi_et_refus(self):
         p = [{"salaires_bruts_periode_centimes": 160000, "jours_acquis": 6, "jours_payes": 0}]
         self.assertEqual(R(m.iccp_cdd("suite_cdi", p, 0, 160000, 2400, 461), "iccp_centimes"), 0)
-        # T-103 (F7, F9) : deux periodes. Periode 1 : max(160 ; 184,40) = 184,40 EUR. Periode 2 : base 1 600 + 184,40
-        # (ICCP de la periode 1, CCN 48.1.1.5) + 160 (IFC) = 1 944,40 EUR, dixieme 194,44 EUR > 184,40.
-        # Total 378,84 EUR > plancher (3 200 + 160) / 10 = 336 EUR. Ancien refus A-50 (D10) leve.
+        # T-103 (F9) : deux periodes. Periode 1 : max(160 ; 184,40) = 184,40 EUR. Periode 2 : base 1 600 + 160 (IFC)
+        # = 1 760 EUR, dixieme 176 EUR < 184,40. verif-1 : l'ICCP de la periode 1 n'entre pas dans la base de la
+        # periode 2 (guide DREETS BFC juin 2026, p. 39-40). Total 368,80 EUR > plancher (3 200 + 160) / 10 = 336 EUR.
         r = m.iccp_cdd("terme", p + p, 16000, 320000, 2400, 461)
-        self.assertEqual(R(r, "iccp_centimes"), 37884)
+        self.assertEqual(R(r, "iccp_centimes"), 36880)
         self.assertEqual(m.iccp_cdd("terme", [dict(p[0], jours_supplementaires=2)], 16000, 160000, 2400, 461)["code"],
                          "CP-SUPP")
         q = [dict(p[0], jours_payes=6)]
@@ -324,11 +326,12 @@ class T076Corrections(unittest.TestCase):
         # Base 15 h ; semaine A de 45 h ; un jour chome de 9 h, 36 h travaillees.
         h = m.heures_en_plus_semaine_planning_variable("L2", 2700, 900, 2160, 500, 25, minutes_1er_mai_chome=540)
         self.assertEqual(R(h, "lectures_montant_complementaires"), [15000, 15000])  # 30 HC, CCN 47.1
-        # T-103 (H2 revu, H3) : CCN 96.4 « heures de travail effectuees » : autre jour paye non travaille non
-        # compte : 21 HC seulement.
+        # verif-1 (B-3) : autre jour paye non travaille (ferie chome, enfant absent) compte pour la duree du contrat
+        # (CCN 105, 47.2 ; guide DREETS BFC juin 2026 p. 43) mais pas pour les 45 h : 30 HC, comme le 1er mai.
         h = m.heures_en_plus_semaine_planning_variable("L2", 2700, 900, 2160, 500, 25, minutes_payees_non_travaillees=540)
-        self.assertEqual(R(h, "lectures_montant_complementaires"), [10500, 10500])
-        self.assertEqual(R(h, "montant_complementaires_centimes"), 10500)
+        self.assertEqual(R(h, "lectures_montant_complementaires"), [15000, 15000])
+        self.assertEqual(R(h, "montant_complementaires_centimes"), 15000)
+        self.assertEqual(R(h, "montant_majorees_centimes"), 0)
 
     def test_d2_absence_retenue(self):
         # T-103 (H6) : deux calculs separes (retenue de l'art. 111 ; HC sur les heures effectuees) : 36 h faites,
@@ -382,26 +385,27 @@ class T076Corrections(unittest.TestCase):
         self.assertEqual(m.verifier_cas_cdd(True, False, False)["code"], "CDD-PASSAGE-2")  # D15
         self.assertTrue(R(m.verifier_cas_cdd(False, False, True), "gere"))
 
-    def test_d16_s2_deux_references(self):
-        # Planning remis 40 h, contrat 130 h sur 52 semaines : B = 130 x 12 / 52 = 30 h. 40 h faites.
+    def test_d16_s2_une_reference(self):
+        # verif-1 (B-5) : CCN 96.4, HC « au-dela de la duree de travail hebdomadaire prevue au contrat » : une seule
+        # reference, la duree du contrat. Planning remis 40 h, contrat 130 h sur 52 semaines : B = 30 h. 40 h faites :
+        # 10 HC = 50 EUR.
         r = m.mensualisation_planning_variable(52, 130, 500)
         self.assertEqual(R(r, "base_contrat_minutes"), "1800")
         h = m.heures_en_plus_semaine_planning_variable("L1", 2400, None, 2400, 500, 25, base_contrat_minutes=1800)
-        self.assertEqual(R(h, "lectures_montant_complementaires"), [0, 5000])
-        self.assertEqual(R(h, "montants_par_lecture"), [0, 5000])
-        # Semaine courte (15 h prevues, 17 h faites) : 2 HC en lecture 1, aucune en lecture 2 ; le mois somme
-        # chaque lecture a part (jamais le minimum semaine par semaine).
+        self.assertEqual(R(h, "lectures_montant_complementaires"), [5000, 5000])
+        # Semaine courte (15 h prevues, 17 h faites) : sous la duree du contrat : aucune HC.
         h = m.heures_en_plus_semaine_planning_variable("L1", 900, None, 1020, 500, 25, base_contrat_minutes=1800)
-        self.assertEqual(R(h, "montants_par_lecture"), [1000, 0])
+        self.assertEqual(R(h, "montant_complementaires_centimes"), 0)
 
     def test_d19_essai(self):
         # Du 05/01 au 29/05/2026 : 145 jours, 20 semaines entieres ou 21 entamees, plafond 14 jours (<= 6 mois).
         d, t = date(2026, 1, 5), date(2026, 5, 29)
-        self.assertEqual(R(m.controle_essai_cdd(d, t, date(2026, 1, 9)), "essai_max_jours"), [14, 14])
+        self.assertEqual(R(m.controle_essai_cdd(d, t, date(2026, 1, 9)), "essai_max_jours"), 14)
         self.assertEqual(m.controle_essai_cdd(d, t, date(2026, 1, 30))["code"], "CDD-ESSAI-DEPASSE")
-        # CDD de 8 semaines et 3 jours (59 jours) : 8 ou 9 jours d'essai.
+        # CDD de 8 semaines et 3 jours (59 jours) : verif-1 : semaines entieres : 8 jours (13/01 = 9e jour : refus).
         t2 = date(2026, 3, 4)
-        self.assertEqual(m.controle_essai_cdd(d, t2, date(2026, 1, 13))["code"], "CDD-ESSAI-LIMITE")
+        self.assertTrue(R(m.controle_essai_cdd(d, t2, date(2026, 1, 12)), "dans_essai"))
+        self.assertEqual(m.controle_essai_cdd(d, t2, date(2026, 1, 13))["code"], "CDD-ESSAI-DEPASSE")
 
 
 if __name__ == "__main__":

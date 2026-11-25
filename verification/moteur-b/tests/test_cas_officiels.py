@@ -330,9 +330,8 @@ class CongesIndemnite(unittest.TestCase):
         """C-CPI-06 : au fur et a mesure, 400 € pour 12 jours puis 200 € pour 6 jours. Moteur : A-30."""
         self.assertEqual(R(m.indemnite_cp_prise_partielle("incomplete"), "indemnite_centimes"), 40000)
 
-    @xfail
     def test_C_CPI_10(self):
-        """C-CPI-10, R-CP-06 : dixieme 371,43 € ; maintien 13/26 x 780 € = 390 €. Moteur : A-26."""
+        """C-CPI-10, R-CP-06 : dixieme 371,43 € ; maintien 13/26 x 780 € = 390 €. Refus A-26 leve (verif-1, B-7)."""
         self.assertEqual(R(m.indemnite_cp(13, 2400, 450, 371429), "indemnite_centimes"), 39000)
 
     def test_C_CPI_11(self):
@@ -483,9 +482,8 @@ class FinDeContrat(unittest.TestCase):
         r = m.iccp("complete", "normal", p, 2700, 400)
         self.assertEqual(R(r, "detail_centimes"), [16200, 24000])
 
-    @xfail
     def test_C_FIN_09_seconde_periode(self):
-        """C-FIN-09, R-CP-06 : 8 jours, maintien 8/26 x 780 € = 240 € ; dixieme 234 €. Moteur : A-26."""
+        """C-FIN-09, R-CP-06 : 8 jours, maintien 8/26 x 780 € = 240 € ; dixieme 234 €. Refus A-26 leve (verif-1)."""
         p = [{"jours_acquis": 8, "jours_payes": 0, "salaires_bruts_periode_centimes": 3 * 78000}]
         self.assertEqual(R(m.iccp("complete", "normal", p, 2700, 400), "iccp_centimes"), 24000)
 

@@ -96,7 +96,11 @@ function contrat(k: any): Contract {
       ...(a.type_annee ? { yearType: a.type_annee } : {}), ...(a.semaines ? { weeks: a.semaines } : {}),
       ...(a.semaines_sans_accueil ? { weeksOff: a.semaines_sans_accueil } : {}) } })) } : {}),
     ...(k.rupture ? { rupture: { motif: k.rupture.motif, notif: k.rupture.notif, presentation: k.rupture.presentation,
-      preavis: k.rupture.preavis, dernierJourTravaille: k.rupture.dernier_jour_travaille } } : {}),
+      preavis: k.rupture.preavis, dernierJourTravaille: k.rupture.dernier_jour_travaille,
+      // verif-1 (T-107) : réponses nouvelles (noms donnés par rapports/T-107-moteur-b.md).
+      ...(k.rupture.sinistre != null ? { sinistre: k.rupture.sinistre } : {}),
+      ...(k.rupture.cumul_cp_preavis != null ? { cumulCpPreavis: k.rupture.cumul_cp_preavis } : {}),
+      ...(k.rupture.grossesse != null ? { grossesse: k.rupture.grossesse } : {}) } } : {}),
     ...planningVariable(k),
   } as Contract;
 }
@@ -273,9 +277,10 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
           break;
         }
         const date = finSit?.date ?? k.notification ?? k.date ?? s.contrat.fin;
-        // Direction T-076 : la grille écrit « saisonnier » (CDD saisonnier ou d'usage) ; A l'appelle « saisonnier_usage ».
+        // T-107 (rapports/T-107-moteur-b.md) : A appelle désormais « saisonnier » la fin d'un CDD saisonnier ;
+        // « saisonnier_usage » n'est plus calculable (le CDD d'usage n'existe pas pour une AM, D1242-1).
         const fcBrut = finSit?.fin_cdd ?? k.fin_cdd;
-        const fc = fcBrut === 'saisonnier' ? 'saisonnier_usage' : fcBrut;
+        const fc = fcBrut;
         const f = (FinA as unknown as { finDeCdd: (...a: unknown[]) => ReturnType<typeof finDeContrat> }).finDeCdd(ctx, date, fc, enfants);
         const part = (p: { montant: number; lectures: number[] } | undefined, v: number, ordre: 'p3' | 'p4'): Sortie =>
           // P4 : [lecture 1 sans ICCP, lecture 2 avec] ; P3 : [lecture A comparaison, lecture B dixième seul] (rapport t076-cdd.md).

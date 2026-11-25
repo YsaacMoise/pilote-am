@@ -1482,9 +1482,17 @@ def situations_t076():
     k = kcdd("2026-01-05", "2026-05-29")
     S.append(sit("CDD-TERME", "CDD", k, fin_cdd("2026-05-29", "terme", ["2026-01", "2026-05"]),
                  theme="CDD de 5 mois au terme", marques=mc))
-    for fc in ("suite_cdi", "refus_cdi", "commun_accord", "employeur", "force_majeure", "inaptitude"):
+    for fc in ("suite_cdi", "refus_cdi", "commun_accord", "employeur"):
         S.append(sit(f"CDD-FIN-{fc.upper()}", "CDD", kcdd("2026-01-05", "2026-05-29"),
                      fin_cdd("2026-05-29", fc), theme=f"CDD, fin « {fc} » (R-CDD-08)", marques=mc))
+    # verif-1 (T-107, cas 4) : force majeure et inaptitude sont des ruptures avant le terme (L1243-1) : fin le 31/03.
+    for fc in ("force_majeure", "inaptitude"):
+        kfm = kcdd("2026-01-05", "2026-05-29", fin="2026-03-31")
+        if fc == "force_majeure":
+            kfm["rupture"] = {"sinistre": False}  # force majeure sans sinistre : ni IFC ni indemnite de L1243-4 al. 2
+        S.append(sit(f"CDD-FIN-{fc.upper()}", "CDD", kfm,
+                     fin_cdd("2026-03-31", fc, ["2026-03"]), theme=f"CDD rompu le 31/03, « {fc} » (L1243-1, L1243-10)",
+                     marques=mc))
     for fc, fin in (("initiative_am", "2026-04-30"), ("faute_grave", "2026-04-15"), ("commun_accord", "2026-04-30"),
                     ("employeur", "2026-04-30"), ("essai", "2026-01-09")):
         S.append(sit(f"CDD-ANTICIPE-{fc.upper()}", "CDD", kcdd("2026-01-05", "2026-05-29", fin=fin),

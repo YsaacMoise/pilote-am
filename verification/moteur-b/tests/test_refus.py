@@ -93,8 +93,9 @@ class Refus(unittest.TestCase):
         self.refus(m.conge_deuil(date(2026, 9, 10)), "C9-IJ-MANQUANTES")
 
     def test_exclus_absences(self):
-        self.refus(m.qualifier_absence("maternite", "complete"), "EXCLU-MATERNITE")
-        self.refus(m.qualifier_absence("accident_travail", "complete"), "EXCLU-AT")
+        # verif-1 (T-104, cas 1) : refus EXCLU-MATERNITE et EXCLU-AT leves : retenue de l'art. 111.
+        self.assertTrue(m.qualifier_absence("maternite", "complete")["resultat"]["deductible"])
+        self.assertTrue(m.qualifier_absence("accident_travail", "complete")["resultat"]["deductible"])
 
     # Jours feries
     # T-040 : A-31 leve (CCN art. 47.2, C. trav. L3133-1, 6°) ; tests dans test_t040.py.
@@ -124,7 +125,8 @@ class Refus(unittest.TestCase):
         self.refus(m.acquisition_cp("complete", report=True), "CP-REPORT")
 
     def test_A_26(self):
-        self.refus(m.indemnite_cp(13, 2400, 450, 100000), "A-26")
+        # verif-1 (B-7) : refus A-26 leve : 13 / 6 x 40 h x 4,50 EUR = 390 EUR (C-CPI-10).
+        self.assertEqual(m.indemnite_cp(13, 2400, 450, 100000)["resultat"]["indemnite_centimes"], 39000)
 
     def test_A_28(self):
         self.refus(m.indemnite_cp(24, 2400, 500, 780000, icp_versee_pendant_periode_centimes=0,
