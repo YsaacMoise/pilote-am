@@ -210,7 +210,7 @@ export function netToBrut(net: number, d: ISODate, region: Region = 'metropole')
 export const BAREMES_VERIFIES_JUSQU_AU: ISODate = '2026-11-30';
 
 /** Vrai si un calcul à cette date repose sur des barèmes pas encore publiés */
-export function baremesProvisoires(d: ISODate): boolean {
+export function baremesAttendus(d: ISODate): boolean {
   return d > BAREMES_VERIFIES_JUSQU_AU;
 }
 
@@ -222,7 +222,7 @@ export const messageBaremesAttendus = (moisLabel: string): string =>
   `Barèmes de ${moisLabel} attendus : le SMIC, le minimum garanti et les cotisations de ce mois ne sont pas encore publiés. L’app calcule ce mois dès leur publication.`;
 
 /** Simulateur : les mois après la date des barèmes vérifiés reprennent les derniers barèmes publiés (prévision, dite telle quelle). */
-export const MESSAGE_BAREMES_PROVISOIRES =
+export const MESSAGE_BAREMES_PUBLIES =
   `Les mois après le ${BAREMES_VERIFIES_JUSQU_AU.split('-').reverse().join('/')} reprennent les barèmes publiés à ce jour (SMIC, minimum garanti, cotisations, aide de la CAF) : leurs revalorisations ne sont pas encore publiées.`;
 
 /*

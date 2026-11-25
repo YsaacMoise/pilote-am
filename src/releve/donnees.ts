@@ -26,7 +26,7 @@ export interface ReleveDonnees {
   mois: Month;
   /** « novembre 2026 » */
   moisLabel: string;
-  provisoire: boolean;
+  moisEnCours: boolean;
   titre: string;
   enfant: string;
   famille: string;
@@ -78,7 +78,7 @@ export function releveDonnees(
   const r = computeMonth(ctx, m, o.enfants ?? 0);
   const aujourdhui = ctx.today;
   // Mois en cours, sauf si le contrat s'est déjà terminé avant aujourd'hui.
-  const provisoire = m >= monthOf(aujourdhui) && !(c.end && c.end < aujourdhui);
+  const moisEnCours = m >= monthOf(aujourdhui) && !(c.end && c.end < aujourdhui);
   const lignes: ReleveLigne[] = [];
   let prevuMin = 0, reelMin = 0, absEnfant = 0, absAm = 0, feries = 0;
   for (const d of eachDay(firstDay(m), lastDay(m))) {
@@ -106,7 +106,7 @@ export function releveDonnees(
   }
   const totaux = [
     { label: 'Heures prévues au planning', value: hoursLabel(prevuMin) },
-    { label: provisoire ? 'Heures d’accueil à ce jour' : 'Heures d’accueil', value: hoursLabel(reelMin) },
+    { label: moisEnCours ? 'Heures d’accueil à ce jour' : 'Heures d’accueil', value: hoursLabel(reelMin) },
     { label: 'Jours d’accueil', value: `${r.presenceDays}` },
   ];
   if (absEnfant) totaux.push({ label: 'Jours d’absence de l’enfant', value: `${absEnfant}` });
@@ -123,8 +123,8 @@ export function releveDonnees(
   return {
     mois: m,
     moisLabel: moisL,
-    provisoire,
-    titre: provisoire ? `Relevé du mois en cours, au ${aujourdhui.slice(8, 10)}/${aujourdhui.slice(5, 7)}` : 'Relevé du mois',
+    moisEnCours,
+    titre: moisEnCours ? `Relevé du mois en cours, au ${aujourdhui.slice(8, 10)}/${aujourdhui.slice(5, 7)}` : 'Relevé du mois',
     enfant: c.child,
     famille: c.family,
     am: o.amName.trim(),

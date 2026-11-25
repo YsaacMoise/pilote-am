@@ -5,7 +5,7 @@
 import { addDays, monthOf, addMonths, type ISODate, type Month } from '../engine/dates';
 import { dayInfo, inContract, type Ctx } from '../engine/payroll';
 import { computeMonth, declarationLines } from '../engine/month';
-import { baremesProvisoires } from '../engine/rates';
+import { baremesAttendus } from '../engine/rates';
 import { CHILD_ABS_LABEL, type Journal, type Plage, type Presence } from '../engine/model';
 import { detailReveilOublie, reveilOublie } from '../engine/carnet';
 
@@ -89,7 +89,7 @@ function moisParent(ctx: Ctx, m: Month, enfants: number): MoisParent | null {
   if (!r.active || r.fromHistory) return null;
   const absences = [...ctx.days.values()].filter((x) => monthOf(x.date) === m && x.abs && inContract(ctx.c, x.date)).length;
   // T-103 (D4) : mois dont les barèmes ne sont pas publiés : rien n'est envoyé, comme un mois non calculé.
-  if (r.nonGere.length || baremesProvisoires(`${m}-01`)) {
+  if (r.nonGere.length || baremesAttendus(`${m}-01`)) {
     return { month: m, termine: m < monthOf(ctx.today), total: 0, net: 0, entretien: 0, repas: 0, km: 0, lignes: [], nonGere: true, joursAccueil: r.presenceDays, absences };
   }
   return {

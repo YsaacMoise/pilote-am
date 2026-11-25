@@ -437,6 +437,23 @@ export const HEURES_SANS_ACCORD = 48;
 /** Plafond annuel avec l'accord de l'AM, tous contrats confondus (CASF L423-22) */
 export const HEURES_MAX_AN = 2250;
 
+/**
+ * T-103 (S7) : indemnité de congés payés d'une période de référence (1er juin au 31 mai) en année incomplète, pour le
+ * simulateur. CCN 48.1.1.5 : la plus favorable du dixième de la rémunération de la période et du maintien (salaire
+ * qu'aurait touché l'AM pendant le congé : jours ouvrables ÷ 6 semaines, Cass. soc. 09/05/2019, n° 17-26.232). Jours acquis :
+ * 2,5 par mois de travail (CCN 48.1.1.2), au prorata, arrondi supérieur, 30 au plus ; les semaines sans accueil ne sont pas
+ * du travail (L3141-5), sauf les congés payés pris dans la limite des droits (L3141-5, 1° ; CCN 48.1.1.3) : la première
+ * période (aucun droit acquis), les 5 semaines de congés ne comptent pas. Hypothèse de la simulation, dite à l'écran : les
+ * semaines sans accueil sont réparties dans l'année.
+ */
+export function congesPeriodeSimulee(i: Pick<SimInput, 'yearType' | 'semainesAbsence'>, salaireMensualise: number, baseDixieme: number, moisPeriode: number, droitsAcquis: boolean): number {
+  const n = semainesAccueil(i);
+  const travail = droitsAcquis ? n + 5 : n;
+  const jours = Math.min(30, Math.ceil(2.5 * moisPeriode * (travail / 52) - 1e-9));
+  const semaine = n > 0 ? (salaireMensualise * 12) / n : 0;
+  return Math.max(Math.round(baseDixieme * 0.1), Math.round((jours / 6) * semaine));
+}
+
 export function semainesAccueil(i: Pick<SimInput, 'yearType' | 'semainesAbsence'>): number {
   return i.yearType === 'complete' ? 52 : Math.min(46, 52 - 5 - Math.max(1, Math.round(i.semainesAbsence)));
 }
@@ -547,8 +564,9 @@ export function simuler(i: SimInput, d: ISODate): SimResult {
   const kmMois = Math.max(0, i.kmMois || 0);
   const km = Math.round(kmMois * Math.max(0, i.kmTaux || 0));
   const kmBornes = bornesKm(i.cv || 5, kmMois * 12, d);
-  // Année incomplète : congés payés en plus du salaire mensualisé (≈ 10 % du salaire de l'année), répartis ici sur 12 mois.
-  const congesAnnuels = i.yearType === 'incomplete' ? Math.round(salaire * 12 * 0.1) : 0;
+  // Année incomplète : congés payés en plus du salaire mensualisé, répartis ici sur 12 mois. T-103 (S7) : CCN 48.1.1.5, le plus
+  // haut du dixième et du maintien (congesPeriodeSimulee, une période complète, droits de l'an passé acquis).
+  const congesAnnuels = i.yearType === 'incomplete' ? congesPeriodeSimulee(i, salaire, salaire * 12, 12, true) : 0;
   const congesMois = Math.round(congesAnnuels / 12);
 
   // Cotisations : sur le brut du mois (salaire et congés), plus la part fixe.

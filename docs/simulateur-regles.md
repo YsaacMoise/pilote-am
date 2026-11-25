@@ -38,7 +38,7 @@ Tests : les 4 exemples chiffrés du communiqué de presse CAF du 15/09/2025 (co�
 - Réduction de cotisations salariales des heures majorées : 11,31 % de leur brut (CSS L241-17, décret 2019-40), versée à l'AM en plus du net.
 - Durée : 13 h par jour au plus (11 h de repos, CASF L423-21) ; au-delà de 48 h par semaine en moyenne, accord écrit de l'AM, dans la limite de 2 250 h par an tous contrats confondus (CASF L423-22).
 - Indemnité d'entretien : 90 % du minimum garanti (4,35 €) pour 9 h, soit 3,92 €, et jamais moins de 2,65 € par jour (CCN art. 114-1).
-- Mensualisation (CCN art. 109.2) : heures hebdomadaires × semaines ÷ 12 ; en année incomplète (46 semaines au plus), les congés payés s'ajoutent au salaire mensualisé (environ 10 % du brut de l'année).
+- Mensualisation (CCN art. 109.2) : heures hebdomadaires × semaines ÷ 12 ; en année incomplète (46 semaines au plus), les congés payés s'ajoutent au salaire mensualisé (le plus haut du dixième et du maintien, CCN 48.1.1.5).
 
 ## Accueil jour par jour (étape 2, 1er novembre 2026)
 
@@ -64,8 +64,8 @@ Tests : les 4 exemples chiffrés du communiqué de presse CAF du 15/09/2025 (co�
 
 Moteur : src/engine/calendrier.ts. 24 mois à partir du premier mois du contrat, aux barèmes du jour.
 
-- Adaptation (CCN art. 94, 30 jours au plus) : salaire mensualisé moins les heures non faites, par la déduction d'absence (CCN art. 108.1 al. 3 et 111 ; Urssaf « Préparer le contrat de travail », 12/03/2026 : formule en heures, dénominateur = heures exactes prévues dans le mois). Heures déclarées = salaire dû ÷ taux net. « À confirmer » si contrat sur 46 semaines ou moins (CCN : jours ; Urssaf : heures, ambiguïté A-08), jour férié sur un jour d'accueil du mois (CCN art. 47), heures saisies au-delà du planning, ou heures majorées. Entretien et repas au prorata des jours saisis.
-- Congés payés en année incomplète (CCN art. 102) : 10 % des salaires nets de la période de référence (1er juin → 31 mai ; la première, de l'embauche au 31 mai), versés en juin ou au mois du congé principal (juin à octobre). Le paiement par douzième est interdit (« toute autre modalité est proscrite »). Le maintien de salaire, s'il est plus favorable, n'est pas calculé.
+- Adaptation (CCN art. 94, 30 jours au plus) : salaire mensualisé moins les heures non faites, par la déduction d'absence (CCN art. 108.1 al. 3 et 111 ; Urssaf « Préparer le contrat de travail », 12/03/2026 : formule en heures, dénominateur = heures exactes prévues dans le mois). T-103 (S1 à S6, mêmes règles que la paie, aucune réserve) : heures déclarées = heures du mois × part payée (rémunération due ÷ taux net) ; 46 semaines ou moins, même méthode en heures (108.1 vise « les heures de travail non effectuées » ; Urssaf : « quel que soit le type de contrat ») ; jour férié sur un jour d'accueil payé (CCN 47.1, 47.2) ; heures faites au-delà du prévu payées en heures complémentaires (96.4, au taux du contrat, 110.2) ou majorées si le contrat atteint 45 h (110.1) ; contrat au-delà de 45 h : déduction sur le salaire mensualisé majoration comprise (111) ; crédit d'impôt et total comptent tous les mois. Entretien et repas au prorata des jours saisis.
+- Congés payés en année incomplète (CCN art. 102) : 10 % des salaires nets de la période de référence (1er juin → 31 mai ; la première, de l'embauche au 31 mai), versés en juin ou au mois du congé principal (juin à octobre). Le paiement par douzième est interdit (« toute autre modalité est proscrite »). T-103 (S7) : le simulateur retient le plus haut du dixième et du maintien (CCN 48.1.1.5 ; maintien = jours acquis ÷ 6 × salaire d'une semaine, Cass. soc. 09/05/2019, n° 17-26.232). Jours acquis : 2,5 par mois, au prorata des semaines de travail (CCN 48.1.1.2), arrondi supérieur, 30 au plus ; semaines sans accueil hors travail, sauf les 5 semaines de congés une fois les droits acquis (L3141-5). Hypothèse : semaines sans accueil réparties dans l'année.
 - CMG du mois des congés : les congés s'ajoutent au coût aidé, hors vérification du plafond horaire (LFSS 2026, art. 100). Hypothèse : aucun texte ne précise si la CAF les retient dans le coût depuis 2026 (Pajemploi : oui en 2025).
 - Fin de l'aide : après le mois des 6 ans (12 ans pour un parent seul) ; ensuite, toutes les cotisations reviennent à la famille.
 - Crédit d'impôt : calculé par année civile et par enfant ; celui de l'année Y versé en juillet Y+1 ; dès la 2e année, avance de 60 % en janvier Y+1 sur le crédit de Y−1, solde en juillet (négatif = trop-perçu remboursé). Service-public F35936.
@@ -75,7 +75,7 @@ Moteur : src/engine/calendrier.ts. 24 mois à partir du premier mois du contrat,
 
 ## Choix de calcul du simulateur
 
-- Moyenne mensuelle sur l'année : en année incomplète, les congés payés (≈ 10 % du salaire) sont répartis sur 12 mois dans le coût, l'aide de la CAF et le crédit d'impôt ; l'écran rappelle qu'ils sont réellement versés en juin, au congé principal ou au fil des congés.
+- Moyenne mensuelle sur l'année : en année incomplète, les congés payés (le plus haut du dixième et du maintien) sont répartis sur 12 mois dans le coût, l'aide de la CAF et le crédit d'impôt ; l'écran rappelle qu'ils sont réellement versés en juin, au congé principal ou au fil des congés.
 - Entretien, repas et forfait de 2,65 € du crédit d'impôt : comptés sur les jours d'accueil réels (année complète : 47 semaines, les 5 semaines de congés de l'assistante maternelle étant payées sans accueil).
 - Heures par semaine ramenées au maximum du planning : 13 h par jour et 2 250 h ÷ semaines travaillées (47 en année complète), au quart d'heure inférieur.
 - Le coût aidé par le CMG est le net déclaré (hors réduction des heures majorées).

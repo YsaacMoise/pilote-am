@@ -1002,11 +1002,11 @@ describe('audit C-017, relecture contradictoire', () => {
 
 describe('barèmes provisoires', () => {
   it('avertit au-delà du dernier barème vérifié', async () => {
-    const { baremesProvisoires, BAREMES_VERIFIES_JUSQU_AU } = await import('../src/engine/rates');
-    expect(baremesProvisoires(BAREMES_VERIFIES_JUSQU_AU)).toBe(false);
-    expect(baremesProvisoires('2027-01-01')).toBe(true);
+    const { baremesAttendus, BAREMES_VERIFIES_JUSQU_AU } = await import('../src/engine/rates');
+    expect(baremesAttendus(BAREMES_VERIFIES_JUSQU_AU)).toBe(false);
+    expect(baremesAttendus('2027-01-01')).toBe(true);
     // T-014 : SMIC relevé au 1er décembre 2026, décret non publié au 18/11/2026
-    expect(baremesProvisoires('2026-12-01')).toBe(true);
-    expect(baremesProvisoires('2026-11-30')).toBe(false);
+    expect(baremesAttendus('2026-12-01')).toBe(true);
+    expect(baremesAttendus('2026-11-30')).toBe(false);
   });
 });

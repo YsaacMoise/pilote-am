@@ -5,7 +5,7 @@ import { addMonths, dayLabel, eachDay, firstDay, lastDay, monthLabel, monthOf, t
 import { computeMonth, declarationLines, declarationText, moisEnCoursAu, totalAVerser } from '../engine/month';
 import { dayInfo, termsAt } from '../engine/payroll';
 import { euros, hoursLabel } from '../engine/money';
-import { baremesProvisoires, messageBaremesAttendus } from '../engine/rates';
+import { baremesAttendus, messageBaremesAttendus } from '../engine/rates';
 import { CHILD_ABS_LABEL, AM_ABS_LABEL, type Contract } from '../engine/model';
 import { Banner, Gommette, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
@@ -125,7 +125,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
   }
 
   // T-103 (D4) : barèmes du mois pas encore publiés : aucun calcul « provisoire ».
-  if (baremesProvisoires(firstDay(month))) {
+  if (baremesAttendus(firstDay(month))) {
     return (
       <section class="card stack" aria-labelledby="bar-t">
         <h2 id="bar-t">Ce mois n’est pas encore calculé</h2>
