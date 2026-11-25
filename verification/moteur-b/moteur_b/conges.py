@@ -559,3 +559,25 @@ def conges_apres_changement_type(types_periode_acquisition, type_annee_prise):
                   + type_annee_prise + " ».",
                   details={"types_acquisition": sorted(set(types)), "type_prise": type_annee_prise,
                            "consigne": "ni paye ni retenu tant que ce n'est pas confirme"})
+
+
+@api("VERIF1-OCC")
+def salaire_accueil_occasionnel(minutes_accueil_du_mois, taux_horaire_centimes):
+    """verif-1 (T-104, cas 2) : CCN 108.2 (pas de mensualisation), 109.3 (« salaire horaire brut x nombre d'heures
+    d'accueil [effectuees au cours du mois] ») ; CASF L423-19 (« versee au moins une fois par mois »).
+    Sortie : salaire_centimes."""
+    m = positif(minutes_accueil_du_mois, "minutes_accueil_du_mois")
+    t = positif(taux_horaire_centimes, "taux_horaire_centimes")
+    return resultat_ok(["VERIF1-OCC"], {"salaire_centimes": vers_centimes(m / 60 * t, "salaire occasionnel", ["VERIF1-OCC"])})
+
+
+@api("VERIF1-OCC")
+def conges_accueil_occasionnel(salaires_bruts_periode_centimes, jours_calendaires_periode):
+    """verif-1 (T-104, cas 2) : CCN 102.1.2.3 : indemnite de CP par « la regle du dixieme », « versee au terme de
+    l'accueil occasionnel » (pas de comparaison avec le maintien). Jours declares : semaines x 2,5 / 4 (Urssaf,
+    « La gestion des conges payes », 15/09/2026), arrondi a l'entier superieur (L3141-7), 30 au plus.
+    Sortie : indemnite_centimes, jours."""
+    base = entier(salaires_bruts_periode_centimes, "salaires_bruts_periode_centimes")
+    j = entier(jours_calendaires_periode, "jours_calendaires_periode", 1)
+    return resultat_ok(["VERIF1-OCC"], {"indemnite_centimes": vers_centimes(Fraction(base, 10), "CP occasionnel", ["VERIF1-OCC"]),
+                                        "jours": min(30, _ceil(Fraction(j, 7) * Fraction(5, 2) / 4))})

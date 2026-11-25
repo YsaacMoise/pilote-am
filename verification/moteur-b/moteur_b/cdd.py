@@ -34,12 +34,25 @@ FINS_CDD = {
     "employeur": (True, "C. trav. L1243-4 : rupture anticipee par l'employeur « sans prejudice de l'indemnite de fin de "
                         "contrat » ; dommages et interets non calcules, a voir avec un conseil (R-CDD-13)."),
 }
-# R-CDD-08, partie 6 du rapport : non geres.
+# verif-1 (T-107, cas 4) : fins levees a partir des textes (base LEGI de la DILA, fonds du 08/11/2026). CASF L423-2,
+# 4° rend applicable a l'AM le titre IV du livre II de la premiere partie (L1241-1 a L1248-11).
+FINS_CDD.update({
+    "jeune_vacances": (False, "C. trav. L1243-10, 2° : IFC non due, contrat conclu avec un jeune pour une periode "
+                              "comprise dans ses vacances scolaires ou universitaires."),
+    "saisonnier": (False, "C. trav. L1243-10, 1° : IFC non due, contrat conclu au titre du 3° de L1242-2 (emploi a "
+                          "caractere saisonnier)."),
+    "force_majeure": (False, "C. trav. L1243-10, 4° : IFC non due en cas de rupture anticipee due a un cas de force "
+                             "majeure ; sinistre : indemnite de L1243-4 al. 2 (indemnite_sinistre_cdd)."),
+    "inaptitude": (True, "C. trav. L1243-1 (rupture pour inaptitude constatee par le medecin du travail) ; L1243-10 ne "
+                         "l'exclut pas : IFC due (L1243-8). L1243-4 : pas de dommages et interets."),
+    "agrement": (False, "CASF L423-24 al. 2 : apres trois mois d'emploi au moins, « les charges liees a la rupture du "
+                        "contrat de travail consecutives a la suspension ou au retrait de l'agrement ne peuvent etre "
+                        "supportees par le particulier employeur » : IFC non due. Avant trois mois : "
+                        "voir ifc_due_agrement (lecture, jugee ORANGE)."),
+})
 FINS_NON_GEREES = {
-    "force_majeure": "Force majeure (L1243-1, L1243-4 al. 2) : hors perimetre (R-CDD-13).",
-    "inaptitude": "Inaptitude constatee par le medecin du travail : hors perimetre (R-CDD-13).",
-    "jeune_vacances": "CDD d'un jeune pendant ses vacances (L1243-10, 2°) : hors du cas de l'AM agreee.",
-    "saisonnier": "CDD saisonnier ou d'usage (L1243-10, 1°) : hors du cas de l'AM agreee (R-CDD-03).",
+    "usage": "CDD d'usage : impossible pour une AM (C. trav. D1242-1 : le particulier employeur et l'accueil d'enfants "
+             "ne sont pas dans la liste des secteurs ; L1242-2, 3°).",
 }
 
 
@@ -379,8 +392,36 @@ def controle_essai_cdd(date_debut, date_terme_initial, date_fin):
     strict = min(duree // 7, plafond)
     large = min(-(-duree // 7), plafond)
     jours = (date_fin - date_debut).days + 1
-    if jours > large:
-        raise NonGere("CDD-ESSAI-DEPASSE", ["D19"], precision=f"Fin au jour {jours} ; essai de {large} jours au plus.")
+    # verif-1 (T-107, cas 7) : « une duree calculee a raison d'un jour par semaine » : semaines entieres du contrat
+    # (lecture stricte : la periode d'essai deroge au droit commun de la rupture du CDD, L1243-1, et s'interprete
+    # strictement ; Cass. soc. 28/04/2011, n° 09-72.165 : decompte calendaire ; 11/06/1987, n° 84-41.299 et
+    # 07/03/2000, n° 97-44.486 : la duree legale est un maximum). Lecture jugee ORANGE : aucun arret sur une semaine
+    # entamee. Au-dela : ce n'est pas une fin pendant l'essai (refus CDD-ESSAI-DEPASSE : choisir la vraie fin).
     if jours > strict:
-        raise NonGere("CDD-ESSAI-LIMITE", ["D19"], precision=f"Fin au jour {jours} : essai de {strict} ou {large} jours.")
-    return resultat_ok(["D19"], {"dans_essai": True, "essai_max_jours": [strict, large]})
+        raise NonGere("CDD-ESSAI-DEPASSE", ["D19"], precision=f"Fin au jour {jours} ; essai de {strict} jours au plus.")
+    return resultat_ok(["D19"], {"dans_essai": True, "essai_max_jours": strict})
+
+
+@api("L1243-4")
+def indemnite_sinistre_cdd(remunerations_jusqu_au_terme_centimes):
+    """verif-1 (T-107, cas 4) : C. trav. L1243-4 al. 2 : rupture avant le terme « en raison d'un sinistre relevant d'un
+    cas de force majeure » : indemnite compensatrice « egale aux remunerations qu'il aurait percues jusqu'au terme du
+    contrat », a la charge de l'employeur. L'appelant donne ces remunerations (salaire mensualise et retenue de
+    l'art. 111 du mois du terme). Sortie : indemnite_centimes."""
+    return resultat_ok(["L1243-4"], {"indemnite_centimes": entier(remunerations_jusqu_au_terme_centimes,
+                                                                  "remunerations_jusqu_au_terme_centimes")})
+
+
+@api("CASF-L423-24")
+def ifc_due_agrement(date_debut, date_rupture):
+    """verif-1 (T-107, R-CDD-18) : CDD rompu par la suspension ou le retrait de l'agrement. CASF L423-24 al. 2 ne vise
+    que l'AM employee « depuis trois mois au moins » : au-dela, IFC non due. Avant : la regle generale de l'IFC
+    (L1243-8 ; L1243-10 ne l'exclut pas) : due. Lecture de la lettre, sans arret publie (jugee ORANGE).
+    Sortie : due, texte."""
+    if not (isinstance(date_debut, date) and isinstance(date_rupture, date)):
+        raise ErreurSaisie("Dates attendues.")
+    trois = ajouter_mois(date_debut, 3)
+    due = date_rupture < trois
+    return resultat_ok(["CASF-L423-24"], {"due": due, "texte": FINS_CDD["agrement"][1] if not due else
+                                          "Moins de trois mois d'emploi : CASF L423-24 al. 2 ne s'applique pas ; "
+                                          "IFC due (L1243-8)."})

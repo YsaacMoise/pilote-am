@@ -273,8 +273,10 @@ class CDDFin(unittest.TestCase):
         for fin, v in att.items():
             self.assertEqual(R(m.indemnite_fin_cdd(160000, fin), "indemnite_centimes"), v, fin)
             self.assertEqual(R(m.ifc_due(fin), "due"), v > 0, fin)
-        for fin in ("force_majeure", "inaptitude", "jeune_vacances", "saisonnier"):
-            self.assertEqual(m.indemnite_fin_cdd(160000, fin)["code"], "CDD-FIN-NON-GEREE")
+        # verif-1 (T-107) : fins levees a partir de L1243-10 et L1243-1 ; CDD d'usage impossible (D1242-1).
+        for fin, v in (("force_majeure", 0), ("inaptitude", 16000), ("jeune_vacances", 0), ("saisonnier", 0)):
+            self.assertEqual(R(m.indemnite_fin_cdd(160000, fin), "indemnite_centimes"), v, fin)
+        self.assertEqual(m.indemnite_fin_cdd(160000, "usage")["code"], "CDD-FIN-NON-GEREE")
         self.assertEqual(m.indemnite_fin_cdd(160000, "autre")["statut"], "erreur_saisie")
 
     def test_p4(self):
@@ -398,11 +400,12 @@ class T076Corrections(unittest.TestCase):
     def test_d19_essai(self):
         # Du 05/01 au 29/05/2026 : 145 jours, 20 semaines entieres ou 21 entamees, plafond 14 jours (<= 6 mois).
         d, t = date(2026, 1, 5), date(2026, 5, 29)
-        self.assertEqual(R(m.controle_essai_cdd(d, t, date(2026, 1, 9)), "essai_max_jours"), [14, 14])
+        self.assertEqual(R(m.controle_essai_cdd(d, t, date(2026, 1, 9)), "essai_max_jours"), 14)
         self.assertEqual(m.controle_essai_cdd(d, t, date(2026, 1, 30))["code"], "CDD-ESSAI-DEPASSE")
-        # CDD de 8 semaines et 3 jours (59 jours) : 8 ou 9 jours d'essai.
+        # CDD de 8 semaines et 3 jours (59 jours) : verif-1 : semaines entieres : 8 jours (13/01 = 9e jour : refus).
         t2 = date(2026, 3, 4)
-        self.assertEqual(m.controle_essai_cdd(d, t2, date(2026, 1, 13))["code"], "CDD-ESSAI-LIMITE")
+        self.assertTrue(R(m.controle_essai_cdd(d, t2, date(2026, 1, 12)), "dans_essai"))
+        self.assertEqual(m.controle_essai_cdd(d, t2, date(2026, 1, 13))["code"], "CDD-ESSAI-DEPASSE")
 
 
 if __name__ == "__main__":

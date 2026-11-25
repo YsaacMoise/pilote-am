@@ -93,8 +93,9 @@ class Refus(unittest.TestCase):
         self.refus(m.conge_deuil(date(2026, 9, 10)), "C9-IJ-MANQUANTES")
 
     def test_exclus_absences(self):
-        self.refus(m.qualifier_absence("maternite", "complete"), "EXCLU-MATERNITE")
-        self.refus(m.qualifier_absence("accident_travail", "complete"), "EXCLU-AT")
+        # verif-1 (T-104, cas 1) : refus EXCLU-MATERNITE et EXCLU-AT leves : retenue de l'art. 111.
+        self.assertTrue(m.qualifier_absence("maternite", "complete")["resultat"]["deductible"])
+        self.assertTrue(m.qualifier_absence("accident_travail", "complete")["resultat"]["deductible"])
 
     # Jours feries
     # T-040 : A-31 leve (CCN art. 47.2, C. trav. L3133-1, 6°) ; tests dans test_t040.py.

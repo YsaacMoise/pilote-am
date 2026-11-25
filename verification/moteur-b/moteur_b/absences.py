@@ -37,7 +37,38 @@ _TYPES = {
     # « Embauche et fin de contrat en cours de mois » parmi les absences non
     # remunerees a deduire selon l'art. 111 de la CCN.
     "embauche_en_cours_de_mois": (True, ["R-EMB-01"]),
+    # verif-1 (T-104, cas 1) : absences protegees. Aucune maintien de salaire par le particulier employeur dans la CCN
+    # (hors Alsace-Moselle, C. trav. L1226-23) : retenue de l'art. 111 (« absences qui ne donnent pas lieu a maintien
+    # de la remuneration »). Le jour de l'accident du travail reste paye (CSS L433-1 : « integralement a la charge de
+    # l'employeur ») : jour_accident_paye().
+    "maternite": (True, ["CCN-111", "L1225-17"]),
+    "paternite": (True, ["CCN-111", "L1225-35"]),
+    "adoption": (True, ["CCN-111", "L1225-37"]),
+    "conge_naissance": (True, ["CCN-111", "L1225-46-2"]),
+    "accident_travail": (True, ["CCN-111", "CSS-L433-1"]),
+    "maladie_professionnelle": (True, ["CCN-111"]),
+    "accident_trajet": (True, ["CCN-111"]),
 }
+
+
+def assimilation_cp(type_absence, jours_depuis_debut_arret=0):
+    """verif-1 (T-104) : l'absence compte-t-elle comme travail effectif pour les conges payes ?
+    - maternite, paternite, adoption : C. trav. L3141-5, 2° (CASF L423-2, 11° : section 2 du chapitre Ier du titre IV
+      du livre Ier de la 3e partie applicable a l'AM) : oui.
+    - accident du travail, maladie professionnelle : L3141-5, 5° (loi n° 2024-364 : plus de limite d'un an) : oui.
+      CCN 49 (limite d'un an) est moins favorable : la loi l'emporte.
+    - accident de trajet : CCN 49 (assimile « dans la limite d'une duree ininterrompue d'un an ») ; au-dela, arret non
+      professionnel : L3141-5, 7° et L3141-5-1 (2 jours par mois, 24 au plus) : 'maladie'.
+    - conge supplementaire de naissance : L1225-46-3 l'assimile pour l'anciennete seulement : non (prorata).
+    Sortie : 'travail', 'maladie' ou 'non'."""
+    if type_absence in ("maternite", "paternite", "adoption", "accident_travail", "maladie_professionnelle"):
+        return "travail"
+    if type_absence == "accident_trajet":
+        return "travail" if entier(jours_depuis_debut_arret, "jours_depuis_debut_arret") < 365 else "maladie"
+    if type_absence == "conge_naissance":
+        return "non"
+    raise ErreurSaisie("type_absence : maternite, paternite, adoption, conge_naissance, accident_travail, "
+                       "maladie_professionnelle ou accident_trajet.")
 _NOTE_ENFANT_SANS_SOLDE = (
     "Absence de l'enfant sur une periode d'accueil prevue au contrat : salaire maintenu "
     "(CCN art. 105 al. 1, CASF L423-20). Aucun texte ne prevoit d'absence de l'enfant "
@@ -47,13 +78,6 @@ _NOTE_ENFANT_SANS_SOLDE = (
 _REFUS = {
     "am_evenement_familial": ("R-ABS-06", ["R-ABS-06"]),
     "am_evenement_familial_indemnise_secu": ("M-05", ["R-ABS-06"]),
-    "maternite": ("EXCLU-MATERNITE", []),
-    "paternite": ("EXCLU-MATERNITE", []),
-    "adoption": ("EXCLU-MATERNITE", []),
-    "conge_naissance": ("EXCLU-MATERNITE", []),
-    "accident_travail": ("EXCLU-AT", []),
-    "maladie_professionnelle": ("EXCLU-AT", []),
-    "accident_trajet": ("EXCLU-AT", []),
     # T-074 (signal de la direction, S74-I46-15J-SANS-ACCUEIL) : jour du planning hors du contrat (apres la fin
     # ou avant l'embauche) qui tombe dans une semaine sans accueil, mois d'entree ou de sortie en annee
     # incomplete. CCN 111, dernier alinea : les semaines de non-accueil comptent au denominateur (« heures et

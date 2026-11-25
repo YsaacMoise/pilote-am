@@ -777,3 +777,41 @@ def solde_de_tout_compte(elements):
             raise ErreurSaisie("nature : « salaire » ou « indemnite_rupture ».")
     return resultat_ok(solde_de_tout_compte.regles, {"total_salaires_bruts_centimes": sal,
                                                      "indemnite_rupture_centimes": rup})
+
+
+@api("R-FIN-03", "VERIF1-CPP")
+def date_fin_preavis_avec_conges(date_premiere_presentation, preavis, periodes_conges_payes=(), accord_ecrit_cumul=None):
+    """verif-1 (T-107, cas 1) : CCN 64.1 (KALIARTI000050724233, avenant n° 6) : le preavis ne peut etre suspendu sauf
+    en cas [...] « de prise de conges payes. Neanmoins, et par exception, les periodes de preavis et de conges payes
+    peuvent se cumuler en cas d'accord ecrit et signe des parties » ; fin = fin du preavis « prorogé, le cas echeant,
+    de la duree correspondant » aux suspensions. Conges payes pris dans le preavis (periodes_conges_payes : liste de
+    (du, au), jours calendaires) : sans accord ecrit, la fin recule de leur duree ; avec accord, pas de report.
+    Accord inconnu (None) alors que des conges tombent dans le preavis : refus CPP-ACCORD-INCONNU.
+    Sortie : date_fin."""
+    fin = _fin_preavis(date_premiere_presentation, preavis)
+    jours = 0
+    for du, au in periodes_conges_payes:
+        if not (isinstance(du, date) and isinstance(au, date)) or au < du:
+            raise ErreurSaisie("periodes_conges_payes : (du, au) dans l'ordre.")
+        a, b = max(du, date_premiere_presentation), min(au, fin)
+        if a <= b:
+            jours += (b - a).days + 1
+    if jours and accord_ecrit_cumul is None:
+        raise NonGere("CPP-ACCORD-INCONNU", ["VERIF1-CPP"], precision="Conges pendant le preavis : accord ecrit de cumul ?")
+    if jours and not accord_ecrit_cumul:
+        fin = fin + timedelta(days=jours)
+    return resultat_ok(["R-FIN-03", "VERIF1-CPP"], {"date_fin": fin, "jours_de_report": 0 if accord_ecrit_cumul else jours})
+
+
+@api("VERIF1-DSA")
+def indemnite_preavis_non_fait_am(net_preavis_non_fait_centimes, grossesse_medicalement_constatee):
+    """verif-1 (T-107, cas 2) : AM qui part sans faire son preavis, sans l'accord des parents. CCN 64.2 al. 2 :
+    indemnite « egale au montant de la remuneration nette correspondant a la duree non executee du preavis », au profit
+    du particulier employeur. C. trav. L1225-34 (CASF L423-2, 3°) : « La salariee en etat de grossesse medicalement
+    constate peut rompre son contrat de travail sans preavis et sans devoir d'indemnite de rupture » : 0.
+    service-public F33164 (verifiee le 21/07/2026) : l'employeur « doit alors saisir le conseil de prud'hommes » : la
+    somme est demandable, jamais retenue d'office sur le salaire. Sortie : indemnite_demandable_centimes."""
+    if grossesse_medicalement_constatee is None:
+        raise NonGere("DSA-GROSSESSE-INCONNUE", ["VERIF1-DSA"])
+    v = 0 if grossesse_medicalement_constatee else entier(net_preavis_non_fait_centimes, "net_preavis_non_fait_centimes")
+    return resultat_ok(["VERIF1-DSA"], {"indemnite_demandable_centimes": v, "retenue_sur_salaire_possible": False})
