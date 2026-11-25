@@ -11,7 +11,7 @@ import {
   addDays, addMonthsToDate, cpPeriod, cpPeriodStartYear, fullMonthsBetween, lastDay, monthOf, monthsBetween, shortDate,
   type ISODate, type Month,
 } from './dates';
-import { acquisition, baseDixieme, compteur, cpForMonth, cpPrisEntre, indemnite, maintien } from './conges';
+import { acquisition, baseDixieme, compteur, cpForMonth, cpPrisEntre, indemnite, maintien, verseDansSalairePV } from './conges';
 import { makeCtx, monthBase, planningBrutMin, monthBrut, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx, regularisation, brutConnu, brutDuNet } from './payroll';
 import { regionDe } from './regions';
 
@@ -720,8 +720,11 @@ function coeurCdd(endCtx: Ctx, dernierJour: ISODate, finCdd: FinCdd, enfants: nu
       else if (indP.jours > 0) {
         let paye = 0;
         for (const m of monthsBetween(juin, dernierMois)) { const k = cpForMonth(endCtx, m, enfants); paye += k.indemnite + k.complement; }
-        if (complete) paye += maintien(endCtx, cpt.pris, dernierJour);
-        prec = Math.max(0, Math.max(indP.dixieme, maintien(endCtx, indP.jours, `${y}-06-01`)) - paye);
+        // T-104 (cas 4, relecture T-076 R3) : planning variable, les jours pris ont été payés par le salaire mensualisé.
+        const pv = pvActif(termsAt(c, dernierJour)) && !!indP.pv;
+        if (complete) paye += pv ? verseDansSalairePV(endCtx, Math.min(cpt.pris, cpt.aPrendre), dernierJour) : maintien(endCtx, cpt.pris, dernierJour);
+        // Planning variable : indemnité de la période précédente calculée sur cette période (maintien C1 de la période, T-103 C13).
+        prec = Math.max(0, (pv ? indP.montant : Math.max(indP.dixieme, maintien(endCtx, indP.jours, `${y}-06-01`))) - paye);
       }
     }
     if (!iccpInconnu) {
@@ -740,7 +743,9 @@ function coeurCdd(endCtx: Ctx, dernierJour: ISODate, finCdd: FinCdd, enfants: nu
       const prisSuivis = cpPrisEntre(endCtx, c.trackedFrom > c.start ? c.trackedFrom : c.start, dernierJour).length;
       const suiviTardif = c.trackedFrom > c.start;
       const prisAvant = suiviTardif ? c.cddCpPrisAvantSuivi : 0;
-      const dansSalaire = complete && prisAvant !== undefined ? maintien(endCtx, prisSuivis + prisAvant, dernierJour) : 0;
+      const dansSalaire = complete && prisAvant !== undefined
+        ? (pvActif(termsAt(c, dernierJour)) ? verseDansSalairePV(endCtx, prisSuivis + prisAvant, dernierJour) : maintien(endCtx, prisSuivis + prisAvant, dernierJour))
+        : 0;
       if (iccp + cpPayeNet + dansSalaire < plancher) {
         if (prisAvant === undefined) {
           iccpInconnu = `Indemnité de congés non pris non calculée : l’app suit ton CDD depuis le ${shortDate(c.trackedFrom)}. Indique dans le contrat les jours de congés payés pris pendant le CDD avant cette date (0 si aucun) : le minimum du code du travail (article L1242-16) compte les congés déjà payés.`;

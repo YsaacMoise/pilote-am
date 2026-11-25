@@ -400,14 +400,14 @@ describe('M4, revu par la T-103 : compteur fiscal, sommes de fin du CDD dites', 
 // ---------------------------------------------------------------------------------------------------------------------
 import { NON_GERE_CDD_PV, messageApresTerme } from '../src/engine/cdd';
 
-describe('D15 (R1, R3) : CDD à planning variable refusé en entier', () => {
-  it('CDD de moins d’un mois à planning variable (scénario R1) : refusé, aucun montant', () => {
+// T-104 (cas 4) : D15 est levée, le CDD à planning variable est calculé (tests/t104-horaires-variables.test.ts, scénarios R1 et R3).
+describe('D15 levée par la T-104 : CDD à planning variable calculé', () => {
+  it('CDD de moins d’un mois à planning variable (scénario R1) : plus de refus', () => {
     // Cycle A 45 h / B 15 h ancré au 02/03/2026, 65 h payées par mois, CDD du 02/03 au 20/03/2026.
     const c = cdd({ start: '2026-03-02', trackedFrom: '2026-03-02', cddTerme: '2026-03-20', planningVariable: true, pvForme: 'cycle',
       cycle: [week('07:00', '16:00'), week('08:00', '11:00')], cycleAncre: '2026-03-02', heuresMensualisees: 65 } as Partial<Contract>);
-    expect(nonGeresContrat(c)).toContain(NON_GERE_CDD_PV);
-    expect(computeMonth(ctxDe({ ...c, end: '2026-03-20' }), '2026-03').nonGere).toContain(NON_GERE_CDD_PV);
-    expect(fin(c, '2026-03-20', 'terme').nonGere).toContain(NON_GERE_CDD_PV);
+    expect(nonGeresContrat(c)).not.toContain(NON_GERE_CDD_PV);
+    expect(computeMonth(ctxDe({ ...c, end: '2026-03-20' }), '2026-03').nonGere).toEqual([]);
   });
 });
 

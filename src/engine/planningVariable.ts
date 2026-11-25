@@ -124,17 +124,33 @@ export function messageBasePV(c: Contract): string {
   return `Horaires variables : ton salaire suit les ${hm} payées chaque mois écrites dans ton contrat, soit une base de ${fmtH(baseHebdoMin(c))} par semaine. Les heures prévues ou faites au-delà de cette base, jusqu’à 45 h, sont payées en heures complémentaires, avec le mois du jour où elles tombent (convention, article 96.4 : au-delà de la durée de travail hebdomadaire prévue au contrat).`;
 }
 
+/** Conditions du contrat le jour `d` (avenants compris) : même règle que termsAt (payroll.ts), sans en dépendre */
+function conditionsAu(c: Contract, d: ISODate): Contract {
+  let out = c;
+  for (const a of [...(c.avenants ?? [])].sort((x, y) => (x.from < y.from ? -1 : 1))) if (a.from <= d) out = { ...out, ...a.changes };
+  return out;
+}
+
+/** T-104 : plus utilisé par le calcul (l'avenant d'un contrat à horaires variables est calculé) ; texte gardé pour mémoire. */
 export const NON_GERE_PV_AVENANT =
   'Avenant qui change les horaires, le type d’année ou le nombre de semaines d’un contrat aux horaires variables : non géré. L’app ne sait pas encore changer un cycle ou les heures payées chaque mois en cours de contrat. Fais la paie sans l’app à partir de cet avenant.';
 
-/** Refus du contrat entier (données complètes) : cas du planning variable que l'app ne calcule pas au passage 1 */
+/**
+ * T-104 (cas 3) : avenant d'un contrat à horaires variables, ou avenant qui passe aux horaires variables ou en revient. Le calcul
+ * suit les conditions de chaque jour (termsAt). Seules les données qui manquent aux conditions d'un avenant sont demandées.
+ */
 export function nonGeresContratPV(c: Contract): string[] {
-  if (!pvActif(c)) return [];
   const out: string[] = [];
-  // T-103 (H5) : semaines prévues au-delà de 45 h et heures payées au-delà de 45 h en moyenne : calculées (payroll.ts,
-  // mensuelMajoreesMinutesPV et weekOvertimeL2), plus de refus.
-  if ((c.avenants ?? []).some((a) => a.changes.planning !== undefined || a.changes.yearType !== undefined || a.changes.weeks !== undefined || a.changes.weeksOff !== undefined)) {
-    out.push(NON_GERE_PV_AVENANT);
+  for (const a of c.avenants ?? []) {
+    const t = conditionsAu(c, a.from);
+    if (t.accueilOccasionnel) continue;
+    const quand = shortDate(a.from);
+    if (t.planningVariable) {
+      const m = manquesPV(t);
+      if (m.length) out.push(`Avenant du ${quand}, horaires qui changent : il manque ${m.join(' ; ')}. Ouvre l’avenant pour les ajouter. L’app calcule les mois à partir de cette date dès que c’est fait.`);
+    } else if (c.planningVariable && a.changes.planningVariable === false && !a.changes.planning) {
+      out.push(`Avenant du ${quand} : le planning redevient le même chaque semaine. Indique ce planning type dans l’avenant. L’app calcule les mois à partir de cette date dès que c’est fait.`);
+    }
   }
   return out;
 }
@@ -144,11 +160,13 @@ export function nonGeresContratPV(c: Contract): string[] {
  * Le reste du contrat est calculé.
  */
 export function nonGeresPeriodePV(c: Contract, from: ISODate, to: ISODate): string[] {
-  if (!pvActif(c) || formePV(c) !== 'remis' || to < from) return [];
-  const lundis = [...new Set(eachDay(from, to).map(mondayOf))];
+  if (to < from) return [];
+  // T-104 (cas 3) : conditions de chaque semaine (un avenant peut passer au planning remis ou en sortir).
+  const lundis = [...new Set(eachDay(from, to).map(mondayOf))].filter((l) => { const t = conditionsAu(c, l < from ? from : l); return pvActif(t) && formePV(t) === 'remis'; });
+  if (!lundis.length) return [];
   const out: string[] = [];
   // D6 : une semaine sans accueil du contrat (année incomplète) se traite comme pour un planning fixe : pas de planning à saisir.
-  const off = new Set<ISODate>(c.yearType === 'incomplete' ? c.weeksOff : []);
+  const off = new Set<ISODate>(lundis.flatMap((l) => { const t = conditionsAu(c, l < from ? from : l); return t.yearType === 'incomplete' ? t.weeksOff : []; }));
   const manquants = lundis.filter((l) => !c.planningsSemaines?.[l] && !off.has(l));
   if (manquants.length) {
     out.push(`Planning ${manquants.length > 1 ? 'des semaines du' : 'de la semaine du'} ${manquants.map(shortDate).join(', du ')} non saisi : l’app ne calcule pas ce mois sans lui. Ouvre le contrat et saisis le planning remis par les parents pour ${manquants.length > 1 ? 'ces semaines' : 'cette semaine'}, ou « sans accueil ». Une semaine de congé ou d’absence a aussi son planning.`);

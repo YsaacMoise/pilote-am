@@ -496,6 +496,12 @@ export function avenantSummary(before: Contract, ch: Partial<Terms>): string[] {
   if (ch.yearType && ch.yearType !== before.yearType) out.push(ch.yearType === 'complete' ? 'Passage en année complète (52 semaines)' : `Passage en année incomplète (${ch.weeks ?? before.weeks} semaines)`);
   else if (ch.weeks != null && ch.weeks !== before.weeks) out.push(`Semaines d’accueil : ${before.weeks} → ${ch.weeks}`);
   if (ch.weeksOff) out.push('Semaines sans accueil modifiées');
+  // T-104 (cas 3) : horaires variables.
+  if (ch.planningVariable != null && ch.planningVariable !== !!before.planningVariable) out.push(ch.planningVariable ? 'Passage à des horaires qui changent d’une semaine à l’autre' : 'Retour à un planning qui se répète chaque semaine');
+  if (ch.pvForme != null && ch.pvForme !== before.pvForme) out.push(ch.pvForme === 'cycle' ? 'Horaires : cycle écrit au contrat' : 'Horaires : planning remis par les parents');
+  if (ch.cycle) out.push(`Cycle : ${ch.cycle.length} semaines (${ch.cycle.map((p) => hoursLabel(weeklyMinutes(p))).join(', ')})`);
+  if (ch.cycleAncre && ch.cycleAncre !== before.cycleAncre) out.push(`Semaine A : celle du ${shortDate(ch.cycleAncre)}`);
+  if (ch.heuresMensualisees != null && ch.heuresMensualisees !== before.heuresMensualisees) out.push(`Heures payées chaque mois : ${before.heuresMensualisees ?? '—'} → ${ch.heuresMensualisees}`);
   return out;
 }
 

@@ -36,8 +36,13 @@ export interface StartBalances {
 }
 
 /** Conditions du contrat qu'un avenant peut changer */
-export type Terms = Pick<Contract, 'planning' | 'rateNet' | 'rateBrut' | 'majoration' | 'majorationCompl' | 'entretienJour' | 'entretienHeure' | 'entretienMode' | 'repasPrix' | 'repasParJour' | 'repasParents' | 'kmTaux' | 'yearType' | 'weeks' | 'weeksOff'>;
-export const TERM_KEYS: (keyof Terms)[] = ['planning', 'rateNet', 'rateBrut', 'majoration', 'majorationCompl', 'entretienJour', 'entretienHeure', 'entretienMode', 'repasPrix', 'repasParJour', 'repasParents', 'kmTaux', 'yearType', 'weeks', 'weeksOff'];
+/**
+ * Conditions qu'un avenant peut changer. T-104 (cas 3, regles/t104-horaires-variables.md) : aussi les horaires variables
+ * (planning variable ou non, forme, cycle et sa semaine de départ, heures payées chaque mois). Les plannings remis semaine par
+ * semaine (`planningsSemaines`) restent au contrat : ils sont datés par leur lundi.
+ */
+export type Terms = Pick<Contract, 'planning' | 'rateNet' | 'rateBrut' | 'majoration' | 'majorationCompl' | 'entretienJour' | 'entretienHeure' | 'entretienMode' | 'repasPrix' | 'repasParJour' | 'repasParents' | 'kmTaux' | 'yearType' | 'weeks' | 'weeksOff' | 'planningVariable' | 'pvForme' | 'cycle' | 'cycleAncre' | 'heuresMensualisees'>;
+export const TERM_KEYS: (keyof Terms)[] = ['planning', 'rateNet', 'rateBrut', 'majoration', 'majorationCompl', 'entretienJour', 'entretienHeure', 'entretienMode', 'repasPrix', 'repasParJour', 'repasParents', 'kmTaux', 'yearType', 'weeks', 'weeksOff', 'planningVariable', 'pvForme', 'cycle', 'cycleAncre', 'heuresMensualisees'];
 
 /** Avenant : nouvelles conditions à partir d'une date */
 export interface Avenant {

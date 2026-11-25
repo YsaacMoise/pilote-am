@@ -30,6 +30,7 @@ export const CDD_A_COMPLETER =
  * variables refusé en entier au passage 1. Les deux lectures du CDD (P1, P2) ne sont pas définies avec un planning variable
  * (relecture R1 : heures prévues au-delà de la base payées deux fois en P1 ; R3 : congés de la période précédente).
  */
+/** T-104 : plus utilisé par le calcul (le CDD à horaires variables est calculé) ; texte gardé pour mémoire. */
 export const NON_GERE_CDD_PV =
   'CDD avec des horaires qui changent d’une semaine à l’autre : non géré pour l’instant. L’app ne calcule pas encore la fin d’un CDD aux horaires variables. Fais la paie sans l’app.';
 /** D3 (section 4), gardé pour les écrans et tests qui le citent : même refus que D15 */
@@ -60,7 +61,10 @@ export function messageApresTerme(terme: string): string {
 export function nonGeresCdd(c: CddChamps): string[] {
   if (!c.cdd) return [];
   if (!c.cddTerme) return [CDD_A_COMPLETER];
-  if (c.planningVariable) return [NON_GERE_CDD_PV];
+  // T-104 (cas 4) : CDD à horaires variables calculé (regles/t104-horaires-variables.md). Depuis la T-103 (F11, F12), le
+  // salaire du CDD a une seule lecture, celle du CDI (CCN 108.1, L1242-14) : les deux lectures P1 et P2 qui rendaient le
+  // croisement indéfini (relecture T-076, R1 et R3) n'existent plus. Les congés déjà payés dans le salaire suivent le salaire
+  // mensualisé du planning variable (fin.ts, finDeCdd).
   return [];
 }
 

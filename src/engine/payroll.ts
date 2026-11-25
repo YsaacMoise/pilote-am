@@ -867,8 +867,10 @@ export function toutesSemainesSansAccueil(c: Contract): Set<ISODate> {
   for (const a of c.avenants ?? []) for (const w of a.changes.weeksOff ?? []) out.add(w);
   // T-076, D6 : planning remis, année incomplète : une semaine saisie « sans accueil » (0 h) est une semaine sans accueil du
   // contrat, comme pour un planning fixe (art. 111 : règle existante, ambiguïté A-19 inchangée).
-  if (c.yearType === 'incomplete' && pvActif(c) && formePV(c) === 'remis') {
-    for (const [l, p] of Object.entries(c.planningsSemaines ?? {})) if (minutesPlanning(p) === 0) out.add(l);
+  // T-104 (cas 3) : conditions de la semaine (avenants compris).
+  for (const [l, p] of Object.entries(c.planningsSemaines ?? {})) {
+    const t = termsAt(c, l);
+    if (t.yearType === 'incomplete' && pvActif(t) && formePV(t) === 'remis' && minutesPlanning(p) === 0) out.add(l);
   }
   semainesCache.set(c, out);
   return out;

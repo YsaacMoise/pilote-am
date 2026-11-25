@@ -81,7 +81,7 @@ describe('R-OCC-02 à R-OCC-08 : salaire du mois et congés au terme', () => {
 describe('R-OCC-10 : fin du contrat', () => {
   it('CDI : retrait remis le 07/05/2026, 2 mois d’accueil : préavis de 8 jours, ni indemnité de rupture ni congés en plus', () => {
     const A3: AccueilOcc = { id: 'a3', du: '2026-04-27', au: '2026-05-07', planning: semaine8 };
-    const c = contrat([A3], { end: '2026-05-14', rupture: { motif: 'retrait', notif: '2026-05-07' } });
+    const c = contrat([A3], { end: '2026-05-14', rupture: { motif: 'retrait', notif: '2026-05-07', preavis: 'execute' } });
     const f = finDeContrat(makeCtx(c, [], [], '2026-05-31'), '2026-05-07', 'retrait');
     expect(f.nonGere ?? []).toEqual([]);
     expect(f.preavisFin).toBe('2026-05-14');
@@ -90,7 +90,7 @@ describe('R-OCC-10 : fin du contrat', () => {
     expect(f.regularisation).toBe(0);
   });
   it('CDD de remplacement du 01 au 20/03/2026 : indemnité de fin de contrat 10 % de 440 € ; minimum L1242-16 : 8,40 €', () => {
-    const c = contrat([A1], { cdd: true, cddTerme: '2026-03-20', cddMotif: 'remplacement', end: '2026-03-20', rupture: { motif: 'fin_cdd', notif: '2026-03-20', finCdd: 'terme' } });
+    const c = contrat([A1], { cdd: true, cddTerme: '2026-03-20', cddMotif: 'remplacement', end: '2026-03-20', rupture: { motif: 'fin_cdd', notif: '2026-03-20', preavis: 'execute', finCdd: 'terme' } });
     const f = finDeContrat(makeCtx(c, [], [], '2026-04-30'), '2026-03-20', 'fin_cdd');
     expect(f.nonGere ?? []).toEqual([]);
     expect(f.ifcNet).toBe(4400);

@@ -86,9 +86,10 @@ describe('T-076 : données et refus (nonGeres)', () => {
     expect(b.majMin).toBe(5 * 60);
     expect(b.majAmount).toBe(2200);
   });
-  it('avenant qui change les horaires d’un planning variable : refusé', () => {
+  // T-104 (cas 3) : l'avenant d'un contrat à horaires variables est calculé (tests/t104-horaires-variables.test.ts).
+  it('avenant qui change les horaires d’un planning variable : plus de refus', () => {
     const c = s1({ avenants: [{ id: 'a', from: '2026-04-01', changes: { planning: B25 } }] });
-    expect(nonGeresContrat(c).join(' ')).toMatch(/Avenant qui change les horaires.*non géré/);
+    expect(nonGeresContrat(c)).toEqual([]);
     expect(nonGeresContrat(s1({ avenants: [{ id: 'a', from: '2026-04-01', changes: { rateNet: 420 } }] }))).toEqual([]);
   });
 });
@@ -329,12 +330,11 @@ describe('T-076 : corrections après vérification (décisions D1 à D6)', () =>
     // L1 : la règle existante s'applique (déduction de l'art. 111), mois calculé.
     expect(monthBase(makeCtx(s1(), [], sansSolde, T), '2026-03').nonGere).toEqual([]);
   });
-  it('B3 / D3 : CDD à horaires variables avec semaines sans accueil : refusé, message précis', () => {
+  // T-104 (cas 4) : D3 et D15 levées, le CDD à horaires variables est calculé (tests/t104-horaires-variables.test.ts).
+  it('B3 / D3, levée par la T-104 : CDD à horaires variables avec semaines sans accueil : plus de refus', () => {
     const c = l2({ cdd: true, cddTerme: '2026-09-30', yearType: 'incomplete', weeks: 46, heuresMensualisees: 115 });
-    expect(nonGeresContrat(c)).toContain(NON_GERE_CDD_PV_P2);
-    expect(monthBase(makeCtx(c, [], [], T), '2026-04').nonGere).toContain(NON_GERE_CDD_PV_P2);
-    // D15 (section 5, remplace D3) : CDD à horaires variables refusé en entier, aussi sur 52 semaines.
-    expect(nonGeresContrat(l2({ cdd: true, cddTerme: '2026-09-30' }))).toContain(NON_GERE_CDD_PV_P2);
+    expect(nonGeresContrat(c)).not.toContain(NON_GERE_CDD_PV_P2);
+    expect(nonGeresContrat(l2({ cdd: true, cddTerme: '2026-09-30' }))).not.toContain(NON_GERE_CDD_PV_P2);
   });
   it('M1 / D4, revu par la T-103 (H4) : L2, première semaine coupée : base réduite aux jours prévus dans le contrat', () => {
     // Entrée le mercredi 04/03/2026, semaine A : mercredi-vendredi 27 h. CCN 96.4, durée prévue au contrat pour cette semaine :

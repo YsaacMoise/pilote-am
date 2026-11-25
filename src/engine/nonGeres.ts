@@ -73,8 +73,9 @@ export function nonGeresContrat(c: Pick<Contract, 'alsaceMoselle' | 'planningVar
   if (c.planningVariable && !c.accueilOccasionnel) {
     const m = messagePVACompleter(c);
     if (m) out.push(m);
-    else out.push(...nonGeresContratPV(c as Contract));
   }
+  // T-104 (cas 3) : données qui manquent aux conditions d'un avenant (horaires variables ou retour à un planning fixe).
+  out.push(...nonGeresContratPV(c as Contract));
   // T-104 (cas 2) : accueil occasionnel calculé (occasionnel.ts). Données incomplètes : contrat à compléter.
   if (c.accueilOccasionnel) { const m = messageOccasionnelACompleter(c as Contract); if (m) out.push(m); }
   out.push(...nonGeresCdd(c));

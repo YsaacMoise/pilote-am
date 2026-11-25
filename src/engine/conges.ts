@@ -671,6 +671,15 @@ export function baseDixieme(ctx: Ctx, y: number, enfants = 0): { base: number; m
  * Maintien de salaire pour n jours ouvrables de congés. T-076 (planning variable) : lecture C1 de P-PV-5, heures prévues
  * moyennes de la période de référence commençant le 1er juin `refY` (défaut : celle qui contient `at`) ; voir `maintienC1`.
  */
+/**
+ * T-104 (cas 4) : planning variable en année complète, part du salaire mensualisé versée pour `jours` jours de congés pris :
+ * heures mensualisées × 12 ÷ 52 par semaine × jours ÷ 6 × taux (même règle que `verseDansSalaire`, indemnite).
+ */
+export function verseDansSalairePV(ctx: Ctx, jours: number, at: ISODate): number {
+  const t = termsAt(ctx.c, at);
+  return Math.round(((jours / 6) * ((t.heuresMensualisees ?? 0) * 60 * 12 / semainesParAn(t)) * t.rateNet) / 60);
+}
+
 export function maintien(ctx: Ctx, jours: number, at: ISODate = ctx.today, refY?: number): number {
   const c = termsAt(ctx.c, at);
   if (pvActif(c)) return maintienC1(ctx, jours, refY ?? cpPeriodStartYear(at), at);
