@@ -240,7 +240,17 @@ export type ChildAbs = 'malade_certif' | 'malade' | 'parents' | 'sans_solde_enfa
  * l'app refuse les mois, les congés et la fin de contrat concernés. Décision du DG du 21/11/2026 (« sans la raison ») : le
  * cas précis (maternité, accident du travail…) n'est pas enregistré, seulement « non gérée » et les dates.
  */
-export type AmAbs = 'cp' | 'am_malade' | 'am_enfant_malade' | 'evenement' | 'sans_solde' | 'non_gere';
+export type AmAbs = 'cp' | 'am_malade' | 'am_enfant_malade' | 'evenement' | 'sans_solde' | 'non_gere' | AmSuspension;
+/**
+ * T-104 (regles/t104-absences-protegees.md ; décision du DG du 22/11/2026 : la raison est enregistrée pour ces absences) :
+ * suspensions du contrat calculées par l'app. Congé de maternité (C. trav. L1225-17, L1225-24), congé de paternité et
+ * d'accueil de l'enfant (L1225-35), congé supplémentaire de naissance (L1225-46-2), accident du travail, de trajet ou
+ * maladie professionnelle (CCN 49 ; CSS L411-1, L411-2, L461-1).
+ */
+export type AmSuspension = 'maternite' | 'paternite' | 'naissance_supp' | 'at_mp';
+export const AM_SUSPENSIONS: AmSuspension[] = ['maternite', 'paternite', 'naissance_supp', 'at_mp'];
+/** T-104 : nature de l'arrêt « accident du travail ou maladie professionnelle » (les effets diffèrent : CCN 49, 64.1 ; CSS L433-1) */
+export type NatureAtMp = 'accident' | 'trajet' | 'maladie_pro';
 /**
  * Cas non gérés proposés dans la liste de choix de l'écran (T-031). Ils servent seulement à l'écran : l'app enregistre
  * `non_gere`, jamais le cas choisi (décision du DG du 21/11/2026). Les saisies d'avant portent encore ces valeurs dans
@@ -248,6 +258,8 @@ export type AmAbs = 'cp' | 'am_malade' | 'am_enfant_malade' | 'evenement' | 'san
  */
 export type AmAbsNonGeree = 'maternite' | 'paternite' | 'naissance_supp' | 'accident_travail';
 export const AM_ABS_NON_GEREES: AmAbsNonGeree[] = ['maternite', 'paternite', 'naissance_supp', 'accident_travail'];
+/** T-104 : seule valeur d'avant encore ramenée à la lecture (« accident_travail » devient `at_mp`, nature à préciser) */
+export const AM_ABS_ANCIENNES: string[] = ['accident_travail'];
 
 export interface Presence { a?: string; d?: string }
 
@@ -323,6 +335,14 @@ export interface AmLeave {
    * l'app (centimes ; 0 si aucun). Sert à la part des indemnités journalières de chaque parent (CSS R323-4).
    */
   ijSalairesAutres?: number;
+  /** T-104 : arrêt `at_mp` seulement : accident du travail, accident de trajet ou maladie professionnelle (demandé à la saisie) */
+  atmp?: NatureAtMp;
+  /**
+   * T-104 : arrêt `at_mp` pour un accident (du travail ou de trajet) : vrai si le premier jour de l'absence est le jour de
+   * l'accident. CSS L433-1 : « La journée de travail au cours de laquelle l'accident s'est produit, quel que soit le mode de
+   * paiement du salaire, est intégralement à la charge de l'employeur. » Demandé à la saisie.
+   */
+  jourAccident?: boolean;
 }
 
 export interface Settings {
@@ -397,7 +417,18 @@ export const AM_ABS_LABEL: Record<AmAbs, string> = {
   am_enfant_malade: 'Mon enfant est malade',
   evenement: 'Événement familial',
   sans_solde: 'Congé sans solde',
-  non_gere: 'Absence non gérée par l’app',
+  non_gere: 'Absence à préciser',
+  maternite: 'Congé maternité',
+  paternite: 'Congé paternité et d’accueil de l’enfant',
+  naissance_supp: 'Congé supplémentaire de naissance',
+  at_mp: 'Accident du travail ou maladie professionnelle',
+};
+
+/** T-104 : libellés de la nature d'un arrêt `at_mp` */
+export const NATURE_ATMP_LABEL: Record<NatureAtMp, string> = {
+  accident: 'Accident du travail',
+  trajet: 'Accident de trajet',
+  maladie_pro: 'Maladie professionnelle',
 };
 
 /** Libellés des cas non gérés, pour la liste de choix seulement (jamais enregistrés) */

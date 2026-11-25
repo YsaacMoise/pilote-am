@@ -3,6 +3,7 @@
 import { nonGeresPeriode } from './nonGeres';
 import { pvActif } from './planningVariable';
 import { finPreavis, finsAdmises, preavisEmployeur } from './preavis';
+import { alertesProtection, finPreavisProrogee, messageProrogation } from './suspensions';
 import { FINS_CDD, FINS_CDD_NON_GEREES, type DemandeurInexecution, type FinCdd, type FinCddNonGere, type Motif, type Rupture } from './model';
 import { finEssaiCdd, messagesCdd, MESSAGE_CDD_12_MOIS, MESSAGE_CDD_DEVIENT_CDI } from './cdd';
 import { euros } from './money';
@@ -275,6 +276,12 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     const p = preavisEmployeur(anc);
     preavisLabel = p.label;
     preavisFin = finPreavis(depart, p);
+    // T-104 (R-ABS-07) : préavis fait en entier, suspendu par un congé de maternité ou un arrêt pour accident du travail ou
+    // maladie professionnelle (CCN 64.1) : la fin du contrat est reculée d'autant.
+    if (!inexecution) {
+      const prorogee = finPreavisProrogee(depart, preavisFin, ctx.leaves);
+      if (prorogee !== preavisFin) { alertes.push(messageProrogation(preavisFin, prorogee)); preavisFin = prorogee; }
+    }
     // T-103 (F1, F2 ; décision du DG du 24/11/2026) : une seule date de fin. Le jour de la première présentation est le premier
     // jour du préavis (CCN 64.1 et 120 ; CASF L423-24 ; fiche officielle F2883 : présentée le 8 juillet, préavis d'un mois
     // « du 8 juillet au 7 août 2026 inclus »). Démission de 3 mois à moins d'un an : 15 jours (CCN 120, plus favorable que
@@ -344,7 +351,11 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // T-045b (C3-1) : une date saisie après la fin calculée non plus. Admises : la fin calculée et les autres fins possibles du
   // préavis fait en entier (lendemain, préavis d'un mois de la démission de 3 mois à 1 an), dont les montants sont déjà
   // donnés « à confirmer » ; avec un préavis non fait à la demande de l'AM, seul le dernier jour travaillé.
-  const finAdmise = (e: ISODate) => e === dernierJour || (!finAuDernierJourTravaille && finsAdmises(c.start, { motif, notif, presentation }, regionDe(c) === 'alsaceMoselle').admises.includes(e));
+  const finAdmise = (e: ISODate) => e === dernierJour || (!finAuDernierJourTravaille && finsAdmises(c.start, { motif, notif, presentation }, regionDe(c) === 'alsaceMoselle', inexecution ? [] : ctx.leaves).admises.includes(e));
+  // T-104 (R-ABS-06) : protection de l'AM pendant et après un congé de naissance (C. trav. L1225-4, L1225-4-1, L1225-4-5,
+  // applicables par CASF L423-2, 3° ; Cass. soc. 31/01/2018, n° 16-17.886, publié : retrait d'enfant d'une AM annulé). Les
+  // montants sont calculés comme la fin enregistrée ; l'app dit la règle.
+  if (motif === 'retrait') alertes.push(...alertesProtection(ctx.leaves, notif, dernierJour));
   if (!refusFin.length && c.end && c.end > dernierJour && !finAdmise(c.end)) {
     refusFin.push(`La date de fin du contrat (${shortDate(c.end)}) est après ${finAuDernierJourTravaille ? 'le dernier jour travaillé indiqué' : 'la fin du préavis'} (${shortDate(dernierJour)}). L’app ne calcule pas au-delà, ni en deçà : corrige la date de fin du contrat, ou vérifie les dates de la lettre et du préavis.`);
   }

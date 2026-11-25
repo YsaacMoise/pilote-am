@@ -1,4 +1,5 @@
 // Congés payés (art. 48 et 102) : acquisition, compteur, indemnité.
+import { estSuspension, sorteCongesSuspension } from './suspensions';
 import { addDays, addMonths, addMonthsToDate, cpPeriod, cpPeriodStartYear, daysBetween, eachDay, mondayOf, monthOf, monthsBetween, weekday, type ISODate, type Month } from './dates';
 import { holidayName } from './holidays';
 import { ferieDe, regionDe } from './regions';
@@ -99,12 +100,14 @@ export function decomptesCP(ctx: Ctx): DecompteCP[] {
       const veille = reprise ? addDays(reprise, -1) : finContrat && c.end && c.end > to ? c.end : to;
       // T-103 (C15) : CCN 48.1.1.3, « les jours de congés payés qui coïncident avec la période de l'arrêt de travail ne sont
       // pas décomptés » : un jour d'arrêt maladie de l'AM saisi pendant le congé n'est pas un jour de congé.
-      const malade = (d: ISODate) => autres.some((l) => l.type === 'am_malade' && d >= l.from && d <= l.to);
+      // T-104 : de même pour une suspension (maternité, paternité, naissance, accident du travail : Cass. soc. 02/06/2004,
+      // n° 02-42.405, publié, « période distincte du congé de maternité ») : le jour n'est pas un jour de congé.
+      const malade = (d: ISODate) => autres.some((l) => (l.type === 'am_malade' || estSuspension(l.type)) && d >= l.from && d <= l.to);
       const jours = premier && premier <= veille ? eachDay(premier, veille).filter((d) => ouvrable(regionDe(c), d) && inContract(c, d) && !malade(d)) : [];
       const b: DecompteCP = { from, to, leaves, premier, reprise, jours };
       // T-103 (C17) : une autre absence (enfant malade, sans solde, événement familial…) saisie sur un jour du congé : deux
       // saisies contradictoires. L'app demande laquelle garder (B), elle ne choisit pas.
-      const autre = autres.find((l) => l.type !== 'am_malade' && l.from <= to && l.to >= from);
+      const autre = autres.find((l) => l.type !== 'am_malade' && !estSuspension(l.type) && l.from <= to && l.to >= from);
       if (autre) b.demande = messageDoubleSaisieCP(from, to);
       out.push(b);
     }
@@ -283,6 +286,19 @@ function joursAcquis(ctx: Ctx, from: ISODate, to: ISODate): number {
   const off = toutesSemainesSansAccueil(c);
   const malade = new Set<ISODate>();
   for (const l of ctx.leaves) if (l.type === 'am_malade') for (const d of eachDay(l.from > a ? l.from : a, l.to < b ? l.to : b)) malade.add(d);
+  // T-104 (R-ABS-03) : suspensions du contrat (suspensions.ts, sorteCongesSuspension). Maternité, paternité, accident du travail
+  // et maladie professionnelle : travail effectif (L3141-5, 2° et 5°), y compris pendant une semaine sans accueil (la loi vise
+  // « les périodes » du congé ou de l'arrêt) ; accident de trajet au-delà d'un an : comme un arrêt maladie ; congé
+  // supplémentaire de naissance : hors travail effectif.
+  const suspension = new Map<ISODate, 'travail' | 'maladie' | 'hors'>();
+  for (const l of ctx.leaves) {
+    if (!estSuspension(l.type)) continue;
+    for (const d of eachDay(l.from > a ? l.from : a, l.to < b ? l.to : b)) {
+      const s = sorteCongesSuspension(l, d, ctx.leaves);
+      if (s === 'maladie') malade.add(d);
+      else suspension.set(d, s);
+    }
+  }
   // T-103 (C10) : absence non assimilée à du travail effectif (L3141-5 ne la cite pas) : congé sans solde, enfant malade de
   // l'AM. CCN 48.1.1.2 : calcul « pro rata temporis, en cas […] d'absence » : ces jours sortent du mois de travail.
   const nonAssimile = new Set<ISODate>();
@@ -293,6 +309,7 @@ function joursAcquis(ctx: Ctx, from: ISODate, to: ISODate): number {
   const cpSemaine = (d: ISODate) => { const l = mondayOf(d); return [0, 1, 2, 3, 4, 5].every((i) => cpPayes.has(addDays(l, i)) || !!holidayName(addDays(l, i))); };
   const sorte = (d: ISODate): 'travail' | 'maladie' | 'hors' => {
     if (malade.has(d)) return 'maladie';
+    if (suspension.has(d)) return suspension.get(d)!;
     if (nonAssimile.has(d)) return 'hors';
     if (termsAt(c, d).yearType === 'incomplete' && off.has(mondayOf(d))) return cpPayes.has(d) || ((weekday(d) === 7 || !!holidayName(d)) && cpSemaine(d)) ? 'travail' : 'hors';
     return 'travail';

@@ -118,24 +118,28 @@ describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
   });
 });
 
-describe('T-031 : absences non gérées (congé maternité, paternité, de naissance, accident du travail)', () => {
-  for (const type of ['maternite', 'paternite', 'naissance_supp', 'accident_travail'] as AbsenceLue['type'][]) {
-    it(`${type} : seuls les mois touchés sont refusés`, () => {
+// T-104 (décision du DG du 25/11/2026 : « les quatre cas doivent être gérés ») : ces absences sont calculées. Seule une saisie
+// à qui il manque une donnée (raison d'une ancienne saisie « non gérée », nature d'un arrêt pour accident) fait attendre le mois.
+describe('T-104 (remplace T-031) : congé maternité, paternité, de naissance, accident du travail calculés', () => {
+  for (const type of ['maternite', 'paternite', 'naissance_supp'] as AbsenceLue['type'][]) {
+    it(`${type} : mois calculés`, () => {
       const ctx = makeCtx(ok(), [], [leave(type, '2026-03-02', '2026-04-10')], '2026-10-31');
-      expect(computeMonth(ctx, '2026-03').nonGere.join(' ')).toMatch(/Absence non gérée par l’app du 02\/03.* au 10\/04.*: le salaire de ces jours/);
-      expect(computeMonth(ctx, '2026-04').nonGere.length).toBe(1);
-      expect(computeMonth(ctx, '2026-05').nonGere).toEqual([]);
-      expect(computeMonth(ctx, '2026-02').nonGere).toEqual([]);
+      for (const m of ['2026-02', '2026-03', '2026-04', '2026-05']) expect(computeMonth(ctx, m).nonGere).toEqual([]);
     });
   }
-  it('la période de congés qui contient l’absence passe à confirmer, la suivante non', () => {
+  it('ancienne saisie « accident_travail » : le mois demande la nature de l’arrêt, une fois', () => {
+    const ctx = makeCtx(ok(), [], [leave('accident_travail', '2026-03-02', '2026-04-10')], '2026-10-31');
+    expect(computeMonth(ctx, '2026-03').nonGere.join(' ')).toMatch(/Arrêt du 02\/03\/2026 au 10\/04\/2026 : ouvre « Congés » et dis si c’est un accident du travail, un accident de trajet ou une maladie professionnelle/);
+    expect(computeMonth(ctx, '2026-05').nonGere).toEqual([]);
+  });
+  it('congé maternité : jours de congés acquis calculés (travail effectif, L3141-5, 2°)', () => {
     const ctx = makeCtx(ok(), [], [leave('maternite', '2026-03-02', '2026-04-10')], '2027-10-31');
-    expect(acquisition(ctx, 2025).aConfirmer?.message).toMatch(/Absence non gérée par l’app/);
+    expect(acquisition(ctx, 2025).aConfirmer).toBeUndefined();
     expect(acquisition(ctx, 2026).aConfirmer).toBeUndefined();
   });
-  it('fin de contrat après une absence non gérée : aucun montant', () => {
+  it('fin de contrat après un arrêt dont la nature manque : la question est posée, aucun montant', () => {
     const f = finDeContrat(makeCtx(ok(), [], [leave('accident_travail', '2026-03-02', '2026-03-20')], '2026-10-31'), '2026-10-15', 'retrait');
-    expect(f.nonGere?.join(' ')).toMatch(/Absence non gérée par l’app du 02\/03/);
+    expect(f.nonGere?.join(' ')).toMatch(/Arrêt du 02\/03\/2026 au 20\/03\/2026/);
     expect(f.cpIndemnite).toBe(0);
   });
 });

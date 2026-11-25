@@ -1,7 +1,8 @@
 // Préavis : durée (CCN art. 120), date de fin (méthode de l'app) et contrôle de la date de fin saisie (T-045b).
 // Module séparé de fin.ts pour que le calcul des mois (nonGeres.ts) s'en serve sans dépendre de fin.ts.
 import { addDays, addMonthsToDate, fullMonthsBetween, shortDate, type ISODate } from './dates';
-import type { Contract, Rupture } from './model';
+import type { AmLeave, Contract, Rupture } from './model';
+import { finPreavisProrogee } from './suspensions';
 
 /** Durée du préavis selon l'ancienneté, rupture par l'employeur (R-FIN-02, CCN art. 120) */
 export function preavisEmployeur(anc: number): { label: string; jours?: number } {
@@ -37,12 +38,17 @@ export function finPreavisLocal(start: ISODate, r: Pick<Rupture, 'motif' | 'noti
   return local > ccn ? local : undefined;
 }
 
-export function finsAdmises(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'>, _alsaceMoselle = false): { preavisFin: ISODate; admises: ISODate[] } {
+/**
+ * `leaves` (T-104) : préavis fait en entier seulement, absences de l'AM pour la prorogation de l'art. 64.1 (congé de
+ * maternité, accident du travail ou maladie professionnelle : suspensions.ts). Sans `leaves` : fin sans prorogation (préavis
+ * dont les parents dispensent l'AM, ou fait en partie à sa demande).
+ */
+export function finsAdmises(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'>, _alsaceMoselle = false, leaves: AmLeave[] = []): { preavisFin: ISODate; admises: ISODate[] } {
   // T-103 (F1, F2, R2) : une seule date de fin du préavis (fiche officielle F2883 ; CCN 120 ; pas de préavis local pour l'AM).
   if (r.motif !== 'retrait' && r.motif !== 'demission') return { preavisFin: r.notif, admises: [r.notif] };
   const anc = fullMonthsBetween(start, r.notif);
   const depart = r.presentation && r.presentation > r.notif ? r.presentation : r.notif;
-  const preavisFin = finPreavis(depart, preavisEmployeur(anc));
+  const preavisFin = finPreavisProrogee(depart, finPreavis(depart, preavisEmployeur(anc)), leaves);
   return { preavisFin, admises: [preavisFin] };
 }
 
@@ -56,7 +62,7 @@ const REGLE_DISPENSE = 'si les parents t’ont dispensée de tout ou partie du p
  * touchée (`du`, `au`) et le message de refus. Jamais un total silencieux : chaque mois, régularisation ou période de
  * congés qui touche cette période est refusé (nonGeresPeriode).
  */
-export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'> & Partial<Pick<Contract, 'alsaceMoselle' | 'mayotte' | 'cdd'>>): { du: ISODate; au: ISODate; message: string } | undefined {
+export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'> & Partial<Pick<Contract, 'alsaceMoselle' | 'mayotte' | 'cdd'>>, leaves: AmLeave[] = []): { du: ISODate; au: ISODate; message: string } | undefined {
   const end = c.end;
   if (!end) return undefined;
   const r = c.rupture;
@@ -79,7 +85,9 @@ export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'
       message: `Fin du contrat le ${shortDate(end)} : l’app ne sait pas si le préavis a été fait. Or ${REGLE_DISPENSE}, et le dernier mois change selon la réponse. Réponds aux questions de l’écran « Fin de contrat » et enregistre-les : les derniers mois seront calculés ensuite.`,
     };
   }
-  const { preavisFin, admises } = finsAdmises(c.start, r, !!c.alsaceMoselle && !c.mayotte);
+  // T-104 : prorogation de l'art. 64.1 seulement pour un préavis fait en entier (dernière branche ci-dessous).
+  const { preavisFin } = finsAdmises(c.start, r, !!c.alsaceMoselle && !c.mayotte);
+  const { preavisFin: preavisFinFait, admises } = finsAdmises(c.start, r, !!c.alsaceMoselle && !c.mayotte, leaves);
   const lo = (...d: ISODate[]) => d.reduce((a, b) => (a < b ? a : b));
   const hi = (...d: ISODate[]) => d.reduce((a, b) => (a > b ? a : b));
   const d = r.dernierJourTravaille;
@@ -116,8 +124,8 @@ export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'
   }
   if (!admises.includes(end)) {
     return {
-      du: lo(end, preavisFin), au: hi(end, preavisFin),
-      message: `La date de fin du contrat (${shortDate(end)}) ne concorde pas avec la fin du préavis calculée (${shortDate(preavisFin)}) pour un préavis fait en entier. Si le préavis n’a pas été fait en entier, dis-le dans l’écran « Fin de contrat » ; sinon corrige la date de fin.`,
+      du: lo(end, preavisFinFait), au: hi(end, preavisFinFait),
+      message: `La date de fin du contrat (${shortDate(end)}) ne concorde pas avec la fin du préavis calculée (${shortDate(preavisFinFait)}) pour un préavis fait en entier. Si le préavis n’a pas été fait en entier, dis-le dans l’écran « Fin de contrat » ; sinon corrige la date de fin.`,
     };
   }
   return undefined;

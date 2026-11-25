@@ -6,6 +6,7 @@ import { computeMonth, declarationLines, totalAVerser, type DeclLine } from '../
 import { dayInfo, inContract, type Ctx } from '../engine/payroll';
 import { euros, hoursLabel } from '../engine/money';
 import { AM_ABS_LABEL, CHILD_ABS_LABEL } from '../engine/model';
+import { estSuspension } from '../engine/suspensions';
 
 export const MENTION_RELEVE =
   'Document de travail établi avec Arvela, outil d’aide indépendant de l’Urssaf et de Pajemploi. Il ne remplace pas le bulletin de salaire Pajemploi, qui fait foi.';
@@ -91,7 +92,8 @@ export function releveDonnees(
     reelMin += di.presentMin;
     let reel = '';
     let absence = '';
-    if (di.kind === 'am' && di.amLeave) { absence = AM_ABS_LABEL[di.amLeave]; if (di.plannedMin > 0) absAm++; }
+    // T-104 : congé maternité, paternité, de naissance, accident du travail : jamais nommés sur ce qui part aux parents.
+    if (di.kind === 'am' && di.amLeave) { absence = estSuspension(di.amLeave) || di.amLeave === 'non_gere' ? 'Absente' : AM_ABS_LABEL[di.amLeave]; if (di.plannedMin > 0) absAm++; }
     else if (di.kind === 'ferie') { absence = `Férié : ${di.ferie}${di.deducted ? ' (non payé)' : ''}`; feries++; }
     else if (di.kind === 'absent' && di.rec?.abs) {
       absence = CHILD_ABS_LABEL[di.rec.abs] + (di.deducted ? ', retenu' : ', payé');

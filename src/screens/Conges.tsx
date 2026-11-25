@@ -5,8 +5,9 @@ import { cpPeriodStartYear, dayLabel, today, shortDate } from '../engine/dates';
 import { compteur, decompteConge, indemnite } from '../engine/conges';
 import { euros } from '../engine/money';
 import { EVENEMENTS_GERES_DEPUIS } from '../engine/evenements';
-import { AM_ABS_LABEL, type AmLeave, type Contract } from '../engine/model';
-import { Banner, EuroInput, Gommette, Topbar } from '../ui/kit';
+import { AM_ABS_LABEL, AM_SUSPENSIONS, NATURE_ATMP_LABEL, type AmLeave, type AmSuspension, type Contract, type NatureAtMp } from '../engine/model';
+import { donneeSuspensionManquante } from '../engine/suspensions';
+import { Banner, Choices, EuroInput, Gommette, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { AmAbsenceSheet, demandeIJ } from './Today';
 import type { ChoixAbsence } from '../engine/absences';
@@ -73,7 +74,8 @@ export function Conges() {
                     <span class="li-title">{AM_ABS_LABEL[l.type]}</span>
                     <span class="li-sub">{l.from === l.to ? dayLabel(l.from, true) : `Du ${shortDate(l.from)} au ${shortDate(l.to)}`}{l.type === 'cp' ? decompteTexte(l, list) : ''}{l.type === 'evenement' ? (l.joursEvenement === undefined ? '' : l.from < EVENEMENTS_GERES_DEPUIS ? ' · période non gérée (avant 2022, ancienne convention)' : l.joursEvenement ? ` · ${l.joursEvenement} jour${l.joursEvenement > 1 ? 's' : ''} payé${l.joursEvenement > 1 ? 's' : ''} prévu${l.joursEvenement > 1 ? 's' : ''}` : ' · durée non gérée par l’app') : ''}{l.type === 'evenement' && l.suiteDe ? (() => { const p = s.leaves.find((x) => x.id === l.suiteDe); return p ? ` · suite de l’absence du ${shortDate(p.from).slice(0, 5)}` : ''; })() : ''}</span>
                   </span>
-                  {(l.type === 'evenement' ? l.ijSecu !== undefined : !!demandeIJ(l.type as ChoixAbsence, undefined, l.from, l.to, s.contracts)) && <IjEdit l={l} />}
+                  {(l.type === 'evenement' ? l.ijSecu !== undefined : l.type !== 'non_gere' && !!demandeIJ(l.type as ChoixAbsence, undefined, l.from, l.to, s.contracts)) && <IjEdit l={l} />}
+                  {donneeSuspensionManquante(l) && <PreciserAbsence l={l} />}
                   <button class="icon-btn" aria-label={`Supprimer : ${AM_ABS_LABEL[l.type]} du ${shortDate(l.from)}`} onClick={async () => { const u = await deleteLeave(l.id); toast('Absence supprimée', u); }}>
                     <Icon name="trash" size={20} />
                   </button>
@@ -86,6 +88,40 @@ export function Conges() {
       </main>
       {add && <AmAbsenceSheet start={t} onClose={() => setAdd(false)} />}
     </>
+  );
+}
+
+/**
+ * T-104 : donnée qui manque à une absence (saisie d'avant « non gérée » sans sa raison ; arrêt pour accident sans sa nature
+ * ou sans le jour de l'accident). Demandée une fois ici ; le mois est calculé dès que c'est enregistré.
+ */
+function PreciserAbsence({ l }: { l: AmLeave }) {
+  const [type, setType] = useState<AmSuspension | undefined>(l.type === 'non_gere' ? undefined : (l.type as AmSuspension));
+  const [atmp, setAtmp] = useState<NatureAtMp | undefined>(l.atmp);
+  const [jour, setJour] = useState<'oui' | 'non' | undefined>(l.jourAccident === undefined ? undefined : l.jourAccident ? 'oui' : 'non');
+  const complet = !!type && (type !== 'at_mp' || (!!atmp && (atmp === 'maladie_pro' || !!jour)));
+  return (
+    <div class="stack-sm">
+      <Banner tone="warn">{donneeSuspensionManquante(l)}</Banner>
+      {l.type === 'non_gere' && (
+        <Choices label="C’était :" value={type} onChange={setType}
+          options={AM_SUSPENSIONS.map((v) => ({ v, l: AM_ABS_LABEL[v] }))} />
+      )}
+      {type === 'at_mp' && <Choices label="C’est :" value={atmp} onChange={setAtmp} options={(Object.keys(NATURE_ATMP_LABEL) as NatureAtMp[]).map((v) => ({ v, l: NATURE_ATMP_LABEL[v] }))} />}
+      {type === 'at_mp' && atmp && atmp !== 'maladie_pro' && (
+        <Choices label="Le premier jour de l’absence est-il le jour de l’accident ?" value={jour} onChange={setJour}
+          options={[{ v: 'oui', l: 'Oui', sub: 'Ce jour-là est payé en entier par les parents (code de la sécurité sociale, article L433-1).' }, { v: 'non', l: 'Non, l’arrêt commence après' }]} />
+      )}
+      {complet && (
+        <button class="btn btn-outline" onClick={async () => {
+          const { atmp: _a, jourAccident: _j, ...reste } = l;
+          const n: AmLeave = { ...reste, type: type! };
+          if (type === 'at_mp') { n.atmp = atmp; if (atmp !== 'maladie_pro') n.jourAccident = jour === 'oui'; }
+          const u = await putLeave(n);
+          toast('Absence précisée', u);
+        }}>Enregistrer</button>
+      )}
+    </div>
   );
 }
 

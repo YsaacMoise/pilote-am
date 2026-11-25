@@ -5,6 +5,7 @@ import { controleFinContrat, jourDispense } from './preavis';
 import { nonGeresCdd } from './cdd';
 import type { AmLeave, Contract } from './model';
 import { statutJourEvenement } from './evenements';
+import { donneeSuspensionManquante } from './suspensions';
 import { messagePVACompleter, nonGeresContratPV, nonGeresPeriodePV } from './planningVariable';
 
 export const NON_GERE_ALSACE =
@@ -45,14 +46,16 @@ export const NON_GERE_47_51 =
 export const CONTRAT_A_COMPLETER =
   'Contrat à compléter : ouvre le contrat et réponds aux 4 questions (lieu de travail, horaires, accueil régulier, CDI ou CDD). L’app ne calcule pas ce mois avant.';
 
-/** Message d'une absence non gérée (sans le cas précis, qui n'est pas enregistré : décision du DG du 21/11/2026) */
+/**
+ * T-104 : absence dont une donnée manque pour la calculer : saisie d'avant sans sa raison (`non_gere`), ou arrêt pour accident
+ * du travail sans sa nature ou sans le jour de l'accident (suspensions.ts). Le mois attend la réponse, demandée une fois.
+ */
 export function messageAbsenceNonGeree(l: AmLeave): string {
-  const quand = l.from === l.to ? `le ${shortDate(l.from)}` : `du ${shortDate(l.from)} au ${shortDate(l.to)}`;
-  return `Absence non gérée par l’app ${quand} (congé maternité, paternité, de naissance, accident du travail ou maladie professionnelle) : le salaire de ces jours, tes congés payés et la fin de contrat en dépendent. Fais ces mois sans l’app, avec les parents.`;
+  return donneeSuspensionManquante(l) ?? '';
 }
 
 export function estAbsenceNonGeree(l: AmLeave): boolean {
-  return l.type === 'non_gere';
+  return !!donneeSuspensionManquante(l);
 }
 
 /** Cas du contrat lui-même (tous ses mois) */
@@ -137,7 +140,7 @@ export function nonGeresPeriode(c: Contract, leaves: AmLeave[], from: ISODate, t
   }
   // T-045b (P3-B1, C3-1 de V5) : date de fin saisie qui ne concorde pas avec le préavis, ou préavis sans réponse.
   if (controleFin !== 'non' && (controleFin === 'tout' || c.rupture)) {
-    const f = controleFinContrat(c);
+    const f = controleFinContrat(c, leaves);
     if (f && f.du <= to && f.au >= from) out.push(f.message);
   }
   return out;

@@ -10,10 +10,11 @@ import { controleKm, indemniteKmJour } from './km';
 import { euros } from './money';
 import { cpDemandesEntre, cpDroitsInconnus, cpExces } from './conges';
 import { nonGeresPeriode } from './nonGeres';
-import { ferieDe, MESSAGE_IJ_MAINTIEN_LOCAL, MESSAGE_MAINTIEN_LOCAL, regionDe } from './regions';
+import { ferieDe, MESSAGE_IJ_MAINTIEN_LOCAL, MESSAGE_IJ_MAINTIEN_LOCAL_SUSPENSION, MESSAGE_MAINTIEN_LOCAL, MESSAGE_MAINTIEN_LOCAL_SUSPENSION, regionDe } from './regions';
 import { jourDispense } from './preavis';
 import { baseHebdoMin, formePV, lecturePV, mensuelMinutesPV, messageBasePV, minutesPlanning, plagesDuJour, pvActif } from './planningVariable';
 import { joursApresTermeRefuses, messageApresTerme, messageMoisApresTerme, messageTermeAVenir } from './cdd';
+import { donneeSuspensionManquante, estSuspension, jourAccidentPaye } from './suspensions';
 import type { AmAbs, AmLeave, Contract, DayRec, Plage, Planning } from './model';
 
 export interface Ctx {
@@ -164,7 +165,10 @@ export function amLeaveAt(leaves: AmLeave[], d: ISODate): AmLeave | undefined {
   for (const l of leaves) {
     if (d < l.from || d > l.to) continue;
     // T-103 (C15) : un arrêt maladie de l'AM pendant ses congés l'emporte : ce jour n'est pas un jour de congé (CCN 48.1.1.3).
-    if (l.type === 'am_malade') return l;
+    // T-104 : de même pour une suspension (maternité, paternité, naissance, accident du travail) : « les congés annuels doivent
+    // être pris au cours d'une période distincte du congé de maternité » (Cass. soc. 02/06/2004, n° 02-42.405, publié) ;
+    // CCN 48.1.1.3 pour l'arrêt de travail.
+    if (l.type === 'am_malade' || estSuspension(l.type)) return l;
     found ??= l;
   }
   return found;
@@ -222,7 +226,13 @@ export interface DayInfo {
   maintienLocal?: boolean;
   /** T-074 : jour d'un préavis dont les parents ont dispensé l'AM : payé, sans entretien (CCN art. 64.2, 114.1) */
   dispense?: boolean;
+  /** T-104 : jour de l'accident du travail ou de trajet, payé en entier par le parent (CSS L433-1) */
+  jourAccident?: boolean;
 }
+
+/** T-104 : mois entier d'arrêt ou de congé non payé (maladie, maternité, paternité, naissance, accident du travail) */
+export const MESSAGE_ARRET_MOIS_ENTIER =
+  'Absente tout le mois pour un arrêt ou un congé non payé par les parents : aucune déclaration Pajemploi à faire pour ce mois (Urssaf, « Particulier employeur : gérer les absences de votre salarié »).';
 
 /** T-035b : alerte du jour noté « sans solde » avant la correction (CCN art. 105 ; CASF L423-20). */
 export const messageSansSoldeEnfant = (d: ISODate): string =>
@@ -276,15 +286,32 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
         // ou sans solde selon ces droits. Le mois attend la donnée (B), jamais « à confirmer ».
         info.inDivisor = true;
         info.donneeManquante = cpDroitsInconnus(ctx).get(d);
-      } else if (region === 'alsaceMoselle' && (amLeave === 'am_malade' || amLeave === 'am_enfant_malade')) {
+      } else if (estSuspension(amLeave) && donneeSuspensionManquante(amLeaveAt(ctx.leaves, d)!)) {
+        // T-104 : nature de l'arrêt ou jour de l'accident pas encore dits : le mois attend la réponse (une fois, dans « Congés »).
+        info.inDivisor = true;
+        info.donneeManquante = donneeSuspensionManquante(amLeaveAt(ctx.leaves, d)!);
+      } else if (estSuspension(amLeave) && jourAccidentPaye(amLeaveAt(ctx.leaves, d)!, d)) {
+        // T-104 (R-ABS-01) : CSS L433-1, al. 1 : « La journée de travail au cours de laquelle l'accident s'est produit, quel
+        // que soit le mode de paiement du salaire, est intégralement à la charge de l'employeur. » Jour payé, sans retenue.
+        info.inDivisor = true;
+        info.jourAccident = true;
+      } else if (region === 'alsaceMoselle' && (amLeave === 'am_malade' || amLeave === 'am_enfant_malade' || estSuspension(amLeave))) {
+        // T-104 (R-ABS-08) : en Alsace-Moselle, les suspensions aussi : Cass. soc. 27/05/2025, n° 24-11.388, publié (congé de
+        // paternité : « cause personnelle indépendante de la volonté du salarié » au sens de L1226-23, salaire maintenu) ;
+        // décision du DG du 24/11/2026 (R3, maintien pour toute absence, aucun texte ne fixant la durée).
         // T-103 (R3, décision du DG du 24/11/2026) : salaire maintenu (C. trav. L1226-23), moins les indemnités journalières
         // saisies (déduites dans le mois, plus bas). Sans leur montant, le mois attend la saisie (B).
         info.inDivisor = true;
         info.maintienLocal = true;
         const lv = amLeaveAt(ctx.leaves, d)!;
-        if (lv.ijSecu === undefined) info.donneeManquante = MESSAGE_IJ_MAINTIEN_LOCAL;
+        if (lv.ijSecu === undefined) info.donneeManquante = estSuspension(lv.type) ? MESSAGE_IJ_MAINTIEN_LOCAL_SUSPENSION : MESSAGE_IJ_MAINTIEN_LOCAL;
         else if (partIJ(ctx, lv) === undefined) info.donneeManquante = MESSAGE_IJ_SALAIRES_AUTRES;
-      } else if (amLeave === 'am_malade' || amLeave === 'am_enfant_malade' || amLeave === 'sans_solde') {
+      } else if (amLeave === 'am_malade' || amLeave === 'am_enfant_malade' || amLeave === 'sans_solde' || estSuspension(amLeave)) {
+        // T-104 (R-ABS-01) : maternité, paternité, congé supplémentaire de naissance, accident du travail ou maladie
+        // professionnelle : contrat suspendu, salaire non maintenu par le parent (CCN 48.1.2.2.2, 48.1.2.3 : « n'est pas
+        // rémunéré mais il ouvre droit à des indemnités journalières » ; annexe 3, art. 3.1 ; C. trav. L1225-46-2), retenu par
+        // la déduction de l'art. 111 (Urssaf, « gérer les absences de votre salarié » : maternité, accident du travail,
+        // maladie professionnelle, congé supplémentaire de naissance « engendrent une minoration de la rémunération »).
         // T-034 : congé sans solde = absence non rémunérée, retenue par la déduction d'absence de l'art. 111. Fiches DREETS
         // Occitanie du 19/01/2023, section 3 : « Absence du salarié pour congés sans solde » ; Urssaf « gérer les absences
         // de votre salarié » (17/09/2026) : « raison personnelle » parmi « Les absences engendrant une minoration de la
@@ -384,7 +411,10 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
   return info;
 }
 
-const ABSENCES_NON_AUTORISEES: AmAbs[] = ['am_malade', 'am_enfant_malade'];
+// T-104 : l'arrêt pour accident du travail ou maladie professionnelle n'est pas une « autorisation d'absence préalablement
+// accordée » (CCN 47.2) : même règle que l'arrêt maladie. Maternité, paternité et congé supplémentaire de naissance sont
+// annoncés à l'avance et ne peuvent être refusés (CCN 48.1.2.3 ; C. trav. L1225-24, D1225-11-4) : absences autorisées.
+const ABSENCES_NON_AUTORISEES: AmAbs[] = ['am_malade', 'am_enfant_malade', 'at_mp'];
 
 function jourPrevuVoisin(ctx: Ctx, d: ISODate, sens: 1 | -1): ISODate | undefined {
   const { c } = ctx;
@@ -1016,7 +1046,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   let entretienSousMin = 0, entretienMinVerse = 0;
   // T-044 : montants exacts (centimes non arrondis), arrondis une seule fois sur le mois.
   let entretienExact = 0;
-  let kmJours = 0, sansSoldePayes = 0;
+  let kmJours = 0, sansSoldePayes = 0, arretJours = 0;
   const forgotten: ISODate[] = [];
   for (const d of allDays) {
     if (!inSeg(d)) continue;
@@ -1027,6 +1057,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     // T-025 C-4 : un férié pendant un congé pour événement familial reste un férié chômé (art. 47) : payé, pas compté.
     if (di.inDivisor && !di.deducted && di.kind !== 'ferie' && !(di.kind === 'am' && di.ferie)) actDays++;
     if (di.cpSansDroits) cpSansDroits++;
+    if (di.kind === 'am' && di.deducted && di.plannedMin > 0 && (di.amLeave === 'am_malade' || estSuspension(di.amLeave))) arretJours++;
     if (di.sansSoldeEnfantPaye && di.plannedMin > 0) { r.alerts.push(messageSansSoldeEnfant(d)); sansSoldePayes++; }
     if (di.departOublie) forgotten.push(d);
     // T-074 (P-1) : mois avec des jours de préavis dispensés par les parents : déclaration Pajemploi à confirmer.
@@ -1171,7 +1202,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   // T-103 (R3) : en Alsace-Moselle, même déduction pour l'absence de l'AM pour sa maladie ou celle de son enfant (L1226-23).
   const maintienLocal = regionDe(ctx.c) === 'alsaceMoselle';
   for (const l of ctx.leaves) {
-    const local = maintienLocal && (l.type === 'am_malade' || l.type === 'am_enfant_malade');
+    const local = maintienLocal && (l.type === 'am_malade' || l.type === 'am_enfant_malade' || estSuspension(l.type));
     if ((l.type !== 'evenement' && !local) || !l.ijSecu || l.to < segFrom || l.from > segTo) continue;
     const quote = partIJ(ctx, l);
     if (quote === undefined) continue;
@@ -1182,10 +1213,13 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     r.base = Math.max(0, r.base - part);
     r.ijDeduites = (r.ijDeduites ?? 0) + part;
     r.alerts.push(local
-      ? `${MESSAGE_MAINTIEN_LOCAL} ${euros(part)} d’indemnités journalières déduits du salaire de ce mois.`
+      ? `${estSuspension(l.type) ? MESSAGE_MAINTIEN_LOCAL_SUSPENSION : MESSAGE_MAINTIEN_LOCAL} ${euros(part)} d’indemnités journalières déduits du salaire de ce mois.`
       : `Congé indemnisé par la Sécurité sociale : ${euros(part)} d’indemnités journalières déduits du salaire de ce mois (convention, article 48.1.3.1.3 : salaire maintenu « sous déduction des indemnités journalières versées »).`);
   }
   r.net = r.base + r.complAmount + r.majAmount + r.ferieAmount + (r.normalesPlusAmount ?? 0);
+  // T-104 : Urssaf, « Particulier employeur : gérer les absences de votre salarié » (17/09/2026) : « En cas d'arrêt de travail
+  // couvrant l'intégralité du mois, aucune déclaration n'est à effectuer pour ce mois. »
+  if (!startsOrEndsInMonth && arretJours > 0 && arretJours === segDays && r.net === 0 && !r.entretien && !r.repas && !r.km) r.alerts.push(MESSAGE_ARRET_MOIS_ENTIER);
   if (forgotten.length) r.alerts.push(`${forgotten.length} départ${forgotten.length > 1 ? 's' : ''} non pointé${forgotten.length > 1 ? 's' : ''} : l’heure prévue a été retenue.`);
   if (r.sickPaidNotice) r.alerts.push('Des jours d’enfant malade dépassent la limite de l’article 105 : ils restent payés.');
   return r;

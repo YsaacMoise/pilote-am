@@ -1,9 +1,11 @@
-// Décision du DG du 21/11/2026 (« sans la raison ») : l'app n'enregistre ni la nature d'un événement familial, ni le cas
-// précis d'une absence non gérée. Contrôle qualité de la demande n° 52, point 7 (rapports/controle-maj-2026-11-21-PR52.md).
+// Décision du DG du 21/11/2026 (« sans la raison ») : l'app n'enregistre pas la nature d'un événement familial. Contrôle
+// qualité de la demande n° 52, point 7 (rapports/controle-maj-2026-11-21-PR52.md).
+// T-104 : décision du DG du 22/11/2026, la raison des quatre absences protégées (maternité, paternité, congé supplémentaire de
+// naissance, accident du travail ou maladie professionnelle) est enregistrée, car le calcul en a besoin ; elle ne part
+// jamais vers les parents (lien, texte du mois). Les tests de l'ancienne forme « non_gere » sont remplacés en conséquence.
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import type { AmLeave, Contract, NatureEvenement } from '../src/engine/model';
-import { AM_ABS_NON_GEREES } from '../src/engine/model';
 import { absenceSaisie, normaliserAbsence, type AbsenceLue } from '../src/engine/absences';
 import { dureeEvenement, NATURE_EVENEMENT_LABEL } from '../src/engine/evenements';
 import { makeCtx } from '../src/engine/payroll';
@@ -35,7 +37,7 @@ const c: Contract = {
   balances: { cpRestants: 30, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 0,
   alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false,
 } as Contract;
-const motsInterdits = [...NATURES, ...AM_ABS_NON_GEREES, 'nature'];
+const motsInterdits = [...NATURES, 'nature'];
 const sansRaison = (v: unknown) => { const j = JSON.stringify(v); for (const m of motsInterdits) expect(j).not.toContain(`"${m}"`); };
 
 describe('saisie : la nature d’un événement familial n’est pas enregistrée', () => {
@@ -53,16 +55,17 @@ describe('saisie : la nature d’un événement familial n’est pas enregistré
   });
 });
 
-describe('saisie : le cas d’une absence non gérée n’est pas enregistré', () => {
-  for (const t of AM_ABS_NON_GEREES) {
-    it(`${t} : enregistré « non_gere » avec ses dates seulement`, () => {
+describe('T-104 : saisie d’une absence protégée, raison gardée et mois calculé', () => {
+  for (const t of ['maternite', 'paternite', 'naissance_supp'] as const) {
+    it(`${t} : type et dates gardés, mois calculé (retenue de l’article 111)`, () => {
       const l = absenceSaisie(t, undefined, 'x', '2026-03-02', '2026-04-10')!;
-      expect(l).toEqual({ id: 'x', type: 'non_gere', from: '2026-03-02', to: '2026-04-10' });
+      expect(l).toEqual({ id: 'x', type: t, from: '2026-03-02', to: '2026-04-10' });
       sansRaison(l);
-      // Les mois touchés restent bloqués, comme avant.
       const ctx = makeCtx(c, [], [l], '2026-10-31');
-      expect(computeMonth(ctx, '2026-03').nonGere.join(' ')).toMatch(/Absence non gérée par l’app du 02\/03.* au 10\/04.*: le salaire de ces jours/);
-      expect(computeMonth(ctx, '2026-04').nonGere.length).toBe(1);
+      const mars = computeMonth(ctx, '2026-03');
+      expect(mars.nonGere).toEqual([]);
+      expect(mars.net).toBe(0);
+      expect(computeMonth(ctx, '2026-04').nonGere).toEqual([]);
       expect(computeMonth(ctx, '2026-05').nonGere).toEqual([]);
     });
   }
@@ -77,10 +80,14 @@ describe('migration douce : saisies d’avant ramenées à la forme sans raison'
       expect(normaliserAbsence(apres)).toBe(apres); // une seule fois
     }
   });
-  it('cas non géré : « non_gere », dates gardées', () => {
-    for (const t of AM_ABS_NON_GEREES) {
-      expect(normaliserAbsence({ id: 'm', type: t, from: '2026-03-02', to: '2026-06-19' })).toEqual({ id: 'm', type: 'non_gere', from: '2026-03-02', to: '2026-06-19' });
+  it('T-104 : types d’avant gardés (maternité, paternité, naissance) ; « accident_travail » devient at_mp, nature à préciser', () => {
+    for (const t of ['maternite', 'paternite', 'naissance_supp'] as const) {
+      const l = { id: 'm', type: t, from: '2026-03-02', to: '2026-06-19' };
+      expect(normaliserAbsence(l)).toEqual(l);
     }
+    expect(normaliserAbsence({ id: 'm', type: 'accident_travail', from: '2026-03-02', to: '2026-06-19' })).toEqual({ id: 'm', type: 'at_mp', from: '2026-03-02', to: '2026-06-19' });
+    const nonGere: AmLeave = { id: 'n', type: 'non_gere', from: '2026-03-02', to: '2026-06-19' };
+    expect(normaliserAbsence(nonGere)).toBe(nonGere);
   });
   it('événement d’avant T-023 (sans nature) et autres absences : inchangés', () => {
     const sans: AmLeave = { id: 's', type: 'evenement', from: '2026-03-02', to: '2026-03-02' };
@@ -92,18 +99,19 @@ describe('migration douce : saisies d’avant ramenées à la forme sans raison'
     const store = await import('../src/store');
     await store.load();
     expect(store.state.leaves).toEqual([
-      { id: 'a2', type: 'non_gere', from: '2026-03-02', to: '2026-06-19' },
+      { id: 'a2', type: 'maternite', from: '2026-03-02', to: '2026-06-19' },
       { id: 'a3', type: 'cp', from: '2026-08-03', to: '2026-08-08' },
       { id: 'a1', type: 'evenement', from: '2026-10-05', to: '2026-10-09', joursEvenement: 10 },
     ]);
-    expect(ecrites.map((e) => (e.v as AmLeave).id).sort()).toEqual(['a1', 'a2']);
+    // T-104 : le congé maternité d'avant est déjà à la bonne forme : seul l'événement est réécrit.
+    expect(ecrites.map((e) => (e.v as AmLeave).id).sort()).toEqual(['a1']);
     expect(ecrites.every((e) => e.s === 'leaves')).toBe(true);
     sansRaison(store.state.leaves);
     sansRaison(ecrites);
   });
   it('envoi en ligne : une absence pas encore ramenée part sans sa raison', () => {
     sansRaison(forRemote('leaves', 'a1', { id: 'a1', type: 'evenement', from: '2026-10-05', to: '2026-10-05', nature: 'deces_proche' }));
-    sansRaison(forRemote('leaves', 'a2', { id: 'a2', type: 'accident_travail', from: '2026-10-05', to: '2026-10-05' }));
+    expect(forRemote('leaves', 'a2', { id: 'a2', type: 'accident_travail', from: '2026-10-05', to: '2026-10-05' })).toEqual({ id: 'a2', type: 'at_mp', from: '2026-10-05', to: '2026-10-05' });
   });
 });
 
@@ -141,13 +149,16 @@ describe('lien des parents : aucun motif d’absence de l’AM', () => {
     expect(snap.jours.filter((j) => j.statut === 'am').every((j) => j.motif === 'Ana absente')).toBe(true);
     sansRaison(snap);
   });
-  it('absence non gérée : jours « absente », mois non calculé, sans le cas', () => {
-    const l = absenceSaisie('maternite', undefined, 'm', '2026-10-05', '2026-11-06')!;
+  it('T-104 : congé maternité ou accident du travail : jours « absente », mois calculé, sans la raison', () => {
+    for (const l of [absenceSaisie('maternite', undefined, 'm', '2026-10-05', '2026-11-06')!, { ...absenceSaisie('at_mp', undefined, 'm', '2026-10-05', '2026-11-06')!, atmp: 'accident' as const, jourAccident: true }]) {
     const snap = buildSnapshot({ ctx: makeCtx(c, [], [l], '2026-11-10'), journal: [], amName: 'Ana', enfants: 0, now: 1 });
-    expect(snap.mois.find((x) => x.month === '2026-10')?.nonGere).toBe(true);
-    expect(JSON.stringify(snap)).not.toMatch(/maternit|non gérée|accident/i);
+    expect(snap.mois.find((x) => x.month === '2026-10')?.nonGere).toBeFalsy();
+    expect(JSON.stringify(snap)).not.toMatch(/maternit|non gérée|accident|maladie|paternit|naissance/i);
+    const ctx = makeCtx(c, [], [l], '2026-11-10');
+    expect(declarationText(ctx, computeMonth(ctx, '2026-10'), 'Ana')).not.toMatch(/maternit|accident|maladie|paternit|naissance/i);
     expect(snap.jours.filter((j) => j.statut === 'am').length).toBeGreaterThan(0);
     expect(snap.jours.filter((j) => j.statut === 'am').every((j) => j.motif === 'Ana absente')).toBe(true);
+    }
   });
   it('texte copié par l’AM pour les parents (écran Mois) : même formulation que le lien, sans « événement familial »', () => {
     const l = absenceSaisie('evenement', 'handicap_enfant', 'e', '2026-10-05', '2026-10-23')!;

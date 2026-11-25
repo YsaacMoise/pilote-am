@@ -93,6 +93,15 @@ export const MESSAGE_MAINTIEN_LOCAL =
   'Absence pour ta maladie ou celle de ton enfant, en Alsace-Moselle : les parents maintiennent ton salaire, moins les indemnités journalières de la Sécurité sociale (code du travail, article L1226-23 ; Cour de cassation, 13/04/2005 et 04/12/2024).';
 export const MESSAGE_IJ_MAINTIEN_LOCAL =
   'Absence pour ta maladie ou celle de ton enfant, en Alsace-Moselle : indique le montant des indemnités journalières de la Sécurité sociale reçues pour cette absence (0 si tu n’en as pas reçu). Les parents maintiennent ton salaire moins ce montant (code du travail, article L1226-23). L’app ne calcule pas ce mois sans lui.';
+/**
+ * T-104 (R-ABS-08) : congé maternité, paternité, congé supplémentaire de naissance, accident du travail ou maladie
+ * professionnelle en Alsace-Moselle : même maintien (L1226-23 ; Cass. soc. 27/05/2025, n° 24-11.388, publié : congé de
+ * paternité ; décision du DG du 24/11/2026, maintien pour toute absence).
+ */
+export const MESSAGE_MAINTIEN_LOCAL_SUSPENSION =
+  'Congé ou arrêt en Alsace-Moselle : les parents maintiennent ton salaire, moins les indemnités journalières de la Sécurité sociale (code du travail, article L1226-23 ; Cour de cassation, 27/05/2025, pour un congé de paternité).';
+export const MESSAGE_IJ_MAINTIEN_LOCAL_SUSPENSION =
+  'Congé ou arrêt en Alsace-Moselle : indique le montant des indemnités journalières de la Sécurité sociale reçues pour cette absence (0 si tu n’en as pas reçu). Les parents maintiennent ton salaire moins ce montant (code du travail, article L1226-23). L’app calcule ce mois dès que c’est saisi.';
 
 /** R6 : CSG et CRDS. Aucune ligne CSG ou CRDS dans les taux de l'AM à Mayotte (Urssaf, au 01/01/2026). */
 export function partNonDeductibleRegion(region: Region, metropole: number): number {

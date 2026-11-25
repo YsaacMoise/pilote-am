@@ -1,12 +1,13 @@
-import { ABSENCE_NON_GEREE_CHOISIE, ABSENCES_NON_GEREES } from '../legal';
+import { ABSENCES_PROTEGEES_AIDE, ABSENCES_PROTEGEES_DONNEES } from '../legal';
 import { useEffect, useState } from 'preact/hooks';
 import { activeContracts, ctxFor, logUsage, putLeave, saveSettings, state, toast, uid, updateDay, useStore } from '../store';
 import { addDays, dayLabel, minutes, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NOMS, daysBetween } from '../engine/dates';
 import { dayInfo, libelleFerie, type Ctx, type DayInfo } from '../engine/payroll';
-import { AM_ABS_LABEL, AM_ABS_NON_GEREE_LABEL, AM_ABS_NON_GEREES, CHILD_ABS_LABEL, type ChildAbs, type Contract, type DayRec, type NatureEvenement, type Plage, type Presence } from '../engine/model';
+import { AM_ABS_LABEL, CHILD_ABS_LABEL, NATURE_ATMP_LABEL, type NatureAtMp, type ChildAbs, type Contract, type DayRec, type NatureEvenement, type Plage, type Presence } from '../engine/model';
 import { regionDe } from '../engine/regions';
+import { estSuspension } from '../engine/suspensions';
 import { libelleDureeSaisie, NATURE_EVENEMENT_LABEL } from '../engine/evenements';
-import { absenceSaisie, appliquerReponses, estNonGere, questionsSuite, questionsVisibles, reponsesCompletes, texteQuestionSuite, type ChoixAbsence, type Reponse } from '../engine/absences';
+import { absenceSaisie, appliquerReponses, questionsSuite, questionsVisibles, reponsesCompletes, texteQuestionSuite, type ChoixAbsence, type Reponse } from '../engine/absences';
 import { hoursLabel } from '../engine/money';
 import { Banner, CHILD_COLORS, Choices, DateInput, EuroInput, Gommette, Sheet, Stepper, Switch, Topbar, useErreurAffichee } from '../ui/kit';
 import { evAnnulation, evCorrections, evPointage, type GestePointage } from '../usage-events';
@@ -767,8 +768,19 @@ const AM_OPTIONS: { v: ChoixAbsence; l: string; sub: string }[] = [
   { v: 'am_enfant_malade', l: 'Enfant malade', sub: 'Ton enfant à toi. Non payé : 3 jours par an, 5 dans certains cas.' },
   { v: 'evenement', l: 'Événement familial', sub: 'Mariage, naissance, décès… Payé sur justificatif, pour la durée prévue.' },
   { v: 'sans_solde', l: 'Congé sans solde', sub: 'Non payé, avec l’accord des parents.' },
-  // T-031 : absences que l'app ne calcule pas. Les saisir bloque les mois concernés au lieu de les payer comme travaillés.
-  ...AM_ABS_NON_GEREES.map((v) => ({ v, l: AM_ABS_NON_GEREE_LABEL[v], sub: 'Non géré par l’app : les mois concernés sont bloqués' })),
+  // T-104 (regles/t104-absences-protegees.md) : calculées par l'app ; non payées par les parents (indemnités de la Sécurité
+  // sociale), sauf le jour de l'accident et, en Alsace-Moselle, le maintien du salaire.
+  { v: 'maternite', l: 'Congé maternité', sub: 'Non payé par les parents : la Sécurité sociale te verse des indemnités. Compte pour tes congés et ton ancienneté.' },
+  { v: 'paternite', l: 'Congé paternité et d’accueil de l’enfant', sub: 'Non payé par les parents : la Sécurité sociale te verse des indemnités. Compte pour tes congés et ton ancienneté.' },
+  { v: 'naissance_supp', l: 'Congé supplémentaire de naissance', sub: 'Non payé par les parents : la Sécurité sociale te verse des indemnités. Compte pour ton ancienneté, pas pour tes congés.' },
+  { v: 'at_mp', l: 'Accident du travail ou maladie professionnelle', sub: 'Non payé par les parents, sauf le jour de l’accident : la Sécurité sociale te verse des indemnités. Compte pour tes congés et ton ancienneté.' },
+];
+
+/** T-104 : nature d'un arrêt pour accident du travail ou maladie professionnelle (CCN 49 et 64.1 ; CSS L411-1, L411-2) */
+const ATMP_OPTIONS: { v: NatureAtMp; l: string; sub: string }[] = [
+  { v: 'accident', l: NATURE_ATMP_LABEL.accident, sub: 'Pendant ton travail, chez toi ou en sortie avec les enfants.' },
+  { v: 'trajet', l: NATURE_ATMP_LABEL.trajet, sub: 'Sur le trajet entre chez toi et ton lieu de travail (une maison d’assistants maternels, par exemple).' },
+  { v: 'maladie_pro', l: NATURE_ATMP_LABEL.maladie_pro, sub: 'Maladie reconnue comme liée à ton travail.' },
 ];
 
 /**
@@ -777,7 +789,7 @@ const AM_OPTIONS: { v: ChoixAbsence; l: string; sub: string }[] = [
  */
 export function demandeIJ(type: ChoixAbsence, nature: NatureEvenement | undefined, from: string, to: string, contrats: Contract[]): 'deuil' | 'local' | undefined {
   if (type === 'evenement' && nature === 'deuil') return 'deuil';
-  if ((type === 'am_malade' || type === 'am_enfant_malade') && contrats.some((c) => regionDe(c) === 'alsaceMoselle' && c.start <= to && (!c.end || c.end >= from))) return 'local';
+  if ((type === 'am_malade' || type === 'am_enfant_malade' || estSuspension(type)) && contrats.some((c) => regionDe(c) === 'alsaceMoselle' && c.start <= to && (!c.end || c.end >= from))) return 'local';
   return undefined;
 }
 
@@ -791,6 +803,10 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
   // T-103 (C9, R3) : indemnités journalières de la Sécurité sociale, en centimes nets (congé de deuil ; maladie en Alsace-Moselle).
   const [ij, setIj] = useState<number | undefined>(undefined);
   const [ijAutres, setIjAutres] = useState<number | undefined>(undefined);
+  // T-104 : nature de l'arrêt et jour de l'accident (CSS L433-1), demandés une fois ici.
+  const [atmp, setAtmp] = useState<NatureAtMp | undefined>(undefined);
+  const [jourAccident, setJourAccident] = useState<'oui' | 'non' | undefined>(undefined);
+  const atmpManque = type === 'at_mp' && (!atmp || (atmp !== 'maladie_pro' && !jourAccident));
   const ijDemande = demandeIJ(type, nature, from, to, state.contracts);
   const err = to < from ? 'La date de fin doit être après le début.' : '';
   useErreurAffichee('dates_absence', !!err);
@@ -807,8 +823,12 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
           options={(Object.keys(NATURE_EVENEMENT_LABEL) as NatureEvenement[]).map((v) => ({ v, l: NATURE_EVENEMENT_LABEL[v], sub: libelleDureeSaisie(v, from) }))} />
       )}
       {type === 'evenement' && <p class="hint">Déplacement de plus de 600 km aller-retour : le jour en plus est non rémunéré, saisis-le en congé sans solde.</p>}
-      {estNonGere(type) ? <Banner tone="warn">{ABSENCE_NON_GEREE_CHOISIE}</Banner> : <p class="hint">{ABSENCES_NON_GEREES}</p>}
-      {estNonGere(type) && <p class="hint">L’app garde seulement « absence non gérée » et les dates, pas le motif.</p>}
+      {type === 'at_mp' && <Choices label="C’est :" value={atmp} options={ATMP_OPTIONS} onChange={setAtmp} />}
+      {type === 'at_mp' && atmp && atmp !== 'maladie_pro' && (
+        <Choices label="Le premier jour de l’absence est-il le jour de l’accident ?" value={jourAccident} onChange={setJourAccident}
+          options={[{ v: 'oui', l: 'Oui', sub: 'Ce jour-là est payé en entier par les parents (code de la sécurité sociale, article L433-1).' }, { v: 'non', l: 'Non, l’arrêt commence après', sub: 'Le jour de l’accident n’est pas dans cette absence : il reste payé comme prévu.' }]} />
+      )}
+      {estSuspension(type) ? <p class="hint">{ABSENCES_PROTEGEES_DONNEES}</p> : <p class="hint">{ABSENCES_PROTEGEES_AIDE}</p>}
       {type === 'evenement' && <p class="hint">L’app garde seulement « événement familial » et le nombre de jours payés, pas l’événement choisi.</p>}
       <div class="grid2">
         <DateInput label="Premier jour d’absence" value={from} onChange={(v) => { setFrom(v); if (to < v) setTo(v); }} />
@@ -831,18 +851,19 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
       {err && <p class="err" role="alert">{err}</p>}
       <button
         class="btn btn-primary btn-block btn-lg"
-        disabled={!!err || !from || !to || (type === 'evenement' && !nature) || !reponsesCompletes(questions, reps) || (ijDemande === 'deuil' && (ij === undefined || ijAutres === undefined))}
+        disabled={!!err || !from || !to || (type === 'evenement' && !nature) || !reponsesCompletes(questions, reps) || (ijDemande === 'deuil' && (ij === undefined || ijAutres === undefined)) || atmpManque}
         onClick={async () => {
           const l = absenceSaisie(type, nature, uid(), from, to);
           if (!l) return;
           if (ijDemande && ij !== undefined) l.ijSecu = ij;
           if (ijDemande && ijAutres !== undefined) l.ijSalairesAutres = ijAutres;
+          if (l.type === 'at_mp') { l.atmp = atmp; if (atmp !== 'maladie_pro') l.jourAccident = jourAccident === 'oui'; }
           const undos: (() => Promise<void>)[] = [];
           for (const x of appliquerReponses(l, questions, reps)) undos.push(await putLeave(x));
           const undo = async () => { for (const u of undos.reverse()) await u(); };
           logUsage('absence_am', 'aujourdhui');
           onClose();
-          toast(`${AM_ABS_LABEL[l.type]} enregistré${l.type === 'cp' ? 's' : l.type === 'non_gere' ? 'e' : ''}`, undo);
+          toast(`${AM_ABS_LABEL[l.type]} enregistré${l.type === 'cp' ? 's' : ''}`, undo);
         }}
       >
         Enregistrer
