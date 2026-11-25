@@ -92,10 +92,13 @@ export function Conges() {
 /** T-103 (C9, R3) : montant net des indemnités journalières d'une absence, saisi ou corrigé après coup */
 function IjEdit({ l }: { l: AmLeave }) {
   const [v, setV] = useState<number | undefined>(l.ijSecu);
+  const [a, setA] = useState<number | undefined>(l.ijSalairesAutres);
+  const change = (v !== l.ijSecu || a !== l.ijSalairesAutres) && v !== undefined && a !== undefined;
   return (
     <div class="stack-sm">
       <EuroInput label="Indemnités journalières reçues (net)" cents={v} allowEmpty onChange={setV} hint={l.ijSecu === undefined ? 'Pas encore saisi : le mois de cette absence attend ce montant (0 si tu n’en as pas reçu).' : undefined} />
-      {v !== l.ijSecu && v !== undefined && <button class="btn btn-outline" onClick={async () => { const u = await putLeave({ ...l, ijSecu: v }); toast('Montant enregistré', u); }}>Enregistrer le montant</button>}
+      <EuroInput label="Salaires bruts des 3 mois avant l’absence, hors de l’app" cents={a} allowEmpty onChange={setA} hint="Autres employeurs, et mois d’avant le suivi par l’app (attestations Pajemploi). 0 si aucun." />
+      {change && <button class="btn btn-outline" onClick={async () => { const u = await putLeave({ ...l, ijSecu: v, ijSalairesAutres: a }); toast('Montants enregistrés', u); }}>Enregistrer</button>}
     </div>
   );
 }

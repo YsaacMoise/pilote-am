@@ -318,6 +318,11 @@ export interface AmLeave {
    * congé, en centimes. Le salaire est maintenu « sous déduction des indemnités journalières versées ». Demandé à la saisie.
    */
   ijSecu?: number;
+  /**
+   * T-103 (N1) : salaires bruts versés à l'AM, les 3 mois civils avant l'absence, par ses employeurs qui ne sont pas dans
+   * l'app (centimes ; 0 si aucun). Sert à la part des indemnités journalières de chaque parent (CSS R323-4).
+   */
+  ijSalairesAutres?: number;
 }
 
 export interface Settings {

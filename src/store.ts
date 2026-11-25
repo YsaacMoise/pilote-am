@@ -2,8 +2,9 @@
 import { useEffect, useState } from 'preact/hooks';
 import * as db from './db';
 import type { AmLeave, Bulletin, Contract, DayRec, Journal, Settings } from './engine/model';
-import { makeCtx, type Ctx } from './engine/payroll';
-import { today } from './engine/dates';
+import { brutDuNet, makeCtx, monthBase, type Ctx } from './engine/payroll';
+import { addMonths, firstDay, lastDay, monthOf, today, type Month } from './engine/dates';
+import { computeMonth } from './engine/month';
 import { liensApresSuppression, normaliserAbsences, type AbsenceLue } from './engine/absences';
 import { ecranDe, evErreur, type ErreurCode } from './usage-events';
 
@@ -258,10 +259,36 @@ export function ctxFor(c: Contract, at = today()): Ctx {
   if (!x) {
     x = makeCtx(c, [...state.days.values()].filter((d) => d.cid === c.id), state.leaves, at, enfants, moins21);
     x.autresContrats = state.contracts.filter((o) => o.id !== c.id);
+    x.partIJ = (l) => partIJContrat(c, l);
     x.kmAnnee = state.settings?.kmAnnee;
     ctxCache.set(k, x);
   }
   return x;
+}
+
+/**
+ * T-103 (N1) : part de ce contrat dans les indemnités journalières de l'absence `l`. CSS R323-4 : le gain journalier de base
+ * est calculé sur les salaires des trois mois civils qui précèdent l'arrêt, tous employeurs : la part d'un parent est son
+ * salaire brut de ces trois mois sur le total (contrats de l'app, plus les salaires hors de l'app saisis par l'AM).
+ * `undefined` : les salaires hors de l'app ne sont pas saisis, ou aucun salaire n'est connu.
+ */
+const ijEnCours = new Set<string>();
+export function partIJContrat(c: Contract, l: AmLeave): number | undefined {
+  if (l.ijSalairesAutres === undefined) return undefined;
+  const debut = monthOf(l.from);
+  const mois = [3, 2, 1].map((k) => addMonths(debut, -k));
+  // Salaire brut du mois, congés payés versés compris (computeMonth). Un calcul de congés qui reviendrait sur cette absence
+  // (période de référence en cours) est coupé : le mois est alors lu sans ses congés (monthBase).
+  const brutMois = (x: Contract, m: Month) => {
+    const cle = `${l.id}|${x.id}|${m}`;
+    if (ijEnCours.has(cle)) return brutDuNet(x, monthBase(ctxFor(x), m).net, lastDay(m));
+    ijEnCours.add(cle);
+    try { const r = computeMonth(ctxFor(x), m); return r.nonGere.length ? 0 : r.brutEstime; } finally { ijEnCours.delete(cle); }
+  };
+  const brut = (x: Contract) => mois.reduce((t, m) => (x.start > lastDay(m) || (x.end && x.end < firstDay(m)) ? t : t + brutMois(x, m)), 0);
+  const ici = brut(c);
+  const total = state.contracts.reduce((t, x) => t + (x.id === c.id ? ici : brut(x)), 0) + l.ijSalairesAutres;
+  return total > 0 ? ici / total : undefined;
 }
 
 export function activeContracts(at = today()): Contract[] {

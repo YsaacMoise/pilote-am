@@ -790,6 +790,7 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
   const [reponses, setReponses] = useState<Record<string, 'oui' | 'non'>>({});
   // T-103 (C9, R3) : indemnités journalières de la Sécurité sociale, en centimes nets (congé de deuil ; maladie en Alsace-Moselle).
   const [ij, setIj] = useState<number | undefined>(undefined);
+  const [ijAutres, setIjAutres] = useState<number | undefined>(undefined);
   const ijDemande = demandeIJ(type, nature, from, to, state.contracts);
   const err = to < from ? 'La date de fin doit être après le début.' : '';
   useErreurAffichee('dates_absence', !!err);
@@ -822,17 +823,20 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
         <>
           <EuroInput label="Indemnités journalières de la Sécurité sociale pour cette absence (net)" cents={ij} allowEmpty onChange={setIj}
             hint={ijDemande === 'deuil' ? 'Le montant net versé par ta CPAM pour ce congé (relevé sur ameli.fr). 0 si tu n’en reçois pas. Les parents maintiennent ton salaire moins ce montant (convention, article 48.1.3.1.3).' : 'Le montant net versé par ta CPAM pour cette absence (relevé sur ameli.fr). 0 si tu n’en reçois pas. En Alsace-Moselle, les parents maintiennent ton salaire moins ce montant (code du travail, article L1226-23). Tu peux le saisir plus tard dans « Congés ».'} />
+          <EuroInput label="Salaires bruts des 3 mois avant l’absence qui ne sont pas dans l’app" cents={ijAutres} allowEmpty onChange={setIjAutres}
+            hint="Ceux de tes autres employeurs (et des mois d’avant le suivi par l’app), sur tes attestations Pajemploi. 0 si aucun. Les indemnités sont calculées sur tous tes salaires : chaque parent déduit seulement la part qui vient du sien (code de la sécurité sociale, article R323-4)." />
         </>
       )}
       {type === 'cp' && <p class="hint">Mets ton dernier jour de congé. L’app compte les jours du lundi au samedi jusqu’à la veille de ta reprise : le samedi avant un retour le lundi compte aussi.</p>}
       {err && <p class="err" role="alert">{err}</p>}
       <button
         class="btn btn-primary btn-block btn-lg"
-        disabled={!!err || !from || !to || (type === 'evenement' && !nature) || !reponsesCompletes(questions, reps) || (ijDemande === 'deuil' && ij === undefined)}
+        disabled={!!err || !from || !to || (type === 'evenement' && !nature) || !reponsesCompletes(questions, reps) || (ijDemande === 'deuil' && (ij === undefined || ijAutres === undefined))}
         onClick={async () => {
           const l = absenceSaisie(type, nature, uid(), from, to);
           if (!l) return;
           if (ijDemande && ij !== undefined) l.ijSecu = ij;
+          if (ijDemande && ijAutres !== undefined) l.ijSalairesAutres = ijAutres;
           const undos: (() => Promise<void>)[] = [];
           for (const x of appliquerReponses(l, questions, reps)) undos.push(await putLeave(x));
           const undo = async () => { for (const u of undos.reverse()) await u(); };

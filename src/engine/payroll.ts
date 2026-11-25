@@ -33,22 +33,32 @@ export interface Ctx {
   finControlee?: boolean;
   /**
    * T-103 (C9, R3) : les autres contrats de l'AM (période et région). Sert à repérer une absence indemnisée par la Sécurité
-   * sociale pendant laquelle plusieurs parents maintiennent le salaire : la part des indemnités journalières de chacun n'est
-   * écrite nulle part (point soumis au DG, rapports/T-103-a-trancher.md, N1). Absent : contrat seul.
+   * sociale pendant laquelle plusieurs parents maintiennent le salaire. Absent : contrat seul.
    */
   autresContrats?: Pick<Contract, 'id' | 'start' | 'end' | 'alsaceMoselle' | 'mayotte'>[];
+  /**
+   * T-103 (N1) : part de ce contrat dans les indemnités journalières d'une absence (0 à 1), calculée par le magasin (store.ts,
+   * partIJ) sur les salaires bruts des trois mois civils qui précèdent l'absence, tous employeurs (CSS R323-4 : le gain
+   * journalier de base est calculé sur les salaires de tous les employeurs). `undefined` : donnée qui manque (salaires des
+   * employeurs hors de l'app). Absent (tests, comparateur) : contrat seul, part entière.
+   */
+  partIJ?: (l: AmLeave) => number | undefined;
   /** T-103 (K2) : kilomètres de l'année civile, tous parents (réglages de l'AM) : contrôle du tarif kilométrique */
   kmAnnee?: Record<string, number>;
 }
 
-/** T-103 (N1) : message du mois refusé quand un autre contrat déduit aussi les indemnités journalières de la même absence */
-export const MESSAGE_IJ_PLUSIEURS_CONTRATS = 'Absence indemnisée par la Sécurité sociale pendant laquelle tu as plusieurs contrats : les indemnités journalières couvrent tous tes salaires, et aucun texte ne dit quelle part chaque parent déduit. L’app ne calcule pas encore ce mois ; elle le fera dès que la règle sera fixée.';
+/** T-103 (N1) : donnée qui manque pour partager les indemnités journalières entre les employeurs */
+export const MESSAGE_IJ_SALAIRES_AUTRES = 'Absence indemnisée par la Sécurité sociale : indique, dans « Congés », les salaires bruts que t’ont versés les 3 mois avant l’absence tes autres employeurs, ceux qui ne sont pas dans l’app (0 si aucun). Les indemnités journalières sont calculées sur tous tes salaires : chaque parent déduit seulement la part qui vient du sien. L’app calcule ce mois dès que c’est saisi.';
 
-/** T-103 (N1) : un autre contrat déduit-il aussi les indemnités journalières de cette absence ? */
-export function ijPartagees(ctx: Ctx, l: AmLeave): boolean {
-  const local = l.type === 'am_malade' || l.type === 'am_enfant_malade';
-  if (l.type !== 'evenement' && !local) return false;
-  return (ctx.autresContrats ?? []).some((o) => o.start <= l.to && (!o.end || o.end >= l.from) && (!local || regionDe(o) === 'alsaceMoselle'));
+/**
+ * T-103 (N1) : part des indemnités journalières que ce contrat déduit. Les indemnités sont calculées sur les salaires de tous
+ * les employeurs (CSS R323-4) ; chaque parent maintient le salaire « sous déduction des indemnités journalières versées »
+ * (CCN 48.1.3.1.3 ; C. trav. L1226-23) pour son contrat : sa part est celle de son salaire dans cette base. Le total déduit
+ * par tous les parents est égal aux indemnités reçues : « aucune perte de salaire », et « en aucun cas » plus (48.1.3.1.3).
+ * Sans calcul fourni (tests, comparateur), un contrat seul déduit tout.
+ */
+export function partIJ(ctx: Ctx, l: AmLeave): number | undefined {
+  return ctx.partIJ ? ctx.partIJ(l) : 1;
 }
 
 /** Contrat tel qu'il s'applique le jour d (avenants en vigueur compris) */
@@ -258,7 +268,7 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
         info.maintienLocal = true;
         const lv = amLeaveAt(ctx.leaves, d)!;
         if (lv.ijSecu === undefined) info.donneeManquante = MESSAGE_IJ_MAINTIEN_LOCAL;
-        else if (ijPartagees(ctx, lv)) info.donneeManquante = MESSAGE_IJ_PLUSIEURS_CONTRATS;
+        else if (partIJ(ctx, lv) === undefined) info.donneeManquante = MESSAGE_IJ_SALAIRES_AUTRES;
       } else if (amLeave === 'am_malade' || amLeave === 'am_enfant_malade' || amLeave === 'sans_solde') {
         // T-034 : congé sans solde = absence non rémunérée, retenue par la déduction d'absence de l'art. 111. Fiches DREETS
         // Occitanie du 19/01/2023, section 3 : « Absence du salarié pour congés sans solde » ; Urssaf « gérer les absences
@@ -273,7 +283,7 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
         // ne sait pas lire refuse le mois (nonGeresPeriode).
         if (!st.paye && !st.nonGere) { info.deducted = true; info.raisonRetenue = st.raison; }
         const lv = amLeaveAt(ctx.leaves, d)!;
-        if (lv.ijSecu !== undefined && ijPartagees(ctx, lv)) info.donneeManquante = MESSAGE_IJ_PLUSIEURS_CONTRATS;
+        if (lv.ijSecu !== undefined && partIJ(ctx, lv) === undefined) info.donneeManquante = MESSAGE_IJ_SALAIRES_AUTRES;
       }
     }
     return info;
@@ -1135,10 +1145,12 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   const maintienLocal = regionDe(ctx.c) === 'alsaceMoselle';
   for (const l of ctx.leaves) {
     const local = maintienLocal && (l.type === 'am_malade' || l.type === 'am_enfant_malade');
-    if ((l.type !== 'evenement' && !local) || !l.ijSecu || l.to < segFrom || l.from > segTo || ijPartagees(ctx, l)) continue;
+    if ((l.type !== 'evenement' && !local) || !l.ijSecu || l.to < segFrom || l.from > segTo) continue;
+    const quote = partIJ(ctx, l);
+    if (quote === undefined) continue;
     const tous = daysBetween(l.from, l.to) + 1;
     const ici = daysBetween(l.from > segFrom ? l.from : segFrom, l.to < segTo ? l.to : segTo) + 1;
-    const part = Math.round((l.ijSecu * ici) / tous);
+    const part = Math.round((l.ijSecu * quote * ici) / tous);
     if (!part) continue;
     r.base = Math.max(0, r.base - part);
     r.ijDeduites = (r.ijDeduites ?? 0) + part;

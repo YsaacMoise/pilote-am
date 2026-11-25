@@ -1,7 +1,7 @@
 // T-103 : saisies des données B (écrans) et refus d'un partage d'indemnités journalières non écrit (point N1 soumis au DG).
 import { describe, expect, it } from 'vitest';
 import type { AmLeave, Contract, Planning } from '../src/engine/model';
-import { makeCtx, MESSAGE_IJ_PLUSIEURS_CONTRATS } from '../src/engine/payroll';
+import { makeCtx, MESSAGE_IJ_SALAIRES_AUTRES } from '../src/engine/payroll';
 import { computeMonth } from '../src/engine/month';
 import { normaliserAbsence } from '../src/engine/absences';
 import { planningAvecDimanche } from '../src/engine/nonGeres';
@@ -52,31 +52,31 @@ describe('T-103 (C9, R3) : montant des indemnités journalières demandé à la 
   });
 });
 
-describe('T-103 (N1) : plusieurs contrats pendant une absence indemnisée', () => {
-  it('contrat seul : indemnités déduites (CCN 48.1.3.1.3)', () => {
+describe('T-103 (N1) : indemnités journalières partagées entre les employeurs (CSS R323-4 ; CCN 48.1.3.1.3)', () => {
+  it('contrat seul (sans calcul de part) : indemnités déduites en entier', () => {
     const r = computeMonth(makeCtx(contract(), [], [deuil(5000)], '2026-12-31'), '2026-10');
     expect(r.ijDeduites).toBe(5000);
     expect(r.nonGere).toEqual([]);
   });
-  it('autre contrat pendant le congé : mois refusé, rien n’est déduit deux fois', () => {
+  it('part du contrat 25 % (son salaire des 3 mois sur le total) : 12,50 € déduits sur 50,00 €', () => {
     const ctx = makeCtx(contract(), [], [deuil(5000)], '2026-12-31');
-    ctx.autresContrats = [{ id: 'c2', start: '2026-01-05', alsaceMoselle: false }];
+    ctx.partIJ = () => 0.25;
     const r = computeMonth(ctx, '2026-10');
-    expect(r.nonGere).toContain(MESSAGE_IJ_PLUSIEURS_CONTRATS);
+    expect(r.ijDeduites).toBe(1250);
+    expect(r.nonGere).toEqual([]);
+  });
+  it('salaires hors de l’app non saisis : le mois attend la donnée', () => {
+    const ctx = makeCtx(contract(), [], [deuil(5000)], '2026-12-31');
+    ctx.partIJ = () => undefined;
+    const r = computeMonth(ctx, '2026-10');
+    expect(r.nonGere).toContain(MESSAGE_IJ_SALAIRES_AUTRES);
     expect(r.ijDeduites ?? 0).toBe(0);
   });
-  it('autre contrat fini avant le congé : déduction normale', () => {
-    const ctx = makeCtx(contract(), [], [deuil(5000)], '2026-12-31');
-    ctx.autresContrats = [{ id: 'c2', start: '2026-01-05', end: '2026-09-30', alsaceMoselle: false }];
-    expect(computeMonth(ctx, '2026-10').ijDeduites).toBe(5000);
-  });
-  it('Alsace-Moselle : un autre contrat hors Alsace-Moselle ne déduit rien, pas de refus', () => {
+  it('Alsace-Moselle : même partage', () => {
     const am: AmLeave = { id: 'm', type: 'am_malade', from: '2026-10-05', to: '2026-10-06', ijSecu: 3000 };
     const ctx = makeCtx(contract({ alsaceMoselle: true }), [], [am], '2026-12-31');
-    ctx.autresContrats = [{ id: 'c2', start: '2026-01-05', alsaceMoselle: false }];
-    const r = computeMonth(ctx, '2026-10');
-    expect(r.nonGere).not.toContain(MESSAGE_IJ_PLUSIEURS_CONTRATS);
-    expect(r.ijDeduites).toBe(3000);
+    ctx.partIJ = () => 0.5;
+    expect(computeMonth(ctx, '2026-10').ijDeduites).toBe(1500);
   });
 });
 
