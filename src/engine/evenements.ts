@@ -72,13 +72,13 @@ export function dureeEvenement(nature: NatureEvenement, d: ISODate): number | un
 
 /**
  * T-038 (AC-3, relecture V4) : texte de l'écran de saisie pour une nature d'événement commencé le `from`. Il suit
- * `statutJourEvenement` : rien n'est annoncé comme payé quand le moteur met les jours « à confirmer » ou « non géré ».
+ * `statutJourEvenement` : rien n'est annoncé comme payé quand le moteur met les jours « non géré ».
  */
 export function libelleDureeSaisie(nature: NatureEvenement, from: ISODate): string {
-  if (from < EVENEMENTS_GERES_DEPUIS) return 'Période non gérée (avant 2022, ancienne convention) : durée à vérifier avec les parents';
+  if (from < EVENEMENTS_GERES_DEPUIS) return 'Période non gérée (avant 2022, ancienne convention) : l’app ne calcule pas cette absence';
   if (nature === 'deuil') return '8 jours ouvrables, salaire maintenu moins les indemnités journalières de la CPAM (indique leur montant)';
   const n = dureeEvenement(nature, from);
-  if (n === undefined) return 'Non géré par l’app : durée à vérifier avec les parents';
+  if (n === undefined) return 'Non géré par l’app : la durée de cet événement n’est pas calculée';
   return `${n} jour${n > 1 ? 's' : ''} ouvrable${n > 1 ? 's' : ''} payé${n > 1 ? 's' : ''}`;
 }
 

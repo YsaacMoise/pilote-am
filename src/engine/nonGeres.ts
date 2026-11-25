@@ -48,7 +48,7 @@ export const CONTRAT_A_COMPLETER =
 /** Message d'une absence non gérée (sans le cas précis, qui n'est pas enregistré : décision du DG du 21/11/2026) */
 export function messageAbsenceNonGeree(l: AmLeave): string {
   const quand = l.from === l.to ? `le ${shortDate(l.from)}` : `du ${shortDate(l.from)} au ${shortDate(l.to)}`;
-  return `Absence non gérée par l’app ${quand} (congé maternité, paternité, de naissance, accident du travail ou maladie professionnelle) : le salaire de ces jours, tes congés payés et la fin de contrat en dépendent. Fais ces mois sans l’app et vérifie avec les parents.`;
+  return `Absence non gérée par l’app ${quand} (congé maternité, paternité, de naissance, accident du travail ou maladie professionnelle) : le salaire de ces jours, tes congés payés et la fin de contrat en dépendent. Fais ces mois sans l’app, avec les parents.`;
 }
 
 export function estAbsenceNonGeree(l: AmLeave): boolean {

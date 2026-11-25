@@ -299,7 +299,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
                   <EuroInput label="Tarif par km" cents={i.kmTaux || undefined} allowEmpty onChange={(v) => set({ kmTaux: v ?? 0 })} />
                 </div>
                 <Stepper label="Puissance fiscale de la voiture" value={i.cv} min={3} max={8} unit={i.cv >= 8 ? 'CV et +' : 'CV'} onChange={(v) => set({ cv: v })} />
-                <p class="hint">Si l’assistante maternelle ne fait que ces {nf.format(kmAn)} km dans l’année : au moins {r.kmBornes.min !== null ? prixKm(r.kmBornes.min) : '(barème de l’administration à vérifier pour cette date)'} par km (barème de l’administration), au plus {r.kmBornes.max !== null ? prixKm(r.kmBornes.max) : '(barème fiscal à vérifier)'} (barème fiscal, voiture non électrique). Avec d’autres trajets dans l’année, la tranche peut changer.</p>
+                <p class="hint">Si l’assistante maternelle ne fait que ces {nf.format(kmAn)} km dans l’année : au moins {r.kmBornes.min !== null ? prixKm(r.kmBornes.min) : '(barème de l’administration inconnu de l’app avant 2022)'} par km (barème de l’administration), au plus {r.kmBornes.max !== null ? prixKm(r.kmBornes.max) : '(barème fiscal inconnu de l’app avant 2022)'} (barème fiscal, voiture non électrique). Avec d’autres trajets dans l’année, la tranche peut changer.</p>
                 {kmHorsBornes && <Banner tone="warn">Ce tarif sort de la fourchette légale pour ce kilométrage{r.kmBornes.min !== null && r.kmBornes.max !== null ? ` : entre ${prixKm(r.kmBornes.min)} et ${prixKm(r.kmBornes.max)} par km` : ''}.</Banner>}
               </>
             )}
