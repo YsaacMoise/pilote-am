@@ -77,8 +77,8 @@ describe('T-045 : préavis non exécuté (CCN art. 64 et 64.2)', () => {
 
   // T-107 (cas 2) : préavis non fait sans l'accord des parents, calculé. CCN 64 : fin au dernier jour travaillé ; CCN 64.2,
   // al. 2 : les parents peuvent demander « une indemnité égale au montant de la rémunération nette correspondant à la durée non
-  // exécutée du préavis » ; C. trav. L1225-34 (CASF L423-2, 3°) : la salariée enceinte rompt « sans préavis et sans devoir de
-  // ce fait d'indemnité de rupture ». Démission : la grossesse est demandée une fois.
+  // exécutée du préavis » ; C. trav. L1225-34 (CASF L423-2, 3°) : la salariée enceinte rompt « sans préavis et sans devoir
+  // d'indemnité de rupture ». Démission : la grossesse est demandée une fois.
   it('T-107 (cas 2) : démission sans l’accord des parents, grossesse non dite : la question est posée, aucun montant', () => {
     const f = finDeContrat(ctxDe(contract()), '2026-10-01', 'demission', 0, undefined, { demandeur: 'am_sans_accord', dernierJourTravaille: '2026-10-10' });
     expect(f.dernierJour).toBe('2026-10-10');

@@ -121,7 +121,7 @@ export interface Rupture {
   cumulCpPreavis?: boolean;
   /**
    * T-107 (cas 2) : démission, préavis non fait sans l'accord des parents : l'AM est en état de grossesse médicalement
-   * constaté (C. trav. L1225-34, applicable par CASF L423-2, 3° : rupture « sans préavis et sans devoir de ce fait d'indemnité
+   * constaté (C. trav. L1225-34, applicable par CASF L423-2, 3° : rupture « sans préavis et sans devoir d'indemnité
    * de rupture »). Demandé seulement dans ce cas.
    */
   grossesse?: boolean;

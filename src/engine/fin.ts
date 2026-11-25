@@ -381,8 +381,8 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
       // à l'initiative du salarié » ; CCN 64.2, al. 2 : « À défaut d'accord entre les parties, l'inexécution totale ou partielle du
       // préavis imposée par le salarié ouvre droit, au profit du particulier employeur, à une indemnité égale au montant de la
       // rémunération nette correspondant à la durée non exécutée du préavis. » C. trav. L1225-34 (CASF L423-2, 3°) : « La
-      // salariée en état de grossesse médicalement constaté peut rompre son contrat de travail sans préavis et sans devoir de ce
-      // fait d'indemnité de rupture. »
+      // salariée en état de grossesse médicalement constaté peut rompre son contrat de travail sans préavis et sans devoir
+      // d'indemnité de rupture. »
       dernierJour = d;
       finAuDernierJourTravaille = true;
       if (motif === 'demission' && grossesse === undefined) {
