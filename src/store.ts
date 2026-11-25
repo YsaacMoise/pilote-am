@@ -267,9 +267,11 @@ export function ctxFor(c: Contract, at = today()): Ctx {
 }
 
 /**
- * T-103 (N1) : part de ce contrat dans les indemnités journalières de l'absence `l`. CSS R323-4 : le gain journalier de base
- * est calculé sur les salaires des trois mois civils qui précèdent l'arrêt, tous employeurs : la part d'un parent est son
- * salaire brut de ces trois mois sur le total (contrats de l'app, plus les salaires hors de l'app saisis par l'AM).
+ * T-103 (N1) : part de ce contrat dans les indemnités journalières de l'absence `l`. CSS R323-4 (LEGIARTI000051226486, en
+ * vigueur depuis le 22/02/2025, base LEGI de la DILA) : « 1/91,25 du montant des trois dernières paies des mois civils
+ * antérieurs à la date de l'interruption de travail », plafond « calculé pour un mois sur l'ensemble des revenus » : tous
+ * les employeurs. La part d'un parent est son salaire brut de ces trois mois sur le total (contrats de l'app, plus les
+ * salaires hors de l'app saisis par l'AM) ; le plafond s'applique au total, la part reste la même.
  * `undefined` : les salaires hors de l'app ne sont pas saisis, ou aucun salaire n'est connu.
  */
 const ijEnCours = new Set<string>();
