@@ -263,7 +263,10 @@ def officiels():
                        {"sortie": "jours_enfants", "fonction": "jours_enfants_a_charge", "args": [25, 35, 1],
                         "cle": "jours_supplementaires"}],
                       {"total": 27}, renommer=R(jours_acquis="total", jours_enfants="jours_enfants"),
-                      sorties=["jours_acquis", "jours_enfants"]))
+                      sorties=["jours_acquis", "jours_enfants"],
+                      # T-103 : la fiche S-DURAND compte l'arrêt maladie de Mme Durand d'octobre 2021 (C-ABS-01, mercredi au
+                      # vendredi) dans la même période de référence : donné à A comme dans la fiche.
+                      ev={"absences_am": [{"type": "am_malade", "du": "2021-10-13", "au": "2021-10-15"}]}))
     S.append(acq_case("C-CPA-03", dict(DURAND, fin="2022-09-30"), 2022,
                       acq_b("complete", mois=4, semaines=17, jours=88, jours_par_semaine=5), {"jours_acquis": 11}))
     S.append(acq_case("C-CPA-03", dict(DURAND, fin="2022-09-30", enfants_a_charge=1), 2022,
