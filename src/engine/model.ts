@@ -128,6 +128,14 @@ export interface Rupture {
    */
   cumulCpPreavis?: boolean;
   /**
+   * T-109 (contrôle qualité de la n° 67 ; règle d'Arvela : aucune donnée de santé hébergée en ligne) : démission, préavis non
+   * fait sans l'accord des parents. Seul le résultat neutre est gardé : `false` = aucune somme due aux parents au titre du
+   * préavis non fait ; `true` = les parents peuvent demander l'indemnité de l'art. 64.2. La réponse à la question de l'écran
+   * (grossesse, C. trav. L1225-34) sert au calcul sur le moment et n'est jamais enregistrée.
+   */
+  sommeDuePreavis?: boolean;
+  /**
+   * Ancien champ (branche T-107, jamais publié) : retiré à la lecture et à l'envoi en ligne (absences.ts, ruptureSansSante).
    * T-107 (cas 2) : démission, préavis non fait sans l'accord des parents : l'AM est en état de grossesse médicalement
    * constaté (C. trav. L1225-34, applicable par CASF L423-2, 3° : rupture « sans préavis et sans devoir d'indemnité
    * de rupture »). Demandé seulement dans ce cas.
@@ -404,10 +412,12 @@ export interface AmLeave {
    */
   joursEvenement?: number;
   /**
-   * T-107 (cas 6) : événement familial commencé du 01/07/2020 au 31/12/2021, décès d'un enfant de moins de 25 ans : la durée
-   * de C. trav. L3142-4, 4° (versions du 01/07/2020 au 20/07/2023) est de « sept jours ouvrés » : vrai, `joursEvenement` se
-   * compte en jours ouvrés (jours de travail prévus au contrat), pas en jours ouvrables. Ne dit rien de la raison.
+   * T-109 (contrôle qualité de la n° 67) : nombre de jours ouvrables accordés, par contrat, quand il dépend des jours de travail
+   * du contrat (« sept jours ouvrés » de C. trav. L3142-4, 4°, du 01/07/2020 au 31/12/2021, converti à la saisie en jours
+   * ouvrables jusqu'au septième jour de travail). Seulement des nombres : aucune marque ne révèle l'événement. Absent : `joursEvenement`.
    */
+  joursEvenementContrat?: Record<string, number>;
+  /** Ancienne marque (branche T-107, jamais publiée) : retirée à la lecture et à l'envoi en ligne (absences.ts). */
   joursOuvres?: true;
   /**
    * Événement familial seulement : identifiant interne de l'absence dont celle-ci est la suite (même événement saisi en

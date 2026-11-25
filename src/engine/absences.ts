@@ -6,9 +6,11 @@
 // - « absence non gérée par l'app » (`non_gere`, sans raison) : gardée ; le mois attend que l'AM précise la raison ;
 // - type d'avant « accident_travail » : ramené à `at_mp`, nature à préciser ; « maternite », « paternite »,
 //   « naissance_supp » : gardés tels quels (ce sont les types actuels).
-import { daysBetween } from './dates';
+import { addDays, daysBetween, weekday, type ISODate } from './dates';
+import { holidayName } from './holidays';
+import { planningBrutMin, termsAt } from './payroll';
 import { dureeEvenement, evenementEnJoursOuvres, evenementPrecedentProche, evenementSuivantProche, LIEN_EVENEMENT_JOURS } from './evenements';
-import { AM_ABS_ANCIENNES, type AmAbs, type AmLeave, type NatureEvenement } from './model';
+import { AM_ABS_ANCIENNES, type AmAbs, type AmLeave, type Contract, type NatureEvenement, type Rupture } from './model';
 
 /** Absence telle qu'elle peut être lue : forme actuelle, ou saisie d'avant (nature, cas non géré dans `type`) */
 export type AbsenceLue = Omit<AmLeave, 'type'> & { type: AmAbs | 'accident_travail'; nature?: NatureEvenement };
@@ -23,6 +25,8 @@ export function joursEvenementSaisi(nature: NatureEvenement, from: string): numb
  * Une absence déjà à la bonne forme est rendue telle quelle (même objet).
  */
 export function normaliserAbsence(l: AbsenceLue): AmLeave {
+  // T-109 : l'ancienne marque `joursOuvres` (branche T-107, jamais publiée) révélait l'événement : retirée, le nombre reste.
+  if ('joursOuvres' in l) { const { joursOuvres: _o, ...sans } = l; return normaliserAbsence(sans); }
   const { nature, ...reste } = l;
   if (AM_ABS_ANCIENNES.includes(l.type)) {
     const { joursEvenement: _j, ...sansJours } = reste;
@@ -68,12 +72,33 @@ export type ChoixAbsence = Exclude<AmAbs, 'non_gere'>;
  * Absence enregistrée à partir du choix de l'écran : événement familial avec son nombre de jours, jamais sa nature.
  * `undefined` : événement sans nature choisie (le bouton reste grisé).
  */
-export function absenceSaisie(choix: ChoixAbsence, nature: NatureEvenement | undefined, id: string, from: string, to: string): AmLeave | undefined {
+/**
+ * T-109 (contrôle qualité de la n° 67) : « sept jours ouvrés » (C. trav. L3142-4, 4°, du 01/07/2020 au 31/12/2021 ; R-EVT-02 :
+ * jours de travail prévus au contrat, fériés exclus) convertis en jours ouvrables : du premier jour au septième jour de
+ * travail du contrat, on compte les jours ouvrables (sauf le jour de repos et les fériés). Le calcul paie alors les mêmes jours,
+ * sans garder de marque qui révèle l'événement.
+ */
+export function joursOuvrablesPourOuvres(c: Contract, from: ISODate, ouvres: number): number {
+  const repos = c.reposHebdo ?? 7;
+  let ouvrables = 0, travailles = 0, x = from;
+  for (let i = 0; i < 120 && travailles < ouvres; i++, x = addDays(x, 1)) {
+    if (weekday(x) !== repos && !holidayName(x)) ouvrables++;
+    if (planningBrutMin(termsAt(c, x), x) > 0 && !holidayName(x)) travailles++;
+  }
+  return ouvrables;
+}
+
+export function absenceSaisie(choix: ChoixAbsence, nature: NatureEvenement | undefined, id: string, from: string, to: string, contrats: Contract[] = []): AmLeave | undefined {
   // T-103 (C9) : congé de deuil : l'écran de saisie demande le montant des indemnités journalières (AmLeave.ijSecu).
   // T-107 (cas 6) : aucun congé pour cet événement à cette date : rien n'est enregistré (l'écran le dit et grise le bouton).
   if (choix === 'evenement') {
     if (!nature || dureeEvenement(nature, from) === undefined) return undefined;
-    return { id, type: 'evenement', from, to, joursEvenement: joursEvenementSaisi(nature, from), ...(evenementEnJoursOuvres(nature, from) ? { joursOuvres: true as const } : {}) };
+    const jours = joursEvenementSaisi(nature, from);
+    if (!evenementEnJoursOuvres(nature, from)) return { id, type: 'evenement', from, to, joursEvenement: jours };
+    // T-109 : seulement des nombres de jours accordés, par contrat en cours au premier jour.
+    const parContrat: Record<string, number> = {};
+    for (const c of contrats) if (c.start <= from && (!c.end || c.end >= from)) parContrat[c.id] = joursOuvrablesPourOuvres(c, from, jours);
+    return { id, type: 'evenement', from, to, joursEvenement: jours, ...(Object.keys(parContrat).length ? { joursEvenementContrat: parContrat } : {}) };
   }
   return { id, type: choix, from, to };
 }
@@ -148,4 +173,15 @@ export function liensApresSuppression(id: string, leaves: AmLeave[]): AmLeave[] 
   const [premiere, ...autres] = suivantes;
   const { suiteDe: _s, ...sansLien } = premiere;
   return [sansLien, ...autres.map((l) => ({ ...l, suiteDe: premiere.id }))];
+}
+
+/**
+ * T-109 (contrôle qualité de la n° 67 ; règle d'Arvela : aucune donnée de santé hébergée en ligne) : forme enregistrée de la
+ * rupture. L'ancien champ `grossesse` (branche T-107, jamais publié) est retiré : il devient le résultat neutre
+ * `sommeDuePreavis` (false : aucune somme due au titre du préavis). Rend le même objet si rien n'est à retirer.
+ */
+export function ruptureSansSante<R extends Partial<Rupture> & { grossesse?: boolean }>(r: R): Omit<R, 'grossesse'> {
+  if (!('grossesse' in r)) return r;
+  const { grossesse, ...reste } = r;
+  return grossesse === undefined || reste.sommeDuePreavis !== undefined ? reste : { ...reste, sommeDuePreavis: !grossesse };
 }

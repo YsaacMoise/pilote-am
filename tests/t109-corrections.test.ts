@@ -251,3 +251,29 @@ describe('Section 6, point 7 : décès du parent employeur (CCN 63.3.1, 119.1)',
     expect(f.indemniteRupture).toBe(0);
   });
 });
+
+import { normaliserAbsence, ruptureSansSante } from '../src/engine/absences';
+import { forRemote } from '../src/sync/plan';
+
+describe('Contrôle qualité de la n° 67 : aucune donnée de santé hébergée, aucune marque qui révèle un événement', () => {
+  const rupt = { motif: 'demission' as const, notif: '2026-10-01', preavis: 'am_sans_accord' as const, dernierJourTravaille: '2026-10-10' };
+  it('la réponse « enceinte » devient le résultat neutre ; rien ne part en ligne', () => {
+    expect(ruptureSansSante({ ...rupt, grossesse: true })).toEqual({ ...rupt, sommeDuePreavis: false });
+    expect(ruptureSansSante({ ...rupt, grossesse: false })).toEqual({ ...rupt, sommeDuePreavis: true });
+    const envoye = forRemote('contracts', 'c1', { ...ct(), rupture: { ...rupt, grossesse: true } }) as { rupture: Record<string, unknown> };
+    expect(envoye.rupture).not.toHaveProperty('grossesse');
+    expect(envoye.rupture.sommeDuePreavis).toBe(false);
+  });
+  it('fin de contrat calculée avec le résultat neutre enregistré : rien dû aux parents', () => {
+    const c = ct({ start: '2026-01-05', rupture: { ...rupt, sommeDuePreavis: false } } as Partial<Contract>);
+    const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-01', 'demission', 0, undefined, { demandeur: 'am_sans_accord', dernierJourTravaille: '2026-10-10' });
+    expect(f.nonGere).toBeUndefined();
+    expect(f.indemniteDueParents?.net).toBe(0);
+    expect(f.alertes.join(' ')).not.toMatch(/grossesse/);
+  });
+  it('l’ancienne marque joursOuvres est retirée à la lecture et à l’envoi ; le nombre de jours reste', () => {
+    const l = { id: 'e', type: 'evenement' as const, from: '2021-12-31', to: '2022-01-11', joursEvenement: 7, joursOuvres: true as const };
+    expect(normaliserAbsence(l)).toEqual({ id: 'e', type: 'evenement', from: '2021-12-31', to: '2022-01-11', joursEvenement: 7 });
+    expect(forRemote('leaves', 'e', l)).not.toHaveProperty('joursOuvres');
+  });
+});

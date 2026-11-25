@@ -119,7 +119,7 @@ export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'
   }
   // T-107 (cas 2) : préavis non fait sans l'accord des parents : le contrat finit au dernier jour travaillé (CCN 64), comme
   // avec leur accord ; la grossesse de l'AM qui démissionne est demandée une fois (C. trav. L1225-34).
-  if (r.preavis === 'am_sans_accord' && r.motif === 'demission' && r.grossesse === undefined && d && d >= r.notif && d <= preavisFin) {
+  if (r.preavis === 'am_sans_accord' && r.motif === 'demission' && r.sommeDuePreavis === undefined && d && d >= r.notif && d <= preavisFin) {
     return { du: lo(d, end), au: hi(end, preavisFin), message: MESSAGE_GROSSESSE_A_REPONDRE };
   }
   if (r.preavis === 'am_acceptee' || r.preavis === 'am_sans_accord') {

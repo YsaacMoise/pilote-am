@@ -300,7 +300,10 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   const anc = fullMonthsBetween(c.start, notif);
   const depart = presentation && presentation > notif ? presentation : notif;
   const cumulCpPreavis = reponses ? reponses.cumulCpPreavis : c.rupture?.cumulCpPreavis;
-  const grossesse = reponses ? reponses.grossesse : c.rupture?.grossesse;
+  // T-109 (règle d'Arvela : aucune donnée de santé hébergée) : la réponse de l'écran sert sur le moment ; sinon, le résultat
+  // neutre enregistré (`sommeDuePreavis`, false : aucune somme due au titre du préavis).
+  const reponseNow = reponses?.grossesse;
+  const grossesse = reponseNow ?? (c.rupture?.sommeDuePreavis === undefined ? undefined : !c.rupture.sommeDuePreavis);
   const refusFin: string[] = [];
   if (motif === 'deces_employeur') refusFin.push(MESSAGE_DECES_EMPLOYEUR);
   // T-109 (correction 7) : CDI, rupture « pendant l'essai » après sa durée maximale (CCN 95.1) : ce n'est pas une rupture pendant
@@ -422,7 +425,9 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
         refusFin.push(MESSAGE_GROSSESSE_A_REPONDRE);
       } else if (motif === 'demission' && grossesse) {
         indemniteDueParents = { net: 0, du: addDays(d, 1), au: preavisFin };
-        alertes.push(`Démission pendant ta grossesse, sans faire ton préavis : c’est ton droit. Tu ne dois rien aux parents pour le préavis non fait (code du travail, article L1225-34). Le contrat finit le ${shortDate(d)}, ton dernier jour travaillé (convention, article 64). Garde le certificat médical de grossesse.`);
+        alertes.push(reponseNow !== undefined
+          ? `Démission pendant ta grossesse, sans faire ton préavis : c’est ton droit. Tu ne dois rien aux parents pour le préavis non fait (code du travail, article L1225-34). Le contrat finit le ${shortDate(d)}, ton dernier jour travaillé (convention, article 64). Garde le certificat médical de grossesse. L’app n’enregistre pas ta réponse : elle garde seulement « aucune somme due au titre du préavis ».`
+          : `Aucune somme due aux parents au titre du préavis non fait. Le contrat finit le ${shortDate(d)}, ton dernier jour travaillé (convention, article 64).`);
       } else if (d < preavisFin) {
         indemniteDueParents = { net: icpDispense(c, addDays(d, 1), preavisFin).net, du: addDays(d, 1), au: preavisFin };
         alertes.push(`Préavis non fait sans l’accord des parents : le contrat finit le ${shortDate(d)}, ton dernier jour travaillé (convention, article 64). Les parents peuvent te demander une indemnité égale au salaire net de la partie du préavis non faite, du ${shortDate(addDays(d, 1))} au ${shortDate(preavisFin)} : ${euros(indemniteDueParents.net)} (convention, article 64.2). Ils ne peuvent pas la retenir sur les sommes ci-dessous : s’ils la veulent, ils doivent saisir le conseil de prud’hommes (service-public.gouv.fr, fiche « Démission d’une assistante maternelle », F33164).`);

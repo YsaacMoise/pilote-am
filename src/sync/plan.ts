@@ -5,7 +5,7 @@
 // Une suppression laisse une « pierre tombale » (v = null) pour que les autres appareils l'apprennent.
 
 import { SYNCED, type SyncedStore } from '../db';
-import { normaliserAbsence, type AbsenceLue } from '../engine/absences';
+import { normaliserAbsence, ruptureSansSante, type AbsenceLue } from '../engine/absences';
 
 export interface RemoteDoc {
   s: SyncedStore;
@@ -50,6 +50,12 @@ const DEVICE_SETTINGS = ['lastAutoCopy', 'persisted', 'lastBackup'];
 export function forRemote(s: string, k: string, value: unknown): unknown {
   // Décision du DG du 21/11/2026 : jamais de nature d'événement ni de cas non géré envoyé en ligne (absences.ts).
   if (s === 'leaves' && value && typeof value === 'object') return normaliserAbsence(value as AbsenceLue);
+  // T-109 (règle d'Arvela : aucune donnée de santé hébergée en ligne) : la rupture part sans réponse de santé.
+  if (s === 'contracts' && value && typeof value === 'object' && (value as { rupture?: object }).rupture) {
+    const v = value as { rupture: Record<string, unknown> };
+    const r = ruptureSansSante(v.rupture);
+    return r === v.rupture ? value : { ...v, rupture: r };
+  }
   if (s !== 'kv' || k !== 'settings') return value;
   const v = { ...((value as { v?: Record<string, unknown> }).v ?? {}) };
   for (const f of DEVICE_SETTINGS) delete v[f];

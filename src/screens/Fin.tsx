@@ -49,7 +49,8 @@ export function Fin({ id }: { id?: string }) {
   const [dernierTravaille, setDernierTravaille] = useState<string | null>(r0?.dernierJourTravaille ?? null);
   // T-107 : réponses demandées seulement dans leur cas (accord écrit de cumul des congés et du préavis ; grossesse).
   const [cumulCp, setCumulCp] = useState<boolean | undefined>(r0?.cumulCpPreavis);
-  const [grossesse, setGrossesse] = useState<boolean | undefined>(r0?.grossesse);
+  // T-109 : la réponse n'est jamais enregistrée (seul le résultat neutre `sommeDuePreavis` l'est) : elle n'est pas reprise.
+  const [grossesse, setGrossesse] = useState<boolean | undefined>(undefined);
   // T-109 (correction 7) : essai de 30 jours pour un autre enfant de la même famille (CCN 95.1).
   const [essaiAutre, setEssaiAutre] = useState<boolean | undefined>(r0?.essaiAutreEnfant);
   // C-008 : total des salaires bruts lu sur les bulletins Pajemploi, pour ne pas calculer l'indemnité sur une estimation.
@@ -95,7 +96,8 @@ export function Fin({ id }: { id?: string }) {
     motif, notif: envoi, ...(pres !== envoi ? { presentation: pres } : {}),
     preavis: inexecution ? inexecution.demandeur : 'execute', ...(inexecution ? { dernierJourTravaille: inexecution.dernierJourTravaille } : {}),
     ...(reponses.cumulCpPreavis !== undefined ? { cumulCpPreavis: reponses.cumulCpPreavis } : {}),
-    ...(reponses.grossesse !== undefined ? { grossesse: reponses.grossesse } : {}),
+    // T-109 : résultat neutre seulement (false : aucune somme due au titre du préavis), jamais la réponse.
+    ...(reponses.grossesse !== undefined ? { sommeDuePreavis: !reponses.grossesse } : demanderGrossesse && r0?.sommeDuePreavis !== undefined ? { sommeDuePreavis: r0.sommeDuePreavis } : {}),
     ...(reponses.essaiAutreEnfant !== undefined ? { essaiAutreEnfant: reponses.essaiAutreEnfant } : {}),
   };
   const enregistre = c.end === f.dernierJour && JSON.stringify(c.rupture) === JSON.stringify(rupture);
@@ -155,6 +157,7 @@ export function Fin({ id }: { id?: string }) {
                     { v: 'non', l: 'Non' },
                   ]} />
                 )}
+                {demanderGrossesse && <p class="hint">Ta réponse sert seulement au calcul, maintenant. Elle n’est pas enregistrée : l’app garde seulement s’il y a une somme due au titre du préavis.</p>}
                 {preavisFait !== 'oui' && (
                   <DateInput label="Dernier jour travaillé" hint={preavisFait === 'employeur' ? 'Le dernier jour où tu as accueilli l’enfant. S’ils ne l’ont plus confié dès le jour de la lettre, mets le dernier jour où tu l’as accueilli avant la lettre.' : 'Le dernier jour où tu as accueilli l’enfant.'} value={dernierTravaille ?? envoi} min={preavisFait === 'employeur' ? addDays(envoi, -7) : envoi} onChange={(v) => setDernierTravaille(v || null)} />
                 )}

@@ -223,29 +223,28 @@ function joursCouverts(chaine: AmLeave[], d: ISODate): ISODate[] {
  *   saisi : elle est retenue (CCN 111), avec la raison, jamais « ni payée ni retenue ».
  * `nonGere` : saisie que l'app ne sait pas lire (avant 2022 ; ancienne saisie sans durée connue).
  */
-export function statutJourEvenement(l: AmLeave, d: ISODate, leaves: AmLeave[] = [l], reposHebdo = 7, jourTravaille?: (x: ISODate) => boolean): { paye: true } | { paye: false; raison: string; nonGere?: boolean } {
+export function statutJourEvenement(l: AmLeave, d: ISODate, leaves: AmLeave[] = [l], reposHebdo = 7, _jourTravaille?: (x: ISODate) => boolean, cid?: string): { paye: true } | { paye: false; raison: string; nonGere?: boolean } {
   const qui = `Événement familial du ${jjmm(l.from)} au ${jjmm(l.to)}`;
   // Décision du DG du 21/11/2026 (« Payer comme avant ») : absence saisie sans nature ni durée : payée.
   if (l.joursEvenement === undefined) return { paye: true };
   const chaine = chaineEvenement(l, leaves);
   const debut = chaine[0];
-  const duree = debut.joursEvenement ?? 0;
+  // T-109 : jours accordés pour ce contrat (jours ouvrés convertis en jours ouvrables à la saisie), sinon la durée commune.
+  const duree = (cid !== undefined ? debut.joursEvenementContrat?.[cid] : undefined) ?? debut.joursEvenement ?? 0;
   if (duree === 0) {
     // T-107 (cas 6) : saisie d'avant la T-107 (événement d'avant 2022, durée alors inconnue) : la durée dépend de l'événement,
     // que l'app n'enregistre pas (décision du DG du 21/11/2026) : il est demandé une fois, en saisissant l'absence de nouveau.
     return { paye: false, nonGere: true, raison: `${qui} : l’app ne connaît pas encore sa durée. Supprime cette absence et saisis-la de nouveau en choisissant l’événement : l’app donne alors la durée et calcule le mois.` };
   }
-  // T-107 (cas 6) : « sept jours ouvrés » (L3142-4, 4°, du 01/07/2020) : jours de travail prévus au contrat, fériés exclus.
-  const ouvrableC = debut.joursOuvres && jourTravaille
-    ? (x: ISODate) => jourTravaille(x) && !holidayName(x)
-    : (x: ISODate) => weekday(x) !== reposHebdo && !holidayName(x);
+  // T-109 : toujours en jours ouvrables ; les « sept jours ouvrés » (T-107, cas 6) sont convertis à la saisie (absences.ts).
+  const ouvrableC = (x: ISODate) => weekday(x) !== reposHebdo && !holidayName(x);
   if (!ouvrableC(d)) return { paye: true }; // férié chômé (payé, art. 47) ou jour de repos : ne compte pas dans la durée
   const n = joursCouverts(chaine, d).filter(ouvrableC).length;
   if (n <= duree) return { paye: true };
   const suite = chaine.length > 1 ? `, en comptant l’absence saisie ${chaine.slice(0, -1).map((x) => `du ${jjmm(x.from)} au ${jjmm(x.to)}`).join(', ')}` : '';
   return {
     paye: false,
-    raison: `${qui} : ${debut.joursOuvres ? `${duree} jours ouvrés` : dureeLabel(duree)} au plus pour cet événement (${debut.from < CCN_3239_DEPUIS ? 'ancienne convention, article 13' : 'convention, article 48.1.3.1.1'}, et code du travail, article L3142-4)${suite}. Le ${jjmm(d)} n’est plus un congé pour événement familial : il est retenu comme une absence non payée. Si c’était un congé payé, saisis-le en congé payé.`,
+    raison: `${qui} : ${dureeLabel(duree)} au plus pour cet événement (${debut.from < CCN_3239_DEPUIS ? 'ancienne convention, article 13' : 'convention, article 48.1.3.1.1'}, et code du travail, article L3142-4)${suite}. Le ${jjmm(d)} n’est plus un congé pour événement familial : il est retenu comme une absence non payée. Si c’était un congé payé, saisis-le en congé payé.`,
   };
 }
 

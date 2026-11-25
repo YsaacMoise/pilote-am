@@ -5,7 +5,7 @@ import type { AmLeave, Bulletin, Contract, DayRec, Journal, Settings } from './e
 import { brutDuNet, makeCtx, monthBase, type Ctx } from './engine/payroll';
 import { addMonths, firstDay, lastDay, monthOf, today, type Month } from './engine/dates';
 import { computeMonth } from './engine/month';
-import { liensApresSuppression, normaliserAbsences, type AbsenceLue } from './engine/absences';
+import { liensApresSuppression, normaliserAbsences, ruptureSansSante, type AbsenceLue } from './engine/absences';
 import { ecranDe, evErreur, type ErreurCode } from './usage-events';
 
 export interface Feedback { id: string; ts: number; screen: string; text: string }
@@ -68,7 +68,13 @@ export async function load(): Promise<void> {
   ]);
   const s = kv.find((x) => x.k === 'settings');
   state.settings = { ...DEFAULT_SETTINGS, ...((s?.v as Settings) ?? {}) };
-  state.contracts = contracts.sort((a, b) => a.createdAt - b.createdAt);
+  // T-109 (règle d'Arvela : aucune donnée de santé hébergée) : une rupture gardée avec l'ancien champ « grossesse » est ramenée
+  // au résultat neutre, puis réécrite (téléphone et compte en ligne).
+  const contratsSains = contracts.map((c) => (c.rupture && ruptureSansSante(c.rupture) !== c.rupture ? { ...c, rupture: ruptureSansSante(c.rupture) as Contract['rupture'] } : c));
+  for (const c of contratsSains.filter((c, i) => c !== contracts[i])) {
+    try { await db.put('contracts', c); } catch { /* réécrit au prochain chargement */ }
+  }
+  state.contracts = contratsSains.sort((a, b) => a.createdAt - b.createdAt);
   state.days = new Map(days.map((d) => [d.key, d]));
   // Décision du DG du 21/11/2026 (« sans la raison ») : une absence enregistrée avec sa nature ou son cas non géré est
   // ramenée à la forme sans raison, puis réécrite (téléphone et compte en ligne). Jours et dates gardés.
@@ -108,7 +114,9 @@ export async function saveSettings(patch: Partial<Settings>) {
   emit();
 }
 
-export async function putContract(c: Contract) {
+export async function putContract(c0: Contract) {
+  // T-109 : jamais de réponse de santé enregistrée avec la rupture (ruptureSansSante).
+  const c = c0.rupture && ruptureSansSante(c0.rupture) !== c0.rupture ? { ...c0, rupture: ruptureSansSante(c0.rupture) as Contract['rupture'] } : c0;
   const prev = state.contracts.find((x) => x.id === c.id);
   state.contracts = prev ? state.contracts.map((x) => (x.id === c.id ? c : x)) : [...state.contracts, c];
   await db.put('contracts', c);
