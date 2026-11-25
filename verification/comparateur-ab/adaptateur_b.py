@@ -623,7 +623,7 @@ def mensualise(ctx):
             elif ctx.cdd and ctx.type == "complete":
                 r = appel("mensualisation_cdd", ctx.hebdo, ctx.taux)  # T-076, R-CDD-04
             else:
-                r = appel("mensualisation", ctx.semaines, ctx.hebdo, ctx.taux)
+                r = appel("mensualisation", ctx.semaines, ctx.hebdo, ctx.taux, majoration_hm_pourcent=ctx.maj_hm)
             ctx.cache["mens"] = r["resultat"]["salaire_mensualise_centimes"]
         except Refus as e:
             ctx.cache["mens"] = e
