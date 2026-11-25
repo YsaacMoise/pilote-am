@@ -286,6 +286,12 @@ export interface Contract {
   cddCpPrisAvantSuivi?: number;
   /** T-076 : motif du CDD (R-CDD-03) ; message seulement, aucun effet sur les montants */
   cddMotif?: 'remplacement' | 'autre';
+  /**
+   * T-109 (comparateur, correction 12) : cas du remplacement (C. trav. L1242-2, 1°), qui fixe la durée maximale d'un CDD à terme
+   * précis (L1242-8-1) : `absence` (18 mois), `attente_cdi` (attente de l'arrivée d'une AM embauchée en CDI : 9 mois),
+   * `depart_suppression` (départ définitif de l'AM avant la suppression de son poste : 24 mois).
+   */
+  cddCasRemplacement?: 'absence' | 'attente_cdi' | 'depart_suppression';
   /** Date à partir de laquelle l'app suit le contrat (avant : historique) */
   trackedFrom: ISODate;
   /**
@@ -311,7 +317,8 @@ export type ChildAbs = 'malade_certif' | 'malade' | 'parents' | 'sans_solde_enfa
  */
 /**
  * T-109 (comparateur, correction 5) : absences payées de l'AM. `formation` : formation obligatoire des assistants maternels
- * (CASF L421-14) ; « La rémunération [...] reste due par l'employeur : 1° Pendant les périodes de formation » (CASF L423-5).
+ * (CASF L421-14) ; « La rémunération [...] reste due par l'employeur : 1° Pendant les périodes de formation » (CASF L423-5) ;
+ * « constitue un temps de travail effectif » (C. trav. L6321-2, applicable par CASF L423-2, 17°).
  * `examen_grossesse` : examens médicaux obligatoires de la grossesse (C. trav. L1225-16, applicable par CASF L423-2) : « Ces
  * absences n'entraînent aucune diminution de la rémunération ».
  */

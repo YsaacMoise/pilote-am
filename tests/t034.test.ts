@@ -116,7 +116,7 @@ describe('T-034 point 5, revu par la T-103 (F2) : démission de 3 mois à 1 an, 
   const ctxDepuis = (start: string) => makeCtx(contract({ start, trackedFrom: start }), [], [], '2026-12-31');
   it('démission à 6 mois : 15 jours calendaires, sans réserve', () => {
     const f = finDeContrat(ctxDepuis('2026-04-01'), '2026-10-15', 'demission');
-    expect(f.preavisLabel).toBe('15 jours calendaires');
+    expect(f.preavisLabel).toBe('15 jours calendaires (convention collective, article 120)');
     expect(f.alertes.join(' ')).not.toMatch(/à confirmer/);
   });
   it('date de fin calculée avec 15 jours, premier jour compté', () => {

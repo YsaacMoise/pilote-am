@@ -420,7 +420,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
         alertes.push(`Démission pendant ta grossesse, sans faire ton préavis : c’est ton droit. Tu ne dois rien aux parents pour le préavis non fait (code du travail, article L1225-34). Le contrat finit le ${shortDate(d)}, ton dernier jour travaillé (convention, article 64). Garde le certificat médical de grossesse.`);
       } else if (d < preavisFin) {
         indemniteDueParents = { net: icpDispense(c, addDays(d, 1), preavisFin).net, du: addDays(d, 1), au: preavisFin };
-        alertes.push(`Préavis non fait sans l’accord des parents : le contrat finit le ${shortDate(d)}, ton dernier jour travaillé (convention, article 64). Les parents peuvent te demander une indemnité égale au salaire net de la partie du préavis non faite, du ${shortDate(addDays(d, 1))} au ${shortDate(preavisFin)} : ${euros(indemniteDueParents.net)} (convention, article 64.2). Ce n’est pas retiré des sommes ci-dessous : c’est à eux de la demander.`);
+        alertes.push(`Préavis non fait sans l’accord des parents : le contrat finit le ${shortDate(d)}, ton dernier jour travaillé (convention, article 64). Les parents peuvent te demander une indemnité égale au salaire net de la partie du préavis non faite, du ${shortDate(addDays(d, 1))} au ${shortDate(preavisFin)} : ${euros(indemniteDueParents.net)} (convention, article 64.2). Ils ne peuvent pas la retenir sur les sommes ci-dessous : s’ils la veulent, ils doivent saisir le conseil de prud’hommes (service-public.gouv.fr, fiche « Démission d’une assistante maternelle », F33164).`);
       }
     }
   }

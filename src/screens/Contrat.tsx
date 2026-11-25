@@ -226,7 +226,15 @@ export function Contrat({ id }: { id?: string }) {
                 {/* T-103 (D10) : CCN 41.1, la durée de l'essai est écrite au contrat. */}
                 <DateInput label="Fin de la période d’essai" hint="Le dernier jour de l’essai écrit dans le contrat. Laisse vide s’il n’y en a pas." value={c.cddEssaiFin ?? ''} min={c.start} onChange={(v) => set({ cddEssaiFin: v || undefined })} />
                 <Choices label="Pourquoi ce CDD ?" value={c.cddMotif} onChange={(v) => set({ cddMotif: v })}
-                  options={[{ v: 'remplacement', l: 'Pour remplacer une assistante maternelle absente' }, { v: 'autre', l: 'Autre raison' }]} />
+                  options={[{ v: 'remplacement', l: 'Pour remplacer une assistante maternelle absente ou qui part' }, { v: 'autre', l: 'Autre raison' }]} />
+                {/* T-109 (correction 12) : le cas du remplacement fixe la durée maximale (C. trav. L1242-8-1). */}
+                {c.cddMotif === 'remplacement' && !c.cddTermeImprecis && (
+                  <Choices label="Quel remplacement ?" value={c.cddCasRemplacement} onChange={(v) => set({ cddCasRemplacement: v })} options={[
+                    { v: 'absence', l: 'Elle est absente (congé, maladie…)', sub: '18 mois au plus, renouvellements compris.' },
+                    { v: 'attente_cdi', l: 'J’attends l’arrivée d’une assistante maternelle embauchée en CDI', sub: '9 mois au plus.' },
+                    { v: 'depart_suppression', l: 'Elle part définitivement et son poste ne sera pas repris', sub: '24 mois au plus.' },
+                  ]} />
+                )}
                 {messagesCdd(c).map((t) => <Banner tone={t.startsWith('Ton salaire') || t.startsWith('Si tu continues') ? 'info' : 'warn'}>{t}</Banner>)}
               </>
             )}

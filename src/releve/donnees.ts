@@ -93,7 +93,7 @@ export function releveDonnees(
     let reel = '';
     let absence = '';
     // T-104 : congé maternité, paternité, de naissance, accident du travail : jamais nommés sur ce qui part aux parents.
-    if (di.kind === 'am' && di.amLeave) { absence = estSuspension(di.amLeave) || di.amLeave === 'non_gere' ? 'Absente' : AM_ABS_LABEL[di.amLeave]; if (di.plannedMin > 0) absAm++; }
+    if (di.kind === 'am' && di.amLeave) { absence = estSuspension(di.amLeave) || di.amLeave === 'non_gere' || di.amLeave === 'examen_grossesse' ? 'Absente' : AM_ABS_LABEL[di.amLeave]; if (di.plannedMin > 0) absAm++; }
     else if (di.kind === 'ferie') { absence = `Férié : ${di.ferie}${di.deducted ? ' (non payé)' : ''}`; feries++; }
     else if (di.kind === 'absent' && di.rec?.abs) {
       absence = CHILD_ABS_LABEL[di.rec.abs] + (di.deducted ? ', retenu' : ', payé');

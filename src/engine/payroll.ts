@@ -621,6 +621,10 @@ export function minutesSeuil45(ctx: Ctx, d: ISODate): number {
     case 'prevu':
       return di.plannedMin;
     case 'am':
+      // T-109 (correction 5) : formation obligatoire (CASF L421-14) : « constitue un temps de travail effectif » (C. trav.
+      // L6321-2, applicable par CASF L423-2, 17°). Examen médical de grossesse : assimilé au travail pour les congés et
+      // l'ancienneté seulement (L1225-16) : non compté.
+      if (di.amLeave === 'formation') return di.plannedMin;
       return di.amLeave === 'cp' && !di.cpSansDroits ? di.plannedMin : 0;
     case 'ferie':
       return isMayDay(d) ? di.plannedMin : 0;

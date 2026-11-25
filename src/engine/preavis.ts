@@ -4,11 +4,16 @@ import { addDays, addMonthsToDate, fullMonthsBetween, shortDate, type ISODate } 
 import { avecPreavisMotif, type AmLeave, type Contract, type Rupture } from './model';
 import { cpPendantPreavis, finPreavisProrogee, MESSAGE_CUMUL_CP_A_REPONDRE } from './suspensions';
 
-/** Durée du préavis selon l'ancienneté, rupture par l'employeur (R-FIN-02, CCN art. 120) */
+/**
+ * Durée du préavis selon l'ancienneté (R-FIN-02, CCN art. 120), rupture par les parents ou par l'AM. T-109 (comparateur, 7.1 ;
+ * correction 14) : démission avant 3 mois, 8 jours calendaires : CASF L423-26 ne règle que l'enfant confié « depuis au moins
+ * trois mois » ; la CCN, étendue sans réserve sur l'article 120 (arrêté du 06/10/2021), comble ce silence ; de 3 mois à moins
+ * d'un an, 15 jours, plus favorable que le mois du CASF (C. trav. L2251-1).
+ */
 export function preavisEmployeur(anc: number): { label: string; jours?: number } {
-  if (anc < 3) return { label: '8 jours calendaires', jours: 8 };
-  if (anc < 12) return { label: '15 jours calendaires', jours: 15 };
-  return { label: '1 mois' };
+  if (anc < 3) return { label: '8 jours calendaires (convention collective, article 120)', jours: 8 };
+  if (anc < 12) return { label: '15 jours calendaires (convention collective, article 120)', jours: 15 };
+  return { label: '1 mois (convention collective, article 120)' };
 }
 
 /** Dernier jour d'un préavis qui commence le jour `depart` (méthode de l'app, voir PREAVIS-DATE-FIN) */
@@ -19,12 +24,6 @@ export function finPreavis(depart: ISODate, p: { jours?: number }): ISODate {
   return cible.slice(8) < depart.slice(8) ? cible : addDays(cible, -1);
 }
 
-/**
- * Fin du préavis calculée par l'app et dates de fin admises quand le préavis est fait en entier : la fin calculée, le
- * lendemain (aucun texte ne dit si le jour de présentation compte, MESSAGE_PREAVIS_FIN) et, pour une démission de 3 mois à
- * moins d'un an, la fin d'un préavis d'un mois et son lendemain (CASF L423-26 contre CCN art. 120). Sans préavis (inaptitude,
- * faute grave, essai, décès) : la date d'envoi ou du décès (CCN art. 64.3, 64.4, 119.4.2).
- */
 /**
  * T-077 (R5) : préavis du droit local d'Alsace-Moselle, lecture B (CT L1234-16 1° : six semaines pour les « personnes employées
  * chez des particuliers », aussi pour la démission, L1234-17-1). Fin de ce préavis quand il est plus long que celui de la
@@ -39,6 +38,9 @@ export function finPreavisLocal(start: ISODate, r: Pick<Rupture, 'motif' | 'noti
 }
 
 /**
+ * Fin du préavis calculée par l'app quand le préavis est fait en entier : une seule date (T-103, F1 et F2 : le jour de la
+ * première présentation est le premier jour du préavis, fiche F2883). Sans préavis (inaptitude, faute grave ou lourde, essai,
+ * décès) : la date d'envoi ou du décès (CCN art. 64.3, 64.4, 119.4.2, 63.3.2). T-109 (correction 21) : commentaire mis à jour.
  * `leaves` (T-104) : préavis fait en entier seulement, absences de l'AM pour la prorogation de l'art. 64.1 (congé de
  * maternité, accident du travail ou maladie professionnelle : suspensions.ts). Sans `leaves` : fin sans prorogation (préavis
  * dont les parents dispensent l'AM, ou fait en partie à sa demande).

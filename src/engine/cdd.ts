@@ -93,20 +93,34 @@ export function finEssaiCdd(c: CddChamps): { court: string; long: string } | und
 /** Messages du contrat CDD (écran Contrat et fin), tirés de regles/t076-cdd.md, partie 5.2 */
 export const MESSAGE_CDD_12_MOIS = 'Ton salaire est calculé sur 12 mois, même si ton CDD est plus court.';
 export const MESSAGE_CDD_DEVIENT_CDI = 'Si tu continues à garder l’enfant après la date de fin sans nouveau contrat, ton CDD devient un CDI.';
-export const MESSAGE_CDD_MOTIF_AUTRE = 'Pour une assistante maternelle, un CDD sert en principe à remplacer une collègue absente. Vérifie ton contrat.';
-export const MESSAGE_CDD_18_MOIS = 'Ton CDD dépasse les limites de la loi. Le juge pourrait le transformer en CDI. Renseigne-toi.';
+export const MESSAGE_CDD_MOTIF_AUTRE = 'Pour une assistante maternelle, le CDD sert à remplacer une assistante maternelle absente, ou qui part (code du travail, article L1242-2, 1° ; DREETS Occitanie, guide du CDD de novembre 2024). Sans ce motif écrit dans le contrat, le juge peut le transformer en CDI (articles L1242-12 et L1245-1).';
 
-/** R-CDD-14 : plus de 18 mois en terme précis (L1242-8-1) ; les renouvellements ne sont pas suivis par l'app */
-export function cddPlusDe18Mois(c: CddChamps): boolean {
-  return !!c.cdd && !!c.start && !!c.cddTerme && !c.cddTermeImprecis && c.cddTerme >= addMonthsToDate(c.start, 18);
+/**
+ * T-109 (comparateur, correction 12) : durée maximale d'un CDD à terme précis, renouvellements compris (C. trav. L1242-8-1) :
+ * 18 mois ; « neuf mois lorsque le contrat est conclu dans l'attente de l'entrée en service effective d'un salarié recruté par
+ * contrat à durée indéterminée » ; 24 mois « dans le cadre du départ définitif d'un salarié précédant la suppression de son
+ * poste de travail ». Avant : 18 mois pour tout terme précis.
+ */
+export function dureeMaxCddMois(c: Pick<Contract, 'cddMotif' | 'cddCasRemplacement'>): number {
+  if (c.cddMotif === 'remplacement' && c.cddCasRemplacement === 'attente_cdi') return 9;
+  if (c.cddMotif === 'remplacement' && c.cddCasRemplacement === 'depart_suppression') return 24;
+  return 18;
+}
+export const messageCddDureeMax = (mois: number): string => `Ton CDD dépasse la durée maximale de la loi pour ce motif : ${mois} mois, renouvellements compris (code du travail, article L1242-8-1). Le juge peut le transformer en CDI (article L1245-1).`;
+/** Gardé pour les écrans écrits avant T-109 : 18 mois */
+export const MESSAGE_CDD_18_MOIS = messageCddDureeMax(18);
+
+/** R-CDD-14, T-109 : terme précis au-delà de la durée maximale du motif (L1242-8-1) ; les renouvellements ne sont pas suivis */
+export function cddPlusDe18Mois(c: CddChamps & Partial<Pick<Contract, 'cddMotif' | 'cddCasRemplacement'>>): boolean {
+  return !!c.cdd && !!c.start && !!c.cddTerme && !c.cddTermeImprecis && c.cddTerme >= addMonthsToDate(c.start, dureeMaxCddMois(c));
 }
 
 /** Messages à afficher avec un CDD (contrôles sans montant) */
-export function messagesCdd(c: CddChamps & Partial<Pick<Contract, 'cddMotif'>>): string[] {
+export function messagesCdd(c: CddChamps & Partial<Pick<Contract, 'cddMotif' | 'cddCasRemplacement'>>): string[] {
   if (!c.cdd) return [];
   const out = [MESSAGE_CDD_12_MOIS, MESSAGE_CDD_DEVIENT_CDI];
   if (c.cddMotif === 'autre') out.push(MESSAGE_CDD_MOTIF_AUTRE);
-  if (cddPlusDe18Mois(c)) out.push(MESSAGE_CDD_18_MOIS);
+  if (cddPlusDe18Mois(c)) out.push(messageCddDureeMax(dureeMaxCddMois(c)));
   return out;
 }
 

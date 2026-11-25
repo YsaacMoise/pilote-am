@@ -75,10 +75,16 @@ describe('C5 : formation obligatoire et examen médical de grossesse, absences p
       expect(r.net, t).toBe(86667);
     }
   });
-  it('heures faites en plus la même semaine : heures normales payées en plus (absence payée, CCN 96.4)', () => {
-    const r = mois(ct(), MAR_VEN.map((d) => pres(d, '19:00')), jour('formation'));
+  it('examen de grossesse, 11 h du mardi au vendredi : 44 h effectuées, 4 HC et 8 h normales (L1225-16 : pas du travail effectif)', () => {
+    const r = mois(ct(), MAR_VEN.map((d) => pres(d, '19:00')), jour('examen_grossesse'));
     expect(r.complMin).toBe(240);
     expect(r.normalesPlusMin).toBe(480);
+  });
+  it('formation obligatoire, même semaine : 8 + 44 = 52 h de travail effectif (C. trav. L6321-2) : 5 HC et 7 heures majorées', () => {
+    const r = mois(ct(), MAR_VEN.map((d) => pres(d, '19:00')), jour('formation'));
+    expect(r.complMin).toBe(300);
+    expect(r.majMin).toBe(420);
+    expect(r.normalesPlusMin ?? 0).toBe(0);
   });
 });
 
@@ -157,5 +163,23 @@ describe('C9 : contrat de plus de 48 h par semaine en moyenne (CASF L423-22)', (
   });
   it('48 h : rien à demander', () => {
     expect(erreursDureeContrat(ct({ planning: week('08:00', '17:36') }))).toEqual([]);
+  });
+});
+
+import { alertesDurees, reposApres } from '../src/engine/durees';
+
+describe('C11 : repos de 11 h et 48 h en moyenne (CASF L423-21, L423-22 ; CCN 96.1, 96.3)', () => {
+  it('deux contrats : 7 h–19 h puis 5 h 30 le lendemain chez l’autre famille : 10 h 30 de repos, alerte', () => {
+    const a = ct({ planning: week('07:00', '19:00', [1]) });
+    const b = { ...ct({ planning: week('05:30', '09:00', [2]) }), id: 'c2', family: 'N' } as Contract;
+    const ctxs = [makeCtx(a, [], [], '2026-12-31'), makeCtx(b, [], [], '2026-12-31')];
+    expect(reposApres(ctxs, '2026-10-12')).toBe(630);
+    expect(alertesDurees(ctxs, '2026-10-13').join(' ')).toMatch(/Repos de 10 h30/);
+  });
+  it('50 h par semaine depuis plus de quatre mois, sans accord : alerte ; 45 h : aucune', () => {
+    const c50 = makeCtx(ct({ planning: week('08:00', '18:00') }), [], [], '2026-12-31');
+    expect(alertesDurees([c50], '2026-10-15').join(' ')).toMatch(/quatre derniers mois/);
+    const c45 = makeCtx(ct({ planning: week('08:00', '17:00') }), [], [], '2026-12-31');
+    expect(alertesDurees([c45], '2026-10-15')).toEqual([]);
   });
 });

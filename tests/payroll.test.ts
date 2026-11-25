@@ -380,9 +380,9 @@ describe('congés payés (art. 48 et 102)', () => {
 describe('fin de contrat (art. 120, 121, 124)', () => {
   it('préavis selon l’ancienneté', () => {
     const mk = (start: string) => makeCtx(contract({ start, trackedFrom: start }), [], [], '2026-10-28');
-    expect(finDeContrat(mk('2026-09-01'), '2026-10-28', 'retrait').preavisLabel).toBe('8 jours calendaires');
-    expect(finDeContrat(mk('2026-03-01'), '2026-10-28', 'retrait').preavisLabel).toBe('15 jours calendaires');
-    expect(finDeContrat(mk('2025-01-06'), '2026-10-28', 'demission').preavisLabel).toBe('1 mois');
+    expect(finDeContrat(mk('2026-09-01'), '2026-10-28', 'retrait').preavisLabel).toBe('8 jours calendaires (convention collective, article 120)');
+    expect(finDeContrat(mk('2026-03-01'), '2026-10-28', 'retrait').preavisLabel).toBe('15 jours calendaires (convention collective, article 120)');
+    expect(finDeContrat(mk('2025-01-06'), '2026-10-28', 'demission').preavisLabel).toBe('1 mois (convention collective, article 120)');
   });
   it('indemnité de rupture : 1/80e des bruts dès 9 mois', () => {
     const c = contract({ start: '2026-01-05', trackedFrom: '2026-01-05' });
@@ -919,7 +919,7 @@ describe('audit C-017 : point de départ du préavis et inaptitude (art. 120, av
   it('le préavis part de la première présentation de la lettre recommandée, pas de l’envoi ni de l’annonce', () => {
     // Envoi le 30/10, présentée le 03/11 : 15 jours calendaires du 03/11 au 17/11.
     const f = finDeContrat(ctx9(), '2026-10-30', 'retrait', 0, '2026-11-03');
-    expect(f.preavisLabel).toBe('15 jours calendaires');
+    expect(f.preavisLabel).toBe('15 jours calendaires (convention collective, article 120)');
     expect(f.preavisFin).toBe('2026-11-17');
     // L'ancienneté reste appréciée à l'envoi.
     expect(f.ancienneteMois).toBe(9);
@@ -931,7 +931,7 @@ describe('audit C-017 : point de départ du préavis et inaptitude (art. 120, av
   it('un mois de préavis compté depuis la présentation', () => {
     const c = contract({ start: '2025-01-06', trackedFrom: '2025-01-06' });
     const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-28', 'demission', 0, '2026-10-31');
-    expect(f.preavisLabel).toBe('1 mois');
+    expect(f.preavisLabel).toBe('1 mois (convention collective, article 120)');
     expect(f.preavisFin).toBe('2026-11-30');
   });
   it('une date de présentation antérieure à l’envoi est ignorée', () => {
@@ -944,7 +944,7 @@ describe('audit C-017 : point de départ du préavis et inaptitude (art. 120, av
   it('démission avant 3 mois : 8 jours calendaires, comme le retrait (CCN art. 120)', () => {
     const mk = () => makeCtx(contract({ start: '2026-09-01', trackedFrom: '2026-09-01' }), [], [], '2026-12-31');
     const d = finDeContrat(mk(), '2026-10-28', 'demission', 0, '2026-10-30');
-    expect(d.preavisLabel).toBe('8 jours calendaires');
+    expect(d.preavisLabel).toBe('8 jours calendaires (convention collective, article 120)');
     expect(d.preavisFin).toBe('2026-11-06');
     expect(finDeContrat(mk(), '2026-10-28', 'retrait', 0, '2026-10-30').preavisFin).toBe('2026-11-06');
   });
