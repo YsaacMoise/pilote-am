@@ -259,7 +259,12 @@ def iccp_cdd(fin_cdd, periodes, ifc_centimes, brut_cdd_centimes, heures_hebdo_mi
             if derniere else 0
         # T-103 (F7) : l'ICCP de la periode precedente, versee a la fin, entre dans la base de la derniere periode
         # (CCN 48.1.1.5). Refus A-50 (D10) leve.
-        base = sal + icp1 + reg + (ifc if derniere else 0) + precedente
+        # verif-1 : l'ICCP de la periode precedente, versee a la fin du contrat, n'entre pas dans la base de la
+        # derniere periode : guide DREETS Bourgogne-Franche-Comte (juin 2026), p. 39-40, deux exemples de fin de
+        # contrat : base de la 2e periode = salaires de cette periode et CP pris pendant celle-ci (« 1/10 [(384 x 3)
+        # + (270,50 EUR)] »), sans le solde de la 1re periode (75,10 EUR, verse a la rupture). CCN 48.1.1.5 : « y
+        # compris celle versee au titre des conges payes pris au cours de ladite periode » vise les conges pris.
+        base = sal + icp1 + reg + (ifc if derniere else 0)
         dix = Fraction(base, 10)
         sup = entier(p.get("jours_supplementaires", 0) or 0, "jours_supplementaires")
         if sup:
@@ -271,9 +276,7 @@ def iccp_cdd(fin_cdd, periodes, ifc_centimes, brut_cdd_centimes, heures_hebdo_mi
             raise NonGere(p.get("code_jours", "JOURS-ACQUIS-INCONNUS"), regles, precision=(
                 "Jours acquis inconnus : le maintien de salaire, a comparer au dixieme (T-103, F9), n'est pas connu."))
         j = entier(j, f"periodes[{i}].jours_acquis")
-        if j % 6:
-            raise NonGere("A-26", regles, precision=(
-                "Conge qui n'est pas un nombre entier de semaines : maintien non calcule (T-103, F9 : comparaison)."))
+        # verif-1 (B-7) : jours non multiples de 6 : jours / 6 x semaine habituelle (Cass. soc. 09/05/2019). A-26 leve.
         mt = Fraction(j, 6) * h / 60 * t
         maintiens.append(mt)
         precedente = Fraction(vers_centimes(max(dix, mt), f"ICCP periode {i + 1}", regles)) if not derniere else 0

@@ -301,11 +301,11 @@ class CDDFin(unittest.TestCase):
     def test_iccp_suite_cdi_et_refus(self):
         p = [{"salaires_bruts_periode_centimes": 160000, "jours_acquis": 6, "jours_payes": 0}]
         self.assertEqual(R(m.iccp_cdd("suite_cdi", p, 0, 160000, 2400, 461), "iccp_centimes"), 0)
-        # T-103 (F7, F9) : deux periodes. Periode 1 : max(160 ; 184,40) = 184,40 EUR. Periode 2 : base 1 600 + 184,40
-        # (ICCP de la periode 1, CCN 48.1.1.5) + 160 (IFC) = 1 944,40 EUR, dixieme 194,44 EUR > 184,40.
-        # Total 378,84 EUR > plancher (3 200 + 160) / 10 = 336 EUR. Ancien refus A-50 (D10) leve.
+        # T-103 (F9) : deux periodes. Periode 1 : max(160 ; 184,40) = 184,40 EUR. Periode 2 : base 1 600 + 160 (IFC)
+        # = 1 760 EUR, dixieme 176 EUR < 184,40. verif-1 : l'ICCP de la periode 1 n'entre pas dans la base de la
+        # periode 2 (guide DREETS BFC juin 2026, p. 39-40). Total 368,80 EUR > plancher (3 200 + 160) / 10 = 336 EUR.
         r = m.iccp_cdd("terme", p + p, 16000, 320000, 2400, 461)
-        self.assertEqual(R(r, "iccp_centimes"), 37884)
+        self.assertEqual(R(r, "iccp_centimes"), 36880)
         self.assertEqual(m.iccp_cdd("terme", [dict(p[0], jours_supplementaires=2)], 16000, 160000, 2400, 461)["code"],
                          "CP-SUPP")
         q = [dict(p[0], jours_payes=6)]

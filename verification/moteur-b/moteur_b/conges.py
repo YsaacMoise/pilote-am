@@ -378,8 +378,13 @@ def _indemnite_cp(jours_conges, heures_hebdo_minutes, taux_horaire_centimes, sal
     # T-103 (C12, A2) : annee incomplete : maintien = jours / 6 x heures habituelles par semaine x taux (CCN
     # 48.1.1.5 ; Cass. soc. 09/05/2019, n° 17-26.232 : « duree normale habituelle d'accueil [...] pendant toute la
     # periode de reference »). Le decompte reel n'est plus une lecture : refus A-26 leve en annee incomplete.
-    if j % 6 == 0 or type_annee == "incomplete":
-        m2 = m1  # semaines entieres : les deux lectures concordent.
+    # verif-1 (B-7, A-26) : 52 semaines aussi : CCN 48.1.1.5 (« remuneration brute que le salarie aurait percue pour
+    # une duree de travail egale a celle du conge ») lue avec Cass. soc. 09/05/2019, n° 17-26.232, publie (« duree
+    # normale habituelle d'accueil [...] pendant toute la periode de reference ») : jours ouvrables / 6 x salaire
+    # d'une semaine habituelle, quel que soit le nombre de jours. Le decompte reel des heures du conge n'est pas la
+    # duree habituelle : il n'est plus une lecture. Refus A-26 leve.
+    if True:
+        m2 = m1
     elif heures_conge_minutes is not None:
         m2 = positif(heures_conge_minutes, "heures_conge_minutes") / 60 * t
     else:

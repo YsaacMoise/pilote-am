@@ -365,7 +365,8 @@ class C10C13Conges(unittest.TestCase):
         r = m.indemnite_cp(23, 2400, 420, 500000, type_annee="incomplete")
         self.assertEqual(R(r, "indemnite_centimes"), 64400)
         # 52 semaines : A-26 garde (le tableau ne tranche que pour 46 semaines ou moins).
-        self.assertEqual(m.indemnite_cp(23, 2400, 420, 500000, type_annee="complete")["code"], "A-26")
+        # verif-1 (B-7) : 52 semaines aussi : 23 / 6 x 40 h x 4,20 EUR = 644 EUR.
+        self.assertEqual(R(m.indemnite_cp(23, 2400, 420, 500000, type_annee="complete"), "indemnite_centimes"), 64400)
 
 
 class H1H6Heures(unittest.TestCase):
