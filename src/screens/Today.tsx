@@ -70,6 +70,9 @@ export function Today() {
   // Départs oubliés sur les 14 derniers jours
   const forgotten: { c: Contract; d: string }[] = [];
   for (const c of activeContracts()) {
+    // T-109 (correction 20) : aujourd'hui aussi, une fois la fin prévue passée.
+    const dt = dayInfo(ctxFor(c), t);
+    if (departOublieAujourdhui(dt.planned, dt.rec?.pres, nowHHMM())) forgotten.push({ c, d: t });
     for (let i = 1; i <= 14; i++) {
       const d = addDays(t, -i);
       if (dayInfo(ctxFor(c), d).departOublie) forgotten.push({ c, d });
@@ -614,11 +617,26 @@ export function departSansArrivee(pres: Presence[], planned: Plage[]): string {
  * faux (absence choisie, jour à venir) : les heures ne sont pas enregistrées, aucun contrôle (sinon refus muet, le message
  * étant dans le bloc caché). Rend le message, ou ''.
  */
-export function verifierFiche(pres: Presence[], planned: Plage[], heuresVisibles: boolean): string {
+export function verifierFiche(pres: Presence[], planned: Plage[], heuresVisibles: boolean, maintenant?: string): string {
   if (!heuresVisibles) return '';
   const sansArrivee = departSansArrivee(pres, planned);
   if (sansArrivee) return sansArrivee;
-  return pres.some((p) => p.a && p.d && p.d <= p.a) ? 'L’heure de départ doit être après l’arrivée.' : '';
+  if (pres.some((p) => p.a && p.d && p.d <= p.a)) return 'L’heure de départ doit être après l’arrivée.';
+  // T-109 (comparateur, correction 20) : le jour même, une heure pas encore passée est refusée, comme au pointage rapide.
+  if (maintenant && pres.some((p) => (p.a && p.a > maintenant) || (p.d && p.d > maintenant))) return MSG_HEURE_FUTURE;
+  return '';
+}
+
+/**
+ * T-109 (correction 20) : le jour même, départ non pointé alors que la fin prévue de la plage commencée est passée de plus de
+ * SEUIL_DEPART_MIN minutes : signalé comme les départs oubliés des jours passés.
+ */
+export function departOublieAujourdhui(planned: Plage[], pres: Presence[] | undefined, maintenant: string): boolean {
+  return (pres ?? []).some((p) => {
+    if (!p.a || p.d) return false;
+    const plage = planned.find((x) => minutes(x.end) > minutes(p.a!));
+    return !!plage && minutes(maintenant) > minutes(plage.end) + SEUIL_DEPART_MIN;
+  });
 }
 
 /**
@@ -679,7 +697,7 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
   useErreurAffichee('saisie', !!err && (err.includes('sans arrivée') || errT103));
 
   async function save() {
-    const erreur = verifierFiche(pres, di.planned, abs === 'none' && !future);
+    const erreur = verifierFiche(pres, di.planned, abs === 'none' && !future, day === today() ? nowHHMM() : undefined);
     if (erreur) { setErr(erreur); return; }
     const erreurT103 = verifierSaisieT103({ abs, km: abs === 'none' && !future && c.kmTaux > 0 ? km : 0, kmPartage, kmEnfants, certifDu, certifAu });
     if (erreurT103) { setErr(erreurT103); return; }

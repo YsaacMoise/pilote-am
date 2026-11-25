@@ -183,3 +183,19 @@ describe('C11 : repos de 11 h et 48 h en moyenne (CASF L423-21, L423-22 ; CCN 96
     expect(alertesDurees([c45], '2026-10-15')).toEqual([]);
   });
 });
+
+import { departOublieAujourdhui, MSG_HEURE_FUTURE, verifierFiche } from '../src/screens/Today';
+
+describe('C20 : fiche « Modifier la journée », le jour même', () => {
+  const plan = [{ start: '08:00', end: '16:00' }];
+  it('heure future refusée le jour même, acceptée pour un jour passé', () => {
+    expect(verifierFiche([{ a: '08:00', d: '17:00' }], plan, true, '15:00')).toBe(MSG_HEURE_FUTURE);
+    expect(verifierFiche([{ a: '08:00', d: '14:00' }], plan, true, '15:00')).toBe('');
+    expect(verifierFiche([{ a: '08:00', d: '17:00' }], plan, true)).toBe('');
+  });
+  it('départ non pointé : signalé après la fin prévue (plus de 15 min), pas avant', () => {
+    expect(departOublieAujourdhui(plan, [{ a: '08:00' }], '16:10')).toBe(false);
+    expect(departOublieAujourdhui(plan, [{ a: '08:00' }], '16:16')).toBe(true);
+    expect(departOublieAujourdhui(plan, [{ a: '08:00', d: '16:00' }], '18:00')).toBe(false);
+  });
+});
