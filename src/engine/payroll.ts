@@ -326,6 +326,9 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
         // rémunération », formule en heures (52 semaines) ou en jours (46 semaines ou moins).
         info.deducted = true;
         info.inDivisor = true;
+      } else if (amLeave === 'formation' || amLeave === 'examen_grossesse') {
+        // T-109 (correction 5) : absence payée, aucune retenue (CASF L423-5, 1° ; C. trav. L1225-16 par CASF L423-2).
+        info.inDivisor = true;
       } else if (amLeave === 'evenement') {
         info.inDivisor = true;
         // T-107 (cas 6) : jours ouvrés (L3142-4, 4°, avant 2022) : jours de travail prévus au contrat.

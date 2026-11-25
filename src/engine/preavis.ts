@@ -1,7 +1,7 @@
 // Préavis : durée (CCN art. 120), date de fin (méthode de l'app) et contrôle de la date de fin saisie (T-045b).
 // Module séparé de fin.ts pour que le calcul des mois (nonGeres.ts) s'en serve sans dépendre de fin.ts.
 import { addDays, addMonthsToDate, fullMonthsBetween, shortDate, type ISODate } from './dates';
-import type { AmLeave, Contract, Rupture } from './model';
+import { avecPreavisMotif, type AmLeave, type Contract, type Rupture } from './model';
 import { cpPendantPreavis, finPreavisProrogee, MESSAGE_CUMUL_CP_A_REPONDRE } from './suspensions';
 
 /** Durée du préavis selon l'ancienneté, rupture par l'employeur (R-FIN-02, CCN art. 120) */
@@ -31,7 +31,7 @@ export function finPreavis(depart: ISODate, p: { jours?: number }): ISODate {
  * convention ; sinon `undefined`.
  */
 export function finPreavisLocal(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'>): ISODate | undefined {
-  if (r.motif !== 'retrait' && r.motif !== 'demission') return undefined;
+  if (!avecPreavisMotif(r.motif)) return undefined;
   const depart = r.presentation && r.presentation > r.notif ? r.presentation : r.notif;
   const ccn = finPreavis(depart, preavisEmployeur(fullMonthsBetween(start, r.notif)));
   const local = finPreavis(depart, { jours: 42 });
@@ -45,7 +45,7 @@ export function finPreavisLocal(start: ISODate, r: Pick<Rupture, 'motif' | 'noti
  */
 export function finsAdmises(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'> & Partial<Pick<Rupture, 'cumulCpPreavis'>>, _alsaceMoselle = false, leaves: AmLeave[] = []): { preavisFin: ISODate; admises: ISODate[] } {
   // T-103 (F1, F2, R2) : une seule date de fin du préavis (fiche officielle F2883 ; CCN 120 ; pas de préavis local pour l'AM).
-  if (r.motif !== 'retrait' && r.motif !== 'demission') return { preavisFin: r.notif, admises: [r.notif] };
+  if (!avecPreavisMotif(r.motif)) return { preavisFin: r.notif, admises: [r.notif] };
   const anc = fullMonthsBetween(start, r.notif);
   const depart = r.presentation && r.presentation > r.notif ? r.presentation : r.notif;
   // T-107 (cas 1) : congés payés pendant le préavis, suspension sauf accord écrit de cumul (CCN 64.1).
@@ -55,7 +55,7 @@ export function finsAdmises(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' |
 
 /** T-107 (cas 1) : préavis fait en entier, des congés payés y tombent et la réponse sur l'accord de cumul manque */
 export function cumulCpADemander(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'> & Partial<Pick<Rupture, 'cumulCpPreavis'>>, leaves: AmLeave[]): boolean {
-  if ((r.motif !== 'retrait' && r.motif !== 'demission') || r.cumulCpPreavis !== undefined) return false;
+  if ((!avecPreavisMotif(r.motif)) || r.cumulCpPreavis !== undefined) return false;
   const depart = r.presentation && r.presentation > r.notif ? r.presentation : r.notif;
   return cpPendantPreavis(depart, finPreavis(depart, preavisEmployeur(fullMonthsBetween(start, r.notif))), leaves);
 }
@@ -104,7 +104,7 @@ export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'
     // regles/t074-preavis-dispense.md). Le contrat finit à la date prévue de fin du préavis (art. 64) : la fin calculée, ou
     // le lendemain (date de fin à confirmer, comme pour un préavis fait en entier). Les jours dispensés sont payés comme des
     // jours d'absence voulue par les parents, sans entretien (jourDispense, payroll.ts).
-    if (!d || (d < r.notif && d < addDays(r.notif, -7)) || d > preavisFin || (r.motif !== 'retrait' && r.motif !== 'demission')) {
+    if (!d || (d < r.notif && d < addDays(r.notif, -7)) || d > preavisFin || (!avecPreavisMotif(r.motif))) {
       return { du: lo(d ?? r.notif, r.notif, end), au: hi(end, preavisFin), message: 'Préavis non fait à la demande des parents : les dates enregistrées ne concordent pas (dernier jour travaillé manquant, avant la lettre ou après la fin du préavis). Corrige-les dans l’écran « Fin de contrat ».' };
     }
     if (!admises.includes(end)) {
@@ -121,7 +121,7 @@ export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'
     return { du: lo(d, end), au: hi(end, preavisFin), message: MESSAGE_GROSSESSE_A_REPONDRE };
   }
   if (r.preavis === 'am_acceptee' || r.preavis === 'am_sans_accord') {
-    if (!d || d < r.notif || d > preavisFin || (r.motif !== 'retrait' && r.motif !== 'demission')) {
+    if (!d || d < r.notif || d > preavisFin || (!avecPreavisMotif(r.motif))) {
       return { du: lo(r.notif, end), au: hi(end, preavisFin), message: 'Préavis non fait à ta demande : les dates enregistrées ne concordent pas (dernier jour travaillé manquant, avant la lettre ou après la fin du préavis). Corrige-les dans l’écran « Fin de contrat ».' };
     }
     if (end !== d) {
@@ -154,3 +154,23 @@ export function jourDispense(c: Pick<Contract, 'end' | 'rupture'>, d: ISODate): 
   const r = c.rupture;
   return !!r && r.preavis === 'employeur' && !!r.dernierJourTravaille && d > r.dernierJourTravaille && !!c.end && d <= c.end;
 }
+
+/**
+ * T-109 (comparateur, correction 7) : dernier jour possible de la période d'essai d'un CDI (CCN 95.1). « La durée maximale de
+ * la période d'essai dépend du nombre de jours de travail hebdomadaire fixé dans le contrat de travail » : 3 mois pour 1, 2 ou
+ * 3 jours calendaires par semaine ; 2 mois pour 4 jours et plus ; 30 jours calendaires pour un autre enfant de la même famille
+ * quand un contrat en cours avait une période d'essai concluante (`autreEnfant`). Planning variable : 2 mois seulement si
+ * chaque semaine type a 4 jours ou plus. Le premier jour du contrat est le premier jour de l'essai.
+ */
+export function finEssaiMaxCdi(c: Contract, autreEnfant?: boolean): { fin: ISODate; regle: string } {
+  if (autreEnfant) return { fin: addDays(c.start, 29), regle: '30 jours calendaires pour l’accueil d’un autre enfant de la même famille, après un essai concluant' };
+  const semaines = c.planningVariable && c.cycle?.length ? c.cycle : c.planningVariable && c.planningsSemaines ? Object.values(c.planningsSemaines) : [c.planning];
+  const jours = (p: Record<string, unknown[] | undefined> | undefined) => Object.values(p ?? {}).filter((x) => Array.isArray(x) && x.length > 0).length;
+  const quatre = semaines.length > 0 && semaines.every((p) => jours(p as Record<string, unknown[] | undefined>) >= 4);
+  return quatre
+    ? { fin: addDays(addMonthsToDate(c.start, 2), -1), regle: '2 mois quand tu travailles 4 jours ou plus par semaine pour ces parents' }
+    : { fin: addDays(addMonthsToDate(c.start, 3), -1), regle: '3 mois quand tu travailles 1, 2 ou 3 jours par semaine pour ces parents' };
+}
+
+/** T-109 : question posée quand un autre contrat de la même famille était en cours au début de celui-ci */
+export const QUESTION_ESSAI_AUTRE_ENFANT = 'Quand ce contrat a commencé, tu gardais déjà un autre enfant de cette famille : ce premier contrat avait-il une période d’essai, qui s’est bien passée ?';

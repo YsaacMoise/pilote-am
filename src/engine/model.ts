@@ -56,7 +56,13 @@ export interface Avenant {
 
 /** Motif de fin de contrat (écran Fin) */
 /** T-107 (cas 5) : `agrement` : suspension, modification ou retrait de l'agrément de l'AM, retrait forcé de l'enfant (CCN 119.3) */
-export type Motif = 'retrait' | 'demission' | 'deces' | 'inaptitude' | 'inaptitude_pro' | 'faute_grave' | 'essai' | 'agrement' | 'fin_cdd';
+/**
+ * T-109 (comparateur, correction 6) : `retraite` (départ volontaire à la retraite de l'AM, CCN 63.2.2, 119.2.2, 120, 121.2,
+ * annexe 4) ; `faute_lourde` (CCN 64.3, 120, 121.1) ; `deces_am` (décès de l'AM, CCN 63.3.2, 119.4.1).
+ */
+export type Motif = 'retrait' | 'demission' | 'retraite' | 'deces' | 'deces_am' | 'inaptitude' | 'inaptitude_pro' | 'faute_grave' | 'faute_lourde' | 'essai' | 'agrement' | 'fin_cdd';
+/** T-109 : motifs avec un préavis (CCN 120 : rupture à l'initiative du particulier employeur ou du salarié) */
+export const avecPreavisMotif = (m: Motif | undefined): boolean => m === 'retrait' || m === 'demission' || m === 'retraite';
 /**
  * T-076 : façon dont un CDD finit (regles/t076-decisions-direction.md, section 2 ; regles/t076-cdd.md, R-CDD-08).
  * - `terme` : terme atteint, y compris après renouvellement ou report du terme (L1243-8 : IFC due) ;
@@ -125,6 +131,12 @@ export interface Rupture {
    * de rupture »). Demandé seulement dans ce cas.
    */
   grossesse?: boolean;
+  /**
+   * T-109 (correction 7) : rupture pendant l'essai d'un CDI, contrat conclu pour un autre enfant de la même famille alors qu'un
+   * contrat était en cours avec une période d'essai concluante : essai de 30 jours calendaires au plus (CCN 95.1, al. 3).
+   * Demandé seulement quand un tel contrat existe et que la rupture tombe après ces 30 jours.
+   */
+  essaiAutreEnfant?: boolean;
   /**
    * T-107 (cas 4) : CDD rompu pour force majeure : la force majeure est un sinistre (L1243-4, al. 2 : indemnité compensatrice
    * égale aux rémunérations jusqu'au terme). Demandé seulement dans ce cas.
@@ -292,7 +304,14 @@ export type ChildAbs = 'malade_certif' | 'malade' | 'parents' | 'sans_solde_enfa
  * l'app refuse les mois, les congés et la fin de contrat concernés. Décision du DG du 21/11/2026 (« sans la raison ») : le
  * cas précis (maternité, accident du travail…) n'est pas enregistré, seulement « non gérée » et les dates.
  */
-export type AmAbs = 'cp' | 'am_malade' | 'am_enfant_malade' | 'evenement' | 'sans_solde' | 'non_gere' | AmSuspension;
+/**
+ * T-109 (comparateur, correction 5) : absences payées de l'AM. `formation` : formation obligatoire des assistants maternels
+ * (CASF L421-14) ; « La rémunération [...] reste due par l'employeur : 1° Pendant les périodes de formation » (CASF L423-5).
+ * `examen_grossesse` : examens médicaux obligatoires de la grossesse (C. trav. L1225-16, applicable par CASF L423-2) : « Ces
+ * absences n'entraînent aucune diminution de la rémunération ».
+ */
+export type AmAbsPayee = 'formation' | 'examen_grossesse';
+export type AmAbs = 'cp' | 'am_malade' | 'am_enfant_malade' | 'evenement' | 'sans_solde' | 'non_gere' | AmAbsPayee | AmSuspension;
 /**
  * T-104 (regles/t104-absences-protegees.md ; décision du DG du 22/11/2026 : la raison est enregistrée pour ces absences) :
  * suspensions du contrat calculées par l'app. Congé de maternité (C. trav. L1225-17, L1225-24), congé de paternité et
@@ -476,6 +495,8 @@ export const AM_ABS_LABEL: Record<AmAbs, string> = {
   evenement: 'Événement familial',
   sans_solde: 'Congé sans solde',
   non_gere: 'Absence à préciser',
+  formation: 'Formation obligatoire',
+  examen_grossesse: 'Examen médical de grossesse',
   maternite: 'Congé maternité',
   paternite: 'Congé paternité et d’accueil de l’enfant',
   naissance_supp: 'Congé supplémentaire de naissance',

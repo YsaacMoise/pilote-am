@@ -19,14 +19,22 @@ import { regionDe } from './regions';
 const AVENANT_10 = '2026-05-01';
 
 export type { DemandeurInexecution, FinCdd, FinCddNonGere, Motif } from './model';
+import { avecPreavisMotif } from './model';
+import { finEssaiMaxCdi, QUESTION_ESSAI_AUTRE_ENFANT } from './preavis';
+
+/** T-109 (correction 7) : la réponse sur l'essai de l'autre enfant manque */
+export const MESSAGE_ESSAI_AUTRE_ENFANT = `Rupture pendant l’essai : ${QUESTION_ESSAI_AUTRE_ENFANT} Si oui, l’essai de ce contrat dure au plus 30 jours (convention, article 95.1). Réponds dans l’écran « Fin de contrat » : l’app calcule ensuite.`;
 
 export const MOTIF_LABEL: Record<Motif, string> = {
   retrait: 'Les parents retirent l’enfant',
   demission: 'Je démissionne',
+  retraite: 'Je pars à la retraite',
   deces: 'Décès de l’enfant',
+  deces_am: 'Décès de l’assistante maternelle',
   inaptitude: 'Inaptitude sans lien avec le travail',
   inaptitude_pro: 'Inaptitude après un accident du travail ou une maladie professionnelle',
   faute_grave: 'Faute grave reprochée',
+  faute_lourde: 'Faute lourde reprochée',
   essai: 'Rupture pendant la période d’essai',
   agrement: 'Agrément suspendu, modifié ou retiré',
   fin_cdd: 'Fin de CDD',
@@ -274,7 +282,7 @@ export interface BrutsReels {
  * contrat (`ctx.c.rupture`).
  */
 export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0, presentation?: ISODate,
-  inexecutionOuBruts?: Inexecution | BrutsReels, brutsReels?: BrutsReels, reponses?: Pick<Rupture, 'cumulCpPreavis' | 'grossesse'>): FinResult {
+  inexecutionOuBruts?: Inexecution | BrutsReels, brutsReels?: BrutsReels, reponses?: Pick<Rupture, 'cumulCpPreavis' | 'grossesse'> & Partial<Pick<Rupture, 'essaiAutreEnfant'>>, autreEnfantEnCours = false): FinResult {
   const inexecution = inexecutionOuBruts && 'demandeur' in inexecutionOuBruts ? inexecutionOuBruts : undefined;
   const bruts: BrutsReels = brutsReels ?? (inexecutionOuBruts && !('demandeur' in inexecutionOuBruts) ? inexecutionOuBruts : {});
   // T-076 : un CDD finit sans préavis ni indemnité de rupture (R-CDD-06) : calcul à part, finDeCdd. La façon dont il finit est
@@ -287,6 +295,17 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   const cumulCpPreavis = reponses ? reponses.cumulCpPreavis : c.rupture?.cumulCpPreavis;
   const grossesse = reponses ? reponses.grossesse : c.rupture?.grossesse;
   const refusFin: string[] = [];
+  // T-109 (correction 7) : CDI, rupture « pendant l'essai » après sa durée maximale (CCN 95.1) : ce n'est pas une rupture pendant
+  // l'essai (Cass. soc. 07/03/2000, n° 97-44.486, publié, comme pour le CDD) : aucun montant, l'écran le dit.
+  if (motif === 'essai') {
+    const essaiAutre = reponses && 'essaiAutreEnfant' in reponses ? reponses.essaiAutreEnfant : c.rupture?.essaiAutreEnfant;
+    const general = finEssaiMaxCdi(c);
+    if (autreEnfantEnCours && essaiAutre === undefined && notif > finEssaiMaxCdi(c, true).fin && notif <= general.fin) refusFin.push(MESSAGE_ESSAI_AUTRE_ENFANT);
+    else {
+      const max = finEssaiMaxCdi(c, autreEnfantEnCours && essaiAutre === true);
+      if (notif > max.fin) refusFin.push(`Tu as choisi « ${MOTIF_LABEL.essai} », mais la lettre (${shortDate(notif)}) est après la fin possible de la période d’essai, le ${shortDate(max.fin)} : ${max.regle} (convention, article 95.1). Ce n’est donc pas une rupture pendant l’essai : choisis le vrai motif (retrait de l’enfant, démission…), avec son préavis et ses indemnités, ou corrige la date.`);
+    }
+  }
 
   // Préavis (art. 120) : « un préavis est à effectuer en cas de rupture à l'initiative du particulier employeur ou du
   // salarié. Sa durée est au minimum de : – 8 jours calendaires lorsque l'enfant est accueilli depuis moins de 3 mois »
@@ -296,12 +315,18 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   let preavisLabel = 'Pas de préavis';
   if (motif === 'inaptitude' || motif === 'inaptitude_pro') {
     preavisLabel = 'Pas de préavis en cas d’inaptitude : le contrat s’arrête à l’envoi de la lettre';
+  } else if (motif === 'deces_am') {
+    // T-109 : CCN 63.3.2, rupture de plein droit à la date du décès.
+    preavisLabel = 'Pas de préavis : le contrat est rompu à la date du décès (convention, article 63.3.2)';
+  } else if (motif === 'faute_grave' || motif === 'faute_lourde') {
+    // T-109 : CCN 120 (pas de préavis en cas de faute grave ou lourde) et 64.3 (rupture à la date d'envoi de la notification).
+    preavisLabel = 'Pas de préavis en cas de faute grave ou lourde : le contrat s’arrête à la date d’envoi de la lettre (convention, articles 64.3 et 120)';
   } else if (motif === 'agrement') {
     // T-107 (cas 5) : CCN 119.3, « le contrat de travail est rompu sans préavis, ni indemnité de rupture, du seul fait de la
     // suspension, de la modification ou du retrait de l'agrément » ; retrait forcé « à la date de notification de la suspension,
     // de la modification ou du retrait de l'agrément par le conseil départemental ».
     preavisLabel = 'Pas de préavis : l’agrément s’impose, le contrat s’arrête à la date de la décision du conseil départemental';
-  } else if (motif === 'retrait' || motif === 'demission') {
+  } else if (avecPreavisMotif(motif)) {
     const p = preavisEmployeur(anc);
     preavisLabel = p.label;
     preavisFin = finPreavis(depart, p);
@@ -353,7 +378,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   let indemniteDueParents: FinResult['indemniteDueParents'];
   if (inexecution) {
     const d = inexecution.dernierJourTravaille;
-    if (motif !== 'retrait' && motif !== 'demission') {
+    if (!avecPreavisMotif(motif)) {
       refusFin.push(`Préavis non exécuté : ce motif (${MOTIF_LABEL[motif].toLowerCase()}) n’a pas de préavis. Retire la réponse sur le préavis ou vérifie le motif.`);
     } else if (d < notif && !(inexecution.demandeur === 'employeur' && d >= addDays(notif, -7))) {
       // T-074 (R2) : dispense totale, l'enfant n'est plus confié dès le jour de la lettre : le dernier jour d'accueil peut
@@ -570,8 +595,23 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     // suspension ou de retrait d'agrément »). L'ICCP est versée (119.3, renvoi à l'art. 67), et la régularisation de l'art. 124.
     ruptureExplication = 'Pas d’indemnité de rupture quand l’agrément est suspendu, modifié ou retiré (convention, articles 119.3 et 121.1). Tes congés non pris te sont payés.';
     alertes.push(`Agrément suspendu, modifié ou retiré : le contrat est rompu sans préavis à la date de la décision du conseil départemental (${shortDate(notif)}) ; les parents te notifient le retrait forcé de l’enfant par lettre recommandée ou remise en main propre (convention, article 119.3).`);
-  } else if (motif === 'faute_grave') {
-    ruptureExplication = 'Pas d’indemnité de rupture en cas de faute grave (à contester si elle est injustifiée).';
+  } else if (motif === 'faute_grave' || motif === 'faute_lourde') {
+    // T-109 (correction 6) : faute lourde, comme la faute grave : pas de préavis (CCN 120), pas d'indemnité (121.1), rupture à la
+    // date d'envoi de la notification (64.3). L'indemnité de congés non pris reste due.
+    ruptureExplication = `Pas d’indemnité de rupture en cas de faute ${motif === 'faute_lourde' ? 'lourde' : 'grave'} (convention, article 121.1 ; à contester si elle est injustifiée). Tes congés non pris te sont payés.`;
+  } else if (motif === 'retraite') {
+    // T-109 (correction 6) : CCN 121.2 et annexe 4, art. 4.2 : l'indemnité conventionnelle de départ volontaire à la retraite
+    // « est versée au salarié par l'organisme assureur » et « ne saurait en aucun cas constituer une obligation incombant
+    // personnellement au particulier employeur ». Réserve de l'arrêté d'extension (D1237-1, D1237-2 « dans le cas où elles
+    // seraient plus avantageuses ») : l'indemnité légale suppose 10 ans chez le même employeur et vaut un demi-mois à 10 ans
+    // (D1237-1) ; celle de l'annexe 4 vaut au moins un mois dès 10 ans d'emploi dans la branche, sur le salaire de
+    // référence le plus favorable (art. 2.2, 4.1, 4.2) : elle est toujours plus avantageuse ; rien n'est dû par les parents.
+    ruptureExplication = 'Départ à la retraite : pas d’indemnité de rupture des parents. L’indemnité de départ volontaire à la retraite (un mois de salaire brut à partir de 10 ans de travail chez des particuliers employeurs, plus au-delà de 15, 20 et 30 ans) est versée par l’organisme assureur de la branche, pas par les parents (convention, article 121.2 et annexe 4). Demande-la à cet organisme, à partir du lendemain de la fin du contrat.';
+  } else if (motif === 'deces_am') {
+    // T-109 (correction 6) : CCN 63.3.2 : rupture « à la date du décès du salarié » ; versement aux ayants droit « du dernier
+    // salaire dû au jour du décès » et de l'indemnité de congés payés non rémunérés. Ni préavis (aucune rupture à l'initiative
+    // d'une partie, 120), ni indemnité de rupture (121.1 ne vise que le retrait de l'enfant).
+    ruptureExplication = 'Décès de l’assistante maternelle : pas d’indemnité de rupture. Ses ayants droit reçoivent le dernier salaire dû au jour du décès et l’indemnité de congés payés non pris (convention, article 63.3.2).';
   } else {
     ruptureExplication = 'Pas d’indemnité pendant la période d’essai.';
   }

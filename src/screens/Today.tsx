@@ -768,6 +768,9 @@ const AM_OPTIONS: { v: ChoixAbsence; l: string; sub: string }[] = [
   { v: 'am_enfant_malade', l: 'Enfant malade', sub: 'Ton enfant à toi. Non payé : 3 jours par an, 5 dans certains cas.' },
   { v: 'evenement', l: 'Événement familial', sub: 'Mariage, naissance, décès… Payé sur justificatif, pour la durée prévue.' },
   { v: 'sans_solde', l: 'Congé sans solde', sub: 'Non payé, avec l’accord des parents.' },
+  // T-109 (correction 5) : absences payées par les parents.
+  { v: 'formation', l: 'Formation obligatoire', sub: 'Ta formation d’assistante maternelle (code de l’action sociale, article L421-14). Payée par les parents (article L423-5).' },
+  { v: 'examen_grossesse', l: 'Examen médical de grossesse', sub: 'Examens obligatoires de ta grossesse. Payés par les parents, sans retenue (code du travail, article L1225-16).' },
   // T-104 (regles/t104-absences-protegees.md) : calculées par l'app ; non payées par les parents (indemnités de la Sécurité
   // sociale), sauf le jour de l'accident et, en Alsace-Moselle, le maintien du salaire.
   { v: 'maternite', l: 'Congé maternité', sub: 'Non payé par les parents : la Sécurité sociale te verse des indemnités. Compte pour tes congés et ton ancienneté.' },

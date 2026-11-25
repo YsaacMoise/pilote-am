@@ -63,3 +63,67 @@ describe('C3 : entretien, plancher au centime supérieur (CCN 114.1, « sans pou
     expect(entretienPlancher('2026-06-10', 300)).toBe(265); // 2,175 < 2,65
   });
 });
+
+describe('C5 : formation obligatoire et examen médical de grossesse, absences payées (CASF L423-5, 1° ; C. trav. L1225-16)', () => {
+  // 40 h, 5,00 € net : 866,67 € ; octobre 2026 : 176 h. Un congé sans solde de 8 h est retenu : 866,67 × 8 ÷ 176 = 39,39 €.
+  const jour = (type: AmLeave['type']): AmLeave[] => [{ id: 'l', type, from: '2026-10-12', to: '2026-10-12' }];
+  it('sans retenue, contrairement au congé sans solde', () => {
+    expect(mois(ct(), [], jour('sans_solde')).retenue).toBe(3939);
+    for (const t of ['formation', 'examen_grossesse'] as const) {
+      const r = mois(ct(), [], jour(t));
+      expect(r.retenue, t).toBe(0);
+      expect(r.net, t).toBe(86667);
+    }
+  });
+  it('heures faites en plus la même semaine : heures normales payées en plus (absence payée, CCN 96.4)', () => {
+    const r = mois(ct(), MAR_VEN.map((d) => pres(d, '19:00')), jour('formation'));
+    expect(r.complMin).toBe(240);
+    expect(r.normalesPlusMin).toBe(480);
+  });
+});
+
+import { finDeContrat } from '../src/engine/fin';
+
+describe('C6 : départ à la retraite, faute lourde, décès de l’AM (CCN 63.2.2, 63.3.2, 64.3, 120, 121.1, 121.2)', () => {
+  const ctx = () => makeCtx(ct(), [], [], '2026-12-31');
+  it('retraite : préavis de l’art. 120 (9 mois : 15 jours), pas d’indemnité des parents', () => {
+    const f = finDeContrat(ctx(), '2026-10-05', 'retraite');
+    expect(f.preavisFin).toBe('2026-10-19'); // 15 jours, le jour de la remise compte
+    expect(f.indemniteRupture).toBe(0);
+    expect(f.ruptureExplication).toMatch(/organisme assureur/);
+  });
+  it('faute lourde : fin à la date d’envoi, ni préavis ni indemnité, congés non pris payés', () => {
+    const f = finDeContrat(ctx(), '2026-10-05', 'faute_lourde');
+    expect(f.dernierJour).toBe('2026-10-05');
+    expect(f.indemniteRupture).toBe(0);
+    expect(f.cpIndemnite).toBeGreaterThan(0);
+  });
+  it('décès de l’AM : fin à la date du décès, congés non pris aux ayants droit, pas d’indemnité de rupture', () => {
+    const f = finDeContrat(ctx(), '2026-10-05', 'deces_am');
+    expect(f.dernierJour).toBe('2026-10-05');
+    expect(f.indemniteRupture).toBe(0);
+    expect(f.indemnitePreavis).toBe(0);
+    expect(f.cpIndemnite).toBeGreaterThan(0);
+  });
+});
+
+describe('C7 : essai d’un CDI (CCN 95.1)', () => {
+  // Début lundi 05/01/2026. 5 jours par semaine : 2 mois, dernier jour 04/03/2026. 3 jours : 3 mois, 04/04/2026.
+  const ctx = (o: Partial<Contract> = {}) => makeCtx(ct(o), [], [], '2026-12-31');
+  it('5 jours par semaine : rupture le 04/03 acceptée, le 05/03 refusée', () => {
+    expect(finDeContrat(ctx(), '2026-03-04', 'essai').nonGere).toBeUndefined();
+    expect(finDeContrat(ctx(), '2026-03-05', 'essai').nonGere?.[0]).toMatch(/après la fin possible de la période d’essai, le 04\/03\/2026/);
+  });
+  it('3 jours par semaine : 3 mois', () => {
+    const o = { planning: week('08:00', '16:00', [1, 2, 3]) };
+    expect(finDeContrat(ctx(o), '2026-04-04', 'essai').nonGere).toBeUndefined();
+    expect(finDeContrat(ctx(o), '2026-04-05', 'essai').nonGere).toBeDefined();
+  });
+  it('autre enfant de la même famille : la réponse est demandée, puis 30 jours calendaires (dernier jour 03/02/2026)', () => {
+    expect(finDeContrat(ctx(), '2026-02-10', 'essai', 0, undefined, undefined, undefined, undefined, true).nonGere?.[0]).toMatch(/autre enfant/);
+    const oui = { cumulCpPreavis: undefined, grossesse: undefined, essaiAutreEnfant: true };
+    expect(finDeContrat(ctx(), '2026-02-03', 'essai', 0, undefined, undefined, undefined, oui, true).nonGere).toBeUndefined();
+    expect(finDeContrat(ctx(), '2026-02-04', 'essai', 0, undefined, undefined, undefined, oui, true).nonGere).toBeDefined();
+    expect(finDeContrat(ctx(), '2026-02-10', 'essai', 0, undefined, undefined, undefined, { ...oui, essaiAutreEnfant: false }, true).nonGere).toBeUndefined();
+  });
+});

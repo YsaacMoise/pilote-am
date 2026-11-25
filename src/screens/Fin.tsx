@@ -3,9 +3,9 @@ import { useState } from 'preact/hooks';
 import { ctxFor, putContract, toast, useStore } from '../store';
 import { addDays, addMonths, monthLabel, monthOf, shortDate, today, type Month } from '../engine/dates';
 import { FIN_CDD_LABEL, finDeContrat, finDeCdd, MESSAGE_CDD_IFC, MESSAGE_CDD_PAS_DE_PREAVIS, QUESTION_SINISTRE, type DemandeurInexecution, type FinCdd, type FinCddNonGere, type Motif } from '../engine/fin';
-import { cumulCpADemander, QUESTION_GROSSESSE } from '../engine/preavis';
+import { cumulCpADemander, finEssaiMaxCdi, QUESTION_ESSAI_AUTRE_ENFANT, QUESTION_GROSSESSE } from '../engine/preavis';
 import { QUESTION_CUMUL_CP } from '../engine/suspensions';
-import { FINS_CDD, FINS_CDD_NON_GEREES, type Contract, type Rupture } from '../engine/model';
+import { avecPreavisMotif, FINS_CDD, FINS_CDD_NON_GEREES, type Contract, type Rupture } from '../engine/model';
 import { euros, hoursLabel } from '../engine/money';
 import { ligneIndemnitePreavis, ligneRegularisation } from './fin-lignes';
 import { Banner, Choices, DateInput, EuroInput, Gommette, Topbar } from '../ui/kit';
@@ -17,12 +17,15 @@ import { Banner, Choices, DateInput, EuroInput, Gommette, Topbar } from '../ui/k
 const CHOIX_MOTIF: { v: Motif; l: string; sub?: string }[] = [
   { v: 'retrait', l: 'Les parents retirent l’enfant', sub: 'Entrée à l’école, déménagement, autre mode de garde…' },
   { v: 'demission', l: 'Je démissionne' },
+  { v: 'retraite', l: 'Je pars à la retraite', sub: 'Tu as l’âge légal de départ. Tu préviens les parents par écrit, avec un préavis.' },
   { v: 'essai', l: 'Rupture pendant la période d’essai', sub: 'À ton initiative ou à celle des parents.' },
   { v: 'faute_grave', l: 'Les parents retirent l’enfant pour faute grave', sub: 'Leur lettre te reproche une faute grave.' },
+  { v: 'faute_lourde', l: 'Les parents retirent l’enfant pour faute lourde', sub: 'Leur lettre te reproche une faute lourde (intention de leur nuire).' },
   { v: 'inaptitude', l: 'Je suis inapte, pour une raison sans lien avec le travail' },
   { v: 'inaptitude_pro', l: 'Je suis inapte après un accident du travail ou une maladie professionnelle' },
   { v: 'agrement', l: 'Mon agrément est suspendu, modifié ou retiré', sub: 'Décision du conseil départemental : les parents doivent retirer l’enfant.' },
   { v: 'deces', l: 'Décès de l’enfant' },
+  { v: 'deces_am', l: 'Décès de l’assistante maternelle', sub: 'Calcul pour ses ayants droit ou pour les parents.' },
 ];
 
 const ouiNon = (v: boolean | undefined) => (v === undefined ? undefined : v ? 'oui' : 'non');
@@ -46,6 +49,8 @@ export function Fin({ id }: { id?: string }) {
   // T-107 : réponses demandées seulement dans leur cas (accord écrit de cumul des congés et du préavis ; grossesse).
   const [cumulCp, setCumulCp] = useState<boolean | undefined>(r0?.cumulCpPreavis);
   const [grossesse, setGrossesse] = useState<boolean | undefined>(r0?.grossesse);
+  // T-109 (correction 7) : essai de 30 jours pour un autre enfant de la même famille (CCN 95.1).
+  const [essaiAutre, setEssaiAutre] = useState<boolean | undefined>(r0?.essaiAutreEnfant);
   // C-008 : total des salaires bruts lu sur les bulletins Pajemploi, pour ne pas calculer l'indemnité sur une estimation.
   const [brutTotal, setBrutTotal] = useState<number | undefined>(undefined);
   const [brutJusqua, setBrutJusqua] = useState<Month>(addMonths(monthOf(today()), -1));
@@ -64,9 +69,9 @@ export function Fin({ id }: { id?: string }) {
   const envoi = notif < c.start ? c.start : notif;
   // C-017 : le préavis part de la première présentation de la lettre recommandée ou de la remise en main propre
   // contre décharge (art. 120), jamais de l'annonce orale.
-  const avecLettre = motif !== 'deces';
+  const avecLettre = motif !== 'deces' && motif !== 'deces_am';
   // Seuls le retrait et la démission ont un préavis : pour les autres motifs, seule la date d'envoi compte.
-  const avecPreavis = motif === 'retrait' || motif === 'demission';
+  const avecPreavis = avecPreavisMotif(motif);
   const presVue = presentation && presentation > envoi ? presentation : envoi;
   const pres = avecPreavis && remise === 'recommande' ? presVue : envoi;
   const inexecution = avecPreavis && preavisFait !== 'oui' ? { demandeur: preavisFait, dernierJourTravaille: dernierTravaille ?? envoi } : undefined;
@@ -78,8 +83,11 @@ export function Fin({ id }: { id?: string }) {
   const demanderCumul = avecPreavis && !inexecution && cumulCpADemander(c.start, { motif, notif: envoi, presentation: pres }, s.leaves);
   // T-107 (cas 2) : démission, préavis non fait sans l'accord des parents.
   const demanderGrossesse = motif === 'demission' && preavisFait === 'am_sans_accord';
-  const reponses = { cumulCpPreavis: demanderCumul ? cumulCp : undefined, grossesse: demanderGrossesse ? grossesse : undefined };
-  const f = finDeContrat(ctxFor({ ...c, end: undefined }), envoi, motif, s.settings.enfantsACharge, pres, inexecution, { parMois, total: brutTotal, jusqua: brutJusqua }, reponses);
+  // T-109 (correction 7) : un autre contrat de la même famille était en cours au premier jour de celui-ci.
+  const autreEnfantEnCours = !!c.family && s.contracts.some((k) => k.id !== c.id && k.family === c.family && k.start < c.start && (!k.end || k.end >= c.start));
+  const demanderEssaiAutre = motif === 'essai' && autreEnfantEnCours && envoi > finEssaiMaxCdi(c, true).fin && envoi <= finEssaiMaxCdi(c).fin;
+  const reponses = { cumulCpPreavis: demanderCumul ? cumulCp : undefined, grossesse: demanderGrossesse ? grossesse : undefined, essaiAutreEnfant: demanderEssaiAutre ? essaiAutre : undefined };
+  const f = finDeContrat(ctxFor({ ...c, end: undefined }), envoi, motif, s.settings.enfantsACharge, pres, inexecution, { parMois, total: brutTotal, jusqua: brutJusqua }, reponses, autreEnfantEnCours);
   // T-050d (C-4) : le dernier mois est dans les bulletins (total saisi ou brut lu) : l'ICCP et la régularisation y sont déjà.
   const finDansBulletins = ((brutTotal ?? 0) > 0 && brutJusqua >= monthOf(f.dernierJour)) || (parMois[monthOf(f.dernierJour)] ?? 0) > 0;
   const rupture: Rupture = {
@@ -87,6 +95,7 @@ export function Fin({ id }: { id?: string }) {
     preavis: inexecution ? inexecution.demandeur : 'execute', ...(inexecution ? { dernierJourTravaille: inexecution.dernierJourTravaille } : {}),
     ...(reponses.cumulCpPreavis !== undefined ? { cumulCpPreavis: reponses.cumulCpPreavis } : {}),
     ...(reponses.grossesse !== undefined ? { grossesse: reponses.grossesse } : {}),
+    ...(reponses.essaiAutreEnfant !== undefined ? { essaiAutreEnfant: reponses.essaiAutreEnfant } : {}),
   };
   const enregistre = c.end === f.dernierJour && JSON.stringify(c.rupture) === JSON.stringify(rupture);
   const enregistrer = async () => {
@@ -152,7 +161,15 @@ export function Fin({ id }: { id?: string }) {
             ) : motif === 'agrement' ? (
               <DateInput label="Date de la décision du conseil départemental" hint="La date à laquelle le conseil départemental t’a notifié la suspension, la modification ou le retrait de ton agrément. Le contrat s’arrête ce jour-là, sans préavis (convention, article 119.3)." value={notif} min={c.start} onChange={changeEnvoi} />
             ) : avecLettre ? (
-              <DateInput label="Date de la lettre (envoi ou remise)" hint="Ce motif n’a pas de préavis : le contrat s’arrête à cette date." value={notif} min={c.start} onChange={changeEnvoi} />
+              <>
+                <DateInput label="Date de la lettre (envoi ou remise)" hint="Ce motif n’a pas de préavis : le contrat s’arrête à cette date." value={notif} min={c.start} onChange={changeEnvoi} />
+                {demanderEssaiAutre && (
+                  <Choices label={QUESTION_ESSAI_AUTRE_ENFANT} value={ouiNon(essaiAutre)} onChange={(v) => setEssaiAutre(v === 'oui')} options={[
+                    { v: 'oui', l: 'Oui', sub: 'L’essai de ce contrat dure au plus 30 jours (convention, article 95.1).' },
+                    { v: 'non', l: 'Non', sub: 'L’essai dure au plus 2 ou 3 mois, selon tes jours de travail.' },
+                  ]} />
+                )}
+              </>
             ) : (
               <DateInput label="Date du décès" value={notif} min={c.start} onChange={setNotif} />
             )}
@@ -183,7 +200,7 @@ export function Fin({ id }: { id?: string }) {
           <dl class="kv">
             <dt>{avecLettre ? 'Ancienneté à l’envoi de la lettre' : 'Ancienneté'}</dt><dd>{f.ancienneteMois} mois</dd>
             <dt>Préavis</dt><dd>{f.preavisLabel}</dd>
-            <dt>{f.dispense ? 'Fin du contrat (date prévue de fin du préavis)' : motif === 'deces' || inexecution ? 'Dernier jour' : 'Dernier jour (préavis inclus)'}</dt><dd>{shortDate(f.dernierJour)}</dd>
+            <dt>{f.dispense ? 'Fin du contrat (date prévue de fin du préavis)' : motif === 'deces' || motif === 'deces_am' || inexecution ? 'Dernier jour' : 'Dernier jour (préavis inclus)'}</dt><dd>{shortDate(f.dernierJour)}</dd>
           </dl>
           <div class="decl">
             <div class="decl-line"><span class="decl-label"><span>Indemnité de rupture</span><span class="decl-hint">{f.ruptureExplication}</span></span><span class="decl-value">{ruptureNonCalculee ? 'non calculée' : euros(f.indemniteRupture)}</span></div>
