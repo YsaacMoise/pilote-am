@@ -25,6 +25,9 @@ import { finEssaiMaxCdi, QUESTION_ESSAI_AUTRE_ENFANT } from './preavis';
 /** T-109 (correction 10) : inaptitude notifiée avant l'avenant n° 10 */
 export const MESSAGE_INAPTITUDE_AVANT_AVENANT_10 = 'Inaptitude notifiée avant le 1er mai 2026 : la rupture pour inaptitude n’existait pas encore pour l’assistante maternelle (avenant n° 10 de la convention, en vigueur le 1er mai 2026). Le contrat a pris fin par un retrait de l’enfant (convention, article 119.1) : choisis « Les parents retirent l’enfant », avec la date de leur lettre, et dis si le préavis a été fait.';
 
+/** T-109 (section 6, point 7) : décès du parent employeur, aucune règle pour l'AM */
+export const MESSAGE_DECES_EMPLOYEUR = 'Décès du parent employeur : la convention ne prévoit pas cette rupture pour l’assistante maternelle (l’article 63.3.1 renvoie au socle des assistants maternels, qui n’en dit rien). Le contrat ne s’arrête donc pas de lui-même. Si l’autre parent ou les héritiers ne le poursuivent pas, ils retirent l’enfant par lettre (convention, article 119.1) : choisis « Les parents retirent l’enfant », avec la date de cette lettre.';
+
 /** T-109 (correction 7) : la réponse sur l'essai de l'autre enfant manque */
 export const MESSAGE_ESSAI_AUTRE_ENFANT = `Rupture pendant l’essai : ${QUESTION_ESSAI_AUTRE_ENFANT} Si oui, l’essai de ce contrat dure au plus 30 jours (convention, article 95.1). Réponds dans l’écran « Fin de contrat » : l’app calcule ensuite.`;
 
@@ -34,6 +37,7 @@ export const MOTIF_LABEL: Record<Motif, string> = {
   retraite: 'Je pars à la retraite',
   deces: 'Décès de l’enfant',
   deces_am: 'Décès de l’assistante maternelle',
+  deces_employeur: 'Décès du parent employeur',
   inaptitude: 'Inaptitude sans lien avec le travail',
   inaptitude_pro: 'Inaptitude après un accident du travail ou une maladie professionnelle',
   faute_grave: 'Faute grave reprochée',
@@ -298,6 +302,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   const cumulCpPreavis = reponses ? reponses.cumulCpPreavis : c.rupture?.cumulCpPreavis;
   const grossesse = reponses ? reponses.grossesse : c.rupture?.grossesse;
   const refusFin: string[] = [];
+  if (motif === 'deces_employeur') refusFin.push(MESSAGE_DECES_EMPLOYEUR);
   // T-109 (correction 7) : CDI, rupture « pendant l'essai » après sa durée maximale (CCN 95.1) : ce n'est pas une rupture pendant
   // l'essai (Cass. soc. 07/03/2000, n° 97-44.486, publié, comme pour le CDD) : aucun montant, l'écran le dit.
   if (motif === 'essai') {

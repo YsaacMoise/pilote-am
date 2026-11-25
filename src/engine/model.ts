@@ -58,9 +58,11 @@ export interface Avenant {
 /** T-107 (cas 5) : `agrement` : suspension, modification ou retrait de l'agrément de l'AM, retrait forcé de l'enfant (CCN 119.3) */
 /**
  * T-109 (comparateur, correction 6) : `retraite` (départ volontaire à la retraite de l'AM, CCN 63.2.2, 119.2.2, 120, 121.2,
- * annexe 4) ; `faute_lourde` (CCN 64.3, 120, 121.1) ; `deces_am` (décès de l'AM, CCN 63.3.2, 119.4.1).
+ * annexe 4) ; `faute_lourde` (CCN 64.3, 120, 121.1) ; `deces_am` (décès de l'AM, CCN 63.3.2, 119.4.1) ; `deces_employeur`
+ * (comparateur, section 6, point 7) : aucune règle pour l'AM (CCN 63.3.1 renvoie aux socles spécifiques ; le socle AM n'en dit
+ * rien) : jamais calculé, l'écran renvoie au retrait de l'enfant (CCN 119.1).
  */
-export type Motif = 'retrait' | 'demission' | 'retraite' | 'deces' | 'deces_am' | 'inaptitude' | 'inaptitude_pro' | 'faute_grave' | 'faute_lourde' | 'essai' | 'agrement' | 'fin_cdd';
+export type Motif = 'retrait' | 'demission' | 'retraite' | 'deces' | 'deces_am' | 'deces_employeur' | 'inaptitude' | 'inaptitude_pro' | 'faute_grave' | 'faute_lourde' | 'essai' | 'agrement' | 'fin_cdd';
 /** T-109 : motifs avec un préavis (CCN 120 : rupture à l'initiative du particulier employeur ou du salarié) */
 export const avecPreavisMotif = (m: Motif | undefined): boolean => m === 'retrait' || m === 'demission' || m === 'retraite';
 /**

@@ -26,6 +26,7 @@ const CHOIX_MOTIF: { v: Motif; l: string; sub?: string }[] = [
   { v: 'agrement', l: 'Mon agrément est suspendu, modifié ou retiré', sub: 'Décision du conseil départemental : les parents doivent retirer l’enfant.' },
   { v: 'deces', l: 'Décès de l’enfant' },
   { v: 'deces_am', l: 'Décès de l’assistante maternelle', sub: 'Calcul pour ses ayants droit ou pour les parents.' },
+  { v: 'deces_employeur', l: 'Décès du parent employeur' },
 ];
 
 const ouiNon = (v: boolean | undefined) => (v === undefined ? undefined : v ? 'oui' : 'non');

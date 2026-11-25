@@ -1,7 +1,7 @@
 // T-076 : contrat régulier dont les horaires changent d'une semaine à l'autre (planning variable).
 // Spécification : regles/t076-decisions-direction.md, section 1. Règles : regles/t076-planning-variable.md (R-PV, P-PV).
 // Ce module ne dépend que du modèle et des dates (pas de payroll.ts) : payroll.ts, conges.ts et nonGeres.ts s'en servent.
-import { daysBetween, eachDay, minutes, mondayOf, shortDate, weekday, type ISODate } from './dates';
+import { addDays, daysBetween, eachDay, minutes, mondayOf, shortDate, weekday, type ISODate } from './dates';
 import type { Contract, Plage, Planning } from './model';
 import { plagesOccasionnel } from './occasionnel';
 
@@ -170,6 +170,18 @@ export function nonGeresPeriodePV(c: Contract, from: ISODate, to: ISODate): stri
   const manquants = lundis.filter((l) => !c.planningsSemaines?.[l] && !off.has(l));
   if (manquants.length) {
     out.push(`Planning ${manquants.length > 1 ? 'des semaines du' : 'de la semaine du'} ${manquants.map(shortDate).join(', du ')} non saisi : l’app ne calcule pas ce mois sans lui. Ouvre le contrat et saisis le planning remis par les parents pour ${manquants.length > 1 ? 'ces semaines' : 'cette semaine'}, ou « sans accueil ». Une semaine de congé ou d’absence a aussi son planning.`);
+  }
+  // T-109 (comparateur, section 6, point 1 ; R-AV-02) : avenant en cours de mois vers un planning remis chaque semaine. Le
+  // salaire de la nouvelle période se calcule au prorata de l'art. 111 sur les heures qu'aurait eues tout le mois avec le
+  // nouveau contrat : sans le planning des semaines d'avant l'avenant, ce diviseur serait trop petit (salaire trop haut).
+  for (const av of c.avenants ?? []) {
+    const x = av.from;
+    if (x < from || x > to || x.slice(8) === '01') continue;
+    const t = conditionsAu(c, x);
+    if (!pvActif(t) || formePV(t) !== 'remis') continue;
+    const premier = `${x.slice(0, 7)}-01`;
+    const avant = [...new Set(eachDay(premier, addDays(x, -1)).map(mondayOf))].filter((l) => !c.planningsSemaines?.[l] && mondayOf(x) !== l);
+    if (avant.length) out.push(`Avenant au ${shortDate(x)}, planning remis chaque semaine : le salaire du mois se calcule au prorata des heures qu’aurait eues tout le mois avec le nouveau contrat (convention, articles 109 et 111). Saisis aussi, dans le contrat, le planning qu’auraient eu ${avant.length > 1 ? 'les semaines du' : 'la semaine du'} ${avant.map(shortDate).join(', du ')} avec ce nouveau contrat.`);
   }
   return out;
 }

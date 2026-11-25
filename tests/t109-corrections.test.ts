@@ -220,3 +220,34 @@ describe('C12 : durée maximale du CDD (C. trav. L1242-8-1)', () => {
     expect(messagesCdd({ ...c, cddCasRemplacement: 'absence' }).join(' ')).not.toMatch(/durée maximale/);
   });
 });
+
+import { monthBase } from '../src/engine/payroll';
+
+describe('Section 6, point 1 : avenant au 15/10/2026 vers un planning remis (R-AV-02 ; CCN 109, 111)', () => {
+  // Avant : 40 h (8 h × 5), 5,00 € : 866,67 € ; octobre 176 h ; du 01/10 au 14/10 : 10 jours, 80 h : 866,67 × 80 ÷ 176 = 393,94 €.
+  // Après : 130 h payées par mois × 5,00 € = 650,00 € ; plannings remis de 30 h (6 h × 5) chaque semaine.
+  const w = (s: string, e: string) => { const p: Planning = {}; for (const d of [1, 2, 3, 4, 5]) p[d] = [{ start: s, end: e }]; return p; };
+  const av = (lundis: string[]) => {
+    const plans: Record<string, Planning> = {};
+    for (const l of lundis) plans[l] = w('08:00', '14:00');
+    return ct({ planningsSemaines: plans, avenants: [{ id: 'a', from: '2026-10-15', changes: { planningVariable: true, pvForme: 'remis', heuresMensualisees: 130 } }] } as Partial<Contract>);
+  };
+  it('sans le planning des semaines d’avant l’avenant : le mois attend ces plannings', () => {
+    const b = monthBase(makeCtx(av(['2026-10-12', '2026-10-19', '2026-10-26']), [], [], '2026-12-31'), '2026-10');
+    expect(b.nonGere.join(' ')).toMatch(/semaines du 28\/09\/2026, du 05\/10\/2026/);
+  });
+  it('avec eux : 650,00 × 72 h ÷ 132 h = 354,55 € ; octobre = 393,94 + 354,55 = 748,49 €', () => {
+    // Du 15/10 au 31/10 : 12 jours × 6 h = 72 h ; tout octobre avec le nouveau contrat : 22 jours × 6 h = 132 h.
+    const b = monthBase(makeCtx(av(['2026-09-28', '2026-10-05', '2026-10-12', '2026-10-19', '2026-10-26']), [], [], '2026-12-31'), '2026-10');
+    expect(b.nonGere).toEqual([]);
+    expect(b.base).toBe(39394 + 35455);
+  });
+});
+
+describe('Section 6, point 7 : décès du parent employeur (CCN 63.3.1, 119.1)', () => {
+  it('aucun montant, la raison et le renvoi au retrait de l’enfant', () => {
+    const f = finDeContrat(makeCtx(ct(), [], [], '2026-12-31'), '2026-10-05', 'deces_employeur');
+    expect(f.nonGere?.[0]).toMatch(/Les parents retirent l’enfant/);
+    expect(f.indemniteRupture).toBe(0);
+  });
+});
