@@ -86,11 +86,14 @@ export const RATES: Rates[] = [
 ];
 
 /**
- * Réduction de cotisations salariales des heures complémentaires et majorées (CSS art. L241-17, décret 2019-40 :
- * 11,31 % de leur rémunération brute, dans la limite des cotisations d'assurance vieillesse).
- * NON VÉRIFIÉ à la source officielle (Légifrance et pages Pajemploi illisibles par un robot le 04/11/2026) : la
- * mécanique retenue (net déclaré et brut inchangés, réduction ajoutée à la somme versée) vient de sites spécialisés
- * et doit être confirmée sur un vrai bulletin Pajemploi avec des heures majorées (constat C-010).
+ * Réduction de cotisations salariales des heures complémentaires et majorées. T-109 (comparateur, correction 24) : textes relus
+ * dans la base LEGI de la DILA (version en vigueur le 25/11/2026). CSS L241-17, I, 7° : ouvrent droit à la réduction « les
+ * rémunérations versées aux assistants maternels [...] au titre des heures supplémentaires qu'ils accomplissent au delà d'une
+ * durée hebdomadaire de quarante-cinq heures, ainsi que les salaires qui leur sont versés au titre des heures complémentaires
+ * accomplies au sens de la convention collective » ; II : « produit d'un taux fixé par décret et des rémunérations », imputé
+ * sur les cotisations salariales. CSS D241-21 : taux égal à la somme des taux des cotisations d'assurance vieillesse à la charge
+ * du salarié, « dans la limite de 11,31 % » (6,90 + 0,40 + 3,15 + 0,86 = 11,31 %). Le net déclaré et le brut restent les
+ * mêmes ; la réduction baisse les cotisations retenues et s'ajoute à la somme versée à l'AM (totalAVerser).
  */
 export const REDUCTION_HS = 0.1131;
 
@@ -173,7 +176,9 @@ export function minimumBrut(d: ISODate, region: Region = 'metropole'): MinimumBr
  * l'assistant maternel est titulaire du titre « Assistant maternel - garde d'enfants ». » L'app ne demande pas si l'AM a
  * ce titre : ses contrôles du minimum ne comptent pas cette majoration, et le disent. Aucun montant n'en dépend.
  */
-export const MINIMUM_SANS_TITRE = 'Ce minimum ne compte pas la majoration de 4 % prévue quand l’assistante maternelle a le titre « Assistant maternel - garde d’enfants » (Urssaf). Si tu as ce titre, ton minimum est plus haut : vérifie ton taux.';
+// T-109 (comparateur, correction 22) : nom du titre dans l'avenant n° 10 à l'annexe 5 : « assistant maternel – assistant parental »
+// (AM-AP) ; avant : « garde d'enfants » (AM-GE).
+export const MINIMUM_SANS_TITRE = 'Ce minimum ne compte pas la majoration de 4 % prévue quand l’assistante maternelle a le titre « Assistant maternel – assistant parental » (ancien titre « garde d’enfants » ; convention, annexe 5). Si tu as ce titre, ton taux doit être d’au moins 4 % au-dessus de ce minimum.';
 
 export function libelleMinimumBrut(m: MinimumBrut): string {
   const exact = (m.legal / 100).toFixed(3).replace('.', ',');

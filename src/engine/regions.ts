@@ -110,4 +110,4 @@ export function partNonDeductibleRegion(region: Region, metropole: number): numb
 
 /** R2 : majoration de 4 % du titre AM-GE à Mayotte. */
 export const MINIMUM_SANS_TITRE_MAYOTTE =
-  'Ce minimum ne compte pas la majoration de l’annexe 5 de la convention pour le titre « Assistant maternel - garde d’enfants ». Elle vaut aussi à Mayotte (convention, article 2 : la convention « est également applicable à Mayotte » pour les assistants maternels). Si tu as ce titre, ton minimum est plus haut : vérifie ton taux.';
+  'Ce minimum ne compte pas la majoration de l’annexe 5 de la convention pour le titre « Assistant maternel – assistant parental » (ancien titre « garde d’enfants »). Elle vaut aussi à Mayotte (convention, article 2 : la convention « est également applicable à Mayotte » pour les assistants maternels). Si tu as ce titre, ton taux doit être au-dessus de ce minimum, majoration comprise.';

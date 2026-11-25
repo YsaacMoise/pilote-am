@@ -2,7 +2,7 @@
 
 Volet légal d’Arvela, 4 novembre 2026. Six questions que l’éditeur ne peut pas trancher seul. Pour chacune : la question précise, l’enjeu, et le choix appliqué en attendant la réponse. Les choix sont ceux des Conditions d’utilisation, de la politique de confidentialité, du registre (docs/registre-des-traitements.md) et de l’analyse d’impact (docs/aipd.md).
 
-Textes lus pour préparer ces questions : RGPD (articles 4, 6, 9, 13, 28, 30, 35, 36) ; pages CNIL sur l’AIPD, le registre, la mesure d’audience (4 juillet 2025) et la FAQ cookies (29 avril 2026) ; page de l’Agence du numérique en santé sur le champ de l’hébergement de données de santé. Légifrance n’a pas pu être lu directement : la numérotation de la LCEN (article 1-1) et la définition du consommateur (article liminaire du Code de la consommation) viennent de sources secondaires et sont à confirmer.
+Textes lus pour préparer ces questions : RGPD (articles 4, 6, 9, 13, 28, 30, 35, 36) ; pages CNIL sur l’AIPD, le registre, la mesure d’audience (4 juillet 2025) et la FAQ cookies (29 avril 2026) ; page de l’Agence du numérique en santé sur le champ de l’hébergement de données de santé. Légifrance n’a pas pu être lu directement : la numérotation de la LCEN (article 1-1) et la définition du consommateur (article liminaire du Code de la consommation) viennent de sources secondaires : ils ne sont pas relus à la source officielle.
 
 ---
 

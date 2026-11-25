@@ -475,7 +475,7 @@ describe('contrôle du bulletin', () => {
     const checks = controle({ id: 'b', cid: 'c1', month: '2026-10', net: r.netTotal, brut: r.brutEstime, heures: r.heuresNormales, jours: r.joursActivite, source: 'manuel' }, r, 400, 'metropole', 512);
     // T-033 : seule une information reste, le minimum ne compte pas la majoration du titre (Urssaf, renvoi *)
     expect(checks.filter((x) => x.level !== 'ok').map((x) => x.title)).toEqual(['Minimum vérifié sans le titre']);
-    expect(checks.find((x) => x.level === 'info')!.detail).toMatch(/majoration de 4 %.*« Assistant maternel - garde d’enfants »/);
+    expect(checks.find((x) => x.level === 'info')!.detail).toMatch(/majoration de 4 %.*« Assistant maternel – assistant parental »/);
   });
   it('T-033 : taux sous le minimum, le message dit que la majoration du titre n’est pas comptée', () => {
     const ctx = makeCtx(contract({ rateNet: 300 }), [], [], '2026-11-01');

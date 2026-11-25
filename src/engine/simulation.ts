@@ -124,7 +124,9 @@ export interface CmgCalc {
   depassePlafond: boolean;
   /**
    * Part des cotisations prise en charge par la CAF (CSS D531-17 I) : 1 sous le plafond,
-   * sinon plafond × heures ÷ coût, arrondi au centième supérieur (mesuré sur le simulateur Urssaf).
+   * sinon plafond × heures ÷ coût, arrondi au centième supérieur. T-109 (comparateur, correction 23) : D531-17, I, ne prévoit
+   * aucun arrondi ; l'arrondi est celui du simulateur officiel Urssaf/Pajemploi (calculerResteACharge, relevé du 01/11/2026,
+   * tests/urssaf-reference.test.ts, cas c03 et c05 : sans lui, 1,82 € et 12,90 € d'écart sur les cotisations prises en charge).
    */
   partCotisations: number;
   params: CmgParams;
