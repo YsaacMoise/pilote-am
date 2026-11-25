@@ -200,6 +200,12 @@ export interface Contract {
   /** Accueil occasionnel : « de courte durée et n'a pas de caractère régulier » (CCN art. 97.2) */
   accueilOccasionnel?: boolean;
   /**
+   * T-104 (regles/t104-accueil-occasionnel.md) : accueil occasionnel, périodes d'accueil prévues au contrat (CCN 98.2 : « Les
+   * conditions de l'accueil occasionnel sont déterminées dans le contrat de travail »), chacune avec ses dates et ses horaires
+   * prévus (planning d'une semaine type, vide si le contrat ne fixe pas d'horaires). Hors de ces périodes : aucun accueil prévu.
+   */
+  accueils?: AccueilOcc[];
+  /**
    * Contrat à durée déterminée. T-033 (18/11/2026) : réponse demandée ; absent = réponse à donner. T-076 (22/11/2026) : le CDD
    * est calculé (regles/t076-cdd.md ; regles/t076-decisions-direction.md, section 2).
    */
@@ -233,6 +239,9 @@ export interface Contract {
   /** Lien privé pour les parents (clés gardées dans le compte de l'AM, jamais en clair en ligne ailleurs) */
   partage?: { id: string; secret: string; code: string; salt: string; createdAt: number };
 }
+
+/** T-104 : une période d'accueil occasionnel (du premier au dernier jour, horaires prévus de chaque jour de la semaine) */
+export interface AccueilOcc { id: string; du: ISODate; au: ISODate; planning: Planning }
 
 export type ChildAbs = 'malade_certif' | 'malade' | 'parents' | 'sans_solde_enfant';
 /**

@@ -89,10 +89,12 @@ export function declarationLines(ctx: Ctx, r: MonthResult, pourParents = false):
   // T-031 : mois refusé (cas non géré) : aucune case à déclarer n'est proposée.
   if (r.nonGere.length) return [];
   const t = termsAt(ctx.c, `${r.month}-01`);
-  const complete = t.yearType === 'complete';
+  // T-104 (cas 2) : accueil occasionnel, jours de congés déclarés le mois où ils sont versés (Urssaf : « cette case concerne
+  // uniquement les gardes de 46 semaines ou moins, ou les gardes occasionnelles »).
+  const complete = t.yearType === 'complete' && !t.accueilOccasionnel;
   const majCompl = t.majorationCompl ?? 0;
   return [
-    { label: 'Heures normales', value: `${r.heuresNormales} h`, hint: 'Les heures payées chaque mois, jusqu’à 45 h par semaine, arrondies à l’heure' },
+    { label: 'Heures normales', value: `${r.heuresNormales} h`, hint: t.accueilOccasionnel ? 'Les heures d’accueil payées ce mois, jusqu’à 45 h par semaine, arrondies à l’heure' : 'Les heures payées chaque mois, jusqu’à 45 h par semaine, arrondies à l’heure' },
     { label: 'Jours d’activité', value: `${r.joursActivite}` },
     {
       label: 'Jours de congés payés',
@@ -135,7 +137,8 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   for (const l of lines) out.push(`• ${l.label} : ${l.value}`);
   out.push('');
   out.push('Détail du salaire net :');
-  out.push(`• Salaire mensualisé : ${euros(r.salaireMens)}`);
+  if (c.accueilOccasionnel) out.push(`• Salaire des heures d’accueil du mois : ${euros(r.base)}`);
+  else out.push(`• Salaire mensualisé : ${euros(r.salaireMens)}`);
   if (r.retenue) out.push(`• Retenue pour absence : −${euros(r.retenue)}`);
   if (r.normalesPlusAmount) out.push(`• Heures faites en plus la semaine d’une absence retenue, au taux du contrat : ${euros(r.normalesPlusAmount)}`);
   if (r.complAmount) out.push(`• Heures complémentaires : ${euros(r.complAmount)}`);

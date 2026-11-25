@@ -25,6 +25,13 @@ export function Conges() {
       <main>
         <p class="muted">Période en cours : du 1er juin {y} au 31 mai {y + 1}. Tu gagnes 2,5 jours ouvrables par mois d’accueil (30 au plus), et 2 par mois pendant un arrêt maladie, à prendre l’année suivante.</p>
         {list.map((c) => {
+          // T-104 (cas 2) : accueil occasionnel, pas de compteur : 10 % des salaires versés à la fin de chaque accueil (CCN 102.1.2.3).
+          if (c.accueilOccasionnel) return (
+            <section class="card stack" aria-label={`Congés, contrat ${de(c.child)}`}>
+              <div class="row"><Gommette name={c.child} color={c.color} size="sm" /><h2>{c.child}</h2></div>
+              <p>Accueil occasionnel : tes congés payés valent 10 % des salaires de chaque accueil. Ils te sont versés à la fin de l’accueil, avec le salaire du mois (convention, article 102.1.2.3).</p>
+            </section>
+          );
           const ctx = ctxFor(c);
           const k = compteur(ctx, t, s.settings.enfantsACharge);
           const ind = indemnite(ctx, y, s.settings.enfantsACharge);

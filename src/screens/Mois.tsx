@@ -204,9 +204,12 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
         <summary>Comment c’est calculé</summary>
         <div class="more-body">
           <dl class="kv">
-            <dt>Salaire de base (le même chaque mois)</dt><dd>{euros(r.salaireMens)}</dd>
+            {/* T-104 (cas 2) : accueil occasionnel, salaire non mensualisé (CCN 108.2, 109.3). */}
+            {c.accueilOccasionnel
+              ? (<><dt>Heures d’accueil payées ({hoursLabel(r.normalesMin ?? 0)} au taux du contrat)</dt><dd>{euros(r.base)}</dd></>)
+              : (<><dt>Salaire de base (le même chaque mois)</dt><dd>{euros(r.salaireMens)}</dd>
             <dt>{termsAt(c, `${month}-01`).yearType === 'complete' ? 'Heures du planning type ce mois (art. 111)' : 'Jours du planning type ce mois (art. 111)'}</dt>
-            <dd>{termsAt(c, `${month}-01`).yearType === 'complete' ? hoursLabel(r.divisorMin) : r.divisorDays}</dd>
+            <dd>{termsAt(c, `${month}-01`).yearType === 'complete' ? hoursLabel(r.divisorMin) : r.divisorDays}</dd></>)}
             {r.retenue > 0 && (<><dt>Retenue ({termsAt(c, `${month}-01`).yearType === 'complete' ? hoursLabel(r.deductedMin) : `${r.deductedDays} j`} non payés)</dt><dd>−{euros(r.retenue)}</dd></>)}
             {!!r.regulAvenant && (<><dt>Régularisation à l’avenant</dt><dd>{euros(r.regulAvenant)}</dd></>)}
             {(r.normalesPlusAmount ?? 0) > 0 && (<><dt>Heures en plus la semaine d’une absence retenue ({hoursLabel(r.normalesPlusMin ?? 0)}, taux du contrat)</dt><dd>{euros(r.normalesPlusAmount ?? 0)}</dd></>)}
@@ -222,7 +225,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
           </dl>
           {r.reductionHS > 0 && <p class="muted small">Heures complémentaires et majorées : elles ouvrent une réduction de tes cotisations{r.brutConnu ? ` de ${euros(r.reductionHS)}` : ''} (11,31 % de leur brut, art. L241-17 du code de la sécurité sociale), que Pajemploi ajoute à la somme à verser : vérifie-la sur ton bulletin.{r.brutConnu ? '' : ' Pour le montant, indique ton taux horaire brut dans le contrat.'} Ces heures sont aussi exonérées d’impôt, dans la limite de 7 500 € par an.</p>}
           <p class="muted small">
-            {termsAt(c, `${month}-01`).yearType === 'complete'
+            {c.accueilOccasionnel ? 'Accueil occasionnel : heures d’accueil du mois × taux horaire ; congés payés : 10 % des salaires de l’accueil, versés à sa fin (art. 109.3 et 102.1.2.3).' : termsAt(c, `${month}-01`).yearType === 'complete'
               ? 'Année complète : retenue = salaire mensualisé × heures non payées ÷ heures prévues dans le mois (art. 111).'
               : 'Année incomplète : retenue = salaire mensualisé × jours non payés ÷ jours prévus dans le mois (art. 111).'}
           </p>

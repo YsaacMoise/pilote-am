@@ -54,7 +54,8 @@ describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
     ['47 à 51 semaines (A-01)', { yearType: 'incomplete', weeks: 48 }, /47 à 51 semaines par an : non géré/],
     // T-076 : planning variable sans ses données (cycle ou plannings, heures payées chaque mois) : contrat à compléter.
     ['horaires qui changent (semaines A et B), données absentes', { planningVariable: true }, /semaines A et B.*contrat à compléter/],
-    ['accueil occasionnel (CCN art. 97.2)', { accueilOccasionnel: true }, /Accueil occasionnel : non géré/],
+    // T-104 : l'accueil occasionnel est calculé ; sans ses périodes d'accueil, le contrat est à compléter.
+    ['accueil occasionnel (CCN art. 97.2), périodes d’accueil absentes', { accueilOccasionnel: true }, /Accueil occasionnel : contrat à compléter/],
   ] as [string, Partial<Contract>, RegExp][]) {
     it(`${nom} : mois refusé, aucune case, aucun montant envoyé`, () => {
       const ctx = makeCtx(ok(over), [], [], '2026-10-31');

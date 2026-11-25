@@ -1,10 +1,11 @@
 // Congés payés (art. 48 et 102) : acquisition, compteur, indemnité.
 import { estSuspension, sorteCongesSuspension } from './suspensions';
+import { accueilsFinissantEntre, joursAccueil, joursCPAccueil } from './occasionnel';
 import { addDays, addMonths, addMonthsToDate, cpPeriod, cpPeriodStartYear, daysBetween, eachDay, mondayOf, monthOf, monthsBetween, weekday, type ISODate, type Month } from './dates';
 import { holidayName } from './holidays';
 import { ferieDe, regionDe } from './regions';
 import {
-  H45, daysPerWeek, inContract, makeCtx, monthBase, plannedPlages, planningBrutMin, semainesSansAccueilAnnee, termsAt,
+  H45, daysPerWeek, inContract, makeCtx, monthBase, montantJourOccasionnel, plannedPlages, planningBrutMin, semainesSansAccueilAnnee, termsAt,
   toutesSemainesSansAccueil, weeklyMinutes, weeksPerYear, type Ctx,
 } from './payroll';
 import type { AmLeave, Contract } from './model';
@@ -804,6 +805,7 @@ export function cpForMonth(ctx: Ctx, m: Month, enfants = 0): CpMonth {
     const { c } = ctx;
     const out: CpMonth = { jours: 0, indemnite: 0, complement: 0 };
     if (m < monthOf(c.trackedFrom)) return out;
+    if (c.accueilOccasionnel) return cpOccasionnel(ctx, m);
     const y = cpPeriodStartYear(`${m}-15`);
     const prevY = y - 1;
     // Seules les périodes suivies par l'app sont calculées.
@@ -875,4 +877,25 @@ export function cpForMonth(ctx: Ctx, m: Month, enfants = 0): CpMonth {
 function lastOf(m: Month): ISODate {
   const [y, mo] = m.split('-').map(Number);
   return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
+}
+
+/**
+ * T-104 (cas 2, R-OCC-08 et R-OCC-09) : accueil occasionnel. CCN 102.1.2.3 : l'indemnité de congés « n'est pas incluse dans le
+ * salaire mensuel brut », elle est déterminée « en appliquant la règle du dixième » et « versée au terme de l'accueil
+ * occasionnel ». Versée le mois où finit chaque période d'accueil (ou le contrat) : 10 % des salaires des jours de la période
+ * (heures, heures complémentaires et majorées, majoration des fériés ; ni entretien, ni repas, ni km : CCN 114.1, 114.2, 57).
+ * Pas de comparaison avec le maintien : l'article ne renvoie qu'au dixième. Jours déclarés : occasionnel.ts, joursCPAccueil.
+ */
+export function cpOccasionnel(ctx: Ctx, m: Month): CpMonth {
+  const { c } = ctx;
+  const out: CpMonth = { jours: 0, indemnite: 0, complement: 0 };
+  for (const a of accueilsFinissantEntre(c, `${m}-01`, lastOf(m))) {
+    const jours = joursAccueil(c, a).filter((d) => d >= c.start && d >= c.trackedFrom);
+    if (!jours.length) continue;
+    const salaires = jours.reduce((s, d) => s + montantJourOccasionnel(ctx, d), 0);
+    out.indemnite += Math.round(salaires / 10);
+    out.jours += joursCPAccueil(jours[0], jours[jours.length - 1]);
+  }
+  if (out.indemnite) out.note = 'Congés payés de l’accueil occasionnel : 10 % des salaires de l’accueil, versés à sa fin (convention, article 102.1.2.3).';
+  return out;
 }

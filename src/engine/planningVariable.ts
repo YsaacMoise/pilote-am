@@ -3,6 +3,7 @@
 // Ce module ne dépend que du modèle et des dates (pas de payroll.ts) : payroll.ts, conges.ts et nonGeres.ts s'en servent.
 import { daysBetween, eachDay, minutes, mondayOf, shortDate, weekday, type ISODate } from './dates';
 import type { Contract, Plage, Planning } from './model';
+import { plagesOccasionnel } from './occasionnel';
 
 const minPlage = (p: Plage) => Math.max(0, minutes(p.end) - minutes(p.start));
 
@@ -41,8 +42,9 @@ export function manquesPV(c: ChampsPV): string[] {
 }
 
 /** Planning variable calculé par le moteur (données complètes) */
-export function pvActif(c: ChampsPV): boolean {
-  return !!c.planningVariable && manquesPV(c).length === 0;
+export function pvActif(c: ChampsPV & Partial<Pick<Contract, 'accueilOccasionnel'>>): boolean {
+  // T-104 : un accueil occasionnel a ses propres périodes et horaires (occasionnel.ts) : jamais un planning variable.
+  return !!c.planningVariable && !c.accueilOccasionnel && manquesPV(c).length === 0;
 }
 
 /** Rang (0, 1…) de la semaine type du cycle pour la semaine du lundi donné (P-PV-4, lecture Q1 : le cycle suit le calendrier) */
@@ -65,6 +67,8 @@ export function planningSemainePV(c: ChampsPV, lundi: ISODate): Planning | undef
  * planning de la semaine (S2) ; le champ `planning` n'est plus lu (spécification, section 1).
  */
 export function plagesDuJour(t: Contract, d: ISODate): Plage[] {
+  // T-104 : accueil occasionnel, horaires prévus de la période d'accueil du jour (occasionnel.ts).
+  if (t.accueilOccasionnel) return plagesOccasionnel(t, d).filter((p) => minPlage(p) > 0);
   let pl = pvActif(t) ? planningSemainePV(t, mondayOf(d)) : t.planning;
   // D6 : planning remis, année incomplète, semaine sans accueil (du contrat ou saisie « sans accueil ») : traitée comme la
   // semaine sans accueil d'un planning fixe, qui compte au diviseur de l'art. 111 avec la semaine type (règle existante,

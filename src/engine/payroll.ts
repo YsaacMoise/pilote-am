@@ -15,6 +15,7 @@ import { jourDispense } from './preavis';
 import { baseHebdoMin, formePV, lecturePV, mensuelMinutesPV, messageBasePV, minutesPlanning, plagesDuJour, pvActif } from './planningVariable';
 import { joursApresTermeRefuses, messageApresTerme, messageMoisApresTerme, messageTermeAVenir } from './cdd';
 import { donneeSuspensionManquante, estSuspension, jourAccidentPaye } from './suspensions';
+import { accueilDu, MESSAGE_OCCASIONNEL_SALAIRE, messageHorsAccueil } from './occasionnel';
 import type { AmAbs, AmLeave, Contract, DayRec, Plage, Planning } from './model';
 
 export interface Ctx {
@@ -270,6 +271,8 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
   // T-103 (K1) : CCN 113, partage au prorata des enfants transportés seulement si plusieurs employeurs demandent le trajet.
   // Sans les deux réponses, le jour attend la saisie (B) : jamais des km « à confirmer ».
   if (rec?.km && indemniteKmJour(rec.km, c.kmTaux, rec.kmPartage, rec.kmEnfants) === undefined) info.donneeManquante = messageKmACompleter(d);
+  // T-104 (cas 2) : accueil occasionnel noté hors des périodes d'accueil du contrat : la période est à ajouter, jamais devinée.
+  if (c.accueilOccasionnel && !accueilDu(c, d) && ((rec?.pres ?? []).some((p) => p.a) || !!rec?.abs)) info.donneeManquante = messageHorsAccueil(d);
 
   if (amLeave) {
     info.kind = 'am';
@@ -277,7 +280,12 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
       // Congés payés : pas travaillé, hors diviseur. Autres absences de l'AM : retenue si non rémunérées.
       // Année complète : un jour de congé pris au-delà des droits acquis est un congé sans solde, donc retenu
       // (fiche DREETS Occitanie « Accueil sur 52 semaines » : 5 semaines « rémunérées ou prises sans solde en fonction des droits acquis »).
-      if (amLeave === 'cp' && termsAt(c, d).yearType === 'complete' && cpExces(ctx).has(d)) {
+      if (amLeave === 'cp' && c.accueilOccasionnel) {
+        // T-104 (R-OCC-08) : accueil occasionnel, un jour de congé n'est pas une heure d'accueil payée : les congés sont payés
+        // par le dixième versé au terme de l'accueil (CCN 102.1.2.3).
+        info.inDivisor = true;
+        info.deducted = true;
+      } else if (amLeave === 'cp' && termsAt(c, d).yearType === 'complete' && cpExces(ctx).has(d)) {
         info.deducted = true;
         info.inDivisor = true;
         info.cpSansDroits = true;
@@ -1196,6 +1204,10 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     if (complPrevu) r.complPrevuMin = complPrevu;
   }
 
+  // T-104 (cas 2) : accueil occasionnel, salaire non mensualisé : heures d'accueil du mois × taux (occasionnel.ts ;
+  // regles/t104-accueil-occasionnel.md, R-OCC-02 à R-OCC-07).
+  if (c.accueilOccasionnel) appliquerOccasionnel(ctx, r, m, inSeg);
+
   // T-103 (C9) : congé indemnisé par la Sécurité sociale (congé de deuil, CCN 48.1.3.1.3) : « le particulier employeur maintient
   // le salaire sous déduction des indemnités journalières versées ». Montant saisi par l'AM (AmLeave.ijSecu), réparti sur les
   // mois au prorata des jours calendaires du congé.
@@ -1223,6 +1235,71 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   if (forgotten.length) r.alerts.push(`${forgotten.length} départ${forgotten.length > 1 ? 's' : ''} non pointé${forgotten.length > 1 ? 's' : ''} : l’heure prévue a été retenue.`);
   if (r.sickPaidNotice) r.alerts.push('Des jours d’enfant malade dépassent la limite de l’article 105 : ils restent payés.');
   return r;
+}
+
+/**
+ * T-104 (cas 2), accueil occasionnel. Heures payées d'un jour (R-OCC-03, R-OCC-05, R-OCC-06) : heures prévues de la période
+ * d'accueil quand elles sont dues (travail : art. 99 ; absence de l'enfant non retenue : CASF L423-20, CCN 105 ; férié chômé :
+ * CCN 47 ; événement familial : 48.1.3.1.1 ; préavis dispensé : 64.2), plus les heures faites hors des horaires prévus. Les
+ * jours retenus (absence de l'AM, enfant malade avec certificat dans les limites de l'art. 105) ne sont pas payés.
+ * Par semaine (R-OCC-04) : heures complémentaires au-delà des heures prévues de la semaine jusqu'à 45 h, seulement si la
+ * période d'accueil fixe des horaires (CCN 96.4 : « au-delà de la durée de travail hebdomadaire prévue au contrat ») ; heures
+ * majorées au-delà de 45 h (96.4, 110.1). Mois en cours : un jour prévu à venir n'est pas encore payé.
+ */
+export function heuresOccasionnel(ctx: Ctx, d: ISODate): { normal: number; compl: number; maj: number } {
+  return memo(ctx, 'occ' + d, () => {
+    const di = dayInfo(ctx, d);
+    if (!inContract(ctx.c, d)) return { normal: 0, compl: 0, maj: 0 };
+    const lundi = mondayOf(d);
+    const semaine = Array.from({ length: 7 }, (_, i) => addDays(lundi, i));
+    const prevuSemaine = semaine.reduce((a, x) => a + (inContract(ctx.c, x) ? dayInfo(ctx, x).plannedMin : 0), 0);
+    const base = di.kind === 'prevu' ? di.presentMin : di.inDivisor && !di.deducted ? di.plannedMin : 0;
+    const wk = weekOvertimeDetail(ctx, lundi).parJour.get(d);
+    // Heures prévues de la semaine au-delà de 45 h : majorées, rangées sur les derniers jours prévus de la semaine.
+    const prevu45 = semaine.reduce((a, x) => a + (inContract(ctx.c, x) ? minutesSeuil45(ctx, x) : 0), 0);
+    let reste = Math.max(0, prevu45 - H45), majPrevu = 0;
+    for (const x of [...semaine].reverse()) {
+      const k = Math.min(reste, inContract(ctx.c, x) ? minutesSeuil45(ctx, x) : 0);
+      if (x === d) { majPrevu = k; break; }
+      reste -= k;
+    }
+    const compl = prevuSemaine > 0 ? wk?.compl ?? 0 : 0;
+    const normal = base - majPrevu + (wk?.normal ?? 0) + (prevuSemaine > 0 ? 0 : wk?.compl ?? 0);
+    return { normal: Math.max(0, normal), compl, maj: (wk?.maj ?? 0) + majPrevu };
+  });
+}
+
+/** Montant net exact (centimes, non arrondi) des heures d'un jour en accueil occasionnel, majoration des fériés travaillés comprise */
+export function montantJourOccasionnel(ctx: Ctx, d: ISODate): number {
+  const t = termsAt(ctx.c, d);
+  const h = heuresOccasionnel(ctx, d);
+  const di = dayInfo(ctx, d);
+  const ferie = di.ferie && (di.ferieTravaille || di.kind === 'present') && di.presentMin > 0 ? (di.presentMin * t.rateNet * (isMayDay(d) ? 100 : 10)) / 100 / 60 : 0;
+  return (h.normal * t.rateNet + h.compl * t.rateNet * (100 + (t.majorationCompl ?? 0)) / 100 + h.maj * t.rateNet * (100 + t.majoration) / 100) / 60 + ferie;
+}
+
+function appliquerOccasionnel(ctx: Ctx, r: MonthBase, m: Month, inSeg: (d: ISODate) => boolean) {
+  const c = ctx.c;
+  let normal = 0, compl = 0, maj = 0, jours = 0;
+  for (const d of eachDay(firstDay(m), lastDay(m))) {
+    if (!inSeg(d)) continue;
+    const h = heuresOccasionnel(ctx, d);
+    normal += h.normal; compl += h.compl; maj += h.maj;
+    const di = dayInfo(ctx, d);
+    if ((di.kind === 'present' || di.kind === 'prevu') && di.presentMin > 0) jours++;
+  }
+  const t = termsAt(c, firstDay(m) > c.start ? firstDay(m) : c.start);
+  r.salaireMens = 0; r.mensuelMin = 0; r.paidFraction = 1; r.retenue = 0;
+  r.majContratMin = 0; r.majContratAmount = 0; r.normalesPlusMin = 0; r.normalesPlusAmount = 0; r.complPrevuMin = undefined;
+  r.normalesMin = normal; r.heuresNormales = Math.round(normal / 60);
+  r.base = Math.round((normal * t.rateNet) / 60);
+  r.complMin = compl; r.complAmount = Math.round((compl * t.rateNet * (100 + (t.majorationCompl ?? 0))) / 100 / 60);
+  r.majMin = maj; r.majAmount = Math.round((maj * t.rateNet * (100 + t.majoration)) / 100 / 60);
+  // Jours d'activité : « Si la garde est occasionnelle : nombre de jours de garde réellement effectués » (Urssaf, « Comment
+  // déclarer avec le service Pajemploi ? », 16/07/2026).
+  r.joursActivite = jours;
+  r.alerts = r.alerts.filter((a) => !a.startsWith('Année incomplète'));
+  r.alerts.unshift(MESSAGE_OCCASIONNEL_SALAIRE);
 }
 
 export function monthBrut(ctx: Ctx, m: Month): number {

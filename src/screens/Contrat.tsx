@@ -6,7 +6,8 @@ import { entretienPlancher, minimumSansTitre, ratesAtRegion, ratesConnus, repasA
 import { regionDe } from '../engine/regions';
 import { soldesDeDepart } from '../engine/conges';
 import { euros, eurosTexte, hoursLabel } from '../engine/money';
-import type { Avenant, Contract, Plage, Planning, Terms } from '../engine/model';
+import type { AccueilOcc, Avenant, Contract, Plage, Planning, Terms } from '../engine/model';
+import { manquesOccasionnel } from '../engine/occasionnel';
 import { EntretienSaisie, libelleEntretien } from './EntretienSaisie';
 import { Banner, CHILD_COLORS, Choices, COLOR_NAMES, couleurLibre, couleursPrises, DateInput, EuroInput, Gommette, NumberInput, Seg, Switch, TextInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
@@ -99,7 +100,10 @@ export function Contrat({ id }: { id?: string }) {
     const errs: string[] = [];
     if (!c.child.trim()) errs.push('Indique le prénom de l’enfant.');
     if (!c.start) errs.push('Indique la date de début du contrat.');
-    if (!c.planningVariable && wk <= 0) errs.push('Le planning est vide : ajoute au moins un jour d’accueil.');
+    if (!c.planningVariable && !c.accueilOccasionnel && wk <= 0) errs.push('Le planning est vide : ajoute au moins un jour d’accueil.');
+    // T-104 (cas 2) : accueil occasionnel, périodes d'accueil (dates et horaires prévus au contrat, CCN 98.2).
+    for (const m of manquesOccasionnel(c)) errs.push(`Accueil occasionnel : indique ${m}.`);
+    if (c.accueilOccasionnel) for (const a of c.accueils ?? []) for (let d = 1; d <= 7; d++) for (const p of a.planning[d] ?? []) if (p.end <= p.start) errs.push(`${JOUR_NOMS[d - 1]} (accueil du ${shortDate(a.du)}) : l’heure de fin doit être après le début.`);
     for (let d = 1; d <= 7; d++) for (const p of c.planning[d] ?? []) if (p.end <= p.start) errs.push(`${JOUR_NOMS[d - 1]} : l’heure de fin doit être après le début.`);
     if (semaines4751(c.yearType, c.weeks)) errs.push(NON_GERE_47_51);
     else if (c.yearType === 'incomplete' && (c.weeks < 1 || c.weeks > 46)) errs.push('En année incomplète, le nombre de semaines va de 1 à 46.');
@@ -191,10 +195,11 @@ export function Contrat({ id }: { id?: string }) {
             <legend>Le contrat</legend>
             <DateInput label="Premier jour d’accueil" hint="Le vrai premier jour, même s’il remonte à plusieurs années" value={c.start} onChange={(v) => set({ start: v })} />
             {!isNew && <DateInput label="Date de fin du contrat" hint="Seulement si le contrat est terminé. Mieux : passe par l’écran Fin de contrat, qui note aussi la lettre et le préavis ; sans eux, les derniers mois ne sont pas calculés." value={c.end ?? ''} onChange={(v) => set({ end: v || undefined })} />}
-            <Seg label="Année complète ou incomplète ?" value={c.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(c.weeks, 46) || 46 })}
-              options={[{ v: 'complete', l: 'Année complète' }, { v: 'incomplete', l: 'Année incomplète' }]} />
-            <p class="hint">{AIDE_ANNEE}</p>
-            {c.yearType === 'incomplete' && (
+            {/* T-104 (cas 2) : l'accueil occasionnel n'est pas mensualisé (CCN 108.2) : pas d'année complète ou incomplète. */}
+            {!c.accueilOccasionnel && <Seg label="Année complète ou incomplète ?" value={c.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(c.weeks, 46) || 46 })}
+              options={[{ v: 'complete', l: 'Année complète' }, { v: 'incomplete', l: 'Année incomplète' }]} />}
+            {!c.accueilOccasionnel && <p class="hint">{AIDE_ANNEE}</p>}
+            {!c.accueilOccasionnel && c.yearType === 'incomplete' && (
               <>
                 <NumberInput label="Semaines d’accueil prévues au contrat" hint={c.cdd ? 'Pour un CDD : les semaines d’accueil prévues pendant le CDD, sur 12 mois au plus, sans compter tes congés payés' : AIDE_SEMAINES} value={c.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />
                 {semaines4751(c.yearType, c.weeks) && <Banner tone="warn">{NON_GERE_47_51}</Banner>}
@@ -203,10 +208,10 @@ export function Contrat({ id }: { id?: string }) {
             )}
             {/* T-031 : cas que l'app ne gère pas. Une réponse est demandée : sans elle, l'app ne sait pas si ses montants valent. */}
             <ChoixDepartement c={c} set={set} />
-            <Choices label="Le planning est-il le même chaque semaine ?" value={ouiNon(c.planningVariable === undefined ? undefined : !c.planningVariable)} onChange={(v) => set({ planningVariable: v === 'non' })}
-              options={[{ v: 'oui', l: 'Oui, une semaine type qui se répète', sub: 'Les semaines sans accueil prévues au contrat ne comptent pas.' }, { v: 'non', l: 'Non, il change d’une semaine à l’autre', sub: 'Semaines A et B, ou planning remis par les parents.' }]} />
-            <Choices label="L’accueil est-il régulier ou occasionnel ?" value={ouiNon(c.accueilOccasionnel === undefined ? undefined : !c.accueilOccasionnel)} onChange={(v) => set({ accueilOccasionnel: v === 'non' })}
-              options={[{ v: 'oui', l: 'Régulier', sub: 'L’enfant vient selon le planning du contrat.' }, { v: 'non', l: 'Occasionnel', sub: 'Accueil court, sans rythme fixe (article 97.2 de la convention). Arvela ne calcule pas encore ce cas.' }]} />
+            {!c.accueilOccasionnel && <Choices label="Le planning est-il le même chaque semaine ?" value={ouiNon(c.planningVariable === undefined ? undefined : !c.planningVariable)} onChange={(v) => set({ planningVariable: v === 'non' })}
+              options={[{ v: 'oui', l: 'Oui, une semaine type qui se répète', sub: 'Les semaines sans accueil prévues au contrat ne comptent pas.' }, { v: 'non', l: 'Non, il change d’une semaine à l’autre', sub: 'Semaines A et B, ou planning remis par les parents.' }]} />}
+            <Choices label="L’accueil est-il régulier ou occasionnel ?" value={ouiNon(c.accueilOccasionnel === undefined ? undefined : !c.accueilOccasionnel)} onChange={(v) => set(v === 'non' ? { accueilOccasionnel: true, yearType: 'complete', weeks: 52, planningVariable: false } : { accueilOccasionnel: false })}
+              options={[{ v: 'oui', l: 'Régulier', sub: 'L’enfant vient selon le planning du contrat.' }, { v: 'non', l: 'Occasionnel', sub: 'Accueil court, sans rythme régulier (article 97.2 de la convention). Tu es payée pour tes heures d’accueil, et tes congés à la fin de chaque accueil.' }]} />
             <Choices label="CDI ou CDD ?" value={ouiNon(c.cdd)} onChange={(v) => set({ cdd: v === 'oui' })}
               options={[{ v: 'non', l: 'CDI', sub: 'Contrat à durée indéterminée : aucune date de fin n’est prévue.' }, { v: 'oui', l: 'CDD', sub: 'Contrat à durée déterminée : il finit à une date prévue au contrat, ou au retour de la personne remplacée.' }]} />
             {/* T-076 : le CDD est calculé (regles/t076-cdd.md, partie 5.1 : terme et motif). */}
@@ -231,9 +236,11 @@ export function Contrat({ id }: { id?: string }) {
           </fieldset>
         </section>
 
-        {c.planningVariable && <PlanningVariableSaisie c={c} set={set} />}
+        {c.planningVariable && !c.accueilOccasionnel && <PlanningVariableSaisie c={c} set={set} />}
 
-        {!c.planningVariable && <section class="card">
+        {c.accueilOccasionnel && <AccueilsOccasionnels c={c} set={set} />}
+
+        {!c.planningVariable && !c.accueilOccasionnel && <section class="card">
           <fieldset>
             <legend>Le planning type</legend>
             <p class="hint">Les journées se remplissent toutes seules avec ce planning. Tu ne noteras que les changements.</p>
@@ -378,6 +385,37 @@ function ChoixDepartement({ c, set }: { c: Contract; set: (p: Partial<Contract>)
       <datalist id="departements-liste">{DEPARTEMENTS.map((d) => <option value={`${d.code} – ${d.nom}`} />)}</datalist>
       <span class={inconnu ? 'err' : 'hint'} id="departement-h" aria-live="polite">{inconnu ? 'Choisis un département dans la liste.' : ancien ? 'Précise ton département quand tu peux. En attendant, le calcul garde ta réponse d’avant.' : 'Tape le numéro ou le nom, puis choisis dans la liste.'}</span>
     </div>
+  );
+}
+
+/**
+ * T-104 (cas 2) : périodes d'accueil occasionnel (CCN 98.2 : conditions fixées au contrat). Pour chacune : premier et dernier
+ * jour, horaires prévus de chaque jour de la semaine (vides si le contrat n'en fixe pas : les heures notées sont alors payées
+ * comme heures normales, sans heures complémentaires).
+ */
+function AccueilsOccasionnels({ c, set }: { c: Contract; set: (p: Partial<Contract>) => void }) {
+  const ls = c.accueils ?? [];
+  const maj = (i: number, p: Partial<AccueilOcc>) => set({ accueils: ls.map((a, k) => (k === i ? { ...a, ...p } : a)) });
+  return (
+    <section class="card">
+      <fieldset>
+        <legend>Les accueils prévus</legend>
+        <p class="hint">Ajoute chaque période d’accueil écrite dans le contrat, avec ses horaires. Tu es payée chaque mois pour les heures d’accueil du mois. Tes congés payés : 10 % des salaires de l’accueil, versés à la fin de l’accueil (convention, articles 109.3 et 102.1.2.3).</p>
+        {ls.map((a, i) => (
+          <div class="stack-sm" key={a.id}>
+            <div class="grid2">
+              <DateInput label="Premier jour" value={a.du} min={c.start} onChange={(v) => maj(i, { du: v, au: a.au && a.au >= v ? a.au : v })} />
+              <DateInput label="Dernier jour" value={a.au} min={a.du || c.start} onChange={(v) => maj(i, { au: v })} />
+            </div>
+            {[1, 2, 3, 4, 5, 6, 7].map((d) => <PlanDay d={d} plages={a.planning[d] ?? []} onChange={(p) => maj(i, { planning: { ...a.planning, [d]: p } })} />)}
+            <p class="hint">Sans horaires écrits au contrat, laisse les jours vides : les heures que tu noteras chaque jour seront payées.</p>
+            <button class="btn btn-outline" type="button" onClick={() => set({ accueils: ls.filter((_, k) => k !== i) })}>Retirer cet accueil</button>
+          </div>
+        ))}
+        <button class="btn btn-outline btn-block" type="button" onClick={() => set({ accueils: [...ls, { id: uid(), du: c.start, au: c.start, planning: {} }] })}><Icon name="plus" />Ajouter un accueil</button>
+        <p class="hint">La convention ne fixe pas de durée maximale. Si l’enfant vient de façon régulière, le contrat doit passer en accueil régulier.</p>
+      </fieldset>
+    </section>
   );
 }
 

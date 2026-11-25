@@ -441,12 +441,17 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     alertes.push('Vérifie que toutes les semaines sans accueil de la dernière année sont saisies : une semaine non saisie compte comme accueillie dans la régularisation.');
   }
   const regularisation_ = finTerms.yearType === 'incomplete' && manque === 0 ? reg.montant : 0;
-  if (finTerms.yearType === 'complete' && regulMinutes > 60) {
+  if (finTerms.yearType === 'complete' && regulMinutes > 60 && !c.accueilOccasionnel) {
     alertes.push('Année complète : la régularisation ne s’applique pas en principe, vérifie le planning du contrat.');
   }
 
   // Congés non pris. T-050b (A-50) : la régularisation due entre dans la base du dixième de la période en cours.
-  const cp = congesNonPris(endCtx, c, dernierJour, enfants, regularisation_);
+  // T-104 (cas 2, R-OCC-10) : accueil occasionnel, les congés sont versés au terme de chaque accueil (CCN 102.1.2.3), avec le
+  // salaire du dernier mois si l'accueil finit avec le contrat : aucune indemnité de congés non pris en plus (CCN 67 : congés
+  // « non rémunérés au jour de la date de fin »). Pas de régularisation (124 : 46 semaines ou moins seulement).
+  const cp = c.accueilOccasionnel
+    ? { cpIndemnite: 0, jours: 0, cpExplication: 'Accueil occasionnel : tes congés payés (10 % des salaires) sont versés à la fin de chaque accueil, avec le salaire du mois. Rien de plus à la fin du contrat (convention, articles 67 et 102.1.2.3).', cpAConfirmer: undefined as string | undefined, dixiemeEnCours: 0 }
+    : congesNonPris(endCtx, c, dernierJour, enfants, regularisation_);
   let { cpIndemnite, cpExplication, cpAConfirmer } = cp;
   const cpJoursRestants = cp.jours;
   // T-072 (T-055) : sans la régularisation, qui y entre, la base du dixième en cours n'est pas connue.
@@ -684,6 +689,15 @@ function coeurCdd(endCtx: Ctx, dernierJour: ISODate, finCdd: FinCdd, enfants: nu
   if (finCdd === 'suite_cdi') {
     // L1242-16, al. 3 : « sauf si le contrat à durée déterminée se poursuit par un contrat de travail à durée indéterminée ».
     cpExplication = 'Pas d’indemnité de congés non pris : ton CDD continue en CDI, tes congés restent acquis (code du travail, article L1242-16).';
+  } else if (c.accueilOccasionnel) {
+    // T-104 (cas 2, R-OCC-10) : accueil occasionnel en CDD. Congés versés au terme de chaque accueil (CCN 102.1.2.3) ; à la fin,
+    // seul le minimum de L1242-16 peut rester dû : le dixième de toute la rémunération du CDD, indemnité de fin de contrat
+    // comprise, moins les congés déjà versés.
+    const plancher = Math.round((netCdd + ifc) / 10);
+    iccp = Math.max(0, plancher - cpPayeNet);
+    cpExplication = iccp
+      ? 'Accueil occasionnel : tes congés (10 % des salaires) sont versés à la fin de chaque accueil. Le code du travail (article L1242-16) fixe un minimum : le dixième de tous les salaires du CDD, indemnité de fin de contrat comprise. Le reste t’est dû à la fin.'
+      : 'Accueil occasionnel : tes congés (10 % des salaires) sont versés à la fin de chaque accueil. Rien de plus à la fin du CDD.';
   } else {
     const y = cpPeriodStartYear(dernierJour);
     const cpt = compteur(endCtx, dernierJour, enfants);

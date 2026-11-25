@@ -6,6 +6,7 @@ import { nonGeresCdd } from './cdd';
 import type { AmLeave, Contract } from './model';
 import { statutJourEvenement } from './evenements';
 import { donneeSuspensionManquante } from './suspensions';
+import { messageOccasionnelACompleter } from './occasionnel';
 import { messagePVACompleter, nonGeresContratPV, nonGeresPeriodePV } from './planningVariable';
 
 export const NON_GERE_ALSACE =
@@ -20,6 +21,7 @@ export const NON_GERE_MAYOTTE =
  */
 export const NON_GERE_PLANNING_VARIABLE =
   'Horaires qui changent d’une semaine à l’autre (semaines A et B, planning remis chaque mois) : non géré. L’app ne sait calculer qu’une semaine type qui se répète. Fais la paie sans l’app.';
+/** T-104 : plus utilisé par le calcul (l'accueil occasionnel est calculé) ; gardé pour mémoire du texte d'avant. */
 export const NON_GERE_OCCASIONNEL =
   'Accueil occasionnel : non géré. L’app ne calcule que l’accueil régulier, sur 52 semaines ou sur 46 semaines ou moins (article 97.1 de la convention). Fais la paie sans l’app.';
 // T-076 (22/11/2026) : le CDD est calculé (regles/t076-cdd.md). L'ancien refus NON_GERE_CDD (T-033) est retiré ; restent
@@ -68,12 +70,13 @@ export function nonGeresContrat(c: Pick<Contract, 'alsaceMoselle' | 'planningVar
   // T-076 : planning variable calculé (spécification regles/t076-decisions-direction.md, section 1). Données incomplètes :
   // contrat à compléter, avec ce qui manque. Données complètes : seuls les cas du passage 2 restent refusés.
   if ((c.planningVariable || c.cdd) && (c.alsaceMoselle || c.mayotte)) out.push(NON_GERE_REGION_PV_CDD);
-  if (c.planningVariable) {
+  if (c.planningVariable && !c.accueilOccasionnel) {
     const m = messagePVACompleter(c);
     if (m) out.push(m);
     else out.push(...nonGeresContratPV(c as Contract));
   }
-  if (c.accueilOccasionnel) out.push(NON_GERE_OCCASIONNEL);
+  // T-104 (cas 2) : accueil occasionnel calculé (occasionnel.ts). Données incomplètes : contrat à compléter.
+  if (c.accueilOccasionnel) { const m = messageOccasionnelACompleter(c as Contract); if (m) out.push(m); }
   out.push(...nonGeresCdd(c));
   return out;
 }
