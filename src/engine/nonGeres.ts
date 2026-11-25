@@ -32,6 +32,7 @@ export const NON_GERE_OCCASIONNEL =
  * et Mayotte pour un CDI à horaires fixes ; T-076 calcule les horaires variables et le CDD en métropole. Les deux ensemble n'ont
  * été vérifiés par aucune des deux (aucune situation du second moteur) : ils restent refusés, comme avant la fusion.
  */
+/** T-104 : plus utilisé par le calcul ; texte gardé pour mémoire. */
 export const NON_GERE_REGION_PV_CDD =
   'Horaires qui changent d’une semaine à l’autre ou CDD, en Alsace-Moselle ou à Mayotte : non géré pour l’instant. L’app calcule ces contrats en métropole, et l’Alsace-Moselle et Mayotte pour un CDI à horaires fixes, pas encore les deux ensemble. Fais la paie sans l’app.';
 /**
@@ -39,6 +40,7 @@ export const NON_GERE_REGION_PV_CDD =
  * avec un planning fixe seulement ; avant la fusion, il était refusé pour un contrat à horaires variables (T-076, qui ne
  * l'avait pas) et les horaires variables l'étaient aussi (integration). Il reste refusé, comme avant la fusion.
  */
+/** T-104 : plus utilisé par le calcul ; texte gardé pour mémoire. */
 export const NON_GERE_PV_DISPENSE =
   'Préavis non fait à la demande des parents, avec des horaires qui changent d’une semaine à l’autre : non géré pour l’instant. L’app calcule chacun des deux cas seul, pas encore les deux ensemble. Fais les derniers mois et la fin du contrat avec les parents.';
 /** A-01 : CCN art. 97.1 ne connaît que 52 semaines ou 46 semaines et moins ; question 2 posée à la DDETS le 18/11/2026 */
@@ -69,7 +71,11 @@ export function nonGeresContrat(c: Pick<Contract, 'alsaceMoselle' | 'planningVar
   // T-077 : l'Alsace-Moselle et Mayotte sont calculées (regions.ts ; regles/t077-decisions.md). Messages gardés pour les écrans.
   // T-076 : planning variable calculé (spécification regles/t076-decisions-direction.md, section 1). Données incomplètes :
   // contrat à compléter, avec ce qui manque. Données complètes : seuls les cas du passage 2 restent refusés.
-  if ((c.planningVariable || c.cdd) && (c.alsaceMoselle || c.mayotte)) out.push(NON_GERE_REGION_PV_CDD);
+  // T-104 : horaires variables ou CDD en Alsace-Moselle ou à Mayotte : calculés. Les règles locales (fériés, maintien du salaire,
+  // taux, cotisations) sont lues jour par jour par le moteur, quel que soit le contrat ; le CDD suit le code du travail, qui
+  // s'applique à Mayotte « sous réserve des adaptations prévues par le présent titre » (C. trav. L1521-1), sans adaptation pour
+  // le CDD (L1521-1 à L1524 lus, base LEGI de la DILA) ; CASF L423-2, 4°, partout. Plus de refus (rapports/T-104-execution.md).
+  void NON_GERE_REGION_PV_CDD;
   if (c.planningVariable && !c.accueilOccasionnel) {
     const m = messagePVACompleter(c);
     if (m) out.push(m);
@@ -138,10 +144,9 @@ export function nonGeresPeriode(c: Contract, leaves: AmLeave[], from: ISODate, t
   }
   // Intégration T-078 : préavis dispensé (T-074) d'un contrat à horaires variables (T-076) : mois qui contiennent un jour
   // dispensé (du lendemain du dernier jour travaillé à la fin du contrat, comme jourDispense), et la fin du contrat.
-  if (c.planningVariable && c.rupture?.preavis === 'employeur' && c.end) {
-    const du = addDays(c.rupture.dernierJourTravaille ?? c.rupture.notif, 1);
-    if (du <= b && c.end >= a && !out.includes(NON_GERE_PV_DISPENSE)) out.push(NON_GERE_PV_DISPENSE);
-  }
+  // T-104 : calculé. Les jours dispensés sont payés comme prévus (payroll.ts, jourDispense), heures complémentaires prévues
+  // comprises (H9) ; l'indemnité de préavis les compte (fin.ts, icpDispense). Plus de refus.
+  void NON_GERE_PV_DISPENSE;
   // T-045b (P3-B1, C3-1 de V5) : date de fin saisie qui ne concorde pas avec le préavis, ou préavis sans réponse.
   if (controleFin !== 'non' && (controleFin === 'tout' || c.rupture)) {
     const f = controleFinContrat(c, leaves);

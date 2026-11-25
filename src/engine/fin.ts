@@ -132,7 +132,11 @@ function icpDispense(c: Ctx['c'], from: ISODate, to: ISODate): { net: number; br
   const h: Ctx = { ...makeCtx({ ...c, start: from, end: to, trackedFrom: from, history: [], rupture: undefined }, [], [], to), finControlee: true };
   let net = 0, brut = 0, autre = 0;
   for (const m of monthsBetween(monthOf(from), monthOf(to))) {
-    const b = monthBase(h, m).base;
+    // T-104 : horaires variables, les heures complémentaires et majorées prévues des jours dispensés font partie de la
+    // « rémunération due au salarié jusqu'à la date de fin » (CCN 66) : comprises (aucune heure faite dans ce calcul : seules
+    // les heures prévues comptent). Planning fixe : 0, rien ne change.
+    const mb = monthBase(h, m);
+    const b = mb.base + (pvActif(termsAt(c, lastDay(m))) ? mb.complAmount + mb.majAmount : 0);
     net += b;
     brut += brutDuNet(c, b, lastDay(m));
     // P-1 : mois où des jours prévus précèdent la dispense (jours travaillés ou payés comme salaire) : seconde lecture,
