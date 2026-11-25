@@ -14,6 +14,9 @@
 // - T-103 (S7) : c16 (année incomplète). Les congés payés du mois moyen suivent la CCN 48.1.1.5 (plus haut du dixième et du
 //   maintien) au lieu du seul dixième : 72,27 € par mois au lieu de 66,59 €, donc le CMG (415,25 € au lieu de 412,56 €) et les cotisations (623,26 € au lieu de 618,50 €) changent.
 //   Référence à refaire au simulateur Urssaf avec ces montants (liste rapports/T-103-a-relever.md de calculateur-arvela).
+//   T-109 (comparateur, correction 8) : jours acquis par périodes de quatre semaines (C. trav. L3141-4) et congés comptés dans
+//   la limite des droits : 30 jours au lieu de 28, congés 77,43 € par mois au lieu de 72,27 € ; CMG 417,70 €, cotisations
+//   617,08 € (627,58 € réduction comprise). Valeur de l'app, à relever au simulateur Urssaf avec ces montants.
 import { describe, expect, it } from 'vitest';
 import { CAS, D } from './cas-urssaf';
 import { simuler } from '../src/engine/simulation';
@@ -34,7 +37,7 @@ const URSSAF: Record<string, [number, number, number][]> = {
   c13: [[68233, 58275, 58275]],
   c14: [[53787, 58275, 58275]],
   c15: [[65034, 58275, 58275]],
-  c16: [[41525, 62326, 62326]], // T-103 (S7) : congés au plus haut du dixième et du maintien ; référence Urssaf d'avant (412,56 €) périmée, voir l'en-tête
+  c16: [[41770, 62758, 62758]], // T-103 (S7), T-109 (C8) : congés du simulateur corrigés ; référence Urssaf d'avant (412,56 €) périmée, voir l'en-tête
   c17: [[34086, 42390, 42390]],
   c18: [[28244, 29389, 29389]],
   c19: [[46560, 56687, 56687]],

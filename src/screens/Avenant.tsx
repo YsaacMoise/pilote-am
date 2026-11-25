@@ -99,7 +99,7 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
       <main>
         {errors.length > 0 && (
           <Banner tone="warn">
-            <strong>À vérifier</strong>
+            <strong>À corriger avant d’enregistrer</strong>
             <ul style={{ margin: 0, paddingLeft: '20px' }}>{errors.map((e) => <li>{e}</li>)}</ul>
           </Banner>
         )}

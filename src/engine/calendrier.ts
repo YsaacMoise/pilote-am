@@ -3,7 +3,7 @@
 import { weekday, type ISODate } from './dates';
 import { holidaysOf } from './holidays';
 import {
-  CREDIT_FORFAIT_ENTRETIEN_JOUR, CREDIT_PLAFOND_DEPENSES, CREDIT_TAUX, ageMois, cmgParams, congesPeriodeSimulee, cotisationsDuMois, derniereAnneeCredit, simuler,
+  CREDIT_FORFAIT_ENTRETIEN_JOUR, CREDIT_PLAFOND_DEPENSES, CREDIT_TAUX, ageMois, cmgParams, congesPeriodeSimulee, joursCongesSimules, semainesAccueil, cotisationsDuMois, derniereAnneeCredit, simuler,
   type SimInput, type SimResult,
 } from './simulation';
 
@@ -142,8 +142,8 @@ export function calendrier(i: SimInput, d: ISODate, r: SimResult = simuler(i, d)
   const lignes: Ligne[] = [];
   let baseCp = 0; // salaires nets de la période de référence en cours (1er juin → 31 mai)
   let cpAPayer = 0; // congés acquis au 31 mai, en attente du mois de versement
-  let moisBase = 0; // mois de la période de référence en cours
-  let periodes = 0; // périodes déjà closes (droits acquis à partir de la deuxième)
+  let moisBase = 0; // mois de la période
+  let droitsPrec = 0; // T-109 : jours acquis la période précédente (0 la première) de référence en cours
 
   for (let m = debut; m <= finCalcul; m = moisSuivant(m)) {
     const mo = Number(m.slice(5, 7));
@@ -168,7 +168,12 @@ export function calendrier(i: SimInput, d: ISODate, r: SimResult = simuler(i, d)
     let conges = 0;
     if (incomplete) {
       // T-103 (S7) : CCN 48.1.1.5, le plus haut du dixième et du maintien ; jours acquis sur les mois de la période.
-      if (mo === 6) { cpAPayer = moisBase ? congesPeriodeSimulee(i, salaire1, baseCp, moisBase, periodes > 0) : 0; if (moisBase) periodes++; baseCp = 0; moisBase = 0; }
+      // T-109 (correction 8) : les congés de la période comptent dans la limite des jours acquis la période précédente.
+      if (mo === 6) {
+        cpAPayer = moisBase ? congesPeriodeSimulee(i, salaire1, baseCp, moisBase, droitsPrec) : 0;
+        if (moisBase) droitsPrec = joursCongesSimules(semainesAccueil(i), moisBase, droitsPrec);
+        baseCp = 0; moisBase = 0;
+      }
       if (mo === moisCp && cpAPayer > 0) { conges = cpAPayer; cpAPayer = 0; evenements.push('conges'); }
       baseCp += salaire + reduc;
       moisBase++;

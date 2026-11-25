@@ -22,6 +22,9 @@ export type { DemandeurInexecution, FinCdd, FinCddNonGere, Motif } from './model
 import { avecPreavisMotif } from './model';
 import { finEssaiMaxCdi, QUESTION_ESSAI_AUTRE_ENFANT } from './preavis';
 
+/** T-109 (correction 10) : inaptitude notifiée avant l'avenant n° 10 */
+export const MESSAGE_INAPTITUDE_AVANT_AVENANT_10 = 'Inaptitude notifiée avant le 1er mai 2026 : la rupture pour inaptitude n’existait pas encore pour l’assistante maternelle (avenant n° 10 de la convention, en vigueur le 1er mai 2026). Le contrat a pris fin par un retrait de l’enfant (convention, article 119.1) : choisis « Les parents retirent l’enfant », avec la date de leur lettre, et dis si le préavis a été fait.';
+
 /** T-109 (correction 7) : la réponse sur l'essai de l'autre enfant manque */
 export const MESSAGE_ESSAI_AUTRE_ENFANT = `Rupture pendant l’essai : ${QUESTION_ESSAI_AUTRE_ENFANT} Si oui, l’essai de ce contrat dure au plus 30 jours (convention, article 95.1). Réponds dans l’écran « Fin de contrat » : l’app calcule ensuite.`;
 
@@ -484,9 +487,11 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   }
 
   // Avenant n° 10 (inaptitude) en vigueur le 1er mai 2026 : avant, ses règles ne s'appliquaient pas.
-  if ((motif === 'inaptitude' || motif === 'inaptitude_pro') && notif < AVENANT_10) {
-    alertes.push('Inaptitude notifiée avant le 1er mai 2026 : les règles de l’avenant n° 10 appliquées ici n’étaient pas encore en vigueur. Fais vérifier le calcul (relais petite enfance, DREETS).');
-  }
+  // T-109 (comparateur, correction 10 et section 6, point 6) : avant le 01/05/2026, ni la convention (63.4, 64.4 et 119.5 datent
+  // de l'avenant n° 10) ni la loi (CASF L423-2 ne rend pas applicable à l'AM le chapitre VI du titre II du livre II de la 1re
+  // partie du code du travail, L1226-1 à L1226-24) ne prévoyaient de rupture pour inaptitude de l'AM : le contrat finissait par
+  // un retrait de l'enfant (CCN 119.1, « quel qu'en soit le motif »). Plus de calcul « à faire vérifier » : refus, avec la raison.
+  if ((motif === 'inaptitude' || motif === 'inaptitude_pro') && notif < AVENANT_10) refusFin.push(MESSAGE_INAPTITUDE_AVANT_AVENANT_10);
 
   // Régularisation (CCN 124) : heures réellement dues (planning, hors absences retenues) contre heures payées, depuis
   // l'embauche, le début du suivi ou le dernier passage d'une année à l'autre (C-001 : les autres avenants ne coupent pas).

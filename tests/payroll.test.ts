@@ -1010,9 +1010,13 @@ describe('audit C-017, relecture contradictoire', () => {
     expect(fin('2028-01-31')).toBe('2028-02-29');
     expect(fin('2026-12-31')).toBe('2027-01-30');
   });
-  it('inaptitude notifiée avant le 1er mai 2026 : alerte', () => {
-    expect(finDeContrat(ctx(), '2026-04-15', 'inaptitude_pro').alertes.join(' ')).toMatch(/avant le 1er mai 2026/);
-    expect(finDeContrat(ctx(), '2026-05-04', 'inaptitude_pro').alertes.join(' ')).not.toMatch(/avant le 1er mai 2026/);
+  it('inaptitude notifiée avant le 1er mai 2026 : pas de calcul, la raison est dite (T-109 : avant l’avenant n° 10, retrait de l’enfant)', () => {
+    const avant = finDeContrat(ctx(), '2026-04-15', 'inaptitude_pro');
+    expect(avant.nonGere?.join(' ')).toMatch(/avant le 1er mai 2026.*retrait de l’enfant/);
+    expect(avant.indemniteRupture).toBe(0);
+    const apres = finDeContrat(ctx(), '2026-05-04', 'inaptitude_pro');
+    expect(apres.nonGere).toBeUndefined();
+    expect(apres.alertes.join(' ')).not.toMatch(/avant le 1er mai 2026/);
   });
 });
 

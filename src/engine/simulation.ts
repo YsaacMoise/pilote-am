@@ -441,15 +441,32 @@ export const HEURES_MAX_AN = 2250;
  * T-103 (S7) : indemnité de congés payés d'une période de référence (1er juin au 31 mai) en année incomplète, pour le
  * simulateur. CCN 48.1.1.5 : la plus favorable du dixième de la rémunération de la période et du maintien (salaire
  * qu'aurait touché l'AM pendant le congé : jours ouvrables ÷ 6 semaines, Cass. soc. 09/05/2019, n° 17-26.232). Jours acquis :
- * 2,5 par mois de travail (CCN 48.1.1.2), au prorata, arrondi supérieur, 30 au plus ; les semaines sans accueil ne sont pas
- * du travail (L3141-5), sauf les congés payés pris dans la limite des droits (L3141-5, 1° ; CCN 48.1.1.3) : la première
- * période (aucun droit acquis), les 5 semaines de congés ne comptent pas. Hypothèse de la simulation, dite à l'écran : les
- * semaines sans accueil sont réparties dans l'année.
+ * 2,5 jours par période de quatre semaines de travail (C. trav. L3141-4 : « quatre semaines » valent un mois ; CCN 48.1.1.2),
+ * au prorata, arrondi supérieur, 30 au plus ; les semaines sans accueil ne sont pas du travail (L3141-5), sauf les congés payés
+ * pris dans la limite des droits (L3141-5, 1° ; CCN 48.1.1.3). Première période : aucun droit, aucune semaine de congés ne
+ * compte. Droits de la période précédente (`droits`, en jours) : les semaines de congés comptent pour ces jours (jours ÷ 6,
+ * 5 semaines au plus) ; `true` (mois moyen) : même accueil chaque année, calcul répété jusqu'à ce qu'il ne change plus.
+ * T-109 (comparateur, correction 8) :
+ * avant, mois × semaines ÷ 52 et 5 semaines de congés comptées en entier. Exemple : 40 semaines, 180 € par semaine, droits
+ * acquis : (40 + 28 ÷ 6) ÷ 4 × 2,5 = 27,9 → 28 jours ; 28 ÷ 6 × 180 € = 840,00 €. Hypothèse de la simulation, dite à
+ * l'écran : les semaines sans accueil sont réparties dans l'année.
  */
-export function congesPeriodeSimulee(i: Pick<SimInput, 'yearType' | 'semainesAbsence'>, salaireMensualise: number, baseDixieme: number, moisPeriode: number, droitsAcquis: boolean): number {
+export function joursCongesSimules(n: number, moisPeriode: number, droits: boolean | number): number {
+  const acquis = (cpJours: number) => Math.min(30, Math.ceil(((n + Math.min(5, cpJours / 6)) * moisPeriode / 12 / 4) * 2.5 - 1e-9));
+  if (typeof droits === 'number') return acquis(droits);
+  let j = acquis(0);
+  if (!droits) return j;
+  for (let k = 0; k < 10; k++) {
+    const suivant = Math.min(30, Math.ceil(((n + Math.min(5, j / 6)) / 4) * 2.5 - 1e-9));
+    if (suivant === j) break;
+    j = suivant;
+  }
+  return acquis(j);
+}
+
+export function congesPeriodeSimulee(i: Pick<SimInput, 'yearType' | 'semainesAbsence'>, salaireMensualise: number, baseDixieme: number, moisPeriode: number, droits: boolean | number): number {
   const n = semainesAccueil(i);
-  const travail = droitsAcquis ? n + 5 : n;
-  const jours = Math.min(30, Math.ceil(2.5 * moisPeriode * (travail / 52) - 1e-9));
+  const jours = joursCongesSimules(n, moisPeriode, droits);
   const semaine = n > 0 ? (salaireMensualise * 12) / n : 0;
   return Math.max(Math.round(baseDixieme * 0.1), Math.round((jours / 6) * semaine));
 }

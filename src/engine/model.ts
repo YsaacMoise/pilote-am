@@ -277,6 +277,11 @@ export interface Contract {
    * contrat). Demandé seulement quand le CDD finit pendant l'essai.
    */
   cddEssaiFin?: ISODate;
+  /**
+   * T-109 (comparateur, correction 9) : accord écrit de l'AM pour un contrat de plus de 48 h par semaine en moyenne (CASF
+   * L423-22, al. 2). Demandé seulement au-delà de 48 h.
+   */
+  accord48h?: boolean;
   /** T-103 : CDD suivi après son début : jours de congés payés pris pendant le CDD avant le suivi (plancher L1242-16) */
   cddCpPrisAvantSuivi?: number;
   /** T-076 : motif du CDD (R-CDD-03) ; message seulement, aucun effet sur les montants */

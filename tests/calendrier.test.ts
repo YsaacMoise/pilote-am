@@ -33,18 +33,21 @@ describe('calendrier mois par mois (étape 4)', () => {
     const c = calendrier(inc, D);
     const juin = c.mois.find((m) => m.mois === '2027-06')!;
     // 43 semaines d'accueil (52 − 5 − 4). Première période, décembre à mai (6 mois), aucun droit acquis : les 5 semaines de
-    // congés ne comptent pas. Jours : 2,5 × 6 × 43 ÷ 52 = 12,40 → 13. Maintien : 13 ÷ 6 semaines × (S × 12 ÷ 43) ;
-    // dixième : 6 S ÷ 10. Le maintien est plus haut.
-    expect(juin.conges).toBe(Math.max(Math.round(S * 6 * 0.1), Math.round((13 / 6) * ((S * 12) / 43))));
-    expect(juin.conges).toBe(Math.round((13 / 6) * ((S * 12) / 43)));
+    // congés ne comptent pas. T-109 (C8, L3141-4 : quatre semaines valent un mois) : 6 mois d'accueil = 43 × 6 ÷ 12 = 21,5
+    // semaines ; 21,5 ÷ 4 × 2,5 = 13,44 → 14 jours (avant : 2,5 × 6 × 43 ÷ 52 = 12,40 → 13). Maintien : 14 ÷ 6 semaines ×
+    // (S × 12 ÷ 43) ; dixième : 6 S ÷ 10. Le maintien est plus haut.
+    expect(juin.conges).toBe(Math.max(Math.round(S * 6 * 0.1), Math.round((14 / 6) * ((S * 12) / 43))));
+    expect(juin.conges).toBe(Math.round((14 / 6) * ((S * 12) / 43)));
     expect(juin.evenements).toContain('conges');
     expect(c.mois.find((m) => m.mois === '2027-05')!.conges).toBe(0);
     expect(juin.cmg).toBeGreaterThan(c.mois[0].cmg);
     const aout = calendrier({ ...inc, cpMode: 'principale', moisCongePrincipal: 8 }, D).mois.find((m) => m.mois === '2027-08')!;
     expect(aout.conges).toBe(juin.conges);
-    // Deuxième période (12 mois, droits acquis : les 5 semaines de congés comptent) : 2,5 × 12 × 48 ÷ 52 = 27,69 → 28 jours.
-    expect(c.mois.find((m) => m.mois === '2028-06')!.conges).toBe(Math.max(Math.round(S * 12 * 0.1), Math.round((28 / 6) * ((S * 12) / 43))));
-    expect(r.congesAnnuels).toBe(Math.round((28 / 6) * ((S * 12) / 43)));
+    // Deuxième période (12 mois) : les congés comptent dans la limite des 14 jours acquis (L3141-5, 1°) : 14 ÷ 6 = 2,33
+    // semaines ; (43 + 2,33) ÷ 4 × 2,5 = 28,33 → 29 jours. Mois moyen du simulateur (même accueil chaque année) : 30 jours
+    // ((43 + 5) ÷ 4 × 2,5 = 30).
+    expect(c.mois.find((m) => m.mois === '2028-06')!.conges).toBe(Math.max(Math.round(S * 12 * 0.1), Math.round((29 / 6) * ((S * 12) / 43))));
+    expect(r.congesAnnuels).toBe(Math.round((30 / 6) * ((S * 12) / 43)));
   });
 
   // T-035b. CCN art. 108.1 al. 3 et 111 ; Urssaf « Préparer le contrat » : salaire mensualisé − (salaire mensualisé × heures

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { deleteContract, logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
 import { addMonthsToDate, deMois, firstDay, mondayOf, monthOf, shortDate, today, JOUR_NOMS, type Month } from '../engine/dates';
+import { dureeMoyenneContrat, erreursDureeContrat, SEUIL_ACCORD_MIN } from '../engine/durees';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, semainesSansAccueilAnnee, termsAt, weeklyMinutes } from '../engine/payroll';
 import { entretienPlancher, minimumSansTitre, ratesAtRegion, ratesConnus, repasAvantageAu } from '../engine/rates';
 import { regionDe } from '../engine/regions';
@@ -123,6 +124,8 @@ export function Contrat({ id }: { id?: string }) {
     if (c.cdd && !c.cddTerme) errs.push(c.cddTermeImprecis ? 'Indique la date de fin de la durée minimale du CDD.' : 'Indique la date de fin prévue du CDD.');
     if (c.cdd && c.cddTerme && c.cddTerme < c.start) errs.push('La date de fin prévue du CDD est avant le début.');
     if (c.cdd && !c.cddMotif) errs.push('Indique pourquoi le CDD a été signé.');
+    // T-109 (correction 9) : CASF L423-22, plus de 48 h par semaine en moyenne sans l'accord de l'AM, ou plus de 2 250 h par an.
+    errs.push(...erreursDureeContrat(c));
     // T-044b : choix explicite du mode de l'indemnité d'entretien sur un nouveau contrat.
     if (isNew && !c.entretienMode) errs.push('Indique si l’indemnité d’entretien est fixée par heure ou par jour.');
     setErrors(errs);
@@ -253,6 +256,10 @@ export function Contrat({ id }: { id?: string }) {
               </div>
             </div>
           </fieldset>
+        </section>}
+
+        {(dureeMoyenneContrat(c) ?? 0) > SEUIL_ACCORD_MIN && <section class="card">
+          <Switch label="J’ai donné mon accord écrit pour plus de 48 h par semaine" hint="Code de l’action sociale et des familles, article L423-22 : sans ton accord, pas plus de 48 h par semaine en moyenne sur quatre mois ; avec, pas plus de 2 250 h par an, tous contrats confondus." checked={!!c.accord48h} onChange={(v) => set({ accord48h: v })} />
         </section>}
 
         <section class="card">

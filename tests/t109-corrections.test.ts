@@ -127,3 +127,35 @@ describe('C7 : essai d’un CDI (CCN 95.1)', () => {
     expect(finDeContrat(ctx(), '2026-02-10', 'essai', 0, undefined, undefined, undefined, { ...oui, essaiAutreEnfant: false }, true).nonGere).toBeUndefined();
   });
 });
+
+import { congesPeriodeSimulee, joursCongesSimules } from '../src/engine/simulation';
+
+describe('C8 : simulateur, congés en année incomplète (C. trav. L3141-4, L3141-5, 1° ; comparateur 3.1)', () => {
+  it('40 semaines, 180 € par semaine, 25 jours acquis l’an passé : (40 + 25 ÷ 6) ÷ 4 × 2,5 = 27,6 → 28 jours ; 840,00 €', () => {
+    expect(joursCongesSimules(40, 12, 25)).toBe(28);
+    // Semaines sans accueil des parents : 7 (52 − 5 − 7 = 40). Salaire mensualisé 180 × 40 ÷ 12 = 600,00 €.
+    expect(congesPeriodeSimulee({ yearType: 'incomplete', semainesAbsence: 7 }, 60000, 720000, 12, 25)).toBe(84000);
+  });
+  it('première période : aucune semaine de congés ne compte (40 ÷ 4 × 2,5 = 25 jours)', () => {
+    expect(joursCongesSimules(40, 12, 0)).toBe(25);
+  });
+});
+
+import { dureeMoyenneContrat, erreursDureeContrat, MESSAGE_ACCORD_48H } from '../src/engine/durees';
+
+describe('C9 : contrat de plus de 48 h par semaine en moyenne (CASF L423-22)', () => {
+  it('50 h (8 h à 18 h, 5 jours) : accord écrit demandé ; avec l’accord, accepté (50 × 47 = 2 350 h > 2 250 h : refusé)', () => {
+    const c = ct({ planning: week('08:00', '18:00') });
+    expect(dureeMoyenneContrat(c)).toBe(3000);
+    expect(erreursDureeContrat(c)).toContain(MESSAGE_ACCORD_48H);
+    expect(erreursDureeContrat({ ...c, accord48h: true }).join(' ')).toMatch(/2350 h par an/);
+  });
+  it('49 h, 46 semaines, avec accord : 2 254 h > 2 250 h ; 49 h, 45 semaines : 2 205 h, accepté', () => {
+    const c = ct({ planning: week('08:00', '17:48'), yearType: 'incomplete', weeks: 46, accord48h: true });
+    expect(erreursDureeContrat(c).length).toBe(1);
+    expect(erreursDureeContrat({ ...c, weeks: 45 })).toEqual([]);
+  });
+  it('48 h : rien à demander', () => {
+    expect(erreursDureeContrat(ct({ planning: week('08:00', '17:36') }))).toEqual([]);
+  });
+});
