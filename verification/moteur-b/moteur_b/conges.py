@@ -388,6 +388,14 @@ def _indemnite_cp(jours_conges, heures_hebdo_minutes, taux_horaire_centimes, sal
         m2 = positif(heures_conge_minutes, "heures_conge_minutes") / 60 * t
     else:
         m2 = None
+    # Verification 2 (25/11/2026), B-7 (A-26) en 52 semaines : CCN 48.1.1.5 : « la remuneration brute que le salarie
+    # aurait percue pour une duree de travail egale a celle du conge paye ». Quand les heures que l'AM aurait faites
+    # pendant le conge sont connues (heures_conge_minutes), c'est la lettre : une seule lecture. La formule des sixiemes
+    # (jours / 6 x salaire d'une semaine) n'est qu'une moyenne ; elle ne donne pas ce que l'AM « aurait percu » quand
+    # le conge ne couvre pas des semaines entieres (ex. lundi a jeudi, 4 jours ouvrables, 32 h prevues : 32 h, pas
+    # 4/6 x 40 h = 26,67 h).
+    if m2 is not None and j % 6 != 0 and type_annee != "incomplete":
+        m1 = m2
     maintiens = [m1] if m2 is None else ([m1] if m2 == m1 else [m1, m2])
     if m2 is None:
         raise NonGere("A-26", regles, precision=(

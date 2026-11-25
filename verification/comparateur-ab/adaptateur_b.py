@@ -1101,13 +1101,18 @@ def acquisition_b(ctx, y):
             sa = sorted(x for x in ctx.sans_accueil if x + timedelta(days=6) >= a and x <= b) \
                 if ctx.type == "incomplete" else []
             ant = 0
-            if ctx.debut < p0 and sa and ctx.k.get("semaines_cp_am"):
+            cp_am_k = ctx.k.get("semaines_cp_am")
+            if cp_am_k is None and sa and ctx.debut >= p0:
+                # Verification 2 (B-2) : premiere periode du contrat, aucun droit anterieur : aucune semaine sans accueil
+                # n'est un conge paye (CCN 102.1.2.2, 102.2) ; la liste des semaines de conges de l'AM est sans effet.
+                cp_am_k = []
+            if ctx.debut < p0 and sa and cp_am_k:
                 ant = acquisition_b(ctx, y - 1).get("jours_acquis_hors_enfants")
                 if isinstance(ant, Refus):
                     raise ant
             r = appel("acquisition_cp_periode", ctx.type, a, b, jours_non_assimiles=non_assimile,
                       jours_arret_maladie=malade, semaines_sans_accueil=sa,
-                      semaines_cp_am=None if ctx.k.get("semaines_cp_am") is None else [d_(x) for x in ctx.k["semaines_cp_am"] if d_(x) in sa],
+                      semaines_cp_am=None if cp_am_k is None else [d_(x) for x in cp_am_k if d_(x) in sa],
                       # Verification 2 (B-1) : jours de travail de la semaine (decompte journalier de F18260).
                       jours_semaine=None if ctx.pv else sorted(j for j, p in ctx.plages.items() if p),
                       # Verification 2 (B-2) : droits de la periode precedente (0 si le contrat commence dans la periode).
@@ -1234,7 +1239,24 @@ def indemnite_b(ctx, y):
         else:
             sal = salaires_periode(ctx, a, b)
             icp_pendant, icp_prec = icp_periode(ctx, y, a, b)
-            r = appel("indemnite_cp", j, ctx.hebdo, ctx.taux, sal, icp_pendant, icp_prec, None, acq["jours_enfants"],
+            # Verification 2 (B-7) : heures que l'AM aurait faites pendant les conges pris pour ce droit (periode de
+            # prise y+1), seulement si le droit est pris en entier (jours decomptes par B) : fait du planning.
+            hcg = None
+            if ctx.type == "complete" and j % 6:
+                q0, q1 = periode(y + 1)
+                pris = jours_c = 0
+                try:
+                    for l in sorted([x for x in ctx.conges if x["type"] == "cp" and q0 <= x["du"] <= q1],
+                                    key=lambda x: x["du"]):
+                        reprise = l["au"] + timedelta(days=1)
+                        while ctx.prevu(reprise) == 0 or est_ferie(reprise):
+                            reprise += timedelta(days=1)
+                        pris += decompte_b(ctx, l["du"], reprise)
+                        jours_c += sum(ctx.prevu(x) for x in jours_entre(l["du"], l["au"]) if not est_ferie(x))
+                    hcg = jours_c if pris == j else None
+                except Refus:
+                    hcg = None
+            r = appel("indemnite_cp", j, ctx.hebdo, ctx.taux, sal, icp_pendant, icp_prec, hcg, acq["jours_enfants"],
                       type_annee=ctx.type)  # T-103 (C12)
             mc = r["resultat"].get("maintien_centimes")  # T-040d : ARR-01 applique dans B
             res = {"indemnite_cp": r["resultat"]["indemnite_centimes"],
@@ -1384,7 +1406,9 @@ def indemnite_deces_b(ctx, env, preavis):
         pp = sum(unite(d) for d in jours_entre(max(a, p1), min(b, p2)))
         if pp == 0:
             continue
-        mois_l.append({"salaire_mensualise_centimes": mensualise(ctx), "prevu_mois": pm, "prevu_dans_preavis": pp})
+        sna = 1 if ctx.type == "incomplete" and any(lundi(d) in ctx.sans_accueil for d in jours_entre(a, b)) else 0
+        mois_l.append({"salaire_mensualise_centimes": mensualise(ctx), "prevu_mois": pm, "prevu_dans_preavis": pp,
+                       "semaines_non_accueil": sna})
     if not mois_l:
         return 0, mois_de(p2)
     r = appel("indemnite_compensatrice_preavis", ctx.type, mois_l)
