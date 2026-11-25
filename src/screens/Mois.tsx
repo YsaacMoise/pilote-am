@@ -209,6 +209,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
             <dd>{termsAt(c, `${month}-01`).yearType === 'complete' ? hoursLabel(r.divisorMin) : r.divisorDays}</dd>
             {r.retenue > 0 && (<><dt>Retenue ({termsAt(c, `${month}-01`).yearType === 'complete' ? hoursLabel(r.deductedMin) : `${r.deductedDays} j`} non payés)</dt><dd>−{euros(r.retenue)}</dd></>)}
             {!!r.regulAvenant && (<><dt>Régularisation à l’avenant</dt><dd>{euros(r.regulAvenant)}</dd></>)}
+            {(r.normalesPlusAmount ?? 0) > 0 && (<><dt>Heures en plus la semaine d’une absence retenue ({hoursLabel(r.normalesPlusMin ?? 0)}, taux du contrat)</dt><dd>{euros(r.normalesPlusAmount ?? 0)}</dd></>)}
             {r.complAmount > 0 && (<><dt>Heures complémentaires ({hoursLabel(r.complMin)})</dt><dd>{euros(r.complAmount)}</dd></>)}
             {r.majAmount > 0 && (<><dt>Heures majorées en plus ({hoursLabel(r.majMin)})</dt><dd>{euros(r.majAmount)}</dd></>)}
             {r.ferieAmount > 0 && (<><dt>Fériés travaillés</dt><dd>{euros(r.ferieAmount)}</dd></>)}

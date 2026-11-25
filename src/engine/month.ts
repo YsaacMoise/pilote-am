@@ -137,6 +137,7 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   out.push('Détail du salaire net :');
   out.push(`• Salaire mensualisé : ${euros(r.salaireMens)}`);
   if (r.retenue) out.push(`• Retenue pour absence : −${euros(r.retenue)}`);
+  if (r.normalesPlusAmount) out.push(`• Heures faites en plus la semaine d’une absence retenue, au taux du contrat : ${euros(r.normalesPlusAmount)}`);
   if (r.complAmount) out.push(`• Heures complémentaires : ${euros(r.complAmount)}`);
   if (r.majAmount) out.push(`• Heures majorées en plus du contrat : ${euros(r.majAmount)}`);
   if (r.regulAvenant) out.push(`• Régularisation à l’avenant : ${euros(r.regulAvenant)}`);

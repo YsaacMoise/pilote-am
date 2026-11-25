@@ -191,10 +191,14 @@ describe('seuil des 45 h selon les absences de la semaine (art. 96-4, 99 ; Cass.
     const b = semaine([rec('2026-10-05', { abs: 'malade' }), ...plus4h]);
     expect(b.majMin).toBe(0);
   });
-  it('enfant malade avec certificat, jour retenu : le jour ne compte pas, les 4 h sont au taux du contrat', () => {
+  it('enfant malade avec certificat, jour retenu : le jour ne compte pas ; T-103 (H9) : les 4 h compensent la retenue, heures normales au taux du contrat', () => {
     const b = semaine([rec('2026-10-05', { abs: 'malade_certif' }), ...plus4h]);
     expect(b.deductedDays).toBe(1);
-    expect(b.complMin).toBe(240);
+    // 36 h faites sur 45 h prévues : rien au-delà de la durée du contrat (CCN 96.4), donc aucune heure complémentaire ;
+    // les 4 h sont payées au taux du contrat (4 × 3,50 € = 14,00 €), la retenue du lundi reste entière.
+    expect(b.complMin).toBe(0);
+    expect(b.normalesPlusMin).toBe(240);
+    expect(b.normalesPlusAmount).toBe(1400);
     expect(b.majMin).toBe(0);
   });
   // T-035b : CCN art. 105 al. 1, absence non prévue = rémunérée ; plus de retenue. Le jour noté « sans solde » est traité
@@ -209,12 +213,16 @@ describe('seuil des 45 h selon les absences de la semaine (art. 96-4, 99 ; Cass.
     const b = semaine(plus4h, cp, { balances: { cpRestants: 10, cpEnCours: 0, maladieDeduits: 0 } });
     expect(b.majMin).toBe(240);
   });
-  it('AM malade, événement familial, sans solde : le jour ne compte pas', () => {
-    for (const type of ['am_malade', 'am_enfant_malade', 'evenement', 'sans_solde'] as const) {
+  it('AM malade, enfant malade de l’AM, sans solde (retenus) : heures normales ; événement familial (payé) : heures complémentaires (T-103, H9)', () => {
+    for (const type of ['am_malade', 'am_enfant_malade', 'sans_solde'] as const) {
       const b = semaine(plus4h, [{ id: 'l', type, from: '2026-10-05', to: '2026-10-05' }]);
-      expect(b.complMin, type).toBe(240);
+      expect(b.complMin, type).toBe(0);
+      expect(b.normalesPlusMin, type).toBe(240);
       expect(b.majMin, type).toBe(0);
     }
+    const ev = semaine(plus4h, [{ id: 'l', type: 'evenement', from: '2026-10-05', to: '2026-10-05', joursEvenement: 4 }]);
+    expect(ev.complMin).toBe(240);
+    expect(ev.normalesPlusMin ?? 0).toBe(0);
   });
   it('férié chômé (mercredi 11 novembre 2026) : le jour ne compte pas', () => {
     const recs = ['2026-11-09', '2026-11-10', '2026-11-12', '2026-11-13'].map((d) => rec(d, { pres: [{ a: '08:00', d: '18:00' }] }));

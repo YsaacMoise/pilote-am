@@ -281,24 +281,25 @@ describe('T-076 : régularisation et fin (R-PV-07, R-PV-13)', () => {
 describe('T-076 : corrections après vérification (décisions D1 à D6)', () => {
   // Cycle A 45 h / B 25 h, 130 h mensualisées : lecture L2, B = 30 h.
   const l2 = (over: Partial<Contract> = {}) => s1({ cycle: [A45, B25], heuresMensualisees: 130, ...over });
-  it('B1 / D1 : L2, 1er mai chômé : HC prévues payées ; autres fériés chômés : non comptés (T-103, H3)', () => {
+  it('B1 / D1, revu par la T-103 (H9) : L2, férié chômé payé : ses heures prévues comptent pour la base (rémunération habituelle maintenue)', () => {
     const b = monthBase(makeCtx(l2(), [], [], T), '2026-05');
     // Semaine A du 27/04 : lundi-jeudi 36 h + vendredi 1er mai 9 h (CCN 47.1) = 45 h → 15 HC ; rangées dans l'ordre des jours,
     // 6 h le jeudi 30/04 (avril) et 9 h le 1er mai (mai).
     // Semaines B (25 h, vendredi 08/05 férié compris) : sous 30 h → 0.
-    // Semaine A du 11/05 (jeudi 14/05 Ascension) : 36 h → 6 HC. Semaine A du 25/05 (lundi 25/05 Pentecôte) : 6 HC.
-    // CCN 96.4 : heures « effectuées » ; le férié chômé n'en est pas une. Mai : 9 + 6 + 6 = 21 HC = 84,00 €.
+    // Semaine A du 11/05 (jeudi 14/05 Ascension) et du 25/05 (lundi 25/05 Pentecôte) : CCN 47.2, le férié chômé « ouvre droit
+    // au maintien de la rémunération brute habituelle » : ses 9 h comptent, 45 h → 15 HC chacune (avant : 6 HC, 9 h perdues).
+    // Mai : 9 + 15 + 15 = 39 HC = 156,00 €.
     expect(b.nonGere).toEqual([]);
-    expect(b.complMin).toBe(21 * 60);
-    expect(b.complAmount).toBe(8400);
-    expect(b.net).toBe(60400);
+    expect(b.complMin).toBe(39 * 60);
+    expect(b.complAmount).toBe(15600);
+    expect(b.net).toBe(52000 + 15600);
   });
-  it('B1 / D1 : L2, jour d’événement familial payé : ses heures ne comptent pas (T-103, H3)', () => {
-    // Mardi 03/03 (semaine A, 9 h) : événement familial payé (2 jours prévus pour un mariage, ici 1 jour pris).
+  it('B1 / D1, revu par la T-103 (H9) : L2, jour d’événement familial payé : ses heures prévues comptent pour la base', () => {
+    // Mardi 03/03 (semaine A, 9 h) : événement familial payé (CCN 48.1.3.1.1 : « sans perte de salaire »).
     const leaves: AmLeave[] = [{ id: 'e', type: 'evenement', from: '2026-03-03', to: '2026-03-03', joursEvenement: 4 }];
     const b = monthBase(makeCtx(l2(), [], leaves, T), '2026-03');
-    // Semaine du 02/03 : 36 h → 6 HC. Semaine du 16/03 : 15 HC.
-    expect(b.complMin).toBe(21 * 60);
+    // Semaine du 02/03 : 45 h prévues, absence payée comprise → 15 HC. Semaine du 16/03 : 15 HC. Total 30 HC.
+    expect(b.complMin).toBe(30 * 60);
   });
   it('B2 / D2, revu par la T-103 (H6) : L2, absence retenue dans une semaine au-delà de la base : deux calculs séparés', () => {
     // Congé sans solde mardi 03/03 (semaine A, 45 h prévues > 30 h). Retenue de l'art. 111 sur le salaire mensualisé ;
@@ -352,12 +353,12 @@ describe('T-076 : corrections après vérification (décisions D1 à D6)', () =>
 
 describe('T-076 : corrections du comparateur (D13, D6, fin courte)', () => {
   const l2 = (over: Partial<Contract> = {}) => s1({ cycle: [A45, B25], heuresMensualisees: 130, ...over });
-  it('D13, revu par la T-103 (H2) : L2, absence de l’enfant payée : ses heures ne comptent pas (CCN 96.4, heures effectuées)', () => {
+  it('D13, revu par la T-103 (H9) : L2, absence de l’enfant payée : ses heures prévues comptent pour la base (CCN 105 : absence « rémunérée »)', () => {
     // Mardi 03/03 (semaine A, 9 h) : enfant absent à la demande des parents, jour payé (CCN 105).
-    // Semaine du 02/03 : 36 h → 6 HC ; semaine du 16/03 : 15 HC. Mars : 21 HC = 84,00 € ; net 520,00 + 84,00 = 604,00 €.
+    // Semaine du 02/03 : 45 h → 15 HC ; semaine du 16/03 : 15 HC. Mars : 30 HC = 120,00 € ; net 520,00 + 120,00 = 640,00 €.
     const b = monthBase(makeCtx(l2(), [rec('2026-03-03', { abs: 'parents' })], [], T), '2026-03');
-    expect(b.complMin).toBe(21 * 60);
-    expect(b.net).toBe(60400);
+    expect(b.complMin).toBe(30 * 60);
+    expect(b.net).toBe(64000);
   });
   it('D6 : planning remis, 36 semaines, semaines sans accueil au diviseur de l’art. 111 avec la semaine type du contrat', () => {
     // Cas PV-I36-S2-S01 : octobre 2026, taux 5,00 €, 90 h → 450,00 €. Semaines du 19/10 et du 26/10 sans accueil.
@@ -424,10 +425,12 @@ describe('T-076 : relecture indépendante (R2, D16)', () => {
   const pv = (hm: number) => s1({ start: '2025-06-02', trackedFrom: '2025-06-02', rateNet: 500, cycle: [A45, B15], cycleAncre: '2025-06-02', heuresMensualisees: hm });
   it('R2 : fin d’un CDI à planning variable, jours non pris de la période précédente sur la base du complément de juin (L2 et L1)', () => {
     // Période 2025-2026 : 30 jours ; congés du 06/07 au 01/08/2026 : 23 jours décomptés, 7 non pris. Lettre le 30/04/2027.
-    // L2 (65 h, B = 15 h) : part sûre = dixième 757,50 € ; complément de juin 2026 = 757,50 − 30/6 × 15 h × 5 € = 382,50 € ;
-    // versé dans le salaire pour les 23 jours pris : 23/6 × 15 h × 5 € = 287,50 €. Reste dû : 757,50 − 382,50 − 287,50 = 87,50 €.
+    // L2 (65 h, B = 15 h) : dixième 780,00 € (T-103, H9 : les 5 fériés chômés des semaines A, 14/07, 15/08, 01/01, 06/04 et
+    // 08/05, gardent leurs 9 h d'HC prévues, 45 h × 5 € = 225 € de plus dans la base) ; complément de juin 2026 = 780,00 −
+    // 30/6 × 15 h × 5 € = 405,00 € ; versé dans le salaire pour les 23 jours pris : 23/6 × 15 h × 5 € = 287,50 €.
+    // Reste dû : 780,00 − 405,00 − 287,50 = 87,50 €.
     const f2 = finDeContrat(makeCtx(pv(65), [], leaves, '2027-12-31'), '2027-04-30', 'retrait');
-    expect(cpForMonth(makeCtx(pv(65), [], leaves, '2027-12-31'), '2026-06').complement).toBe(38250);
+    expect(cpForMonth(makeCtx(pv(65), [], leaves, '2027-12-31'), '2026-06').complement).toBe(40500);
     expect(f2.cpIndemnite - f2.cpDixiemeEnCours!).toBe(8750);
     // L1 (130 h, 30 h par semaine) : 780,00 − 30,00 (complément) − 23/6 × 30 h × 5 € (575,00) = 175,00 € ; même montant
     // qu'un contrat fixe de 30 h (7/6 × 30 h × 5 €).

@@ -571,7 +571,7 @@ export function weekOvertime(ctx: Ctx, monday: ISODate): Map<ISODate, { compl: n
  * Détail d'une semaine. `parJour` : heures complémentaires et majorées par jour (mois de rattachement). T-076, lecture L2 :
  * `complPrevu` (part des heures complémentaires qui sont des heures prévues au-delà de la base, sert à la régularisation).
  */
-export function weekOvertimeDetail(ctx: Ctx, monday: ISODate): { parJour: Map<ISODate, { compl: number; maj: number; complPrevu?: number }> } {
+export function weekOvertimeDetail(ctx: Ctx, monday: ISODate): { parJour: Map<ISODate, { compl: number; maj: number; complPrevu?: number; normal?: number }> } {
   return memo(ctx, 'wkd' + monday, () => {
     const base = weekOvertimeL1(ctx, monday);
     const t = termsAt(ctx.c, monday);
@@ -588,41 +588,60 @@ export function weekOvertimeDetail(ctx: Ctx, monday: ISODate): { parJour: Map<IS
  * prévue au contrat » pour cette semaine-là : B × jours prévus de la semaine dans le contrat ÷ jours prévus de la semaine.
  * Rattachement au mois : les heures de la semaine sont rangées dans l'ordre des jours ; les HC vont au jour où elles tombent.
  */
-function weekOvertimeL2(ctx: Ctx, monday: ISODate, B: number, base: Map<ISODate, { compl: number; maj: number }>): Map<ISODate, { compl: number; maj: number; complPrevu?: number }> {
+function weekOvertimeL2(ctx: Ctx, monday: ISODate, B: number, base: Map<ISODate, { compl: number; maj: number; normal?: number }>): Map<ISODate, { compl: number; maj: number; complPrevu?: number; normal?: number }> {
   const c = ctx.c;
   const jours = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
   const prevus = jours.filter((d) => planningBrutMin(termsAt(c, d), d) > 0);
   const dansContrat = prevus.filter((d) => inContract(c, d));
   const b = prevus.length && dansContrat.length < prevus.length ? (B * dansContrat.length) / prevus.length : B;
   const hm = jours.reduce((a, d) => a + (base.get(d)?.maj ?? 0), 0);
-  const morceaux = jours.map((d) => ({ d, prevu: minutesSeuil45(ctx, d), extra: dayInfo(ctx, d).extraMin }));
+  // T-103 (H9) : pour la durée du contrat, une absence payée compte comme ses heures prévues (pas de compensation avec les
+  // heures faites en plus) ; une absence retenue ne compte pas, et les heures faites en plus la compensent d'abord (heures
+  // normales, calculées par weekOvertimeL1 : `normal`).
+  const seuilContrat = (d: ISODate) => { const di = dayInfo(ctx, d); return di.plannedMin > 0 && inContract(c, d) && !di.deducted ? Math.max(di.plannedMin, minutesSeuil45(ctx, d)) : 0; };
+  const morceaux = jours.map((d) => ({ d, prevu: seuilContrat(d), extra: dayInfo(ctx, d).extraMin - (base.get(d)?.normal ?? 0), normal: base.get(d)?.normal ?? 0 }));
   const total = Math.max(0, morceaux.reduce((a, x) => a + x.prevu + x.extra, 0) - b - hm);
   let pos = 0;
   const part = (n: number) => { const a = pos, e = pos + n; pos = e; return Math.max(0, Math.min(e, b + total) - Math.max(a, b)); };
-  const out = new Map<ISODate, { compl: number; maj: number; complPrevu?: number }>();
+  const out = new Map<ISODate, { compl: number; maj: number; complPrevu?: number; normal?: number }>();
   for (const x of morceaux) {
     const p = part(x.prevu), e = part(x.extra), m = base.get(x.d);
-    if (p || e || m) out.set(x.d, { compl: p + e, maj: m?.maj ?? 0, complPrevu: p });
+    if (p || e || m) out.set(x.d, { compl: p + e, maj: m?.maj ?? 0, complPrevu: p, ...(x.normal ? { normal: x.normal } : {}) });
   }
   return out;
 }
 
-
-function weekOvertimeL1(ctx: Ctx, monday: ISODate): Map<ISODate, { compl: number; maj: number }> {
+function weekOvertimeL1(ctx: Ctx, monday: ISODate): Map<ISODate, { compl: number; maj: number; normal?: number }> {
   return memo(ctx, 'wk' + monday, () => {
-    const out = new Map<ISODate, { compl: number; maj: number }>();
+    const out = new Map<ISODate, { compl: number; maj: number; normal?: number }>();
     // Base de la semaine : heures prévues qui comptent comme heures de travail (voir minutesSeuil45).
     // Les heures en plus sous ce seuil sont payées au taux du contrat ; seules celles au-delà de 45 h sont majorées.
+    // T-103 (H9) : une absence payée (enfant absent, férié chômé, événement familial) ne se compense pas avec les heures
+    // faites en plus un autre jour : elles restent des heures complémentaires (DREETS Bourgogne-Franche-Comté, guide des
+    // assistants maternels, juin 2026 : les absences payées « doivent être comptées dans les heures réellement effectuées »
+    // pour éviter « une compensation » avec des heures travaillées non payées). Une absence retenue (art. 111) l'est : les
+    // heures faites en plus la même semaine, jusqu'aux heures retenues, ne dépassent pas « la durée de travail
+    // hebdomadaire prévue au contrat » (CCN 96.4) : ce sont des heures normales, payées au taux du contrat, sans majoration
+    // ni exonération des heures complémentaires. Aucune heure travaillée sans paie.
     let cum = 0;
-    for (let i = 0; i < 7; i++) cum += minutesSeuil45(ctx, addDays(monday, i));
+    let retenu = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = addDays(monday, i);
+      cum += minutesSeuil45(ctx, d);
+      const di = dayInfo(ctx, d);
+      if (di.deducted && inContract(ctx.c, d)) retenu += di.plannedMin;
+    }
     for (let i = 0; i < 7; i++) {
       const d = addDays(monday, i);
       const di = dayInfo(ctx, d);
       const extra = di.extraMin;
       if (!extra) continue;
-      const roomBefore45 = Math.max(0, H45 - cum);
-      const compl = Math.min(extra, roomBefore45);
-      out.set(d, { compl, maj: extra - compl });
+      const normal = Math.min(extra, retenu);
+      retenu -= normal;
+      const reste = extra - normal;
+      const roomBefore45 = Math.max(0, H45 - cum - normal);
+      const compl = Math.min(reste, roomBefore45);
+      out.set(d, normal ? { compl, maj: reste - compl, normal } : { compl, maj: reste - compl });
       cum += extra;
     }
     return out;
@@ -650,6 +669,9 @@ export interface MonthBase {
   heuresNormales: number;
   joursActivite: number;
   complMin: number;
+  /** T-103 (H9) : heures faites en plus qui compensent une absence retenue la même semaine (minutes, montant net) */
+  normalesPlusMin?: number;
+  normalesPlusAmount?: number;
   /** Heures en plus occasionnelles au-delà de 45 h (payées en plus du salaire mensualisé) */
   majMin: number;
   /** Heures du contrat au-delà de 45 h, mensualisées et proratisées (déjà dans le salaire de base) */
@@ -876,7 +898,7 @@ function hoursMin(min: number): string {
   return mm ? `${h} h ${String(mm).padStart(2, '0')}` : `${h} h`;
 }
 
-const SUM_KEYS = ['base', 'retenue', 'majContratMin', 'majContratAmount', 'joursActivite', 'complMin', 'majMin', 'complAmount', 'majAmount', 'complPrevuMin', 'ferieAmount',
+const SUM_KEYS = ['base', 'retenue', 'majContratMin', 'majContratAmount', 'joursActivite', 'complMin', 'normalesPlusMin', 'normalesPlusAmount', 'majMin', 'complAmount', 'majAmount', 'complPrevuMin', 'ferieAmount',
   'presenceDays', 'extraDays', 'entretien', 'repas', 'km', 'net', 'contractDays', 'contractMin', 'deductedDays', 'deductedMin', 'normalesMin'] as const;
 
 function mergeParts(m: Month, parts: MonthBase[], cuts: ISODate[]): MonthBase {
@@ -1085,12 +1107,17 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   // T-103 (H8) : planning remis, une seule lecture : CCN 96.4 définit les heures complémentaires comme les heures effectuées
   // « au-delà de la durée de travail hebdomadaire prévue au contrat » ; l'art. 98.1.2, al. 3, permet des heures au-delà du
   // planning remis sans les qualifier. Base = durée du contrat (weekOvertimeDetail, lecture L2).
-  const t0 = { compl: 0, maj: 0, prevu: 0 };
+  const t0 = { compl: 0, maj: 0, prevu: 0, normal: 0 };
   for (const mon of weeks) for (const [d, v] of weekOvertimeDetail(ctx, mon).parJour) {
     if (monthOf(d) !== m || !inSeg(d)) continue;
-    t0.compl += v.compl; t0.maj += v.maj; t0.prevu += v.complPrevu ?? 0;
+    t0.compl += v.compl; t0.maj += v.maj; t0.prevu += v.complPrevu ?? 0; t0.normal += v.normal ?? 0;
   }
   r.complMin = t0.compl; r.majMin = t0.maj;
+  // T-103 (H9) : heures faites en plus qui compensent une absence retenue la même semaine : heures normales au taux du contrat.
+  r.normalesPlusMin = t0.normal;
+  r.normalesPlusAmount = Math.round((t0.normal * c.rateNet) / 60);
+  r.normalesMin = (r.normalesMin ?? 0) + t0.normal;
+  r.heuresNormales = Math.round((r.normalesMin ?? 0) / 60);
   const complPrevu = t0.prevu;
   // R-HC-02 (CCN art. 96.4 et 110.2) : payées au taux du contrat, majorées seulement si le contrat le prévoit (T-019).
   r.complAmount = Math.round((r.complMin * c.rateNet * (100 + (c.majorationCompl ?? 0))) / 100 / 60);
@@ -1119,7 +1146,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
       ? `${MESSAGE_MAINTIEN_LOCAL} ${euros(part)} d’indemnités journalières déduits du salaire de ce mois.`
       : `Congé indemnisé par la Sécurité sociale : ${euros(part)} d’indemnités journalières déduits du salaire de ce mois (convention, article 48.1.3.1.3 : salaire maintenu « sous déduction des indemnités journalières versées »).`);
   }
-  r.net = r.base + r.complAmount + r.majAmount + r.ferieAmount;
+  r.net = r.base + r.complAmount + r.majAmount + r.ferieAmount + (r.normalesPlusAmount ?? 0);
   if (forgotten.length) r.alerts.push(`${forgotten.length} départ${forgotten.length > 1 ? 's' : ''} non pointé${forgotten.length > 1 ? 's' : ''} : l’heure prévue a été retenue.`);
   if (r.sickPaidNotice) r.alerts.push('Des jours d’enfant malade dépassent la limite de l’article 105 : ils restent payés.');
   return r;
