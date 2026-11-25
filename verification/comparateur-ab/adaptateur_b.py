@@ -1086,9 +1086,18 @@ def acquisition_b(ctx, y):
             # 48.1.1.2) a partir des faits : bornes, absences non assimilees, arret maladie, semaines sans accueil.
             sa = sorted(x for x in ctx.sans_accueil if x + timedelta(days=6) >= a and x <= b) \
                 if ctx.type == "incomplete" else []
+            ant = 0
+            if ctx.debut < p0 and sa and ctx.k.get("semaines_cp_am"):
+                ant = acquisition_b(ctx, y - 1).get("jours_acquis_hors_enfants")
+                if isinstance(ant, Refus):
+                    raise ant
             r = appel("acquisition_cp_periode", ctx.type, a, b, jours_non_assimiles=non_assimile,
                       jours_arret_maladie=malade, semaines_sans_accueil=sa,
-                      semaines_cp_am=None if ctx.k.get("semaines_cp_am") is None else [d_(x) for x in ctx.k["semaines_cp_am"] if d_(x) in sa])
+                      semaines_cp_am=None if ctx.k.get("semaines_cp_am") is None else [d_(x) for x in ctx.k["semaines_cp_am"] if d_(x) in sa],
+                      # Verification 2 (B-1) : jours de travail de la semaine (decompte journalier de F18260).
+                      jours_semaine=None if ctx.pv else sorted(j for j, p in ctx.plages.items() if p),
+                      # Verification 2 (B-2) : droits de la periode precedente (0 si le contrat commence dans la periode).
+                      droits_anterieurs_jours=ant)
         elif complete_periode:
             r = appel("acquisition_cp", "complete", periode_complete=True)
         else:

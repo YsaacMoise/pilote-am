@@ -125,7 +125,8 @@ def _compte_1980(a, b, dans):
 
 @api("R-CP-01", "R-CP-02", "T103-C10", "T103-C11")
 def acquisition_cp_periode(type_annee, debut, fin, jours_non_assimiles=(), jours_arret_maladie=(),
-                           semaines_sans_accueil=(), semaines_cp_am=None, accident_travail=False, report=False):
+                           semaines_sans_accueil=(), semaines_cp_am=None, accident_travail=False, report=False,
+                           jours_semaine=None, droits_anterieurs_jours=None):
     """T-103 (C10, C11, A2) : jours de CP acquis sur une periode de reference [debut, fin] (bornes de la periode,
     du contrat inclus : CCN 48.1.1.1).
     Cass. soc. 10/01/1980, n° 78-41.140, publie (JURITEXT000007004681) : « retenir d'abord le nombre des mois
@@ -170,12 +171,65 @@ def acquisition_cp_periode(type_annee, debut, fin, jours_non_assimiles=(), jours
     if cp_am and not cp_am <= lundis:
         raise ErreurSaisie("semaines_cp_am : lundis parmi les semaines sans accueil.")
 
-    def sans_accueil(d):
-        lu = d - timedelta(days=d.weekday())
-        return lu in lundis and lu not in cp_am
+    # Verification 2 (25/11/2026), B-2 (C11 bis) : C. trav. L3141-5, 1° assimile « Les periodes de conge paye ».
+    # En 46 semaines ou moins, les droits d'une periode de reference sont payes « a l'issue de chaque periode de
+    # reference » (CCN 102.1.2.2) ; quand l'AM n'a pas 30 jours, elle prend des « conges complementaires non
+    # remuneres », qui « ne sont pas pris en compte pour determiner le droit a conges payes » (CCN 102.2). Une
+    # semaine de conges de l'AM n'est donc un conge paye que pour les jours couverts par les droits des periodes
+    # anterieures (droits_anterieurs_jours ; 0 la premiere annee). Pas de prise anticipee des droits en cours
+    # d'acquisition (C. trav. L3141-12 la permet, sans l'imposer ; aucune donnee ne la constate). Jours ouvrables
+    # (lundi a samedi) imputes dans l'ordre des dates ; le dimanche suit le samedi. Au-dela : semaine sans accueil.
+    cp_jours = set()
+    if cp_am:
+        if droits_anterieurs_jours is None:
+            raise NonGere("C11-DROITS-ANTERIEURS", regles, precision="Droits de conges des periodes anterieures inconnus.")
+        utilises = 0
+        for lu in sorted(cp_am):
+            for i in range(7):
+                x = lu + timedelta(days=i)
+                if not (debut <= x <= fin):
+                    continue
+                if x.weekday() == 6:
+                    if (x - timedelta(days=1)) in cp_jours:
+                        cp_jours.add(x)
+                elif utilises < droits_anterieurs_jours:
+                    cp_jours.add(x)
+                    utilises += 1
 
-    m, s, j = _compte_1980(debut, fin, lambda d: d not in na and d not in mal and not sans_accueil(d))
+    def _compte_cp(d):
+        lu = d - timedelta(days=d.weekday())
+        return lu not in lundis or d in cp_jours
+
+    def sans_accueil(d):
+        return not _compte_cp(d)
+
+    compte = lambda d: d not in na and d not in mal and not sans_accueil(d)
+    m, s, j = _compte_1980(debut, fin, compte)
     trav = Fraction(5, 2) * (m + Fraction(s, 4) + Fraction(j, 24))
+    # Verification 2 (25/11/2026), B-1 (C10 bis) : service-public.gouv.fr F18260 (DILA) : « Si le salarie est absent
+    # durant la periode de reference, le decompte de ses conges payes s'effectue [...] selon la regle qui lui est la
+    # plus favorable : Soit en decompte mensuel : 2,5 jours ouvrables par mois de travail effectif ; Soit en decompte
+    # hebdomadaire : 2,5 jours ouvrables toutes les 4 semaines de travail effectif ; Soit en decompte journalier :
+    # 2,5 jours ouvrables pour une periode de 24 jours de travail effectif ou 20 jours ouvrables si les horaires de
+    # travail sont repartis sur 5 jours par semaine ». C. trav. L3141-4 (« quatre semaines ou vingt-quatre jours de
+    # travail »). Sans absence (ni semaine sans accueil, ni absence non assimilee, ni arret) : decompte de 1980 seul.
+    absent = any(not compte(debut + timedelta(days=i)) for i in range((fin - debut).days + 1))
+    decomptes = {"1980": trav}
+    if absent:
+        sem = 0
+        d = debut - timedelta(days=debut.weekday())
+        while d <= fin:
+            if all(debut <= x <= fin and compte(x) for x in (d + timedelta(days=i) for i in range(7))):
+                sem += 1
+            d += timedelta(days=7)
+        decomptes["hebdomadaire"] = Fraction(5, 2) * Fraction(sem, 4)
+        jo = sum(1 for i in range((fin - debut).days + 1) for x in [debut + timedelta(days=i)] if x.weekday() <= 5 and compte(x))
+        decomptes["journalier_24"] = Fraction(5, 2) * Fraction(jo, 24)
+        if jours_semaine is not None and len(set(jours_semaine)) == 5:
+            j5 = sum(1 for i in range((fin - debut).days + 1) for x in [debut + timedelta(days=i)]
+                     if x.weekday() in set(jours_semaine) and compte(x))
+            decomptes["journalier_20"] = Fraction(5, 2) * Fraction(j5, 20)
+        trav = max(decomptes.values())
     mm, sm, jm = _compte_1980(debut, fin, lambda d: d in mal) if mal else (0, 0, 0)
     maladie = min(Fraction(2) * (mm + Fraction(sm, 4) + Fraction(jm, 24)), Fraction(24))
     a, b = _ceil(trav) + _ceil(maladie), _ceil(trav + maladie)
@@ -184,7 +238,8 @@ def acquisition_cp_periode(type_annee, debut, fin, jours_non_assimiles=(), jours
     return resultat_ok(acquisition_cp_periode.regles, {
         "jours_acquis": min(30, a),
         "decompte": {"mois": m, "semaines": s, "jours": j, "part_travail_exacte": texte_fraction(trav),
-                     "maladie": {"mois": mm, "semaines": sm, "jours": jm}, "part_maladie_exacte": texte_fraction(maladie)}})
+                     "maladie": {"mois": mm, "semaines": sm, "jours": jm}, "part_maladie_exacte": texte_fraction(maladie),
+                     "decomptes_f18260": {k: texte_fraction(v) for k, v in decomptes.items()}}})
 
 
 @api("R-CP-03")
