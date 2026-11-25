@@ -23,7 +23,7 @@ const ADMIN: { from: ISODate; to: ISODate; taux: number[][]; source: string }[] 
 ];
 /** Dernier jour couvert par un barème dont la fin est connue ; au-delà, barèmes en vigueur sans date de fin */
 const BAREMES_CONNUS_AU: ISODate = '2026-12-31';
-export const SUIVI_ARRETES = 'Indemnité kilométrique : l’app applique les barèmes en vigueur, sans date de fin (barème de l’administration de l’arrêté du 3 juillet 2006, barème fiscal de l’article 6 B de l’annexe IV du code général des impôts). Un nouvel arrêté peut les changer pour cette date : vérifie qu’aucun n’a été publié.';
+export const SUIVI_ARRETES = 'Indemnité kilométrique : l’app applique les barèmes en vigueur, qui n’ont pas de date de fin (barème de l’administration de l’arrêté du 3 juillet 2006, barème fiscal de l’article 6 B de l’annexe IV du code général des impôts). Si un nouvel arrêté paraît, l’app sera mise à jour.';
 
 /**
  * Barème fiscal (CGI, annexe IV, art. 6 B, I, tableau « automobiles », version du 08/04/2023 écrite par l'arrêté du
@@ -60,7 +60,7 @@ function fiscalTotal(cv: number, km: number): number {
 
 /**
  * Fourchette du tarif par km pour un kilométrage annuel donné (simulateur d'avant contrat, qui suppose que le cumul est
- * celui de ce seul accueil). `null` : barème non connu à cette date (avant 2022), à vérifier.
+ * celui de ce seul accueil). `null` : barème non connu à cette date (avant 2022).
  */
 export function bornesKm(cv: number, kmAn: number, d: ISODate): { min: number | null; max: number | null } {
   const a = baremeAdministration(d);
@@ -75,53 +75,70 @@ export function bornesKm(cv: number, kmAn: number, d: ISODate): { min: number | 
 const prix = (m: number) => `${(m / 1000).toFixed(3).replace('.', ',').replace(/0$/, '')} €`;
 
 export interface ControleKm {
-  niveau: 'ok' | 'a_verifier' | 'alerte' | 'impossible';
+  /** `a_completer` : le résultat dépend d'une donnée à saisir (kilomètres de l'année, moteur électrique), demandée par le message */
+  niveau: 'ok' | 'a_completer' | 'alerte' | 'impossible';
   messages: string[];
 }
 
+/** T-103 (K2) : données de l'AM pour le contrôle du tarif. `kmAn` : km faits pour le travail dans l'année civile, tous parents. */
+export interface DonneesKm { kmAn?: number; electrique?: boolean }
+
+/** T-103 (K2) : question posée quand le résultat dépend des kilomètres de l'année */
+export const demandeKmAnnee = (annee: string) => `Indique dans « Réglages » les kilomètres faits pour le travail en ${annee} avec ta voiture, tous parents confondus (une prévision suffit en cours d’année) : l’app saura alors si ton tarif est conforme.`;
+/** T-103 (K2) : question posée quand le résultat dépend du moteur électrique (barème fiscal majoré de 20 %) */
+export const DEMANDE_ELECTRIQUE = 'Indique dans le contrat si ta voiture est électrique : le barème fiscal est majoré de 20 % pour une voiture électrique (code général des impôts, annexe IV, article 6 B, II).';
+
 /**
- * Contrôle du tarif du contrat (centimes par km) contre les deux barèmes (CCN art. 57). La tranche dépend d'un cumul
- * annuel dont la base n'est pas tranchée (A-38 : année civile, contrat, employeur) : alerte certaine seulement si le
- * tarif est hors bornes pour toutes les tranches possibles ; sinon « à vérifier » avec la condition de tranche.
+ * Contrôle du tarif du contrat (centimes par km) contre les deux barèmes (CCN art. 57). T-103 (K2) : les deux barèmes se
+ * lisent sur les kilomètres de l'année civile (arrêté du 3 juillet 2006 : « décomptés du 1er janvier au 31 décembre » ;
+ * barème fiscal : kilomètres parcourus dans l'année), tous employeurs confondus. Avec `kmAn`, une seule tranche : conforme
+ * ou alerte. Sans `kmAn`, alerte si le tarif est hors bornes pour toutes les tranches ; si le résultat dépend de la tranche,
+ * l'app demande les kilomètres de l'année (jamais « à vérifier »).
  */
-export function controleKm(cv: number | undefined, tarif: number, d: ISODate): ControleKm {
+export function controleKm(cv: number | undefined, tarif: number, d: ISODate, donnees: DonneesKm = {}): ControleKm {
   if (!cv) return { niveau: 'impossible', messages: ['Indemnité kilométrique : contrôle impossible, renseigne la puissance fiscale de la voiture dans le contrat (elle figure sur la carte grise).'] };
   const T = tarif * 10;
+  const annee = d.slice(0, 4);
+  const kmAn = donnees.kmAn !== undefined && donnees.kmAn > 0 ? donnees.kmAn : undefined;
   const certain: string[] = [];
-  const conditionnel: string[] = [];
+  const questions: string[] = [];
   // Plancher : barème de l'administration
   const a = baremeAdministration(d);
   if (!a) {
-    conditionnel.push('Indemnité kilométrique : barème de l’administration à vérifier pour cette date (l’app ne le connaît pas), plancher non contrôlé.');
+    certain.push('Indemnité kilométrique : l’app ne connaît pas le barème de l’administration avant 2022 ; le plancher n’est pas contrôlé pour cette date.');
   } else {
     const taux = a.taux[ligneAdmin(cv)];
-    const sous = taux.map((x, i) => ({ x, i })).filter((o) => T < o.x);
-    if (sous.length === taux.length) {
-      certain.push(`Indemnité kilométrique : ${prix(T)} par km, c’est sous le barème de l’administration pour toutes les tranches (au moins ${prix(Math.min(...taux))} ; ${a.source}). La convention l’interdit (article 57).`);
-    } else if (sous.length) {
-      conditionnel.push(`Indemnité kilométrique : ${prix(T)} par km est sous le barème de l’administration si le cumul annuel des kilomètres est ${sous.map((o) => `${TRANCHES_ADMIN[o.i]} (${prix(o.x)})`).join(' ou ')} (${a.source}). Vérifie le cumul avec les parents.`);
-    }
-  }
-  // Plafond : barème fiscal
-  if (d < FISCAL_DU || d > FISCAL_AU) {
-    conditionnel.push('Indemnité kilométrique : barème fiscal à vérifier pour cette date, plafond non contrôlé.');
-  } else {
-    const f = ligneFiscale(cv);
-    if (T > f.t1 * MAJORATION_ELECTRIQUE) {
-      certain.push(`Indemnité kilométrique : ${prix(T)} par km, c’est au-dessus du barème fiscal pour toutes les tranches, même pour une voiture électrique (au plus ${prix(Math.floor(f.t1 * MAJORATION_ELECTRIQUE))}). La convention l’interdit (article 57).`);
-    } else if (T > f.t1) {
-      conditionnel.push(`Indemnité kilométrique : ${prix(T)} par km est au-dessus du barème fiscal (au plus ${prix(f.t1)}), sauf pour une voiture électrique (barème majoré de 20 %). Vérifie avec les parents.`);
+    if (kmAn !== undefined) {
+      const t = kmAn <= 2000 ? 0 : kmAn <= 10000 ? 1 : 2;
+      if (T < taux[t]) certain.push(`Indemnité kilométrique : ${prix(T)} par km, c’est sous le barème de l’administration pour ${kmAn.toLocaleString('fr-FR')} km en ${annee} (${TRANCHES_ADMIN[t]} : au moins ${prix(taux[t])} ; ${a.source}). La convention l’interdit (article 57).`);
     } else {
-      let des = 0;
-      for (let km = 5001; km <= 20001 && !des; km++) if (T * km > fiscalTotal(cv, km)) des = km;
-      if (des) {
-        conditionnel.push(`Indemnité kilométrique : ${prix(T)} par km est au-dessus du barème fiscal si le cumul annuel des kilomètres atteint ${des.toLocaleString('fr-FR')} km (voiture non électrique). Vérifie le cumul avec les parents.`);
+      const sous = taux.map((x, i) => ({ x, i })).filter((o) => T < o.x);
+      if (sous.length === taux.length) {
+        certain.push(`Indemnité kilométrique : ${prix(T)} par km, c’est sous le barème de l’administration pour toutes les tranches (au moins ${prix(Math.min(...taux))} ; ${a.source}). La convention l’interdit (article 57).`);
+      } else if (sous.length) {
+        questions.push(`Indemnité kilométrique : ${prix(T)} par km est sous le barème de l’administration si tu fais ${sous.map((o) => `${TRANCHES_ADMIN[o.i]} (${prix(o.x)})`).join(' ou ')} dans l’année (${a.source}). ${demandeKmAnnee(annee)}`);
       }
     }
   }
+  // Plafond : barème fiscal (sans date de fin depuis le 08/04/2023, FISCAL_AU)
+  if (d >= FISCAL_DU && d <= FISCAL_AU) {
+    const f = ligneFiscale(cv);
+    const plafond = (elec: boolean) => (kmAn !== undefined ? fiscalTotal(cv, kmAn) / kmAn : f.t1) * (elec ? MAJORATION_ELECTRIQUE : 1);
+    const pour = kmAn !== undefined ? ` pour ${kmAn.toLocaleString('fr-FR')} km en ${annee}` : '';
+    if (T > plafond(true)) {
+      certain.push(`Indemnité kilométrique : ${prix(T)} par km, c’est au-dessus du barème fiscal${pour || ' pour toutes les tranches'}, même pour une voiture électrique (au plus ${prix(Math.floor(plafond(true)))}). La convention l’interdit (article 57).`);
+    } else if (T > plafond(false)) {
+      if (donnees.electrique === false) certain.push(`Indemnité kilométrique : ${prix(T)} par km, c’est au-dessus du barème fiscal${pour} (au plus ${prix(Math.floor(plafond(false)))}, voiture non électrique). La convention l’interdit (article 57).`);
+      else if (donnees.electrique === undefined) questions.push(`Indemnité kilométrique : ${prix(T)} par km est au-dessus du barème fiscal${pour} (au plus ${prix(Math.floor(plafond(false)))}), sauf pour une voiture électrique. ${DEMANDE_ELECTRIQUE}`);
+    } else if (kmAn === undefined) {
+      let des = 0;
+      for (let km = 5001; km <= 20001 && !des; km++) if (T * km > fiscalTotal(cv, km) * (donnees.electrique ? MAJORATION_ELECTRIQUE : 1)) des = km;
+      if (des) questions.push(`Indemnité kilométrique : ${prix(T)} par km est au-dessus du barème fiscal si tu fais ${des.toLocaleString('fr-FR')} km ou plus dans l’année${donnees.electrique ? '' : ' (voiture non électrique)'}. ${demandeKmAnnee(annee)}`);
+    }
+  }
   const suivi = d > BAREMES_CONNUS_AU ? [SUIVI_ARRETES] : [];
-  if (certain.length) return { niveau: 'alerte', messages: [...certain, ...conditionnel, ...suivi] };
-  if (conditionnel.length) return { niveau: 'a_verifier', messages: [...conditionnel, ...suivi] };
+  if (certain.length) return { niveau: 'alerte', messages: [...certain, ...questions, ...suivi] };
+  if (questions.length) return { niveau: 'a_completer', messages: [...questions, ...suivi] };
   return { niveau: 'ok', messages: suivi };
 }
 

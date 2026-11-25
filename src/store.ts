@@ -257,6 +257,8 @@ export function ctxFor(c: Contract, at = today()): Ctx {
   let x = ctxCache.get(k);
   if (!x) {
     x = makeCtx(c, [...state.days.values()].filter((d) => d.cid === c.id), state.leaves, at, enfants, moins21);
+    x.autresContrats = state.contracts.filter((o) => o.id !== c.id);
+    x.kmAnnee = state.settings?.kmAnnee;
     ctxCache.set(k, x);
   }
   return x;

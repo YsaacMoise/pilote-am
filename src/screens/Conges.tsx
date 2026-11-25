@@ -1,14 +1,15 @@
 import { termsAt } from '../engine/payroll';
 import { useState } from 'preact/hooks';
-import { ctxFor, deleteLeave, toast, useStore, state } from '../store';
+import { ctxFor, deleteLeave, putLeave, toast, useStore, state } from '../store';
 import { cpPeriodStartYear, dayLabel, today, shortDate } from '../engine/dates';
 import { compteur, decompteConge, indemnite } from '../engine/conges';
 import { euros } from '../engine/money';
 import { EVENEMENTS_GERES_DEPUIS } from '../engine/evenements';
 import { AM_ABS_LABEL, type AmLeave, type Contract } from '../engine/model';
-import { Banner, Gommette, Topbar } from '../ui/kit';
+import { Banner, EuroInput, Gommette, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
-import { AmAbsenceSheet } from './Today';
+import { AmAbsenceSheet, demandeIJ } from './Today';
+import type { ChoixAbsence } from '../engine/absences';
 import { de } from '../engine/texte';
 
 export function Conges() {
@@ -72,6 +73,7 @@ export function Conges() {
                     <span class="li-title">{AM_ABS_LABEL[l.type]}</span>
                     <span class="li-sub">{l.from === l.to ? dayLabel(l.from, true) : `Du ${shortDate(l.from)} au ${shortDate(l.to)}`}{l.type === 'cp' ? decompteTexte(l, list) : ''}{l.type === 'evenement' ? (l.joursEvenement === undefined ? '' : l.from < EVENEMENTS_GERES_DEPUIS ? ' · période non gérée (avant le 01/05/2024) : durée à confirmer avec les parents' : l.joursEvenement ? ` · ${l.joursEvenement} jour${l.joursEvenement > 1 ? 's' : ''} payé${l.joursEvenement > 1 ? 's' : ''} prévu${l.joursEvenement > 1 ? 's' : ''}` : ' · durée non gérée par l’app') : ''}{l.type === 'evenement' && l.suiteDe ? (() => { const p = s.leaves.find((x) => x.id === l.suiteDe); return p ? ` · suite de l’absence du ${shortDate(p.from).slice(0, 5)}` : ''; })() : ''}</span>
                   </span>
+                  {(l.type === 'evenement' ? l.ijSecu !== undefined : !!demandeIJ(l.type as ChoixAbsence, undefined, l.from, l.to, s.contracts)) && <IjEdit l={l} />}
                   <button class="icon-btn" aria-label={`Supprimer : ${AM_ABS_LABEL[l.type]} du ${shortDate(l.from)}`} onClick={async () => { const u = await deleteLeave(l.id); toast('Absence supprimée', u); }}>
                     <Icon name="trash" size={20} />
                   </button>
@@ -84,6 +86,17 @@ export function Conges() {
       </main>
       {add && <AmAbsenceSheet start={t} onClose={() => setAdd(false)} />}
     </>
+  );
+}
+
+/** T-103 (C9, R3) : montant net des indemnités journalières d'une absence, saisi ou corrigé après coup */
+function IjEdit({ l }: { l: AmLeave }) {
+  const [v, setV] = useState<number | undefined>(l.ijSecu);
+  return (
+    <div class="stack-sm">
+      <EuroInput label="Indemnités journalières reçues (net)" cents={v} allowEmpty onChange={setV} hint={l.ijSecu === undefined ? 'Pas encore saisi : le mois de cette absence attend ce montant (0 si tu n’en as pas reçu).' : undefined} />
+      {v !== l.ijSecu && v !== undefined && <button class="btn btn-outline" onClick={async () => { const u = await putLeave({ ...l, ijSecu: v }); toast('Montant enregistré', u); }}>Enregistrer le montant</button>}
+    </div>
   );
 }
 

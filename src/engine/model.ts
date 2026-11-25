@@ -149,6 +149,8 @@ export interface Contract {
    * Non renseignée : contrôle impossible, signalé.
    */
   kmCv?: number;
+  /** T-103 (K2) : voiture électrique (barème fiscal majoré de 20 %, CGI ann. IV art. 6 B, II). Demandé si le contrôle en dépend. */
+  kmElectrique?: boolean;
   cpMode: CpPayMode;
   /** Enfant ouvrant droit à l'abattement fiscal majoré (handicap, maladie, inadaptation) */
   majoreFiscal: boolean;
@@ -339,6 +341,11 @@ export interface Settings {
   compact?: boolean;
   /** Conditions d'utilisation acceptées : version (CONDITIONS_VERSION de legal.ts) et date (AAAA-MM-JJ). Copié dans le compte. */
   conditionsAcceptees?: { version: string; date: string };
+  /**
+   * T-103 (K2) : kilomètres faits pour le travail avec la voiture de l'AM, par année civile (« AAAA »), tous parents
+   * confondus. Sert seulement au contrôle du tarif kilométrique (CCN 57 : barème de l'administration et barème fiscal).
+   */
+  kmAnnee?: Record<string, number>;
 }
 
 export interface Bulletin {

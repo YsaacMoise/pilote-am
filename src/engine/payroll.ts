@@ -31,6 +31,24 @@ export interface Ctx {
    * été contrôlée face au préavis. Le contrôle de la date de fin saisie (controleFinContrat) n'y est pas refait.
    */
   finControlee?: boolean;
+  /**
+   * T-103 (C9, R3) : les autres contrats de l'AM (période et région). Sert à repérer une absence indemnisée par la Sécurité
+   * sociale pendant laquelle plusieurs parents maintiennent le salaire : la part des indemnités journalières de chacun n'est
+   * écrite nulle part (point soumis au DG, rapports/T-103-a-trancher.md, N1). Absent : contrat seul.
+   */
+  autresContrats?: Pick<Contract, 'id' | 'start' | 'end' | 'alsaceMoselle' | 'mayotte'>[];
+  /** T-103 (K2) : kilomètres de l'année civile, tous parents (réglages de l'AM) : contrôle du tarif kilométrique */
+  kmAnnee?: Record<string, number>;
+}
+
+/** T-103 (N1) : message du mois refusé quand un autre contrat déduit aussi les indemnités journalières de la même absence */
+export const MESSAGE_IJ_PLUSIEURS_CONTRATS = 'Absence indemnisée par la Sécurité sociale pendant laquelle tu as plusieurs contrats : les indemnités journalières couvrent tous tes salaires, et aucun texte ne dit quelle part chaque parent déduit. L’app ne calcule pas encore ce mois ; elle le fera dès que la règle sera fixée.';
+
+/** T-103 (N1) : un autre contrat déduit-il aussi les indemnités journalières de cette absence ? */
+export function ijPartagees(ctx: Ctx, l: AmLeave): boolean {
+  const local = l.type === 'am_malade' || l.type === 'am_enfant_malade';
+  if (l.type !== 'evenement' && !local) return false;
+  return (ctx.autresContrats ?? []).some((o) => o.start <= l.to && (!o.end || o.end >= l.from) && (!local || regionDe(o) === 'alsaceMoselle'));
 }
 
 /** Contrat tel qu'il s'applique le jour d (avenants en vigueur compris) */
@@ -238,7 +256,9 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
         // saisies (déduites dans le mois, plus bas). Sans leur montant, le mois attend la saisie (B).
         info.inDivisor = true;
         info.maintienLocal = true;
-        if (amLeaveAt(ctx.leaves, d)?.ijSecu === undefined) info.donneeManquante = MESSAGE_IJ_MAINTIEN_LOCAL;
+        const lv = amLeaveAt(ctx.leaves, d)!;
+        if (lv.ijSecu === undefined) info.donneeManquante = MESSAGE_IJ_MAINTIEN_LOCAL;
+        else if (ijPartagees(ctx, lv)) info.donneeManquante = MESSAGE_IJ_PLUSIEURS_CONTRATS;
       } else if (amLeave === 'am_malade' || amLeave === 'am_enfant_malade' || amLeave === 'sans_solde') {
         // T-034 : congé sans solde = absence non rémunérée, retenue par la déduction d'absence de l'art. 111. Fiches DREETS
         // Occitanie du 19/01/2023, section 3 : « Absence du salarié pour congés sans solde » ; Urssaf « gérer les absences
@@ -252,6 +272,8 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
         // T-103 (C6 à C8) : un jour au-delà de la durée est retenu (absence non payée), avec la raison ; une saisie que l'app
         // ne sait pas lire refuse le mois (nonGeresPeriode).
         if (!st.paye && !st.nonGere) { info.deducted = true; info.raisonRetenue = st.raison; }
+        const lv = amLeaveAt(ctx.leaves, d)!;
+        if (lv.ijSecu !== undefined && ijPartagees(ctx, lv)) info.donneeManquante = MESSAGE_IJ_PLUSIEURS_CONTRATS;
       }
     }
     return info;
@@ -1044,7 +1066,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
     r.alerts.push(messageMoisSansSoldeChange(sansSoldePayes));
     if (!r.alerts.includes(MESSAGE_MOIS_DEJA_DECLARE)) r.alerts.push(MESSAGE_MOIS_DEJA_DECLARE);
   }
-  if (kmJours && c.kmTaux > 0) for (const m of controleKm(ctx.c.kmCv, c.kmTaux, segFrom).messages) if (!r.alerts.includes(m)) r.alerts.push(m);
+  if (kmJours && c.kmTaux > 0) for (const m of controleKm(ctx.c.kmCv, c.kmTaux, segFrom, { kmAn: ctx.kmAnnee?.[segFrom.slice(0, 4)], electrique: ctx.c.kmElectrique }).messages) if (!r.alerts.includes(m)) r.alerts.push(m);
   // CCN art. 114.1 : « le montant journalier de cette indemnité ne peut pas être inférieur à 2,65 € » et le montant horaire
   // ne peut être « inférieur à 90 % du minimum garanti lorsque la durée de travail journalière est de 9 heures ».
   if (entretienSousMin) r.alerts.push(`Indemnité d’entretien : le montant du contrat (${c.entretienHeure ? `${euros(c.entretienHeure)} par heure` : `${euros(c.entretienJour)} par jour`}) est sous le minimum de la convention (article 114.1) pour ${dayCountLabel(entretienSousMin)}. L’app verse le minimum, soit ${euros(Math.round(entretienMinVerse))} de plus que le contrat ce mois-ci. Fais corriger le contrat avec les parents, par un avenant.`);
@@ -1086,7 +1108,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   const maintienLocal = regionDe(ctx.c) === 'alsaceMoselle';
   for (const l of ctx.leaves) {
     const local = maintienLocal && (l.type === 'am_malade' || l.type === 'am_enfant_malade');
-    if ((l.type !== 'evenement' && !local) || !l.ijSecu || l.to < segFrom || l.from > segTo) continue;
+    if ((l.type !== 'evenement' && !local) || !l.ijSecu || l.to < segFrom || l.from > segTo || ijPartagees(ctx, l)) continue;
     const tous = daysBetween(l.from, l.to) + 1;
     const ici = daysBetween(l.from > segFrom ? l.from : segFrom, l.to < segTo ? l.to : segTo) + 1;
     const part = Math.round((l.ijSecu * ici) / tous);

@@ -2,7 +2,7 @@ import { useState } from 'preact/hooks';
 import { saveSettings, useStore } from '../store';
 import { mesureActive, setMesure } from '../analytics';
 import { isDemo } from '../db';
-import { Seg, Stepper, Switch, TextInput, Topbar } from '../ui/kit';
+import { NumberInput, Seg, Stepper, Switch, TextInput, Topbar } from '../ui/kit';
 import { getTheme, setTheme, type Theme } from '../theme';
 import { cpPeriodStartYear, today } from '../engine/dates';
 import { moinsDe21Ans } from '../engine/conges';
@@ -15,6 +15,10 @@ export function Reglages() {
   const [theme, setT] = useState<Theme>(getTheme());
   // Période de congés en cours (du 1er juin au 31 mai) : l'âge se lit au 30 avril de son année de début (C. trav. L3141-8)
   const anneeCP = cpPeriodStartYear(today());
+  // T-103 (K2) : kilomètres de l'année civile, tous parents confondus, pour le contrôle du tarif kilométrique (CCN 57).
+  const an = Number(today().slice(0, 4));
+  const avecKm = s.contracts.some((c) => c.kmTaux > 0);
+  const anneesKm = [an - 1, an].filter((y) => s.contracts.some((c) => c.kmTaux > 0 && c.start <= `${y}-12-31` && (!c.end || c.end >= `${y}-01-01`)));
   return (
     <>
       <Topbar title="Réglages" back="#/plus" screen="reglages" />
@@ -28,6 +32,17 @@ export function Reglages() {
             {s.settings.enfantsACharge > 0 && <Switch label={`J’avais moins de 21 ans le 30 avril ${anneeCP}`} hint="Avant 21 ans, chacun de tes enfants te donne 2 jours, même au-delà de 30 jours. Coche seulement si c’est ton cas." checked={moinsDe21Ans(s.settings.amMoins21Jusqu, anneeCP)} onChange={(v) => saveSettings({ amMoins21Jusqu: v ? anneeCP : (s.settings.amMoins21Jusqu !== undefined && s.settings.amMoins21Jusqu < anneeCP ? s.settings.amMoins21Jusqu : undefined) })} />}
           </fieldset>
         </section>
+        {avecKm && (
+          <section class="card">
+            <fieldset>
+              <legend>Kilomètres</legend>
+              <p class="hint">Les kilomètres faits pour le travail avec ta voiture, tous parents confondus, sur l’année civile. Le tarif par km doit être entre le barème de l’administration et le barème fiscal (article 57 de la convention) ; ces deux barèmes dépendent des kilomètres de l’année. En cours d’année, une prévision suffit.</p>
+              {anneesKm.map((y) => (
+                <NumberInput label={`Kilomètres en ${y}`} value={s.settings.kmAnnee?.[String(y)]} min={0} max={100000} onChange={(v) => { const k = { ...(s.settings.kmAnnee ?? {}) }; if (v) k[String(y)] = v; else delete k[String(y)]; saveSettings({ kmAnnee: k }); }} />
+              ))}
+            </fieldset>
+          </section>
+        )}
         <section class="card">
           <fieldset>
             <legend>Apparence</legend>

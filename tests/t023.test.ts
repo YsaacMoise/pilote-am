@@ -222,19 +222,19 @@ describe('T-017 indemnité kilométrique (CCN art. 57 et 113)', () => {
     expect(k.niveau).toBe('alerte');
     expect(k.messages[0]).toMatch(/0,23 €/);
   });
-  it('0,35 € en 5 CV avant juin 2026 : sous 0,40 € seulement de 2 001 à 10 000 km → à vérifier avec la tranche', () => {
+  it('0,35 € en 5 CV avant juin 2026 : sous 0,40 € seulement de 2 001 à 10 000 km → kilomètres de l’année demandés', () => {
     const k = controleKm(5, 35, '2026-03-10');
-    expect(k.niveau).toBe('a_verifier');
+    expect(k.niveau).toBe('a_completer');
     expect(k.messages.join(' ')).toMatch(/de 2 001 à 10 000 km \(0,40 €\)/);
   });
   it('barème majoré du 01/06/2026 : 0,24 € n’est plus sous le plancher de la 3e tranche, il l’est sous 0,33 et 0,41', () => {
     const k = controleKm(5, 24, '2026-07-10');
-    expect(k.niveau).toBe('a_verifier');
+    expect(k.niveau).toBe('a_completer');
     expect(k.messages.join(' ')).toMatch(/jusqu’à 2 000 km \(0,33 €\) ou de 2 001 à 10 000 km \(0,41 €\)/);
   });
-  it('0,64 € en 5 CV : au-dessus de 0,636 €, sauf voiture électrique (+ 20 %) → à vérifier', () => {
+  it('0,64 € en 5 CV : au-dessus de 0,636 €, sauf voiture électrique (+ 20 %) → moteur demandé', () => {
     const k = controleKm(5, 64, '2026-10-01');
-    expect(k.niveau).toBe('a_verifier');
+    expect(k.niveau).toBe('a_completer');
     expect(k.messages.join(' ')).toMatch(/électrique/);
   });
   it('0,80 € en 5 CV : au-dessus de 0,636 × 1,2 pour toutes les tranches → alerte certaine', () => {
@@ -242,7 +242,7 @@ describe('T-017 indemnité kilométrique (CCN art. 57 et 113)', () => {
   });
   it('0,50 € en 5 CV : au-dessus du barème fiscal dès 9 756 km dans l’année ((d × 0,357) + 1 395 € < d × 0,50)', () => {
     const k = controleKm(5, 50, '2026-10-01');
-    expect(k.niveau).toBe('a_verifier');
+    expect(k.niveau).toBe('a_completer');
     expect(k.messages.join(' ')).toMatch(/9.756 km/);
   });
   it('T-033 : après le 31/12/2026, barème de base de l’arrêté du 3 juillet 2006 (sans date de fin) et avertissement de suivi', () => {
@@ -253,8 +253,29 @@ describe('T-017 indemnité kilométrique (CCN art. 57 et 113)', () => {
     expect(k.messages).toEqual([SUIVI_ARRETES]);
     expect(controleKm(5, 22, '2027-02-01').niveau).toBe('alerte'); // 0,22 € < 0,23 €, sous toutes les tranches
     // L'arrêté du 29 mai 2026 ne vaut que jusqu'au 31/12/2026 : 0,40 € en 5 CV est sous 0,41 € en décembre 2026
-    expect(controleKm(5, 40, '2026-12-31').niveau).toBe('a_verifier');
+    expect(controleKm(5, 40, '2026-12-31').niveau).toBe('a_completer');
     expect(controleKm(5, 40, '2027-01-01').niveau).toBe('ok');
+  });
+
+  it('T-103 (K2) : avec les kilomètres de l’année, une seule tranche : conforme ou alerte', () => {
+    // 0,35 € en 5 CV, mars 2026 : 1 500 km → au moins 0,32 € : conforme ; 6 000 km → au moins 0,40 € : alerte.
+    expect(controleKm(5, 35, '2026-03-10', { kmAn: 1500 }).niveau).toBe('ok');
+    const k = controleKm(5, 35, '2026-03-10', { kmAn: 6000 });
+    expect(k.niveau).toBe('alerte');
+    expect(k.messages[0]).toMatch(/6.000 km en 2026/);
+    // 0,50 € en 5 CV : plafond fiscal à 12 000 km = (12 000 × 0,357 + 1 395) ÷ 12 000 = 0,47325 € → alerte ; 8 000 km : 0,5314 € → conforme.
+    expect(controleKm(5, 50, '2026-10-01', { kmAn: 8000 }).niveau).toBe('ok');
+    expect(controleKm(5, 50, '2026-10-01', { kmAn: 12000, electrique: false }).niveau).toBe('alerte');
+    // Même tarif, électrique : 0,47325 × 1,2 = 0,5679 € → conforme ; moteur non dit : question posée.
+    expect(controleKm(5, 50, '2026-10-01', { kmAn: 12000, electrique: true }).niveau).toBe('ok');
+    const q = controleKm(5, 50, '2026-10-01', { kmAn: 12000 });
+    expect(q.niveau).toBe('a_completer');
+    expect(q.messages.join(' ')).toMatch(/Indique dans le contrat si ta voiture est électrique/);
+  });
+  it('T-103 (K2) : sans les kilomètres, la question remplace « à vérifier »', () => {
+    const k = controleKm(5, 35, '2026-03-10');
+    expect(k.messages.join(' ')).toMatch(/Indique dans « Réglages » les kilomètres faits pour le travail en 2026/);
+    expect(k.messages.join(' ')).not.toMatch(/vérifi/i);
   });
 
   const c = contract({ kmTaux: 41 });

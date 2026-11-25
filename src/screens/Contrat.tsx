@@ -14,7 +14,7 @@ import { BROUILLON_CONTRAT } from './Simulateur';
 import { PartageCard } from './PartageCard';
 import { de } from '../engine/texte';
 import { PAJEMPLOI_PLUS_AIDE } from '../legal';
-import { NON_GERE_47_51, nonGeresContrat, semaines4751 } from '../engine/nonGeres';
+import { MESSAGE_REPOS_HEBDO, NON_GERE_47_51, nonGeresContrat, planningAvecDimanche, semaines4751 } from '../engine/nonGeres';
 import { DEPARTEMENTS, libelleDepartement, reponseSaisie, trouverDepartement } from '../engine/departements';
 import { AIDE_ANNEE, AIDE_COMPLEMENTAIRES, AIDE_SEMAINES } from './textes-contrat';
 import { manquesPV } from '../engine/planningVariable';
@@ -222,7 +222,12 @@ export function Contrat({ id }: { id?: string }) {
                 {messagesCdd(c).map((t) => <Banner tone={t.startsWith('Ton salaire') || t.startsWith('Si tu continues') ? 'info' : 'warn'}>{t}</Banner>)}
               </>
             )}
-            {nonGeresContrat(c).filter((t) => t !== CDD_A_COMPLETER).map((t) => <Banner tone="warn">{t}</Banner>)}
+            {/* T-103 (C8) : CCN 46, le repos hebdomadaire est « prévu par le contrat de travail ». Demandé si le dimanche est travaillé. */}
+            {planningAvecDimanche(c) && (
+              <Choices label="Ton jour de repos de la semaine (écrit au contrat)" value={c.reposHebdo === undefined ? undefined : String(c.reposHebdo)} onChange={(v) => set({ reposHebdo: Number(v) })}
+                options={JOUR_NOMS.slice(0, 6).map((l, i) => ({ v: String(i + 1), l }))} />
+            )}
+            {nonGeresContrat(c).filter((t) => t !== CDD_A_COMPLETER && t !== MESSAGE_REPOS_HEBDO).map((t) => <Banner tone="warn">{t}</Banner>)}
           </fieldset>
         </section>
 
@@ -277,6 +282,11 @@ export function Contrat({ id }: { id?: string }) {
             )}
             <EuroInput label="Indemnité kilométrique, par km" hint="Laisse 0 si tu ne transportes pas l’enfant en voiture." cents={c.kmTaux} onChange={(v) => set({ kmTaux: v ?? 0 })} />
             {c.kmTaux > 0 && <NumberInput label="Puissance fiscale de ta voiture (CV)" hint="Sur la carte grise (case P.6). L’app vérifie que ton tarif est compris entre le barème de l’administration et le barème fiscal (article 57 de la convention)." value={c.kmCv} min={1} max={30} onChange={(v) => set({ kmCv: v || undefined })} />}
+            {/* T-103 (K2) : CGI ann. IV art. 6 B, II, barème fiscal majoré de 20 % pour une voiture électrique. */}
+            {c.kmTaux > 0 && (
+              <Choices label="Ta voiture est-elle électrique ?" value={c.kmElectrique === undefined ? undefined : c.kmElectrique ? 'oui' : 'non'} onChange={(v) => set({ kmElectrique: v === 'oui' })}
+                options={[{ v: 'non', l: 'Non' }, { v: 'oui', l: 'Oui, électrique', sub: 'Le barème fiscal, plafond de ton tarif, est majoré de 20 %.' }]} />
+            )}
             <NumberInput label="Majoration des heures au-delà de 45 h par semaine (%)" hint="Le taux de ton contrat : 10 % au moins." value={c.majoration} min={10} max={100} onChange={(v) => set({ majoration: v ?? 10 })} />
             <NumberInput label="Majoration des heures complémentaires (%)" hint={AIDE_COMPLEMENTAIRES} value={c.majorationCompl ?? 0} min={0} max={100} onChange={(v) => set({ majorationCompl: v ?? 0 })} />
             {c.yearType === 'incomplete' && (
@@ -309,7 +319,17 @@ export function Contrat({ id }: { id?: string }) {
                   <NumberInput label="Congés en cours d’acquisition (jours)" hint="Acquis depuis le 1er juin, avant le suivi par l’app" value={c.balances.cpEnCours} step={0.5} max={30} onChange={(v) => set({ balances: { ...c.balances, cpEnCours: v ?? 0 } })} />
                 </>
               )}
-              <NumberInput label="Jours d’absence de l’enfant malade déjà déduits" hint="Avec certificat médical, retenus sur ton salaire depuis le début de l’année de contrat en cours" value={c.balances.maladieDeduits} max={14} onChange={(v) => set({ balances: { ...c.balances, maladieDeduits: v ?? 0 } })} />
+              <NumberInput label="Jours d’absence de l’enfant malade déjà déduits" hint="Avec certificat médical, retenus sur ton salaire depuis le début de l’année de contrat en cours" value={c.balances.maladieDeduits} max={14} onChange={(v) => set({ balances: { ...c.balances, maladieDeduits: v ?? 0, ...(v ? {} : { maladieDeduitsLongue: undefined }) } })} />
+              {/* T-103 (C5) : CCN 105, les 5 jours d'absences courtes et l'absence de 14 jours calendaires se comptent à part. */}
+              {c.balances.maladieDeduits > 0 && (
+                <Choices label="Ces jours déjà déduits venaient de :" value={c.balances.maladieDeduitsLongue === undefined ? undefined : c.balances.maladieDeduitsLongue ? 'longue' : 'courtes'}
+                  onChange={(v) => set({ balances: { ...c.balances, maladieDeduitsLongue: v === 'longue' } })}
+                  options={[{ v: 'courtes', l: 'Absences courtes', sub: 'Chaque absence a duré moins de 14 jours calendaires (5 jours déduits au plus).' }, { v: 'longue', l: 'Une absence de 14 jours calendaires ou plus', sub: 'Article 105 de la convention : elle se compte à part des 5 jours.' }]} />
+              )}
+              {/* T-103 (plancher L1242-16) : congés déjà payés pendant le CDD avant le suivi par l'app. */}
+              {c.cdd && (
+                <NumberInput label="Jours de congés payés pris pendant le CDD avant le suivi par l’app" hint="Du lundi au samedi, sans les jours fériés. 0 si tu n’en as pas pris. Sert au minimum du code du travail pour tes congés de fin de CDD (article L1242-16)." value={c.cddCpPrisAvantSuivi} step={1} max={60} onChange={(v) => set({ cddCpPrisAvantSuivi: v })} />
+              )}
               {!isNew && <a class="btn btn-outline" href={`#/historique/${c.id}`}><Icon name="file" />Bulletins passés ({c.history.length})</a>}
             </fieldset>
           </section>

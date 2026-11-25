@@ -4,10 +4,11 @@ import { activeContracts, ctxFor, logUsage, putLeave, saveSettings, state, toast
 import { addDays, dayLabel, minutes, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NOMS, daysBetween } from '../engine/dates';
 import { dayInfo, libelleFerie, type Ctx, type DayInfo } from '../engine/payroll';
 import { AM_ABS_LABEL, AM_ABS_NON_GEREE_LABEL, AM_ABS_NON_GEREES, CHILD_ABS_LABEL, type ChildAbs, type Contract, type DayRec, type NatureEvenement, type Plage, type Presence } from '../engine/model';
+import { regionDe } from '../engine/regions';
 import { libelleDureeSaisie, NATURE_EVENEMENT_LABEL } from '../engine/evenements';
 import { absenceSaisie, appliquerReponses, estNonGere, questionsSuite, questionsVisibles, reponsesCompletes, texteQuestionSuite, type ChoixAbsence, type Reponse } from '../engine/absences';
 import { hoursLabel } from '../engine/money';
-import { Banner, CHILD_COLORS, Choices, DateInput, Gommette, Sheet, Stepper, Switch, Topbar, useErreurAffichee } from '../ui/kit';
+import { Banner, CHILD_COLORS, Choices, DateInput, EuroInput, Gommette, Sheet, Stepper, Switch, Topbar, useErreurAffichee } from '../ui/kit';
 import { evAnnulation, evCorrections, evPointage, type GestePointage } from '../usage-events';
 import { AideVideo, BienvenueDemo } from '../ui/VideoGuide';
 import { isDemo } from '../db';
@@ -638,6 +639,19 @@ export function presencesAGarder(pres: Presence[]): Presence[] {
   return r;
 }
 
+/**
+ * T-103 (K1, C3) : réponses obligatoires de la fiche de la journée. Trajet partagé : nombre d'enfants dans la voiture
+ * (CCN 113 : partage au prorata, au moins 2 enfants). Certificat : les deux dates ou aucune, la fin après le début.
+ */
+export function verifierSaisieT103(f: { abs: string; km: number; kmPartage: boolean; kmEnfants: number; certifDu: string; certifAu: string }): string {
+  if (f.abs === 'none' && f.km > 0 && f.kmPartage && f.kmEnfants < 2) return 'Kilomètres : indique le nombre d’enfants dans la voiture (au moins 2 quand une autre famille a demandé le trajet).';
+  if (f.abs === 'malade_certif') {
+    if (!!f.certifDu !== !!f.certifAu) return 'Certificat : indique le premier et le dernier jour, ou laisse les deux vides.';
+    if (f.certifDu && f.certifAu < f.certifDu) return 'Certificat : le dernier jour doit être après le premier.';
+  }
+  return '';
+}
+
 export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClose: () => void }) {
   const di = dayInfo(ctxFor(c), day);
   const rec = di.rec;
@@ -651,14 +665,20 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
   // T-025 C-2 : saisie d'avant (champ absent) avec un seul enfant dans la voiture = une seule famille demandeuse.
   const [kmPartage, setKmPartage] = useState<boolean>(rec?.kmPartage ?? (rec?.kmEnfants !== undefined && rec.kmEnfants > 1));
   const [ferieT, setFerieT] = useState<boolean>(!!rec?.ferieTravaille);
+  // T-103 (C3) : dates du certificat médical (CCN 105 : « 14 jours calendaires consécutifs »).
+  const [certifDu, setCertifDu] = useState<string>(rec?.certifDu ?? '');
+  const [certifAu, setCertifAu] = useState<string>(rec?.certifAu ?? '');
   const [err, setErr] = useState('');
   const future = day > today();
-  useErreurAffichee('depart_avant_arrivee', !!err && !err.includes('sans arrivée'));
-  useErreurAffichee('saisie', !!err && err.includes('sans arrivée'));
+  const errT103 = err.startsWith('Kilomètres') || err.startsWith('Certificat');
+  useErreurAffichee('depart_avant_arrivee', !!err && !err.includes('sans arrivée') && !errT103);
+  useErreurAffichee('saisie', !!err && (err.includes('sans arrivée') || errT103));
 
   async function save() {
     const erreur = verifierFiche(pres, di.planned, abs === 'none' && !future);
     if (erreur) { setErr(erreur); return; }
+    const erreurT103 = verifierSaisieT103({ abs, km: abs === 'none' && !future && c.kmTaux > 0 ? km : 0, kmPartage, kmEnfants, certifDu, certifAu });
+    if (erreurT103) { setErr(erreurT103); return; }
     const gardees = presencesAEnregistrer(di.planned, pres, future, day === today() ? nowHHMM() : undefined);
     const undo = await updateDay(c.id, day, (r) => {
       const next: DayRec = { ...r };
@@ -674,6 +694,7 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
       if (km) next.kmPartage = kmPartage; else delete next.kmPartage;
       if (km && kmPartage && kmEnfants >= 1) next.kmEnfants = kmEnfants; else delete next.kmEnfants;
       if (ferieT) next.ferieTravaille = true; else delete next.ferieTravaille;
+      if (abs === 'malade_certif' && certifDu && certifAu) { next.certifDu = certifDu; next.certifAu = certifAu; } else { delete next.certifDu; delete next.certifAu; }
       return next;
     });
     logUsage('journee_modifiee', 'aujourdhui');
@@ -691,7 +712,17 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
     <Sheet title={`${c.child}, ${dayLabel(day)}`} onClose={onClose}>
       <p class="muted">{planText(di)}</p>
       {di.ferie && <Switch label={`Jour férié (${di.ferie}) travaillé`} hint={day.endsWith('05-01') ? '1er mai : payé double' : 'Majoré de 10 %'} checked={ferieT} onChange={setFerieT} />}
-      <Choices label="L’enfant est-il accueilli ce jour-là ?" value={abs} options={rec?.abs === 'sans_solde_enfant' ? [...CHILD_ABS_OPTIONS, OPTION_SANS_SOLDE_ENFANT] : CHILD_ABS_OPTIONS} onChange={setAbs} />
+      <Choices label="L’enfant est-il accueilli ce jour-là ?" value={abs} options={rec?.abs === 'sans_solde_enfant' ? [...CHILD_ABS_OPTIONS, OPTION_SANS_SOLDE_ENFANT] : CHILD_ABS_OPTIONS} onChange={(v) => { setAbs(v); setErr(''); }} />
+      {abs === 'malade_certif' && (
+        <>
+          <div class="grid2">
+            <DateInput label="Certificat : premier jour" value={certifDu} onChange={(v) => { setCertifDu(v); setErr(''); }} />
+            <DateInput label="Certificat : dernier jour" value={certifAu} min={certifDu || undefined} onChange={(v) => { setCertifAu(v); setErr(''); }} />
+          </div>
+          <p class="hint">Les dates écrites sur le certificat médical ou le bulletin d’hospitalisation. La convention (article 105) compte une absence de 14 jours calendaires à part des 5 jours : l’app en a besoin quand l’absence approche 14 jours.</p>
+          {err && <p class="err" role="alert">{err}</p>}
+        </>
+      )}
       {abs === 'none' && !future && (
         <fieldset>
           <legend>Heures réelles</legend>
@@ -707,7 +738,7 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
               </div>
             </div>
           ))}
-          {err && <p class="err" role="alert">{err}</p>}
+          {err && !errT103 && <p class="err" role="alert">{err}</p>}
           {pres.length < 2 && <button class="btn btn-ghost" onClick={() => setPres([...pres, { a: '', d: '' }])}><Icon name="plus" />Ajouter une plage</button>}
           {di.planned.length > 0 && (
             <button class="btn btn-ghost" onClick={() => setPres(di.planned.map((p) => ({ a: p.start, d: p.end })))}><Icon name="undo" />Revenir au planning</button>
@@ -721,6 +752,7 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
           {c.kmTaux > 0 && km > 0 && <Switch label="Une autre famille a aussi demandé ce trajet" hint="Laisse éteint si cette famille est seule à l’avoir demandé : elle paie alors tous les km (article 113)." checked={kmPartage} onChange={setKmPartage} />}
           {c.kmTaux > 0 && km > 0 && kmPartage && <Stepper label="Enfants dans la voiture" value={kmEnfants} onChange={setKmEnfants} max={8} />}
           {c.kmTaux > 0 && km > 0 && kmPartage && <p class="hint">Compte tous les enfants dans la voiture, les tiens compris si le trajet est aussi pour eux. Chaque famille paie sa part, au prorata des enfants (article 113). L’app a besoin de ce nombre pour calculer le mois.</p>}
+          {err && err.startsWith('Kilomètres') && <p class="err" role="alert">{err}</p>}
         </>
       )}
       <button class="btn btn-primary btn-block btn-lg" onClick={save}>Enregistrer</button>
@@ -739,6 +771,16 @@ const AM_OPTIONS: { v: ChoixAbsence; l: string; sub: string }[] = [
   ...AM_ABS_NON_GEREES.map((v) => ({ v, l: AM_ABS_NON_GEREE_LABEL[v], sub: 'Non géré par l’app : les mois concernés sont bloqués' })),
 ];
 
+/**
+ * T-103 (C9, R3) : l'absence demande-t-elle le montant des indemnités journalières ? Congé de deuil (CCN 48.1.3.1.2 et
+ * 48.1.3.1.3), ou maladie de l'AM ou de son enfant quand un contrat en Alsace-Moselle couvre ces dates (L1226-23).
+ */
+export function demandeIJ(type: ChoixAbsence, nature: NatureEvenement | undefined, from: string, to: string, contrats: Contract[]): 'deuil' | 'local' | undefined {
+  if (type === 'evenement' && nature === 'deuil') return 'deuil';
+  if ((type === 'am_malade' || type === 'am_enfant_malade') && contrats.some((c) => regionDe(c) === 'alsaceMoselle' && c.start <= to && (!c.end || c.end >= from))) return 'local';
+  return undefined;
+}
+
 export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () => void }) {
   const [type, setType] = useState<ChoixAbsence>('cp');
   const [nature, setNature] = useState<NatureEvenement | undefined>(undefined);
@@ -746,6 +788,9 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
   const [to, setTo] = useState(start);
   // Réponses liées à l'absence visée : remises à zéro quand une question change d'absence (dates changées).
   const [reponses, setReponses] = useState<Record<string, 'oui' | 'non'>>({});
+  // T-103 (C9, R3) : indemnités journalières de la Sécurité sociale, en centimes nets (congé de deuil ; maladie en Alsace-Moselle).
+  const [ij, setIj] = useState<number | undefined>(undefined);
+  const ijDemande = demandeIJ(type, nature, from, to, state.contracts);
   const err = to < from ? 'La date de fin doit être après le début.' : '';
   useErreurAffichee('dates_absence', !!err);
   // Décision du DG du 21/11/2026 : une autre absence « événement familial » à 15 jours au plus : l'app demande à l'AM.
@@ -773,14 +818,21 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
           onChange={(rep) => setReponses({ ...Object.fromEntries(questions.slice(0, i).map((x, k) => [`${x.sens}|${x.autre.id}`, reps[k]!]).filter((e) => e[1])), [`${q.sens}|${q.autre.id}`]: rep })}
           options={[{ v: 'oui', l: 'Oui, c’est le même événement', sub: 'Les jours se cumulent pour la durée prévue' }, { v: 'non', l: 'Non, c’est un autre événement', sub: 'Chaque événement a sa propre durée' }]} />
       ))}
+      {ijDemande && (
+        <>
+          <EuroInput label="Indemnités journalières de la Sécurité sociale pour cette absence (net)" cents={ij} allowEmpty onChange={setIj}
+            hint={ijDemande === 'deuil' ? 'Le montant net versé par ta CPAM pour ce congé (relevé sur ameli.fr). 0 si tu n’en reçois pas. Les parents maintiennent ton salaire moins ce montant (convention, article 48.1.3.1.3).' : 'Le montant net versé par ta CPAM pour cette absence (relevé sur ameli.fr). 0 si tu n’en reçois pas. En Alsace-Moselle, les parents maintiennent ton salaire moins ce montant (code du travail, article L1226-23). Tu peux le saisir plus tard dans « Congés ».'} />
+        </>
+      )}
       {type === 'cp' && <p class="hint">Mets ton dernier jour de congé. L’app compte les jours du lundi au samedi jusqu’à la veille de ta reprise : le samedi avant un retour le lundi compte aussi.</p>}
       {err && <p class="err" role="alert">{err}</p>}
       <button
         class="btn btn-primary btn-block btn-lg"
-        disabled={!!err || !from || !to || (type === 'evenement' && !nature) || !reponsesCompletes(questions, reps)}
+        disabled={!!err || !from || !to || (type === 'evenement' && !nature) || !reponsesCompletes(questions, reps) || (ijDemande === 'deuil' && ij === undefined)}
         onClick={async () => {
           const l = absenceSaisie(type, nature, uid(), from, to);
           if (!l) return;
+          if (ijDemande && ij !== undefined) l.ijSecu = ij;
           const undos: (() => Promise<void>)[] = [];
           for (const x of appliquerReponses(l, questions, reps)) undos.push(await putLeave(x));
           const undo = async () => { for (const u of undos.reverse()) await u(); };
