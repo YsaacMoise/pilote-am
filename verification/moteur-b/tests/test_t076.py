@@ -324,11 +324,12 @@ class T076Corrections(unittest.TestCase):
         # Base 15 h ; semaine A de 45 h ; un jour chome de 9 h, 36 h travaillees.
         h = m.heures_en_plus_semaine_planning_variable("L2", 2700, 900, 2160, 500, 25, minutes_1er_mai_chome=540)
         self.assertEqual(R(h, "lectures_montant_complementaires"), [15000, 15000])  # 30 HC, CCN 47.1
-        # T-103 (H2 revu, H3) : CCN 96.4 « heures de travail effectuees » : autre jour paye non travaille non
-        # compte : 21 HC seulement.
+        # Verification 2 (B-3, H9) : autre jour paye non travaille : la paie prevue de la semaine est gardee (CCN 47.2,
+        # 105, 48.1.3.1.1) : 30 HC (le jour paye compte pour le seuil de la base, pas pour celui des 45 h).
         h = m.heures_en_plus_semaine_planning_variable("L2", 2700, 900, 2160, 500, 25, minutes_payees_non_travaillees=540)
-        self.assertEqual(R(h, "lectures_montant_complementaires"), [10500, 10500])
-        self.assertEqual(R(h, "montant_complementaires_centimes"), 10500)
+        self.assertEqual(R(h, "lectures_montant_complementaires"), [15000, 15000])
+        self.assertEqual(R(h, "montant_complementaires_centimes"), 15000)
+        self.assertEqual(R(h, "minutes_majorees"), "0")
 
     def test_d2_absence_retenue(self):
         # T-103 (H6) : deux calculs separes (retenue de l'art. 111 ; HC sur les heures effectuees) : 36 h faites,
@@ -387,12 +388,12 @@ class T076Corrections(unittest.TestCase):
         r = m.mensualisation_planning_variable(52, 130, 500)
         self.assertEqual(R(r, "base_contrat_minutes"), "1800")
         h = m.heures_en_plus_semaine_planning_variable("L1", 2400, None, 2400, 500, 25, base_contrat_minutes=1800)
-        self.assertEqual(R(h, "lectures_montant_complementaires"), [0, 5000])
-        self.assertEqual(R(h, "montants_par_lecture"), [0, 5000])
-        # Semaine courte (15 h prevues, 17 h faites) : 2 HC en lecture 1, aucune en lecture 2 ; le mois somme
-        # chaque lecture a part (jamais le minimum semaine par semaine).
+        # Verification 2 (B-5, H8) : une seule reference, la duree du contrat (CCN 96.4) : 10 HC.
+        self.assertEqual(R(h, "lectures_montant_complementaires"), [5000, 5000])
+        self.assertNotIn("montants_par_lecture", h["resultat"])
+        # Semaine courte (15 h prevues, 17 h faites) : aucune HC (17 h sous la duree du contrat, 30 h).
         h = m.heures_en_plus_semaine_planning_variable("L1", 900, None, 1020, 500, 25, base_contrat_minutes=1800)
-        self.assertEqual(R(h, "montants_par_lecture"), [1000, 0])
+        self.assertEqual(R(h, "montant_complementaires_centimes"), 0)
 
     def test_d19_essai(self):
         # Du 05/01 au 29/05/2026 : 145 jours, 20 semaines entieres ou 21 entamees, plafond 14 jours (<= 6 mois).

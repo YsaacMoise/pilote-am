@@ -81,7 +81,8 @@ def heures_en_plus_semaine(heures_contrat_minutes, heures_reelles_minutes, taux_
 @api("R-HC-01", "R-HC-02", "R-HC-03", "T103-H1", "T103-H6")
 def heures_en_plus_semaine_t103(heures_contrat_semaine_minutes, minutes_effectuees, taux_horaire_centimes,
                                 majoration_hm_pourcent, majoration_hc_pourcent=0, minutes_conges_payes=0,
-                                minutes_1er_mai_chome=0, date_paie=None):
+                                minutes_1er_mai_chome=0, date_paie=None, minutes_prevues_non_travaillees=0,
+                                minutes_en_plus_du_prevu=0):
     """T-103 (H1 a H4, H6) : heures complementaires et majorees d'une semaine, absences comprises.
     CCN 96.4 : heures « de travail effectuees » au-dela de « la duree de travail hebdomadaire prevue au contrat » et
     jusqu'a 45 h (HC), puis au-dela de 45 h (HM, CCN 110.1 ; majoration d'au moins 10 %).
@@ -102,7 +103,25 @@ def heures_en_plus_semaine_t103(heures_contrat_semaine_minutes, minutes_effectue
     eff = positif(minutes_effectuees, "minutes_effectuees") + cp + mai
     hc, hm, mhc, mhm = _heures_semaine(heures_contrat_semaine_minutes, eff, taux_horaire_centimes,
                                        majoration_hc_pourcent, majoration_hm_pourcent, False)
+    # Verification 2 (25/11/2026), B-3 et B-4 (H9). Les heures faites au-dela du prevu des jours travailles
+    # (minutes_en_plus_du_prevu) sont du travail et sont payees : CCN 98.1.1, al. 3 (heures « effectuees, d'un commun
+    # accord [...] au-dela de celles prevues par le contrat ») ; CCN 105 (absence non prevue de l'enfant
+    # « remuneree ») et 47.2 (ferie chome : « maintien de la remuneration ») : le salaire mensualise maintenu paie deja
+    # l'absence, il ne peut pas payer aussi ces heures ; CCN 111 : la retenue ne vise que les heures « non
+    # travaillees ». Guide DREETS Bourgogne-Franche-Comte (juin 2026, p. 43) : eviter « une compensation avec des
+    # heures reellement travaillees mais non remunerees ». Qualification : seules les heures de travail effectif
+    # au-dela de la duree du contrat sont des HC (CCN 96.4 ; Cass. soc. 04/04/2012, n° 10-10.701 : un jour ferie
+    # chome n'est pas du travail effectif, sauf disposition contraire ; la CCN n'assimile les absences payees qu'aux
+    # conges et a l'anciennete, art. 48.1.1.3 et 49). Le reste, dans la limite des heures prevues non travaillees de
+    # la semaine (minutes_prevues_non_travaillees : absence payee ou retenue, ferie), est paye en heures normales au
+    # taux du contrat, sans majoration.
+    plus = positif(minutes_en_plus_du_prevu, "minutes_en_plus_du_prevu")
+    npt = positif(minutes_prevues_non_travaillees, "minutes_prevues_non_travaillees")
+    normales = min(plus, npt)
+    montant_normales = normales / 60 * positif(taux_horaire_centimes, "taux_horaire_centimes")
     return resultat_ok(heures_en_plus_semaine_t103.regles, {
+        "minutes_normales_en_plus": texte_fraction(normales),
+        "montant_normales_en_plus_centimes": vers_centimes(montant_normales, "heures normales en plus", ["T103-H9"]),
         "minutes_comptees": texte_fraction(eff),
         "minutes_complementaires": texte_fraction(hc), "minutes_majorees": texte_fraction(hm),
         "montant_complementaires_centimes": vers_centimes(mhc, "heures complementaires", ["R-HC-02"]),

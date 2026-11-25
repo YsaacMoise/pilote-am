@@ -790,6 +790,7 @@ def mois_b(ctx, m):
 
     def heures():
         hc = hm = 0
+        normales = 0  # Verification 2 (H9) : heures en plus payees en heures normales
         hc_haut = 0  # T-076 : plus grande lecture des HC (D1, D4)
         d16 = [0, 0]  # T-076, D16 : HC du mois, lecture 1 (planning remis) et lecture 2 (duree du contrat)
         semaines = sorted({lundi(d) for d in jours})
@@ -802,6 +803,7 @@ def mois_b(ctx, m):
             mai = payees = 0  # T-076, D1 : heures prevues non travaillees mais payees (1er mai ; autres)
             cp_min = 0  # T-103 (H1) : heures prevues des jours de conge paye de la semaine
             retenue = False   # T-076, D2 : absence deduite (art. 111) dans la semaine
+            non_trav = 0
             for d in sem:
                 pv = ctx.prevu(d)
                 contrat_min += pv
@@ -828,6 +830,8 @@ def mois_b(ctx, m):
                         mai += pv
                     else:
                         payees += pv
+                    if nature != "cp" and not (nature == "ferie_chome" and d.month == 5 and d.day == 1):
+                        non_trav += pv  # Verification 2 (H9) : heures prevues non travaillees (payees ou retenues)
             if ctx.pv:
                 # T-076 (R-PV-04, R-PV-05) : HC sur le prevu de la semaine (L1) ou sur la base du contrat (L2).
                 mensualise(ctx)
@@ -869,6 +873,14 @@ def mois_b(ctx, m):
                     hc += lo
                     hc_haut += hi - lo
                 hm += r["resultat"]["montant_majorees_centimes"]
+                if ctx.pv_lecture == "L1" and extra and non_trav:
+                    # Verification 2 (B-3, B-4) : en L1, comme en planning fixe, heures en plus du prevu dans la limite
+                    # des heures prevues non travaillees : heures normales (heures_en_plus_semaine_t103).
+                    r2 = appel("heures_en_plus_semaine_t103", contrat_min, reelles, ctx.taux, ctx.maj_hm,
+                               majoration_hc_pourcent=ctx.maj_hc, minutes_conges_payes=cp_min,
+                               minutes_1er_mai_chome=mai, minutes_prevues_non_travaillees=non_trav,
+                               minutes_en_plus_du_prevu=extra)
+                    normales += r2["resultat"]["montant_normales_en_plus_centimes"]
                 continue
             if extra == 0:
                 continue
@@ -877,14 +889,16 @@ def mois_b(ctx, m):
             # T-103 (H1 a H4, H6) : conges payes et 1er mai chome comptes ; autres jours non effectues non comptes ;
             # base = heures prevues de la semaine dans le contrat ; retenue a part. Remplace le refus A-09.
             r = appel("heures_en_plus_semaine_t103", contrat_min, reelles, ctx.taux, ctx.maj_hm,
-                      majoration_hc_pourcent=ctx.maj_hc, minutes_conges_payes=cp_min, minutes_1er_mai_chome=mai)
+                      majoration_hc_pourcent=ctx.maj_hc, minutes_conges_payes=cp_min, minutes_1er_mai_chome=mai,
+                      minutes_prevues_non_travaillees=non_trav, minutes_en_plus_du_prevu=extra)
             hc += r["resultat"]["montant_complementaires_centimes"]
             hm += r["resultat"]["montant_majorees_centimes"]
+            normales += r["resultat"]["montant_normales_en_plus_centimes"]
         if d16 != [0, 0]:
-            return Lect(hc + min(d16), [hc + d16[0], hc + d16[1]]), hm
+            return Lect(hc + min(d16), [hc + d16[0], hc + d16[1]]), hm, normales
         if hc_haut:
-            return Lect(hc, [hc, hc + hc_haut]), hm
-        return hc, hm
+            return Lect(hc, [hc, hc + hc_haut]), hm, normales
+        return hc, hm, normales
 
     garde("_heures", heures)
     out["_hc_minutes"] = hc_minutes[0]
@@ -1354,6 +1368,29 @@ def icp_b(ctx):
     ctx.cache["icp"] = v
     return v
 
+def indemnite_deces_b(ctx, env, preavis):
+    """Verification 2 (B-6, F13) : indemnite egale a l'indemnite compensatrice de preavis apres le deces de l'enfant
+    (CCN 119.4.2, renvoi a l'art. 122 : deduction de l'art. 111 si la periode finit en cours de mois). Periode : du
+    lendemain du deces au dernier jour (periode_indemnite_deces, B). L'adaptateur compte seulement les jours du
+    planning ; le calcul est fait par B (indemnite_compensatrice_preavis). Renvoie (montant, mois de fin) ; leve Refus."""
+    per = appel("periode_indemnite_deces", env, preavis)["resultat"]
+    p1, p2 = per["premier_jour"], per["dernier_jour"]
+    unite = (lambda d: ctx.prevu_hors_dates(d)) if ctx.type == "complete" else \
+        (lambda d: 1 if ctx.prevu_hors_dates(d) > 0 else 0)
+    mois_l = []
+    for m in mois_entre(p1, p2):
+        a, b = premier(m), dernier(m)
+        pm = sum(unite(d) for d in jours_entre(a, b))
+        pp = sum(unite(d) for d in jours_entre(max(a, p1), min(b, p2)))
+        if pp == 0:
+            continue
+        mois_l.append({"salaire_mensualise_centimes": mensualise(ctx), "prevu_mois": pm, "prevu_dans_preavis": pp})
+    if not mois_l:
+        return 0, mois_de(p2)
+    r = appel("indemnite_compensatrice_preavis", ctx.type, mois_l)
+    return r["resultat"]["indemnite_centimes"], mois_de(p2)
+
+
 def fin_dispense_employeur(ctx, k, out, auteur, motif_b, env):
     """T-074 : fin de contrat avec preavis dispense en tout ou partie par l'employeur (CCN art. 64, 64.2, 66, 122 ;
     regles/t074-preavis-dispense.md). Date de fin = date prevue de fin du preavis (fait de la situation)."""
@@ -1687,8 +1724,19 @@ def fin_b(ctx, k):
         mf = mois_de(fin)
         reg_brut = _brut_comme_a(reg_v, ctx, mf)
         iccp_brut = _brut_comme_a(iccp_v + reg_v, ctx, mf) - reg_brut
+        # Verification 2 (B-6, F13) : l'indemnite egale au preavis du deces entre dans l'assiette du 1/80 (CCN 121.1 :
+        # seules les indemnites « non soumises a contributions et cotisations sociales » sont exclues ; CCN 64.2 :
+        # l'indemnite de preavis est « soumise a contributions et cotisations sociales »).
+        ind_dec = 0
+        if motif_b == "deces_enfant" and isinstance(out.get("preavis"), Refus):
+            # Duree de la periode inconnue (B refuse le preavis) : l'assiette serait incomplete.
+            a_confirmer.append("indemnite egale au preavis du deces (" + out["preavis"].code + ")")
+        elif motif_b == "deces_enfant" and out.get("preavis"):
+            v_dec, m_dec = indemnite_deces_b(ctx, env, out["preavis"])
+            ind_dec = _brut_comme_a(v_dec, ctx, m_dec)
         r = appel("indemnite_rupture", motif_b, auteur, ctx.debut, env, sal, iccp_centimes=iccp_brut, icp_centimes=icp,
-                  regularisation_centimes=reg_brut, sommes_a_confirmer=a_confirmer, date_fin_contrat=fin)
+                  regularisation_centimes=reg_brut, sommes_a_confirmer=a_confirmer, date_fin_contrat=fin,
+                  indemnite_preavis_centimes=ind_dec)
         out["indemnite_rupture"] = r["resultat"]["indemnite_centimes"]
         if k.get("comparer_assiette"):
             out["assiette_rupture"] = r["resultat"]["assiette_centimes"]
@@ -1696,6 +1744,8 @@ def fin_b(ctx, k):
         pass
     except Refus as e:
         out["indemnite_rupture"] = e
+        if k.get("comparer_assiette"):
+            out["assiette_rupture"] = e  # Verification 2 : la sortie reste comptee (F3) quand B refuse
     return out
 
 def rupture_bulletins_b(s, ctx, k, res):

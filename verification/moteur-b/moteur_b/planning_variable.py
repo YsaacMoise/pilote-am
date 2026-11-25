@@ -216,10 +216,14 @@ def heures_en_plus_semaine_planning_variable(lecture, heures_prevues_semaine_min
     # T-103 : H1 (CP comptes), D1 (1er mai compte), H2 revu et H3 (autres jours payes non effectues non comptes),
     # H6 (retenue a part : refus PV-L2-ABSENCE-HC leve), refus A-09 leve.
     eff = reelles + mai + cp
+    eff_hm = eff
     if lecture == "L1":
         refs = [prevu]
         if base_contrat_minutes is not None:
-            refs.append(positif(base_contrat_minutes, "base_contrat_minutes"))  # D16
+            # Verification 2 (25/11/2026), B-5 (H8) : une seule reference, la duree du contrat. CCN 96.4 : HC = heures
+            # « au-dela de la duree de travail hebdomadaire prevue au contrat » ; CCN 98.1.2, al. 3, permet des heures
+            # « au-dela de celles prevues par le planning remis » sans en faire des HC. Lecture « planning remis » retiree.
+            refs = [positif(base_contrat_minutes, "base_contrat_minutes")]
     else:
         base = positif(base_hebdo_minutes, "base_hebdo_minutes")
         refs = [base]
@@ -229,9 +233,16 @@ def heures_en_plus_semaine_planning_variable(lecture, heures_prevues_semaine_min
             if dnm == 0 or n > dnm:
                 raise ErreurSaisie("prorata_base : (jours dans le contrat, jours prevus de la semaine).")
             refs = [base * n / dnm]
+    if lecture == "L2":
+        # Verification 2 (25/11/2026), B-3 (H9) en lecture L2 : un jour paye non travaille (ferie chome, CCN 47.2
+        # « maintien de la remuneration brute habituelle » ; absence de l'enfant, CCN 105 « remuneres » ; evenement
+        # familial, CCN 48.1.3.1.1 « conges remuneres ») garde la paie prevue de la semaine, HC prevues au-dela de la
+        # base comprises : ses heures prevues comptent pour le seuil de la base. Pas pour le seuil des 45 h (travail
+        # effectif, CCN 96.4 ; Cass. soc. 04/04/2012, n° 10-10.701).
+        eff = eff + positif(minutes_payees_non_travaillees, "minutes_payees_non_travaillees")
     reels = [eff]
     hcs = sorted({max(Fraction(0), min(r, SEUIL_45H) - ref) for r in reels for ref in refs})
-    hm = max(Fraction(0), eff - SEUIL_45H)
+    hm = max(Fraction(0), eff_hm - SEUIL_45H)
     montants = [vers_centimes(h / 60 * t * (1 + maj_hc / 100), "heures complementaires", regles) for h in hcs]
     mhm = hm / 60 * t * (1 + maj_hm / 100)
     extra = {}
