@@ -199,3 +199,24 @@ describe('C20 : fiche « Modifier la journée », le jour même', () => {
     expect(departOublieAujourdhui(plan, [{ a: '08:00', d: '16:00' }], '18:00')).toBe(false);
   });
 });
+
+import { netHoraire } from '../src/engine/simulation';
+import { dureeMaxCddMois, messagesCdd } from '../src/engine/cdd';
+
+describe('Cas officiels (section 3.2 du comparateur)', () => {
+  it('C-NET-04 : 5,00 € brut = 3,91 € net (simulateur Urssaf, chaque cotisation arrondie au centime)', () => {
+    expect(netHoraire(500, false)).toBe(391);
+    expect(netHoraire(501, false)).toBe(392); // 3,91 € net ne vient que de 5,00 € brut
+  });
+});
+
+describe('C12 : durée maximale du CDD (C. trav. L1242-8-1)', () => {
+  it('18, 9 ou 24 mois selon le remplacement ; message au-delà', () => {
+    expect(dureeMaxCddMois({ cddMotif: 'remplacement', cddCasRemplacement: 'absence' })).toBe(18);
+    expect(dureeMaxCddMois({ cddMotif: 'remplacement', cddCasRemplacement: 'attente_cdi' })).toBe(9);
+    expect(dureeMaxCddMois({ cddMotif: 'remplacement', cddCasRemplacement: 'depart_suppression' })).toBe(24);
+    const c = { cdd: true, start: '2026-01-05', cddTerme: '2026-11-30', cddMotif: 'remplacement' as const, cddCasRemplacement: 'attente_cdi' as const };
+    expect(messagesCdd(c).join(' ')).toMatch(/9 mois/);
+    expect(messagesCdd({ ...c, cddCasRemplacement: 'absence' }).join(' ')).not.toMatch(/durée maximale/);
+  });
+});

@@ -284,7 +284,9 @@ def officiels():
                       renommer=R(jours_enfants="jours_enfants", jours_acquis="total"),
                       sorties=["jours_enfants", "jours_acquis"],
                       propage={"total": "SUS-11 (acquisition de C-CPA-04)"}))
-    S.append(acq_case("C-CPA-05", dict(BERTRAND, fin="2022-09-30"), 2022,
+    # T-109 : la source (S-BERTRAND, p. 10, 7.3) compte « 11 semaines (dont les 2 semaines de conges payes pris [...] au mois
+    # d'aout) et 3 jours » : deux des semaines sans accueil d'aout sont des conges payes de l'AM (manquaient a la situation).
+    S.append(acq_case("C-CPA-05", dict(BERTRAND, fin="2022-09-30", semaines_cp_am=["2022-08-15", "2022-08-22"]), 2022,
                       acq_b("incomplete", semaines=11, jours=58, jours_par_semaine=5), {"jours_acquis": 8}))
     S.append(off("C-CPA-06", "congés payés", {"jours_acquis": 25},
                  [{"type": "absent", "non_comparable": True, "sorties": ["jours_acquis"],
