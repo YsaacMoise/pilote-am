@@ -851,7 +851,7 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
       {err && <p class="err" role="alert">{err}</p>}
       <button
         class="btn btn-primary btn-block btn-lg"
-        disabled={!!err || !from || !to || (type === 'evenement' && !nature) || !reponsesCompletes(questions, reps) || (ijDemande === 'deuil' && (ij === undefined || ijAutres === undefined)) || atmpManque}
+        disabled={!!err || !from || !to || (type === 'evenement' && (!nature || !absenceSaisie(type, nature, 'x', from, to))) || !reponsesCompletes(questions, reps) || (ijDemande === 'deuil' && (ij === undefined || ijAutres === undefined)) || atmpManque}
         onClick={async () => {
           const l = absenceSaisie(type, nature, uid(), from, to);
           if (!l) return;

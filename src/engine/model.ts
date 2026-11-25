@@ -55,7 +55,8 @@ export interface Avenant {
 }
 
 /** Motif de fin de contrat (écran Fin) */
-export type Motif = 'retrait' | 'demission' | 'deces' | 'inaptitude' | 'inaptitude_pro' | 'faute_grave' | 'essai' | 'fin_cdd';
+/** T-107 (cas 5) : `agrement` : suspension, modification ou retrait de l'agrément de l'AM, retrait forcé de l'enfant (CCN 119.3) */
+export type Motif = 'retrait' | 'demission' | 'deces' | 'inaptitude' | 'inaptitude_pro' | 'faute_grave' | 'essai' | 'agrement' | 'fin_cdd';
 /**
  * T-076 : façon dont un CDD finit (regles/t076-decisions-direction.md, section 2 ; regles/t076-cdd.md, R-CDD-08).
  * - `terme` : terme atteint, y compris après renouvellement ou report du terme (L1243-8 : IFC due) ;
@@ -67,11 +68,27 @@ export type Motif = 'retrait' | 'demission' | 'deces' | 'inaptitude' | 'inaptitu
  * - `commun_accord` : rupture anticipée d'un commun accord (IFC due, L1243-10 ne l'exclut pas) ;
  * - `employeur` : rupture anticipée par les parents hors faute grave (L1243-4 : IFC due ; dommages et intérêts non calculés).
  */
-export type FinCdd = 'terme' | 'suite_cdi' | 'refus_cdi' | 'initiative_am' | 'faute_grave' | 'essai' | 'commun_accord' | 'employeur';
-/** T-076 : fins de CDD que l'app ne calcule pas (R-CDD-08, partie 6 du rapport) : message précis, aucun montant */
-export type FinCddNonGere = 'force_majeure' | 'inaptitude' | 'jeune_vacances' | 'saisonnier_usage' | 'autre';
-export const FINS_CDD: FinCdd[] = ['terme', 'suite_cdi', 'refus_cdi', 'commun_accord', 'initiative_am', 'employeur', 'faute_grave', 'essai'];
-export const FINS_CDD_NON_GEREES: FinCddNonGere[] = ['force_majeure', 'inaptitude', 'jeune_vacances', 'saisonnier_usage', 'autre'];
+/*
+ * T-107 (cas 4, regles/t107-fins-cdd.md) :
+ * - `jeune_vacances` : CDD d'un jeune pour une période comprise dans ses vacances scolaires ou universitaires, au terme
+ *   (L1243-10, 2° : pas d'IFC) ;
+ * - `saisonnier` : CDD saisonnier au terme (L1242-2, 3° ; L1243-10, 1° : pas d'IFC) ;
+ * - `force_majeure` : rupture anticipée pour force majeure (L1243-1 ; L1243-10, 4° : pas d'IFC ; sinistre : indemnité
+ *   compensatrice des rémunérations jusqu'au terme, L1243-4, al. 2) ;
+ * - `inaptitude` : rupture anticipée pour inaptitude constatée par le médecin du travail (L1243-1 ; IFC due, L1243-8, que
+ *   L1243-10 n'exclut pas ; ni dommages et intérêts, L1243-4, al. 1) ;
+ * - `agrement` : suspension, modification ou retrait de l'agrément (CASF L421-1 et L423-2 ; regles/t107-fins-cdd.md).
+ */
+export type FinCdd = 'terme' | 'suite_cdi' | 'refus_cdi' | 'initiative_am' | 'faute_grave' | 'essai' | 'commun_accord' | 'employeur'
+  | 'jeune_vacances' | 'saisonnier' | 'force_majeure' | 'inaptitude' | 'agrement';
+/**
+ * T-076 : fins de CDD que l'app ne calcule pas. T-107 : plus aucune ; type gardé pour lire les anciennes valeurs (jamais
+ * enregistrées, décision D17) : `saisonnier_usage` (remplacé par `saisonnier`) et `autre` (remplacé par `agrement`).
+ */
+export type FinCddNonGere = 'saisonnier_usage' | 'autre';
+export const FINS_CDD: FinCdd[] = ['terme', 'suite_cdi', 'refus_cdi', 'commun_accord', 'initiative_am', 'employeur', 'faute_grave', 'essai',
+  'force_majeure', 'inaptitude', 'agrement', 'jeune_vacances', 'saisonnier'];
+export const FINS_CDD_NON_GEREES: FinCddNonGere[] = [];
 /**
  * T-045 : préavis non exécuté en tout ou en partie (CCN art. 64 et 64.2).
  * - `am_acceptee` : l'AM a demandé à ne pas faire tout ou partie du préavis et les parents l'ont accepté (art. 64.2, al. 2).
@@ -96,6 +113,28 @@ export interface Rupture {
    * Décision D17 : une fin non gérée (force majeure, inaptitude…) n'est jamais enregistrée : seules les fins calculées.
    */
   finCdd?: FinCdd;
+  /**
+   * T-107 (cas 1) : préavis fait en entier, congés payés pris pendant le préavis : accord écrit et signé des parties pour que
+   * les congés et le préavis se cumulent (CCN 64.1). Vrai : pas de suspension ; faux : le préavis est prorogé des jours de
+   * congé. Demandé seulement quand des congés tombent dans le préavis.
+   */
+  cumulCpPreavis?: boolean;
+  /**
+   * T-107 (cas 2) : démission, préavis non fait sans l'accord des parents : l'AM est en état de grossesse médicalement
+   * constaté (C. trav. L1225-34, applicable par CASF L423-2, 3° : rupture « sans préavis et sans devoir de ce fait d'indemnité
+   * de rupture »). Demandé seulement dans ce cas.
+   */
+  grossesse?: boolean;
+  /**
+   * T-107 (cas 4) : CDD rompu pour force majeure : la force majeure est un sinistre (L1243-4, al. 2 : indemnité compensatrice
+   * égale aux rémunérations jusqu'au terme). Demandé seulement dans ce cas.
+   */
+  sinistre?: boolean;
+  /**
+   * T-107 (cas 4) : CDD de remplacement sans terme précis rompu pour un sinistre : date à laquelle le CDD aurait pris fin
+   * (retour de la personne remplacée ; L1242-7). Demandée seulement dans ce cas.
+   */
+  termeSinistre?: ISODate;
 }
 
 export interface Contract {
@@ -331,6 +370,12 @@ export interface AmLeave {
    * Décision du DG du 21/11/2026 (« sans la raison ») : la nature n'est ni enregistrée, ni envoyée, ni affichée.
    */
   joursEvenement?: number;
+  /**
+   * T-107 (cas 6) : événement familial commencé du 01/07/2020 au 31/12/2021, décès d'un enfant de moins de 25 ans : la durée
+   * de C. trav. L3142-4, 4° (versions du 01/07/2020 au 20/07/2023) est de « sept jours ouvrés » : vrai, `joursEvenement` se
+   * compte en jours ouvrés (jours de travail prévus au contrat), pas en jours ouvrables. Ne dit rien de la raison.
+   */
+  joursOuvres?: true;
   /**
    * Événement familial seulement : identifiant interne de l'absence dont celle-ci est la suite (même événement saisi en
    * plusieurs fois), quand l'AM a répondu « oui » à la question de la saisie (décision du DG du 21/11/2026). Ne dit rien

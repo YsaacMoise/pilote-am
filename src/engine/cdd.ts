@@ -74,8 +74,8 @@ export function nonGeresCdd(c: CddChamps): string[] {
  * égale à six mois et d'un mois dans les autres cas. Lorsque le contrat ne comporte pas de terme précis, la période d'essai
  * est calculée par rapport à la durée minimale du contrat. » Durée : du début à `cddTerme` (terme ou fin de la durée
  * minimale) ; un renouvellement ne fait qu'allonger le terme, donc un terme à six mois ou moins prouve une durée initiale à
- * six mois ou moins. Aucun texte ne dit comment compter les semaines (R-CDD-12) : deux lectures, semaines entières
- * (`court`) ou semaines commencées (`long`). Jours comptés de date à date.
+ * six mois ou moins. Jours comptés de date à date. T-107 (cas 7) : le maximum légal est `court` (semaines entières : au plus
+ * un jour par semaine, essai en jours entiers ; regles/t107-essai-cdd.md). `long` (semaines commencées) n'est plus qu'un repère.
  */
 export function finEssaiCdd(c: CddChamps): { court: string; long: string } | undefined {
   if (!c.cdd || !c.start || !c.cddTerme) return undefined;

@@ -7,7 +7,7 @@
 // - type d'avant « accident_travail » : ramené à `at_mp`, nature à préciser ; « maternite », « paternite »,
 //   « naissance_supp » : gardés tels quels (ce sont les types actuels).
 import { daysBetween } from './dates';
-import { dureeEvenement, evenementPrecedentProche, evenementSuivantProche, LIEN_EVENEMENT_JOURS } from './evenements';
+import { dureeEvenement, evenementEnJoursOuvres, evenementPrecedentProche, evenementSuivantProche, LIEN_EVENEMENT_JOURS } from './evenements';
 import { AM_ABS_ANCIENNES, type AmAbs, type AmLeave, type NatureEvenement } from './model';
 
 /** Absence telle qu'elle peut être lue : forme actuelle, ou saisie d'avant (nature, cas non géré dans `type`) */
@@ -70,7 +70,11 @@ export type ChoixAbsence = Exclude<AmAbs, 'non_gere'>;
  */
 export function absenceSaisie(choix: ChoixAbsence, nature: NatureEvenement | undefined, id: string, from: string, to: string): AmLeave | undefined {
   // T-103 (C9) : congé de deuil : l'écran de saisie demande le montant des indemnités journalières (AmLeave.ijSecu).
-  if (choix === 'evenement') return nature ? { id, type: 'evenement', from, to, joursEvenement: joursEvenementSaisi(nature, from) } : undefined;
+  // T-107 (cas 6) : aucun congé pour cet événement à cette date : rien n'est enregistré (l'écran le dit et grise le bouton).
+  if (choix === 'evenement') {
+    if (!nature || dureeEvenement(nature, from) === undefined) return undefined;
+    return { id, type: 'evenement', from, to, joursEvenement: joursEvenementSaisi(nature, from), ...(evenementEnJoursOuvres(nature, from) ? { joursOuvres: true as const } : {}) };
+  }
   return { id, type: choix, from, to };
 }
 

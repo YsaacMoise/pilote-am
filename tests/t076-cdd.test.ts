@@ -194,14 +194,93 @@ describe('R-CDD-08 : IFC selon la façon dont le CDD finit', () => {
     // Refus de CDI au terme : (78788 + 3 × 86667) / 10 = 33878,9 → 338,79 €.
     expect(fin(cdd(), '2026-04-30', 'refus_cdi').cpIndemnite).toBe(33879);
   });
-  for (const f of ['force_majeure', 'inaptitude', 'jeune_vacances', 'saisonnier_usage', 'autre'] as const) {
-    it(`${f} : non géré, message précis, aucun montant`, () => {
+  // T-107 (cas 4, regles/t107-fins-cdd.md) : fins calculées. Attendus tirés de L1243-10 (IFC non due : 1° saisonnier, 2° jeune
+  // pendant ses vacances, 4° force majeure), L1243-8 (IFC due, inaptitude non exclue) et L1243-4, al. 2 (sinistre).
+  it('T-107 : CDD d’un jeune pendant ses vacances, au terme : pas d’IFC (L1243-10, 2°), congés comme un refus de CDI', () => {
+    const r = fin(cdd(), '2026-04-30', 'jeune_vacances');
+    expect(r.nonGere).toBeUndefined();
+    expect(r.ifcNet).toBe(0);
+    expect(r.ifcExplication).toMatch(/L1243-10, 2°/);
+    // ICCP : (78788 + 3 × 86667) / 10 = 33878,9 → 338,79 €, sans IFC dans la base.
+    expect(r.cpIndemnite).toBe(33879);
+    expect(r.declaration).toEqual([]);
+  });
+  it('T-107 : CDD saisonnier, au terme : pas d’IFC (L1243-10, 1°)', () => {
+    const r = fin(cdd(), '2026-04-30', 'saisonnier');
+    expect(r.nonGere).toBeUndefined();
+    expect(r.ifcNet).toBe(0);
+    expect(r.ifcExplication).toMatch(/L1243-10, 1°/);
+    expect(r.cpIndemnite).toBe(33879);
+  });
+  it('T-107 : jeune pendant ses vacances ou saisonnier avant la date de fin prévue : dates à revoir', () => {
+    for (const f of ['jeune_vacances', 'saisonnier'] as const) expect(fin(cdd(), '2026-03-31', f).nonGere?.join(' ')).toMatch(/avant la date de fin prévue/);
+  });
+  it('T-107 : inaptitude, fin le 31/03 : IFC due comme une rupture par le parent (252,12 €), sans dommages et intérêts', () => {
+    const r = fin(cdd(), '2026-03-31', 'inaptitude');
+    expect(r.nonGere).toBeUndefined();
+    expect(r.ifcNet).toBe(25212);
+    expect(r.cpIndemnite).toBe(fin(cdd(), '2026-03-31', 'employeur').cpIndemnite);
+    expect(r.alertes.join(' ')).toMatch(/L1243-1.*Pas de dommages et intérêts/);
+    expect(r.alertes.join(' ')).not.toMatch(/conseil \(relais/);
+  });
+  it('T-107 : force majeure sans réponse sur le sinistre : la question est posée, aucun montant', () => {
+    const r = fin(cdd(), '2026-03-31', 'force_majeure');
+    expect(r.nonGere?.join(' ')).toMatch(/sinistre/);
+    expect((r.ifc ?? 0) + r.cpIndemnite + r.regularisation).toBe(0);
+  });
+  it('T-107 : force majeure sans sinistre : pas d’IFC (L1243-10, 4°), congés comme une fin à la demande de l’AM', () => {
+    const r = finDeCdd(ctxDe(cdd()), '2026-03-31', 'force_majeure', 0, undefined, { sinistre: false });
+    expect(r.nonGere).toBeUndefined();
+    expect(r.ifcNet).toBe(0);
+    expect(r.ifcExplication).toMatch(/L1243-10, 4°/);
+    expect(r.cpIndemnite).toBe(fin(cdd(), '2026-03-31', 'initiative_am').cpIndemnite);
+    expect(r.indemniteSinistre).toBeUndefined();
+  });
+  it('T-107 : sinistre le 31/03 : indemnité égale au salaire d’avril, jusqu’au terme du 30/04 (L1243-4, al. 2) : 866,67 €', () => {
+    const r = finDeCdd(ctxDe(cdd()), '2026-03-31', 'force_majeure', 0, undefined, { sinistre: true });
+    expect(r.nonGere).toBeUndefined();
+    expect(r.ifcNet).toBe(0);
+    expect(r.indemniteSinistre).toEqual({ net: 86667, du: '2026-04-01', au: '2026-04-30' });
+    // Hors de la base des congés : même ICCP que sans sinistre (la période couverte suit la fin du contrat).
+    expect(r.cpIndemnite).toBe(finDeCdd(ctxDe(cdd()), '2026-03-31', 'force_majeure', 0, undefined, { sinistre: false }).cpIndemnite);
+  });
+  it('T-107 : sinistre le 15/04 : salaire du 16 au 30/04, proportion de l’art. 111 (11 jours de 8 h sur 22) : 433,34 €', () => {
+    // Avril 2026 : 22 jours du lundi au vendredi ; après le mercredi 15/04 : 16, 17, 20-24, 27-30 = 11 jours. 86667 × 88 ÷ 176.
+    const r = finDeCdd(ctxDe(cdd()), '2026-04-15', 'force_majeure', 0, undefined, { sinistre: true });
+    expect(r.indemniteSinistre?.net).toBe(Math.round(86667 * 88 / 176));
+  });
+  it('T-107 : sinistre, CDD de remplacement sans terme précis : la date du retour prévu est demandée, puis l’indemnité va jusqu’à elle', () => {
+    const c = cdd({ cddTermeImprecis: true });
+    expect(finDeCdd(ctxDe(c), '2026-03-31', 'force_majeure', 0, undefined, { sinistre: true }).nonGere?.join(' ')).toMatch(/personne remplacée devait revenir/);
+    const r = finDeCdd(ctxDe(c), '2026-03-31', 'force_majeure', 0, undefined, { sinistre: true, termeSinistre: '2026-05-31' });
+    expect(r.indemniteSinistre).toEqual({ net: 2 * 86667, du: '2026-04-01', au: '2026-05-31' });
+  });
+  it('T-107 : agrément retiré le 31/03, après trois mois d’emploi : pas d’IFC (CASF L423-24, al. 2), congés payés', () => {
+    // CDD du 01/12/2025 au 30/04/2026, fin le 31/03/2026 : 4 mois d'emploi (de date à date, jour de fin compris).
+    const c = cdd({ start: '2025-12-01', trackedFrom: '2025-12-01' });
+    const r = fin(c, '2026-03-31', 'agrement');
+    expect(r.nonGere).toBeUndefined();
+    expect(r.ifcNet).toBe(0);
+    expect(r.ifcExplication).toMatch(/L423-24/);
+    expect(r.cpIndemnite).toBeGreaterThan(0);
+    expect(r.cpIndemnite).toBe(fin(c, '2026-03-31', 'initiative_am').cpIndemnite);
+    expect(r.alertes.join(' ')).toMatch(/L421-1.*Pas de dommages et intérêts/);
+  });
+  it('T-107 : agrément retiré avant trois mois d’emploi : L423-24 ne s’applique pas, IFC due (L1243-8)', () => {
+    // CDD du 05/01 au 30/04/2026, fin le 27/03 : 2 mois pleins. IFC comme une rupture voulue par le parent au même jour.
+    const r = fin(cdd(), '2026-03-27', 'agrement');
+    expect(r.nonGere).toBeUndefined();
+    expect(r.ifcNet).toBe(fin(cdd(), '2026-03-27', 'employeur').ifcNet);
+    expect(r.ifcNet).toBeGreaterThan(0);
+  });
+  for (const f of ['saisonnier_usage', 'autre'] as const) {
+    it(`${f} (ancienne valeur, jamais enregistrée) : renvoi vers le bon choix, aucun montant`, () => {
       const r = fin(cdd(), '2026-03-31', f);
       expect(r.nonGere).toEqual([MESSAGES_FIN_CDD_NON_GEREE[f]]);
-      expect((r.ifc ?? 0) + r.cpIndemnite + r.regularisation + r.indemniteRupture).toBe(0);
-      expect(MESSAGES_FIN_CDD_NON_GEREE[f]).not.toMatch(/€/);
+      expect(MESSAGES_FIN_CDD_NON_GEREE[f]).not.toMatch(/non géré|sans l’app/);
     });
   }
+
   it('« terme atteint » avec un dernier jour avant la date prévue : refusé (l’IFC dépend de la vraie raison)', () => {
     expect(fin(cdd(), '2026-03-31', 'terme').nonGere?.[0]).toMatch(/avant la date de fin prévue/);
   });
@@ -352,8 +431,9 @@ describe('M2 / D9 : dates de fin face au terme précis', () => {
     });
   }
   it('revue 2 (r1, r2) : valeur de fin inconnue refusée ; report du terme sans exigence d’écrit (L1243-7)', () => {
-    const f = fin(cdd(), '2026-04-30', 'saisonnier' as never);
-    expect(f.nonGere?.[0]).toMatch(/Fin de CDD inconnue de l’app \(« saisonnier »\)/);
+    // T-107 : « saisonnier » est devenu une fin calculée ; la valeur inconnue du test est une autre.
+    const f = fin(cdd(), '2026-04-30', 'usage' as never);
+    expect(f.nonGere?.[0]).toMatch(/Fin de CDD inconnue de l’app \(« usage »\)/);
     expect((f.ifc ?? 0) + f.cpIndemnite).toBe(0);
     const apres = fin(cdd(), '2026-05-15', 'terme').nonGere?.[0] ?? '';
     expect(apres).not.toMatch(/par écrit, mets/);
@@ -456,13 +536,22 @@ describe('N1 : D19, limite de deux semaines pour un CDD de six mois ou moins', (
     expect(fin(cdd(), '2026-01-09', 'essai').nonGere?.[0]).toBe(MESSAGE_CDD_ESSAI_A_SAISIR);
     expect(fin(cdd({ cddEssaiFin: '2026-01-08' }), '2026-01-09', 'essai').nonGere?.[0]).toMatch(/après la fin de la période d’essai écrite au contrat/);
   });
-  it('essai écrit plus long que le maximum sûr, dernier jour entre les deux comptes des semaines : cas non géré (C), dit', () => {
-    // CDD du 05/01 au 14/02/2026 : 41 jours, 5 semaines entières (essai jusqu'au 09/01) ou 6 commencées (jusqu'au 10/01).
+  it('T-107 (cas 7) : essai écrit plus long que le maximum légal, dernier jour dans la semaine commencée : hors essai, dit', () => {
+    // CDD du 05/01 au 14/02/2026 : 41 jours, soit 5 semaines et 6 jours. L1242-10 : au plus un jour par semaine, soit 41 ÷ 7 =
+    // 5,86 jours ; l'essai se compte en jours entiers (Cass. soc. 28/04/2011, n° 09-72.165) : 5 jours au plus, jusqu'au 09/01.
+    // Un essai écrit jusqu'au 10/01 ne vaut pas au-delà (Cass. soc. 11/06/1987, n° 84-41.299) ; une rupture le 10/01 n'est pas
+    // pendant l'essai (Cass. soc. 07/03/2000, n° 97-44.486).
     const c = cdd({ cddTerme: '2026-02-14', cddEssaiFin: '2026-01-10' });
     expect(finEssaiCdd(c)).toEqual({ court: '2026-01-09', long: '2026-01-10' });
     expect(fin(c, '2026-01-09', 'essai').nonGere).toBeUndefined();
-    expect(fin(c, '2026-01-10', 'essai').nonGere?.[0]).toMatch(/^Cas non géré : .*Aucun texte ni arrêt publié lu/);
+    const m = fin(c, '2026-01-10', 'essai').nonGere?.[0] ?? '';
+    expect(m).toMatch(/après la fin possible de la période d’essai \(au plus tard le 09\/01\/2026\)/);
+    expect(m).toMatch(/jusqu’au 10\/01\/2026 : la partie au-delà du 09\/01\/2026 ne vaut pas/);
+    expect(m).not.toMatch(/non géré|Aucun texte/);
     expect(fin(c, '2026-01-11', 'essai').nonGere?.[0]).toMatch(/après la fin possible/);
+    // La même fin, enregistrée comme voulue par le parent (hors essai) : calculée, IFC due (L1243-4, L1243-8).
+    expect(fin(c, '2026-01-10', 'employeur').nonGere).toBeUndefined();
+    expect(fin(c, '2026-01-10', 'employeur').ifcNet).toBeGreaterThan(0);
   });
   it('CDD de plus de six mois : un jour par semaine, au plus un mois', () => {
     // Du 05/01 au 31/12/2026 : 361 jours, 51 ou 52 semaines : limite d'un mois, jusqu'au 04/02.

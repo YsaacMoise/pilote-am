@@ -2,9 +2,9 @@
 // indemnité de congés non pris. Aucun document officiel n'est produit.
 import { nonGeresPeriode } from './nonGeres';
 import { pvActif } from './planningVariable';
-import { finPreavis, finsAdmises, preavisEmployeur } from './preavis';
-import { alertesProtection, finPreavisProrogee, messageProrogation } from './suspensions';
-import { FINS_CDD, FINS_CDD_NON_GEREES, type DemandeurInexecution, type FinCdd, type FinCddNonGere, type Motif, type Rupture } from './model';
+import { cumulCpADemander, finPreavis, finsAdmises, MESSAGE_GROSSESSE_A_REPONDRE, preavisEmployeur } from './preavis';
+import { alertesProtection, finPreavisProrogee, messageProrogation, MESSAGE_CUMUL_CP_A_REPONDRE } from './suspensions';
+import { FINS_CDD, type DemandeurInexecution, type FinCdd, type FinCddNonGere, type Motif, type Rupture } from './model';
 import { finEssaiCdd, messagesCdd, MESSAGE_CDD_12_MOIS, MESSAGE_CDD_DEVIENT_CDI } from './cdd';
 import { euros } from './money';
 import {
@@ -28,6 +28,7 @@ export const MOTIF_LABEL: Record<Motif, string> = {
   inaptitude_pro: 'Inaptitude après un accident du travail ou une maladie professionnelle',
   faute_grave: 'Faute grave reprochée',
   essai: 'Rupture pendant la période d’essai',
+  agrement: 'Agrément suspendu, modifié ou retiré',
   fin_cdd: 'Fin de CDD',
 };
 
@@ -107,6 +108,17 @@ export interface FinResult {
   brutCdd?: number;
   /** T-076, revu par la T-103 : IFC non calculée (base incomplète, donnée à saisir) : `ifc` vaut 0 et n'est pas compté */
   ifcAConfirmer?: string;
+  /**
+   * T-107 (cas 2) : préavis non fait sans l'accord des parents : indemnité que les parents peuvent demander à l'AM, égale à la
+   * rémunération nette de la partie du préavis non faite (CCN 64.2, al. 2), du lendemain du dernier jour travaillé à la fin
+   * prévue du préavis. 0 : rien n'est dû (grossesse, C. trav. L1225-34). Information : jamais retirée des sommes dues à l'AM.
+   */
+  indemniteDueParents?: { net: number; du: ISODate; au: ISODate };
+  /**
+   * T-107 (cas 4) : CDD rompu pour un sinistre relevant de la force majeure : indemnité compensatrice égale aux rémunérations
+   * que l'AM aurait perçues jusqu'au terme (C. trav. L1243-4, al. 2), en net, du lendemain du dernier jour au terme.
+   */
+  indemniteSinistre?: { net: number; du: ISODate; au: ISODate };
   /** T-076 : sommes de la fin à déclarer à Pajemploi qui ne correspondent à aucune heure (champ de l'API Pajemploi) */
   declaration?: { champ: 'mntIndPrecarite'; libelle: string; net: number; hint: string }[];
 }
@@ -256,8 +268,13 @@ export interface BrutsReels {
  * T-050 (fusion) : le 6e paramètre est l'inexécution du préavis (T-045, direction) ou, pour les appels écrits avant la
  * fusion (écran Fin et tests de main), les bruts réels (C-008, main). Les deux ensemble : inexécution en 6e, bruts en 7e.
  */
+/**
+ * T-107 : `reponses` : réponses de l'écran Fin demandées seulement dans leur cas : accord écrit de cumul des congés payés et du
+ * préavis (CCN 64.1), grossesse de l'AM qui part sans préavis (C. trav. L1225-34). Absentes : celles enregistrées avec le
+ * contrat (`ctx.c.rupture`).
+ */
 export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0, presentation?: ISODate,
-  inexecutionOuBruts?: Inexecution | BrutsReels, brutsReels?: BrutsReels): FinResult {
+  inexecutionOuBruts?: Inexecution | BrutsReels, brutsReels?: BrutsReels, reponses?: Pick<Rupture, 'cumulCpPreavis' | 'grossesse'>): FinResult {
   const inexecution = inexecutionOuBruts && 'demandeur' in inexecutionOuBruts ? inexecutionOuBruts : undefined;
   const bruts: BrutsReels = brutsReels ?? (inexecutionOuBruts && !('demandeur' in inexecutionOuBruts) ? inexecutionOuBruts : {});
   // T-076 : un CDD finit sans préavis ni indemnité de rupture (R-CDD-06) : calcul à part, finDeCdd. La façon dont il finit est
@@ -267,6 +284,9 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   const alertes: string[] = [];
   const anc = fullMonthsBetween(c.start, notif);
   const depart = presentation && presentation > notif ? presentation : notif;
+  const cumulCpPreavis = reponses ? reponses.cumulCpPreavis : c.rupture?.cumulCpPreavis;
+  const grossesse = reponses ? reponses.grossesse : c.rupture?.grossesse;
+  const refusFin: string[] = [];
 
   // Préavis (art. 120) : « un préavis est à effectuer en cas de rupture à l'initiative du particulier employeur ou du
   // salarié. Sa durée est au minimum de : – 8 jours calendaires lorsque l'enfant est accueilli depuis moins de 3 mois »
@@ -276,14 +296,24 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   let preavisLabel = 'Pas de préavis';
   if (motif === 'inaptitude' || motif === 'inaptitude_pro') {
     preavisLabel = 'Pas de préavis en cas d’inaptitude : le contrat s’arrête à l’envoi de la lettre';
+  } else if (motif === 'agrement') {
+    // T-107 (cas 5) : CCN 119.3, « le contrat de travail est rompu sans préavis, ni indemnité de rupture, du seul fait de la
+    // suspension, de la modification ou du retrait de l'agrément » ; retrait forcé « à la date de notification de la suspension,
+    // de la modification ou du retrait de l'agrément par le conseil départemental ».
+    preavisLabel = 'Pas de préavis : l’agrément s’impose, le contrat s’arrête à la date de la décision du conseil départemental';
   } else if (motif === 'retrait' || motif === 'demission') {
     const p = preavisEmployeur(anc);
     preavisLabel = p.label;
     preavisFin = finPreavis(depart, p);
     // T-104 (R-ABS-07) : préavis fait en entier, suspendu par un congé de maternité ou un arrêt pour accident du travail ou
     // maladie professionnelle (CCN 64.1) : la fin du contrat est reculée d'autant.
+    // T-107 (cas 1) : et par les congés payés pris pendant le préavis, sauf accord écrit et signé de cumul (CCN 64.1).
     if (!inexecution) {
-      const prorogee = finPreavisProrogee(depart, preavisFin, ctx.leaves);
+      if (cumulCpADemander(c.start, { motif, notif, presentation, cumulCpPreavis }, ctx.leaves)) refusFin.push(MESSAGE_CUMUL_CP_A_REPONDRE);
+      else if (cumulCpPreavis === true && cumulCpADemander(c.start, { motif, notif, presentation }, ctx.leaves)) {
+        alertes.push('Congés payés pris pendant le préavis avec un accord écrit et signé des parents : le préavis n’est pas suspendu (convention, article 64.1). Garde cet accord.');
+      }
+      const prorogee = finPreavisProrogee(depart, preavisFin, ctx.leaves, cumulCpPreavis);
       if (prorogee !== preavisFin) { alertes.push(messageProrogation(preavisFin, prorogee)); preavisFin = prorogee; }
     }
     // T-103 (F1, F2 ; décision du DG du 24/11/2026) : une seule date de fin. Le jour de la première présentation est le premier
@@ -315,12 +345,12 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   // l'initiative de l'employeur, « le dernier jour travaillé » si elle est à l'initiative du salarié. Art. 64.2, al. 2 : avec
   // l'accord de l'employeur, « le contrat de travail prend fin au dernier jour travaillé » ; aucune indemnité n'est prévue
   // pour l'AM (service-public.fr F33164 et F16842 : l'AM « n'est pas payée pour la partie du préavis non réalisé »).
-  // T-074 : la dispense par les parents est aussi calculée. Seul le départ sans accord reste refusé (T-045-corrections.md).
-  const refusFin: string[] = [];
+  // T-074 : la dispense par les parents est aussi calculée. T-107 (cas 2) : le départ sans accord aussi.
   let employeurValide = false;
   let dispense: { du: ISODate; au: ISODate } | undefined;
   let dernierJour = preavisFin;
   let finAuDernierJourTravaille = false;
+  let indemniteDueParents: FinResult['indemniteDueParents'];
   if (inexecution) {
     const d = inexecution.dernierJourTravaille;
     if (motif !== 'retrait' && motif !== 'demission') {
@@ -347,15 +377,30 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
       // payée comme salaire (art. 105), sans entretien.
       if (d < preavisFin) dispense = { du: addDays(d, 1) > depart ? addDays(d, 1) : depart, au: preavisFin };
     } else {
+      // T-107 (cas 2) : CCN 64, le contrat finit « au dernier jour travaillé, en cas d'inexécution totale ou partielle du préavis
+      // à l'initiative du salarié » ; CCN 64.2, al. 2 : « À défaut d'accord entre les parties, l'inexécution totale ou partielle du
+      // préavis imposée par le salarié ouvre droit, au profit du particulier employeur, à une indemnité égale au montant de la
+      // rémunération nette correspondant à la durée non exécutée du préavis. » C. trav. L1225-34 (CASF L423-2, 3°) : « La
+      // salariée en état de grossesse médicalement constaté peut rompre son contrat de travail sans préavis et sans devoir de ce
+      // fait d'indemnité de rupture. »
       dernierJour = d;
-      refusFin.push(`Préavis non fait sans l’accord des parents : le contrat finit le ${shortDate(d)}, ton dernier jour travaillé (convention, article 64). Les parents peuvent te demander une indemnité égale au salaire net de la partie du préavis non faite (article 64.2) et des dommages et intérêts (code de l’action sociale et des familles, article L423-26). L’app ne calcule pas ce cas. Renseigne-toi avant de partir (relais petite enfance, DREETS).`);
+      finAuDernierJourTravaille = true;
+      if (motif === 'demission' && grossesse === undefined) {
+        refusFin.push(MESSAGE_GROSSESSE_A_REPONDRE);
+      } else if (motif === 'demission' && grossesse) {
+        indemniteDueParents = { net: 0, du: addDays(d, 1), au: preavisFin };
+        alertes.push(`Démission pendant ta grossesse, sans faire ton préavis : c’est ton droit. Tu ne dois rien aux parents pour le préavis non fait (code du travail, article L1225-34). Le contrat finit le ${shortDate(d)}, ton dernier jour travaillé (convention, article 64). Garde le certificat médical de grossesse.`);
+      } else if (d < preavisFin) {
+        indemniteDueParents = { net: icpDispense(c, addDays(d, 1), preavisFin).net, du: addDays(d, 1), au: preavisFin };
+        alertes.push(`Préavis non fait sans l’accord des parents : le contrat finit le ${shortDate(d)}, ton dernier jour travaillé (convention, article 64). Les parents peuvent te demander une indemnité égale au salaire net de la partie du préavis non faite, du ${shortDate(addDays(d, 1))} au ${shortDate(preavisFin)} : ${euros(indemniteDueParents.net)} (convention, article 64.2). Ce n’est pas retiré des sommes ci-dessous : c’est à eux de la demander.`);
+      }
     }
   }
   // T-045 (B-2) : une date de fin du contrat déjà saisie avant la fin calculée n'est jamais dépassée en silence.
   // T-045b (C3-1) : une date saisie après la fin calculée non plus. Admises : la fin calculée et les autres fins possibles du
   // préavis fait en entier (lendemain, préavis d'un mois de la démission de 3 mois à 1 an), dont les montants sont déjà
   // donnés « à confirmer » ; avec un préavis non fait à la demande de l'AM, seul le dernier jour travaillé.
-  const finAdmise = (e: ISODate) => e === dernierJour || (!finAuDernierJourTravaille && finsAdmises(c.start, { motif, notif, presentation }, regionDe(c) === 'alsaceMoselle', inexecution ? [] : ctx.leaves).admises.includes(e));
+  const finAdmise = (e: ISODate) => e === dernierJour || (!finAuDernierJourTravaille && finsAdmises(c.start, { motif, notif, presentation, cumulCpPreavis }, regionDe(c) === 'alsaceMoselle', inexecution ? [] : ctx.leaves).admises.includes(e));
   // T-104 (R-ABS-06) : protection de l'AM pendant et après un congé de naissance (C. trav. L1225-4, L1225-4-1, L1225-4-5,
   // applicables par CASF L423-2, 3° ; Cass. soc. 31/01/2018, n° 16-17.886, publié : retrait d'enfant d'une AM annulé). Les
   // montants sont calculés comme la fin enregistrée ; l'app dit la règle.
@@ -520,6 +565,11 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     }
   } else if (motif === 'demission') {
     ruptureExplication = 'Pas d’indemnité de rupture en cas de démission.';
+  } else if (motif === 'agrement') {
+    // T-107 (cas 5) : CCN 119.3 (« ni indemnité de rupture ») et 121.1 (indemnité « pas due […] en cas de modification ou de
+    // suspension ou de retrait d'agrément »). L'ICCP est versée (119.3, renvoi à l'art. 67), et la régularisation de l'art. 124.
+    ruptureExplication = 'Pas d’indemnité de rupture quand l’agrément est suspendu, modifié ou retiré (convention, articles 119.3 et 121.1). Tes congés non pris te sont payés.';
+    alertes.push(`Agrément suspendu, modifié ou retiré : le contrat est rompu sans préavis à la date de la décision du conseil départemental (${shortDate(notif)}) ; les parents te notifient le retrait forcé de l’enfant par lettre recommandée ou remise en main propre (convention, article 119.3).`);
   } else if (motif === 'faute_grave') {
     ruptureExplication = 'Pas d’indemnité de rupture en cas de faute grave (à contester si elle est injustifiée).';
   } else {
@@ -551,6 +601,7 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
     indemnitePreavis, indemnitePreavisExplication,
     regularisation: regularisation_, regulMinutes, cpJoursRestants, cpIndemnite, cpDixiemeEnCours, cpExplication, cpAConfirmer, regularisationNonCalculee, manquants, alertes,
     ...(dispense && icp ? { dispense: { ...dispense, ...icp } } : {}),
+    ...(indemniteDueParents ? { indemniteDueParents } : {}),
   };
 }
 
@@ -568,20 +619,49 @@ export const FIN_CDD_LABEL: Record<FinCdd | FinCddNonGere, { l: string; sub?: st
   employeur: { l: 'Fin avant la date, voulue par le parent, sans faute grave' },
   faute_grave: { l: 'Fin pour faute grave' },
   essai: { l: 'Fin pendant la période d’essai' },
-  force_majeure: { l: 'Force majeure', sub: 'Non géré par l’app' },
-  inaptitude: { l: 'Inaptitude constatée par le médecin du travail', sub: 'Non géré par l’app' },
-  jeune_vacances: { l: 'CDD d’un jeune pendant ses vacances scolaires ou universitaires', sub: 'Non géré par l’app' },
-  saisonnier_usage: { l: 'CDD saisonnier ou d’usage', sub: 'Non géré par l’app' },
-  autre: { l: 'Autre cas', sub: 'Agrément suspendu ou retiré, décès de l’enfant… : non géré par l’app' },
+  // T-107 (cas 4) : fins calculées (regles/t107-fins-cdd.md).
+  force_majeure: { l: 'Fin avant la date, pour force majeure', sub: 'Un événement imprévisible et irrésistible, extérieur au parent et à toi, rend l’accueil impossible' },
+  inaptitude: { l: 'Fin avant la date, pour inaptitude constatée par le médecin du travail' },
+  agrement: { l: 'Fin avant la date : mon agrément est suspendu ou retiré', sub: 'Décision du conseil départemental' },
+  jeune_vacances: { l: 'CDD d’un jeune pendant ses vacances scolaires ou universitaires', sub: 'À la date de fin prévue' },
+  saisonnier: { l: 'CDD saisonnier, à la date de fin prévue', sub: 'Accueil qui revient chaque année aux mêmes saisons. Le CDD d’usage n’existe pas pour une assistante maternelle : à la date de fin, choisis « Le CDD arrive à sa date de fin ».' },
+  // Anciennes valeurs (jamais enregistrées, décision D17) : libellés gardés pour la lecture.
+  saisonnier_usage: { l: 'CDD saisonnier ou d’usage' },
+  autre: { l: 'Autre cas' },
 };
+
+/**
+ * T-107 (cas 4) : CDD rompu par la suspension ou le retrait de l'agrément (regles/t107-fins-cdd.md). CASF L423-24, al. 2 : « Le
+ * particulier employeur qui ne peut plus confier d'enfant à un assistant maternel qu'il employait depuis trois mois au moins, en
+ * raison de la suspension ou du retrait de l'agrément de celui-ci […] doit notifier à l'intéressé la rupture du contrat de
+ * travail par lettre recommandée avec demande d'avis de réception. Les charges liées à la rupture du contrat de travail
+ * consécutives à la suspension ou au retrait de l'agrément ne peuvent être supportées par le particulier employeur. » L'IFC, due
+ * ici du seul fait de cette rupture, en est une : pas d'IFC depuis trois mois d'emploi. Avant trois mois, aucun texte ne
+ * l'exclut (L1243-10) : IFC due (L1243-8). L'indemnité de congés payés n'est pas une charge de la rupture : elle paie des
+ * congés acquis (CCN 67 ; comme pour le CDI, CCN 119.3). Pas de dommages et intérêts : la rupture n'est pas « à l'initiative de
+ * l'employeur » (L1243-4) ; elle s'impose (CASF L421-1 : l'AM exerce « après avoir été agréé »).
+ */
+const IFC_AGREMENT = false;
+const MESSAGE_IFC_AGREMENT = 'Pas d’indemnité de fin de contrat : ton agrément est suspendu ou retiré, et les charges de cette rupture ne peuvent pas être payées par le parent (code de l’action sociale et des familles, article L423-24).';
+/** IFC due pour cette fin de ce CDD (R-CDD-08 ; T-107 : agrément selon les trois mois d'emploi de L423-24) */
+function ifcDue(c: Ctx['c'], fin: FinCdd, dernierJour: ISODate): boolean {
+  if (fin === 'agrement') return fullMonthsBetween(c.start, addDays(dernierJour, 1)) < 3;
+  return IFC_DUE[fin];
+}
 
 /** R-CDD-08 : l'IFC est-elle due ? (table de décision du rapport, une ligne par fin) */
 const IFC_DUE: Record<FinCdd, boolean> = {
   terme: true, suite_cdi: false, refus_cdi: false, initiative_am: false, faute_grave: false, essai: false, commun_accord: true, employeur: true,
+  // T-107 (cas 4) : L1243-10, 1° (saisonnier), 2° (jeune pendant ses vacances), 4° (force majeure) ; inaptitude : non exclue.
+  jeune_vacances: false, saisonnier: false, force_majeure: false, inaptitude: true, agrement: IFC_AGREMENT,
 };
 
 /** Raison affichée quand l'IFC n'est pas due (R-CDD-08, textes cités) */
-const IFC_NON_DUE: Record<Exclude<FinCdd, 'terme' | 'commun_accord' | 'employeur'>, string> = {
+const IFC_NON_DUE: Partial<Record<FinCdd, string>> = {
+  jeune_vacances: 'Pas d’indemnité de fin de contrat : CDD conclu avec un jeune pour une période comprise dans ses vacances scolaires ou universitaires (code du travail, article L1243-10, 2°).',
+  saisonnier: 'Pas d’indemnité de fin de contrat pour un CDD saisonnier (code du travail, articles L1242-2, 3°, et L1243-10, 1°).',
+  force_majeure: 'Pas d’indemnité de fin de contrat quand le CDD est rompu pour force majeure (code du travail, article L1243-10, 4°).',
+  agrement: MESSAGE_IFC_AGREMENT,
   suite_cdi: 'Pas d’indemnité de fin de contrat : ton CDD continue en CDI (code du travail, articles L1243-8 et L1243-11).',
   refus_cdi: 'Pas d’indemnité de fin de contrat : tu as refusé un CDI pour le même accueil, à salaire au moins égal (code du travail, article L1243-10, 3°).',
   initiative_am: 'Pas d’indemnité de fin de contrat : le CDD s’arrête avant la date à ta demande (code du travail, article L1243-10, 4°).',
@@ -589,14 +669,18 @@ const IFC_NON_DUE: Record<Exclude<FinCdd, 'terme' | 'commun_accord' | 'employeur
   essai: 'Pas d’indemnité de fin de contrat pendant la période d’essai (code du travail, article L1242-11, 4°).',
 };
 
-/** Fins de CDD non gérées (R-CDD-08, partie 6 du rapport) : message précis, aucun montant */
+/**
+ * T-076 : fins de CDD non gérées. T-107 : plus aucune ; anciennes valeurs (jamais enregistrées) renvoyées vers le bon choix.
+ */
 export const MESSAGES_FIN_CDD_NON_GEREE: Record<FinCddNonGere, string> = {
-  force_majeure: 'Fin du CDD pour force majeure : non géré. L’app ne calcule pas ce cas (indemnité de fin de contrat non due, indemnité possible en cas de sinistre : code du travail, articles L1243-10 et L1243-4). Fais ta fin de contrat sans l’app.',
-  inaptitude: 'Fin du CDD pour inaptitude : non géré. La convention ne règle l’inaptitude que pour le CDI, et l’app ne calcule pas ce cas. Fais ta fin de contrat sans l’app.',
-  jeune_vacances: 'CDD d’un jeune pendant ses vacances scolaires ou universitaires : non géré. L’indemnité de fin de contrat n’est pas due (code du travail, article L1243-10, 2°), mais l’app ne calcule pas ce cas. Fais ta fin de contrat sans l’app.',
-  saisonnier_usage: 'CDD saisonnier ou d’usage : non géré. Ce n’est pas un cas prévu pour une assistante maternelle employée par un particulier, et l’app ne le calcule pas. Fais ta fin de contrat sans l’app.',
-  autre: 'L’app ne calcule pas ce cas (agrément suspendu ou retiré, décès de l’enfant ou autre). Fais ta fin de contrat sans l’app.',
+  saisonnier_usage: 'Choisis de nouveau comment finit le CDD : « CDD saisonnier », ou, à la date de fin, « Le CDD arrive à sa date de fin » (le CDD d’usage n’existe pas pour une assistante maternelle : code du travail, article D1242-1).',
+  autre: 'Choisis de nouveau comment finit le CDD dans la liste (agrément suspendu ou retiré, force majeure, inaptitude…).',
 };
+
+/** T-107 (cas 4) : questions de l'écran Fin d'un CDD rompu pour force majeure (C. trav. L1243-4, al. 2) */
+export const QUESTION_SINISTRE = 'La force majeure est-elle un sinistre (incendie, inondation, tempête…) ?';
+export const MESSAGE_SINISTRE_A_REPONDRE = `Fin du CDD pour force majeure : ${QUESTION_SINISTRE.toLowerCase()} Si oui, le parent te doit une indemnité égale aux salaires que tu aurais touchés jusqu’à la date de fin prévue (code du travail, article L1243-4). Réponds à la question.`;
+export const MESSAGE_TERME_SINISTRE = 'CDD de remplacement sans date de fin précise, rompu pour un sinistre : indique la date à laquelle la personne remplacée devait revenir. L’indemnité couvre les salaires jusqu’à cette date (code du travail, articles L1242-7 et L1243-4).';
 
 export const MESSAGE_CDD_PAS_DE_PREAVIS = 'À la fin d’un CDD, il n’y a ni préavis ni indemnité de rupture.';
 export const MESSAGE_CDD_DOCUMENTS = 'Ton employeur te remet le certificat de travail, l’attestation France Travail et le reçu pour solde de tout compte.';
@@ -679,7 +763,7 @@ function coeurCdd(endCtx: Ctx, dernierJour: ISODate, finCdd: FinCdd, enfants: nu
 
   // Étape 4 : IFC nette = arrondi(10 % × assiette nette) (R-CDD-07, direction T-076), si elle est due (R-CDD-08).
   // T-103 (F10, décision du DG du 24/11/2026) : sans l'indemnité de congés non pris (circulaire DRT n° 18/90, § 4.2.3 ; Urssaf).
-  const due = IFC_DUE[finCdd];
+  const due = ifcDue(c, finCdd, dernierJour);
   const ifc = due ? Math.round(netCdd / 10) : 0;
   const ifcInconnu = due && incomplets.size ? `Indemnité de fin de contrat non calculée : elle ne compte pas encore ${joindreNi([...incomplets])}.` : undefined;
 
@@ -773,8 +857,11 @@ const joindreNi = (l: string[]) => (l.length <= 1 ? l.join('') : `${l.slice(0, -
  * est « à confirmer », hors du total. P3 et P4 : même principe sur l'ICCP et l'IFC.
  * `motifCdi` : motif de CDI reçu pour un CDD (refusé).
  */
-export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCddNonGere | undefined, enfants = 0, motifCdi?: Motif): FinResult {
+export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCddNonGere | undefined, enfants = 0, motifCdi?: Motif,
+  reponses?: Pick<Rupture, 'sinistre' | 'termeSinistre'>): FinResult {
   const c = ctx.c;
+  const sinistre = reponses ? reponses.sinistre : c.rupture?.sinistre;
+  const termeSinistre = reponses ? reponses.termeSinistre : c.rupture?.termeSinistre;
   const anc = fullMonthsBetween(c.start, dernierJour);
   const vide = (nonGere: string[], alertes: string[] = []): FinResult => ({
     ancienneteMois: anc, preavisLabel: 'Pas de préavis : fin de CDD', preavisFin: dernierJour, dernierJour, indemniteRupture: 0,
@@ -785,17 +872,18 @@ export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCdd
   if (!c.cdd) return vide(['Ce contrat est un CDI : la fin « fin de CDD » ne s’applique pas. Choisis qui arrête et pourquoi.']);
   if (motifCdi && motifCdi !== 'fin_cdd') return vide(['Ce contrat est un CDD : les règles de fin d’un CDI (lettre, préavis, indemnité de rupture) ne s’appliquent pas. Dis comment finit le CDD.']);
   if (!finCdd) return vide(['Dis comment finit le CDD : l’indemnité de fin de contrat en dépend.']);
-  if ((FINS_CDD_NON_GEREES as string[]).includes(finCdd)) return vide([MESSAGES_FIN_CDD_NON_GEREE[finCdd as FinCddNonGere]]);
+  if (Object.prototype.hasOwnProperty.call(MESSAGES_FIN_CDD_NON_GEREE, finCdd)) return vide([MESSAGES_FIN_CDD_NON_GEREE[finCdd as FinCddNonGere]]);
   // Revue 2 (r1) : une valeur de fin que l'app ne connaît pas n'est jamais calculée comme une fin ordinaire.
   if (!(FINS_CDD as string[]).includes(finCdd)) return vide([`Fin de CDD inconnue de l’app (« ${finCdd} ») : rien n’est calculé. Choisis comment finit le CDD dans la liste.`]);
   const fin = finCdd as FinCdd;
   if (dernierJour < c.start) return vide([`Le dernier jour (${shortDate(dernierJour)}) est avant le début du contrat (${shortDate(c.start)}). Corrige la date.`]);
   const alertes: string[] = [];
-  if (fin === 'terme' && c.cddTerme && dernierJour < c.cddTerme) {
-    return vide([`Tu as choisi « le CDD arrive à sa date de fin », mais le dernier jour (${shortDate(dernierJour)}) est avant la ${c.cddTermeImprecis ? 'fin de la durée minimale' : 'date de fin prévue'} (${shortDate(c.cddTerme)}). Choisis comment le CDD s’est arrêté avant la date, ou corrige la date : l’indemnité de fin de contrat en dépend.`]);
+  // T-107 (cas 4) : CDD d'un jeune pendant ses vacances et CDD saisonnier : fins au terme, comme `terme`.
+  if ((fin === 'terme' || fin === 'jeune_vacances' || fin === 'saisonnier') && c.cddTerme && dernierJour < c.cddTerme) {
+    return vide([`Tu as choisi « ${fin === 'terme' ? 'le CDD arrive à sa date de fin' : FIN_CDD_LABEL[fin].l.replace(/, à la date de fin prévue$/, '')} »${fin === 'terme' ? '' : ', une fin à la date prévue'}, mais le dernier jour (${shortDate(dernierJour)}) est avant la ${c.cddTermeImprecis ? 'fin de la durée minimale' : 'date de fin prévue'} (${shortDate(c.cddTerme)}). Choisis comment le CDD s’est arrêté avant la date, ou corrige la date : l’indemnité de fin de contrat en dépend.`]);
   }
   // Décision D9 de la direction (22/11/2026) : cohérence des dates face au terme précis.
-  const anticipees: FinCdd[] = ['initiative_am', 'commun_accord', 'employeur', 'faute_grave', 'essai'];
+  const anticipees: FinCdd[] = ['initiative_am', 'commun_accord', 'employeur', 'faute_grave', 'essai', 'force_majeure', 'inaptitude', 'agrement'];
   if (anticipees.includes(fin) && c.cddTerme && !c.cddTermeImprecis && dernierJour >= c.cddTerme) {
     return vide([`Tu as choisi une fin avant la date, mais le dernier jour (${shortDate(dernierJour)}) est ${dernierJour === c.cddTerme ? 'la' : 'après la'} date de fin prévue (${shortDate(c.cddTerme)}). Au terme, choisis « ${FIN_CDD_LABEL.terme.l} » ; sinon corrige la date.`]);
   }
@@ -805,22 +893,25 @@ export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCdd
   // d'essai écrite au contrat, elle ne contrôle que cette limite sûre).
   // N1 (relecture 2) : limite de deux semaines pour un CDD de six mois ou moins, d'un mois sinon, et un jour par semaine ;
   // entre les deux façons de compter les semaines, refus avec message (aucun texte ne tranche).
+  // T-107 (cas 7, regles/t107-essai-cdd.md) : le maximum légal est celui des semaines entières (`court`). L1242-10 : l'essai « ne
+  // peut excéder une durée calculée à raison d'un jour par semaine » : au plus un septième de la durée du contrat. L'essai se
+  // compte en jours calendaires entiers (Cass. soc. 28/04/2011, n° 09-72.165, publié) : le plus grand nombre de jours qui ne
+  // dépasse pas ce septième est celui des semaines entières ; compter la semaine commencée donnerait plus d'un jour par semaine.
+  // Un essai écrit plus long ne vaut pas au-delà (Cass. soc. 11/06/1987, n° 84-41.299, publié) ; une rupture après le maximum
+  // légal n'est pas une rupture pendant l'essai (Cass. soc. 07/03/2000, n° 97-44.486, publié).
   const essai = fin === 'essai' ? finEssaiCdd(c) : undefined;
-  if (fin === 'essai' && (dernierJour >= addMonthsToDate(c.start, 1) || (essai && dernierJour > essai.long))) {
-    return vide([`Tu as choisi « ${FIN_CDD_LABEL.essai.l} », mais le dernier jour (${shortDate(dernierJour)}) est après la fin possible de la période d’essai (au plus tard le ${shortDate(essai && essai.long < addDays(addMonthsToDate(c.start, 1), -1) ? essai.long : addDays(addMonthsToDate(c.start, 1), -1))}). L’essai d’un CDD compte un jour par semaine, au plus deux semaines si le CDD dure six mois ou moins, un mois sinon (code du travail, article L1242-10). Choisis comment le CDD a fini, ou corrige la date : l’indemnité de fin de contrat en dépend.`]);
+  if (fin === 'essai' && (dernierJour >= addMonthsToDate(c.start, 1) || (essai && dernierJour > essai.court))) {
+    const max = essai && essai.court < addDays(addMonthsToDate(c.start, 1), -1) ? essai.court : addDays(addMonthsToDate(c.start, 1), -1);
+    const ecritPlusLong = !!(c.cddEssaiFin && c.cddEssaiFin > max);
+    return vide([`Tu as choisi « ${FIN_CDD_LABEL.essai.l} », mais le dernier jour (${shortDate(dernierJour)}) est après la fin possible de la période d’essai (au plus tard le ${shortDate(max)}). L’essai d’un CDD compte un jour par semaine entière, au plus deux semaines si le CDD dure six mois ou moins, un mois sinon (code du travail, article L1242-10).${ecritPlusLong ? ` Ton contrat prévoit un essai jusqu’au ${shortDate(c.cddEssaiFin!)} : la partie au-delà du ${shortDate(max)} ne vaut pas (Cour de cassation, 11/06/1987 et 07/03/2000).` : ''} Ce n’est donc pas une fin pendant l’essai : choisis comment le CDD a fini (à ta demande, voulue par le parent…), ou corrige la date. L’indemnité de fin de contrat en dépend.`]);
   }
   // T-103 (D10) : CCN 41.1, la durée de l'essai est écrite au contrat : l'app la demande une fois (B). Un dernier jour après
-  // l'essai écrit n'est pas une fin pendant l'essai. Reste un cas rare (C) : essai écrit plus long que le maximum sûr et
-  // dernier jour entre les deux comptes des semaines ; aucun texte ni arrêt publié lu ne dit comment compter une semaine
-  // commencée (L1242-10 ; Cass. soc. 28/04/2011, n° 09-72.165 : essai en jours calendaires, sans réponse sur ce point).
+  // l'essai écrit n'est pas une fin pendant l'essai. T-107 (cas 7) : le cas C (semaine commencée) est tranché plus haut.
   if (fin === 'essai' && !c.cddEssaiFin) {
     return vide([MESSAGE_CDD_ESSAI_A_SAISIR]);
   }
   if (fin === 'essai' && c.cddEssaiFin && dernierJour > c.cddEssaiFin) {
     return vide([`Tu as choisi « ${FIN_CDD_LABEL.essai.l} », mais le dernier jour (${shortDate(dernierJour)}) est après la fin de la période d’essai écrite au contrat (${shortDate(c.cddEssaiFin)}). Choisis comment le CDD a fini, ou corrige la date : l’indemnité de fin de contrat en dépend.`]);
-  }
-  if (fin === 'essai' && essai && dernierJour > essai.court) {
-    return vide([`Cas non géré : ton contrat prévoit un essai jusqu’au ${shortDate(c.cddEssaiFin!)}, plus long que le maximum sûr de la loi (jusqu’au ${shortDate(essai.court)}, un jour par semaine entière : code du travail, article L1242-10). Le dernier jour (${shortDate(dernierJour)}) est dans l’essai seulement si l’on compte aussi la semaine commencée (jusqu’au ${shortDate(essai.long)}). Aucun texte ni arrêt publié lu ne dit comment compter cette semaine. L’indemnité de fin de contrat en dépend : l’app ne calcule pas cette fin.`]);
   }
 
   if (fin !== 'suite_cdi' && c.cddTerme && !c.cddTermeImprecis && dernierJour > c.cddTerme) {
@@ -828,6 +919,18 @@ export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCdd
     // durée déterminée, celui-ci devient un contrat à durée indéterminée. » Un report écrit du terme (L1243-7, renouvellement)
     // change la date de fin prévue du contrat.
     return vide([`Le dernier jour (${shortDate(dernierJour)}) est après la date de fin prévue du CDD (${shortDate(c.cddTerme)}). Si la date a été reportée (renouvellement écrit, ou retour de la personne remplacée : code du travail, article L1243-7), mets la nouvelle date de fin prévue dans le contrat. Sinon, si tu as continué à travailler après la date sans nouveau contrat, ton CDD est devenu un CDI (code du travail, article L1243-11) : l’app ne calcule pas ce cas comme une fin de CDD.`]);
+  }
+  // T-107 (cas 4) : force majeure, sinistre (L1243-4, al. 2) : réponse demandée une fois ; sans terme précis, la date prévue
+  // du retour de la personne remplacée aussi (L1242-7 : le CDD a pour terme la fin de l'absence).
+  let periodeSinistre: { du: ISODate; au: ISODate } | undefined;
+  if (fin === 'force_majeure') {
+    if (sinistre === undefined) return vide([MESSAGE_SINISTRE_A_REPONDRE]);
+    if (sinistre) {
+      const terme = c.cddTermeImprecis ? termeSinistre : c.cddTerme;
+      if (!terme) return vide([c.cddTermeImprecis ? MESSAGE_TERME_SINISTRE : 'CDD sans date de fin prévue : indique-la dans le contrat.']);
+      if (terme <= dernierJour) return vide([`La date de fin prévue (${shortDate(terme)}) n’est pas après le dernier jour (${shortDate(dernierJour)}) : vérifie les dates. L’indemnité du sinistre couvre les salaires entre les deux.`]);
+      periodeSinistre = { du: addDays(dernierJour, 1), au: terme };
+    }
   }
   const endCtx: Ctx = { ...ctx, c: { ...c, end: dernierJour }, cache: new Map(), finControlee: true };
   const nonGere = nonGeresPeriode(endCtx.c, ctx.leaves, c.start, dernierJour, 'non');
@@ -845,13 +948,29 @@ export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCdd
   const finMois = lastDay(monthOf(dernierJour));
   // Brut affiché seulement, dérivé du net (rapport fixe de l'app).
   const brutCdd = brutDuNet(c, assiette, finMois);
-  const due = IFC_DUE[fin];
+  const due = ifcDue(c, fin, dernierJour);
   const ifcNet = ifc.valeur;
   const ifcExplication = !due
     ? IFC_NON_DUE[fin as keyof typeof IFC_NON_DUE]
     : ifc.inconnu ? 'Non calculée : voir l’encadré plus haut.'
       : `10 % de ${euros(assiette)} de salaires nets du CDD (code du travail, article L1243-8 ; l’Urssaf la fait déclarer et payer en net). Les indemnités d’entretien, de repas et de kilomètres ne comptent pas.`;
   if (fin === 'employeur') alertes.push(MESSAGE_CDD_DOMMAGES);
+  // T-107 (cas 4) : C. trav. L1243-4, al. 2 : « Lorsque ce contrat est rompu avant l'échéance du terme en raison d'un sinistre
+  // relevant d'un cas de force majeure, le salarié a également droit à une indemnité compensatrice dont le montant est égal aux
+  // rémunérations qu'il aurait perçues jusqu'au terme du contrat. » Rémunérations : salaire mensualisé de chaque mois, au prorata
+  // de l'art. 111 pour un mois partiel (même calcul que l'indemnité compensatrice de préavis, CCN 122). Hors de la base des
+  // congés et de l'IFC : elle couvre une période après le contrat (L1242-16 et CCN 48.1.1.5 comptent la rémunération « pendant la
+  // durée de son contrat » ou de la période de référence, qui finit avec le contrat : CCN 48.1.1.1).
+  let indemniteSinistre: FinResult['indemniteSinistre'];
+  if (periodeSinistre) {
+    indemniteSinistre = { ...periodeSinistre, net: icpDispense({ ...c, end: undefined, rupture: undefined }, periodeSinistre.du, periodeSinistre.au).net };
+    alertes.push(`Sinistre : le parent te verse une indemnité égale aux salaires que tu aurais touchés du ${shortDate(periodeSinistre.du)} au ${shortDate(periodeSinistre.au)}, date de fin prévue du CDD : ${euros(indemniteSinistre.net)} net (code du travail, article L1243-4). Elle s’ajoute aux sommes de la fin.`);
+  }
+  if (fin === 'force_majeure') alertes.push('Force majeure : un événement imprévisible, irrésistible et extérieur aux deux parties rend l’accueil impossible. Si le parent invoque la force majeure sans que ce soit le cas, la rupture lui ouvre des dommages et intérêts pour toi (code du travail, article L1243-4) : renseigne-toi (relais petite enfance, DREETS).');
+  if (fin === 'agrement') alertes.push(`Agrément suspendu ou retiré : tu ne peux plus accueillir l’enfant (code de l’action sociale et des familles, article L421-1). Le parent te notifie la rupture par lettre recommandée${due ? '' : ' ; les charges de cette rupture ne sont pas pour lui (article L423-24)'}. Pas de dommages et intérêts. Tes congés non pris te sont payés.`);
+  if (fin === 'inaptitude') alertes.push('Inaptitude constatée par le médecin du travail : le CDD peut être rompu avant la date (code du travail, article L1243-1). Pas de dommages et intérêts (article L1243-4), mais l’indemnité de fin de contrat est due.');
+  if (fin === 'jeune_vacances') alertes.push('Ce cas ne vaut que si le CDD a été conclu avec toi pendant tes vacances scolaires ou universitaires, alors que tu fais tes études (code du travail, article L1243-10, 2°).');
+  if (fin === 'saisonnier') alertes.push('Un CDD saisonnier porte sur des tâches qui reviennent chaque année à des dates à peu près fixes, selon les saisons (code du travail, article L1242-2, 3°). Sinon, c’est une fin au terme : l’indemnité de fin de contrat est due.');
   if (fin === 'suite_cdi') alertes.push('Ton CDD continue en CDI : dans l’app, ne termine pas ce contrat. Ouvre-le et passe-le en CDI. Tu gardes l’ancienneté du CDD (code du travail, article L1243-11) : elle compte pour le préavis et l’indemnité de rupture du CDI, et les salaires du CDD restent dans ceux du contrat.');
   // Messages du contrat (motif « autre », plus de 18 mois) ; la règle des 12 mois concerne les mois, pas la fin.
   for (const m of messagesCdd(c)) {
@@ -872,6 +991,7 @@ export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCdd
     alertes,
     cdd: true, finCdd: fin, ifc: brutDuNet(c, ifcNet, finMois), ifcNet, ifcExplication, brutCdd, assietteNetteCdd: assiette,
     ...(ifc.inconnu ? { ifcAConfirmer: ifc.inconnu } : {}),
+    ...(indemniteSinistre ? { indemniteSinistre } : {}),
     declaration: due && ifc.valeur > 0 ? [{ champ: 'mntIndPrecarite', libelle: 'Indemnité de précarité', net: ifcNet, hint: 'Montant net. Elle ne correspond à aucune heure : ne l’ajoute ni aux heures ni aux jours.' }] : [],
   };
 }

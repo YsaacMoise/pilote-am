@@ -50,8 +50,9 @@ const leave = (type: AbsenceLue['type'], from: string, to: string): AmLeave => n
 
 describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
   for (const [nom, over, motif] of [
-    // T-077 : l'Alsace-Moselle est calculée ; l'accueil de 47 à 51 semaines reste refusé (A-01).
-    ['47 à 51 semaines (A-01)', { yearType: 'incomplete', weeks: 48 }, /47 à 51 semaines par an : non géré/],
+    // T-077 : l'Alsace-Moselle est calculée. T-107 (cas 3) : 47 à 51 semaines, c'est l'accueil sur 52 semaines (CCN 97.1,
+    // 102.2) : le contrat est à passer en année complète, donnée demandée une fois ; aucun montant avant.
+    ['47 à 51 semaines (A-01), contrat à passer en année complète', { yearType: 'incomplete', weeks: 48 }, /Plus de 46 semaines d’accueil par an.*« Année complète »/],
     // T-076 : planning variable sans ses données (cycle ou plannings, heures payées chaque mois) : contrat à compléter.
     ['horaires qui changent (semaines A et B), données absentes', { planningVariable: true }, /semaines A et B.*contrat à compléter/],
     // T-104 : l'accueil occasionnel est calculé ; sans ses périodes d'accueil, le contrat est à compléter.
@@ -90,7 +91,7 @@ describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
   });
   it('congés : jours acquis et indemnité à confirmer, juin sans complément versé', () => {
     const ctx = makeCtx(ok({ yearType: 'incomplete', weeks: 48 }), [], [], '2026-10-31');
-    expect(acquisition(ctx, 2025).aConfirmer?.message).toMatch(/47 à 51 semaines/);
+    expect(acquisition(ctx, 2025).aConfirmer?.message).toMatch(/Plus de 46 semaines/);
     expect(indemnite(ctx, 2025).aConfirmer).toBeDefined();
     const juin = cpForMonth(ctx, '2026-06');
     expect(juin.complement).toBe(0);
@@ -98,7 +99,7 @@ describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
   });
   it('soldes de départ (reprise) : pas proposés', () => {
     const s = soldesDeDepart(ok({ yearType: 'incomplete', weeks: 48, start: '2024-09-01' }), '2026-10-01', 0);
-    expect(s.aConfirmer).toMatch(/47 à 51 semaines/);
+    expect(s.aConfirmer).toMatch(/Plus de 46 semaines/);
   });
   it('fin de contrat : aucun montant', () => {
     const f = finDeContrat(makeCtx(ok({ planningVariable: true }), [], [], '2026-10-31'), '2026-10-15', 'retrait');
@@ -145,18 +146,23 @@ describe('T-104 (remplace T-031) : congé maternité, paternité, de naissance, 
   });
 });
 
-describe('A-01 : accueil de 47 à 51 semaines (CCN art. 97.1, question 2 posée à la DDETS le 18/11/2026)', () => {
-  it('48 semaines en année incomplète : mois refusé', () => {
+describe('A-01, T-107 (cas 3) : accueil de 47 à 51 semaines (CCN art. 97.1 et 102.2)', () => {
+  it('48 semaines en année incomplète : contrat à passer en année complète (52 semaines, congés compris)', () => {
     const r = computeMonth(makeCtx(ok({ yearType: 'incomplete', weeks: 48 }), [], [], '2026-10-31'), '2026-03');
-    expect(r.nonGere.join(' ')).toMatch(/47 à 51 semaines par an : non géré/);
+    expect(r.nonGere.join(' ')).toMatch(/Plus de 46 semaines d’accueil par an, sans compter tes congés : c’est l’accueil sur 52 semaines/);
+    expect(r.nonGere.join(' ')).not.toMatch(/non géré|sans l’app/);
   });
   it('46 semaines : pas refusé à ce titre', () => {
     const r = computeMonth(makeCtx(ok({ yearType: 'incomplete', weeks: 46 }), [], [], '2026-10-31'), '2026-03');
     expect(r.nonGere.join(' ')).not.toMatch(/47 à 51/);
   });
-  it('avenant à 50 semaines : refusé', () => {
+  it('avenant à 50 semaines : avenant à passer en année complète', () => {
     const c = ok({ avenants: [{ id: 'a', from: '2026-06-01', changes: { yearType: 'incomplete', weeks: 50 } }] });
-    expect(computeMonth(makeCtx(c, [], [], '2026-10-31'), '2026-07').nonGere.join(' ')).toMatch(/47 à 51/);
+    expect(computeMonth(makeCtx(c, [], [], '2026-10-31'), '2026-07').nonGere.join(' ')).toMatch(/Plus de 46 semaines/);
+  });
+  it('passé en année complète : calculé comme un accueil sur 52 semaines (salaire 52/12)', () => {
+    const r = computeMonth(makeCtx(ok({ yearType: 'complete', weeks: 52 }), [], [], '2026-10-31'), '2026-03');
+    expect(r.nonGere).toEqual([]);
   });
 });
 

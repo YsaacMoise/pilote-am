@@ -2,7 +2,7 @@
 // Module séparé de fin.ts pour que le calcul des mois (nonGeres.ts) s'en serve sans dépendre de fin.ts.
 import { addDays, addMonthsToDate, fullMonthsBetween, shortDate, type ISODate } from './dates';
 import type { AmLeave, Contract, Rupture } from './model';
-import { finPreavisProrogee } from './suspensions';
+import { cpPendantPreavis, finPreavisProrogee, MESSAGE_CUMUL_CP_A_REPONDRE } from './suspensions';
 
 /** Durée du préavis selon l'ancienneté, rupture par l'employeur (R-FIN-02, CCN art. 120) */
 export function preavisEmployeur(anc: number): { label: string; jours?: number } {
@@ -43,13 +43,21 @@ export function finPreavisLocal(start: ISODate, r: Pick<Rupture, 'motif' | 'noti
  * maternité, accident du travail ou maladie professionnelle : suspensions.ts). Sans `leaves` : fin sans prorogation (préavis
  * dont les parents dispensent l'AM, ou fait en partie à sa demande).
  */
-export function finsAdmises(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'>, _alsaceMoselle = false, leaves: AmLeave[] = []): { preavisFin: ISODate; admises: ISODate[] } {
+export function finsAdmises(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'> & Partial<Pick<Rupture, 'cumulCpPreavis'>>, _alsaceMoselle = false, leaves: AmLeave[] = []): { preavisFin: ISODate; admises: ISODate[] } {
   // T-103 (F1, F2, R2) : une seule date de fin du préavis (fiche officielle F2883 ; CCN 120 ; pas de préavis local pour l'AM).
   if (r.motif !== 'retrait' && r.motif !== 'demission') return { preavisFin: r.notif, admises: [r.notif] };
   const anc = fullMonthsBetween(start, r.notif);
   const depart = r.presentation && r.presentation > r.notif ? r.presentation : r.notif;
-  const preavisFin = finPreavisProrogee(depart, finPreavis(depart, preavisEmployeur(anc)), leaves);
+  // T-107 (cas 1) : congés payés pendant le préavis, suspension sauf accord écrit de cumul (CCN 64.1).
+  const preavisFin = finPreavisProrogee(depart, finPreavis(depart, preavisEmployeur(anc)), leaves, r.cumulCpPreavis);
   return { preavisFin, admises: [preavisFin] };
+}
+
+/** T-107 (cas 1) : préavis fait en entier, des congés payés y tombent et la réponse sur l'accord de cumul manque */
+export function cumulCpADemander(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'> & Partial<Pick<Rupture, 'cumulCpPreavis'>>, leaves: AmLeave[]): boolean {
+  if ((r.motif !== 'retrait' && r.motif !== 'demission') || r.cumulCpPreavis !== undefined) return false;
+  const depart = r.presentation && r.presentation > r.notif ? r.presentation : r.notif;
+  return cpPendantPreavis(depart, finPreavis(depart, preavisEmployeur(fullMonthsBetween(start, r.notif))), leaves);
 }
 
 const lo2 = (a: ISODate, b: ISODate) => (a < b ? a : b);
@@ -107,13 +115,12 @@ export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'
     }
     return undefined;
   }
-  if (r.preavis === 'am_sans_accord') {
-    return {
-      du: lo(d ?? r.notif, end), au: hi(end, preavisFin),
-      message: 'Préavis non fait sans l’accord des parents : ils peuvent te demander une indemnité égale au salaire net de la partie du préavis non faite (convention, article 64.2) et des dommages et intérêts (code de l’action sociale et des familles, article L423-26). L’app ne calcule pas ce cas. Fais ces mois avec les parents.',
-    };
+  // T-107 (cas 2) : préavis non fait sans l'accord des parents : le contrat finit au dernier jour travaillé (CCN 64), comme
+  // avec leur accord ; la grossesse de l'AM qui démissionne est demandée une fois (C. trav. L1225-34).
+  if (r.preavis === 'am_sans_accord' && r.motif === 'demission' && r.grossesse === undefined && d && d >= r.notif && d <= preavisFin) {
+    return { du: lo(d, end), au: hi(end, preavisFin), message: MESSAGE_GROSSESSE_A_REPONDRE };
   }
-  if (r.preavis === 'am_acceptee') {
+  if (r.preavis === 'am_acceptee' || r.preavis === 'am_sans_accord') {
     if (!d || d < r.notif || d > preavisFin || (r.motif !== 'retrait' && r.motif !== 'demission')) {
       return { du: lo(r.notif, end), au: hi(end, preavisFin), message: 'Préavis non fait à ta demande : les dates enregistrées ne concordent pas (dernier jour travaillé manquant, avant la lettre ou après la fin du préavis). Corrige-les dans l’écran « Fin de contrat ».' };
     }
@@ -128,8 +135,14 @@ export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'
       message: `La date de fin du contrat (${shortDate(end)}) ne concorde pas avec la fin du préavis calculée (${shortDate(preavisFinFait)}) pour un préavis fait en entier. Si le préavis n’a pas été fait en entier, dis-le dans l’écran « Fin de contrat » ; sinon corrige la date de fin.`,
     };
   }
+  // T-107 (cas 1) : congés payés dans le préavis sans réponse sur l'accord écrit de cumul (CCN 64.1) : demandée une fois.
+  if (cumulCpADemander(c.start, r, leaves)) return { du: lo(r.notif, end), au: hi(end, preavisFinFait), message: MESSAGE_CUMUL_CP_A_REPONDRE };
   return undefined;
 }
+
+/** T-107 (cas 2) : question de l'écran Fin, posée une fois (démission, préavis non fait sans l'accord des parents) */
+export const QUESTION_GROSSESSE = 'Es-tu enceinte, avec une grossesse constatée par un médecin ?';
+export const MESSAGE_GROSSESSE_A_REPONDRE = `Préavis non fait sans l’accord des parents, après ta démission : ${QUESTION_GROSSESSE.toLowerCase()} Si oui, tu peux partir sans préavis et sans leur devoir d’indemnité (code du travail, article L1225-34). Réponds à la question dans l’écran « Fin de contrat » et enregistre : l’app calcule les derniers mois ensuite.`;
 
 /**
  * T-074 : jour d'un préavis dont les parents ont dispensé l'AM (CCN art. 64.2 : « inexécution totale ou partielle du préavis

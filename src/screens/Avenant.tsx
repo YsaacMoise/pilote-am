@@ -146,7 +146,7 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
             {/* T-104 (cas 3) : l'avenant peut changer les horaires variables, ou passer d'un planning fixe à des horaires variables et inversement. */}
             <Choices label="Avec cet avenant, le planning est-il le même chaque semaine ?" value={t.planningVariable ? 'non' : 'oui'} onChange={(v) => set({ planningVariable: v === 'non' })}
               options={[{ v: 'oui', l: 'Oui, une semaine type qui se répète' }, { v: 'non', l: 'Non, il change d’une semaine à l’autre', sub: 'Semaines A et B, ou planning remis par les parents.' }]} />
-            {semaines4751(t.yearType, t.weeks) && <Banner tone="warn">{NON_GERE_47_51}</Banner>}
+            {semaines4751(t.yearType, t.weeks) && <><Banner tone="warn">{NON_GERE_47_51}</Banner><button class="btn btn-secondary" onClick={() => set({ yearType: 'complete', weeks: 52 })}>Passer en année complète (52 semaines)</button></>}
             {before.yearType === 'incomplete' && t.yearType === 'complete' && <p class="hint">Le contrat passe de l’année incomplète à l’année complète : l’app calcule une régularisation à la date de l’avenant (heures accueillies et pas encore payées), versée avec le salaire de ce mois.</p>}
             {before.yearType === 'incomplete' && t.yearType === 'incomplete' && <p class="hint">Année incomplète : la régularisation se fait en fin de contrat, pas à l’avenant.</p>}
             {!t.planningVariable && [1, 2, 3, 4, 5, 6, 7].map((d) => <PlanDay d={d} plages={t.planning[d] ?? []} onChange={(p) => set({ planning: { ...t.planning, [d]: p } as Planning })} />)}

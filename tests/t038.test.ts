@@ -45,7 +45,7 @@ const fin = (leaves: AmLeave[], c = contract()) => finDeContrat(makeCtx(c, [], l
 describe('T-038 B-1, revu par la T-103 : plus de jours « à confirmer » à faire entrer dans la régularisation', () => {
   it('ancienne saisie d’événement sans durée (0) : le mois est refusé avec la consigne, rien n’est « à confirmer »', () => {
     expect(salaireMensualise(contract())).toBe(60000);
-    expect(computeMonthRef(makeCtx(contract(), [], [EVENEMENT], '2026-11-18'), '2026-03').nonGere.join(' ')).toMatch(/saisie ancienne sans durée/);
+    expect(computeMonthRef(makeCtx(contract(), [], [EVENEMENT], '2026-11-18'), '2026-03').nonGere.join(' ')).toMatch(/ne connaît pas encore sa durée/);
   });
   it('fin de contrat avec un congé sans solde : régularisation calculée, sans « à confirmer »', () => {
     const f = fin([SANS_SOLDE]);

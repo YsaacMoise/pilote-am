@@ -43,9 +43,17 @@ export const NON_GERE_REGION_PV_CDD =
 /** T-104 : plus utilisé par le calcul ; texte gardé pour mémoire. */
 export const NON_GERE_PV_DISPENSE =
   'Préavis non fait à la demande des parents, avec des horaires qui changent d’une semaine à l’autre : non géré pour l’instant. L’app calcule chacun des deux cas seul, pas encore les deux ensemble. Fais les derniers mois et la fin du contrat avec les parents.';
-/** A-01 : CCN art. 97.1 ne connaît que 52 semaines ou 46 semaines et moins ; question 2 posée à la DDETS le 18/11/2026 */
+/**
+ * A-01, T-107 (cas 3, regles/t107-47-51-semaines.md) : CCN 97.1, l'accueil régulier « peut s'effectuer selon l'une des deux
+ * modalités suivantes » : 52 semaines « y compris les congés payés du salarié », ou 46 semaines ou moins « hors congés payés du
+ * salarié ». CCN 102.2 : l'AM a un repos annuel de 30 jours ouvrables (5 semaines), congés complémentaires non rémunérés
+ * compris. De 47 à 51 semaines d'accueil hors congés, il reste au plus 5 semaines sans accueil : toutes peuvent être, et sont,
+ * le repos annuel de l'AM. C'est la première modalité (52 semaines, congés compris) ; la seconde exige au moins 6 semaines
+ * sans accueil (46 au plus). Une semaine de plus où les parents ne confient pas l'enfant est une absence de l'enfant, payée
+ * (CCN 105). Le contrat est donc à passer en année complète : donnée demandée une fois (contrat ou avenant).
+ */
 export const NON_GERE_47_51 =
-  'Accueil de 47 à 51 semaines par an : non géré. La convention ne prévoit que 52 semaines, ou 46 semaines et moins (article 97.1). Ne choisis ni 46 semaines ni toute l’année à la place : la paie serait fausse. Fais la paie sans l’app.';
+  'Plus de 46 semaines d’accueil par an, sans compter tes congés : c’est l’accueil sur 52 semaines de la convention, tes congés payés compris (article 97.1). Les semaines sans accueil sont tes 5 semaines de repos : congés payés si tu les as acquis, sinon congés complémentaires non payés (article 102.2). Si les parents ne confient pas l’enfant une autre semaine, c’est une absence de l’enfant, payée (article 105). Passe le contrat (ou l’avenant) en « Année complète », puis note tes congés dans « Congés » : l’app calcule les mois ensuite. L’année incomplète, c’est au moins 6 semaines sans accueil : 46 semaines ou moins.';
 /** Décision du DG du 18/11/2026 : contrat sans réponse aux 4 questions (3 de T-031, CDD de T-033), mois non calculé */
 export const CONTRAT_A_COMPLETER =
   'Contrat à compléter : ouvre le contrat et réponds aux 4 questions (lieu de travail, horaires, accueil régulier, CDI ou CDD). L’app ne calcule pas ce mois avant.';

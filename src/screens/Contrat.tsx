@@ -202,7 +202,7 @@ export function Contrat({ id }: { id?: string }) {
             {!c.accueilOccasionnel && c.yearType === 'incomplete' && (
               <>
                 <NumberInput label="Semaines d’accueil prévues au contrat" hint={c.cdd ? 'Pour un CDD : les semaines d’accueil prévues pendant le CDD, sur 12 mois au plus, sans compter tes congés payés' : AIDE_SEMAINES} value={c.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />
-                {semaines4751(c.yearType, c.weeks) && <Banner tone="warn">{NON_GERE_47_51}</Banner>}
+                {semaines4751(c.yearType, c.weeks) && <><Banner tone="warn">{NON_GERE_47_51}</Banner><button class="btn btn-secondary" onClick={() => set({ yearType: 'complete', weeks: 52, weeksOff: [] })}>Passer en année complète (52 semaines)</button></>}
                 <WeeksOff c={c} onChange={(w) => set({ weeksOff: w })} />
               </>
             )}

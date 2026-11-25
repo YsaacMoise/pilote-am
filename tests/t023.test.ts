@@ -146,8 +146,8 @@ describe('T-023 (2) événements familiaux, R-ABS-06', () => {
     expect(dureeEvenement('mariage', '2022-06-01')).toBe(4);
     expect(dureeEvenement('deces_proche', '2022-06-01')).toBe(3);
     expect(dureeEvenement('deces_ascendant', '2022-06-01')).toBe(1);
-    // Avant la CCN IDCC 3239 (01/01/2022) : aucun texte lu
-    expect(dureeEvenement('mariage', '2021-12-31')).toBeUndefined();
+    // T-107 (cas 6) : avant la CCN IDCC 3239 (01/01/2022), ancienne CCN (art. 13) et L3142-4 à la date (tests/t107.test.ts).
+    expect(dureeEvenement('mariage', '2021-12-31')).toBe(4);
   });
 
   it('T-103 (C6) : un événement de 2022 est payé selon la version de 2022 et la loi (avenant n° 4 en vigueur au 01/05/2024)', () => {
@@ -445,7 +445,7 @@ describe('T-103 : une ancienne saisie d’événement sans durée (0) refuse le 
   const sansDuree: AmLeave = { id: 'x', type: 'evenement', from: '2026-03-02', to: '2026-03-02', joursEvenement: 0 };
   it('mois refusé avec la consigne de ressaisie', () => {
     const r = computeMonth(makeCtx(c, [], [sansDuree], '2026-10-31'), '2026-03');
-    expect(r.nonGere.join(' ')).toMatch(/saisie ancienne sans durée.*saisis-la de nouveau/);
+    expect(r.nonGere.join(' ')).toMatch(/ne connaît pas encore sa durée.*saisis-la de nouveau/);
   });
   it('page des parents : rien « à confirmer »', () => {
     const snap = buildSnapshot({ ctx: makeCtx(c, [], [sansDuree], '2026-04-10'), journal: [], amName: 'Ana', enfants: 0, now: 1 });

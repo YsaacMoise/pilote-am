@@ -2,7 +2,9 @@ import { MESSAGE_TAUX_BRUT, termsAt } from '../engine/payroll';
 import { useState } from 'preact/hooks';
 import { ctxFor, putContract, toast, useStore } from '../store';
 import { addDays, addMonths, monthLabel, monthOf, shortDate, today, type Month } from '../engine/dates';
-import { FIN_CDD_LABEL, finDeContrat, finDeCdd, MESSAGE_CDD_IFC, MESSAGE_CDD_PAS_DE_PREAVIS, type DemandeurInexecution, type FinCdd, type FinCddNonGere, type Motif } from '../engine/fin';
+import { FIN_CDD_LABEL, finDeContrat, finDeCdd, MESSAGE_CDD_IFC, MESSAGE_CDD_PAS_DE_PREAVIS, QUESTION_SINISTRE, type DemandeurInexecution, type FinCdd, type FinCddNonGere, type Motif } from '../engine/fin';
+import { cumulCpADemander, QUESTION_GROSSESSE } from '../engine/preavis';
+import { QUESTION_CUMUL_CP } from '../engine/suspensions';
 import { FINS_CDD, FINS_CDD_NON_GEREES, type Contract, type Rupture } from '../engine/model';
 import { euros, hoursLabel } from '../engine/money';
 import { ligneIndemnitePreavis, ligneRegularisation } from './fin-lignes';
@@ -19,8 +21,11 @@ const CHOIX_MOTIF: { v: Motif; l: string; sub?: string }[] = [
   { v: 'faute_grave', l: 'Les parents retirent l’enfant pour faute grave', sub: 'Leur lettre te reproche une faute grave.' },
   { v: 'inaptitude', l: 'Je suis inapte, pour une raison sans lien avec le travail' },
   { v: 'inaptitude_pro', l: 'Je suis inapte après un accident du travail ou une maladie professionnelle' },
+  { v: 'agrement', l: 'Mon agrément est suspendu, modifié ou retiré', sub: 'Décision du conseil départemental : les parents doivent retirer l’enfant.' },
   { v: 'deces', l: 'Décès de l’enfant' },
 ];
+
+const ouiNon = (v: boolean | undefined) => (v === undefined ? undefined : v ? 'oui' : 'non');
 
 /** « de mars », « d’août », « d’octobre » */
 const deMois = (l: string) => (/^[aeiouyéè]/i.test(l) ? `d’${l}` : `de ${l}`);
@@ -38,6 +43,9 @@ export function Fin({ id }: { id?: string }) {
   // T-045 : préavis fait en entier ou non (CCN art. 64 et 64.2) et dernier jour travaillé.
   const [preavisFait, setPreavisFait] = useState<'oui' | DemandeurInexecution>(r0 && r0.preavis !== 'execute' ? r0.preavis : 'oui');
   const [dernierTravaille, setDernierTravaille] = useState<string | null>(r0?.dernierJourTravaille ?? null);
+  // T-107 : réponses demandées seulement dans leur cas (accord écrit de cumul des congés et du préavis ; grossesse).
+  const [cumulCp, setCumulCp] = useState<boolean | undefined>(r0?.cumulCpPreavis);
+  const [grossesse, setGrossesse] = useState<boolean | undefined>(r0?.grossesse);
   // C-008 : total des salaires bruts lu sur les bulletins Pajemploi, pour ne pas calculer l'indemnité sur une estimation.
   const [brutTotal, setBrutTotal] = useState<number | undefined>(undefined);
   const [brutJusqua, setBrutJusqua] = useState<Month>(addMonths(monthOf(today()), -1));
@@ -66,12 +74,19 @@ export function Fin({ id }: { id?: string }) {
   // la remplace. Le calcul des mois, lui, refuse toute date de fin qui ne concorde pas avec le préavis (controleFinContrat).
   const parMois: Partial<Record<Month, number>> = {};
   for (const b of s.bulletins) if (b.cid === c.id && b.brut) parMois[b.month] = b.brut;
-  const f = finDeContrat(ctxFor({ ...c, end: undefined }), envoi, motif, s.settings.enfantsACharge, pres, inexecution, { parMois, total: brutTotal, jusqua: brutJusqua });
+  // T-107 (cas 1) : la question n'est posée que si des congés payés tombent dans un préavis fait en entier.
+  const demanderCumul = avecPreavis && !inexecution && cumulCpADemander(c.start, { motif, notif: envoi, presentation: pres }, s.leaves);
+  // T-107 (cas 2) : démission, préavis non fait sans l'accord des parents.
+  const demanderGrossesse = motif === 'demission' && preavisFait === 'am_sans_accord';
+  const reponses = { cumulCpPreavis: demanderCumul ? cumulCp : undefined, grossesse: demanderGrossesse ? grossesse : undefined };
+  const f = finDeContrat(ctxFor({ ...c, end: undefined }), envoi, motif, s.settings.enfantsACharge, pres, inexecution, { parMois, total: brutTotal, jusqua: brutJusqua }, reponses);
   // T-050d (C-4) : le dernier mois est dans les bulletins (total saisi ou brut lu) : l'ICCP et la régularisation y sont déjà.
   const finDansBulletins = ((brutTotal ?? 0) > 0 && brutJusqua >= monthOf(f.dernierJour)) || (parMois[monthOf(f.dernierJour)] ?? 0) > 0;
   const rupture: Rupture = {
     motif, notif: envoi, ...(pres !== envoi ? { presentation: pres } : {}),
     preavis: inexecution ? inexecution.demandeur : 'execute', ...(inexecution ? { dernierJourTravaille: inexecution.dernierJourTravaille } : {}),
+    ...(reponses.cumulCpPreavis !== undefined ? { cumulCpPreavis: reponses.cumulCpPreavis } : {}),
+    ...(reponses.grossesse !== undefined ? { grossesse: reponses.grossesse } : {}),
   };
   const enregistre = c.end === f.dernierJour && JSON.stringify(c.rupture) === JSON.stringify(rupture);
   const enregistrer = async () => {
@@ -116,12 +131,26 @@ export function Fin({ id }: { id?: string }) {
                   { v: 'oui', l: 'Oui, effectué ou en cours' },
                   { v: 'am_acceptee', l: 'Non : je pars plus tôt, avec l’accord des parents', sub: 'Le contrat finit à ton dernier jour travaillé.' },
                   { v: 'employeur', l: 'Non : les parents me dispensent de le faire', sub: 'Ils te paient jusqu’à la date prévue de fin du préavis.' },
-                  { v: 'am_sans_accord', l: 'Non : je pars plus tôt, sans l’accord des parents' },
+                  { v: 'am_sans_accord', l: 'Non : je pars plus tôt, sans l’accord des parents', sub: 'Le contrat finit à ton dernier jour travaillé.' },
                 ]} />
+                {demanderCumul && (
+                  <Choices label={QUESTION_CUMUL_CP} value={ouiNon(cumulCp)} onChange={(v) => setCumulCp(v === 'oui')} options={[
+                    { v: 'oui', l: 'Oui, nous avons signé un accord écrit', sub: 'Les congés et le préavis courent en même temps.' },
+                    { v: 'non', l: 'Non', sub: 'Les congés suspendent le préavis : il finit plus tard (convention, article 64.1).' },
+                  ]} />
+                )}
+                {demanderGrossesse && (
+                  <Choices label={QUESTION_GROSSESSE} value={ouiNon(grossesse)} onChange={(v) => setGrossesse(v === 'oui')} options={[
+                    { v: 'oui', l: 'Oui', sub: 'Tu peux partir sans préavis et sans rien devoir aux parents (code du travail, article L1225-34).' },
+                    { v: 'non', l: 'Non' },
+                  ]} />
+                )}
                 {preavisFait !== 'oui' && (
                   <DateInput label="Dernier jour travaillé" hint={preavisFait === 'employeur' ? 'Le dernier jour où tu as accueilli l’enfant. S’ils ne l’ont plus confié dès le jour de la lettre, mets le dernier jour où tu l’as accueilli avant la lettre.' : 'Le dernier jour où tu as accueilli l’enfant.'} value={dernierTravaille ?? envoi} min={preavisFait === 'employeur' ? addDays(envoi, -7) : envoi} onChange={(v) => setDernierTravaille(v || null)} />
                 )}
               </>
+            ) : motif === 'agrement' ? (
+              <DateInput label="Date de la décision du conseil départemental" hint="La date à laquelle le conseil départemental t’a notifié la suspension, la modification ou le retrait de ton agrément. Le contrat s’arrête ce jour-là, sans préavis (convention, article 119.3)." value={notif} min={c.start} onChange={changeEnvoi} />
             ) : avecLettre ? (
               <DateInput label="Date de la lettre (envoi ou remise)" hint="Ce motif n’a pas de préavis : le contrat s’arrête à cette date." value={notif} min={c.start} onChange={changeEnvoi} />
             ) : (
@@ -159,6 +188,7 @@ export function Fin({ id }: { id?: string }) {
           <div class="decl">
             <div class="decl-line"><span class="decl-label"><span>Indemnité de rupture</span><span class="decl-hint">{f.ruptureExplication}</span></span><span class="decl-value">{ruptureNonCalculee ? 'non calculée' : euros(f.indemniteRupture)}</span></div>
             {motif === 'deces' && <div class="decl-line"><span class="decl-label"><span>Indemnité égale au préavis</span><span class="decl-hint">{f.indemnitePreavisExplication}</span></span><span class="decl-value">{euros(f.indemnitePreavis)}</span></div>}
+            {f.indemniteDueParents && f.indemniteDueParents.net > 0 && <div class="decl-line"><span class="decl-label"><span>Ce que les parents peuvent te demander</span><span class="decl-hint">Salaire net du préavis non fait, du {shortDate(f.indemniteDueParents.du)} au {shortDate(f.indemniteDueParents.au)} (convention, article 64.2). Pas compté dans le total : c’est à eux de le demander.</span></span><span class="decl-value">{euros(f.indemniteDueParents.net)}</span></div>}
             {ligneDispense && <div class="decl-line"><span class="decl-label"><span>Indemnité de préavis</span><span class="decl-hint">{ligneDispense.hint}</span></span><span class="decl-value">{ligneDispense.valeur}</span></div>}
             <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint">{ligneRegul.hint}</span></span><span class="decl-value">{ligneRegul.valeur}</span></div>
             <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{f.cpAConfirmer ? 'non calculée' : euros(f.cpIndemnite)}</span></div>
@@ -190,18 +220,26 @@ function FinCddEcran({ c }: { c: Contract }) {
   const r0 = c.rupture?.motif === 'fin_cdd' ? c.rupture : undefined;
   const [dernier, setDernier] = useState<string>(r0?.notif ?? c.end ?? c.cddTerme ?? today());
   const [finCdd, setFinCdd] = useState<FinCdd | FinCddNonGere | undefined>(r0?.finCdd);
+  // T-107 (cas 4) : force majeure : sinistre ? et, sans terme précis, date prévue du retour de la personne remplacée.
+  const [sinistre, setSinistre] = useState<boolean | undefined>(r0?.sinistre);
+  const [termeSinistre, setTermeSinistre] = useState<string | undefined>(r0?.termeSinistre);
   const jour = dernier < c.start ? c.start : dernier;
-  const f = finDeCdd(ctxFor({ ...c, end: undefined }), jour, finCdd, s.settings.enfantsACharge);
+  const demanderTerme = finCdd === 'force_majeure' && sinistre === true && !!c.cddTermeImprecis;
+  const reponses = { sinistre: finCdd === 'force_majeure' ? sinistre : undefined, termeSinistre: demanderTerme ? termeSinistre : undefined };
+  const f = finDeCdd(ctxFor({ ...c, end: undefined }), jour, finCdd, s.settings.enfantsACharge, undefined, reponses);
   // D17 : une fin non gérée n'est jamais enregistrée (le message s'affiche, rien n'est gardé).
   const finGeree = finCdd && (FINS_CDD as string[]).includes(finCdd) ? finCdd as FinCdd : undefined;
-  const rupture: Rupture = { motif: 'fin_cdd', notif: jour, preavis: 'execute', ...(finGeree ? { finCdd: finGeree } : {}) };
+  const rupture: Rupture = {
+    motif: 'fin_cdd', notif: jour, preavis: 'execute', ...(finGeree ? { finCdd: finGeree } : {}),
+    ...(reponses.sinistre !== undefined ? { sinistre: reponses.sinistre } : {}), ...(reponses.termeSinistre ? { termeSinistre: reponses.termeSinistre } : {}),
+  };
   const enregistre = c.end === jour && JSON.stringify(c.rupture) === JSON.stringify(rupture);
   const enregistrer = async () => {
     const prev = await putContract({ ...c, end: jour, rupture });
     toast(`Fin du CDD enregistrée : dernier jour le ${shortDate(jour)}`, prev ? async () => { await putContract(prev); } : undefined);
   };
   const ifcNet = f.ifcAConfirmer ? 0 : f.ifcNet ?? 0;
-  const total = ifcNet + (f.regularisationAConfirmer ? 0 : f.regularisation) + (f.cpAConfirmer ? 0 : f.cpIndemnite);
+  const total = ifcNet + (f.regularisationAConfirmer ? 0 : f.regularisation) + (f.cpAConfirmer ? 0 : f.cpIndemnite) + (f.indemniteSinistre?.net ?? 0);
   const nonCalcule = !!(f.ifcAConfirmer || f.cpAConfirmer || f.regularisationAConfirmer);
   const choix = [...FINS_CDD, ...FINS_CDD_NON_GEREES];
   return (
@@ -213,6 +251,13 @@ function FinCddEcran({ c }: { c: Contract }) {
           <p class="hint">{MESSAGE_CDD_PAS_DE_PREAVIS}</p>
           <DateInput label="Dernier jour du contrat" hint={c.cddTerme ? `${c.cddTermeImprecis ? 'Fin de la durée minimale' : 'Date de fin prévue'} : ${shortDate(c.cddTerme)}. Si la date a été reportée, mets d’abord la nouvelle date de fin prévue dans le contrat.` : 'Le dernier jour du contrat.'} value={jour} min={c.start} onChange={(v) => setDernier(v || jour)} />
           <Choices label="Comment finit le CDD ?" value={finCdd} onChange={setFinCdd} options={choix.map((k) => ({ v: k, l: FIN_CDD_LABEL[k].l, sub: FIN_CDD_LABEL[k].sub }))} />
+          {finCdd === 'force_majeure' && (
+            <Choices label={QUESTION_SINISTRE} value={ouiNon(sinistre)} onChange={(v) => setSinistre(v === 'oui')} options={[
+              { v: 'oui', l: 'Oui, un sinistre', sub: 'Le parent te verse les salaires jusqu’à la date de fin prévue (code du travail, article L1243-4).' },
+              { v: 'non', l: 'Non, un autre cas de force majeure' },
+            ]} />
+          )}
+          {demanderTerme && <DateInput label="Date à laquelle la personne remplacée devait revenir" hint="Ton CDD de remplacement aurait fini ce jour-là." value={termeSinistre ?? ''} min={jour} onChange={(v) => setTermeSinistre(v || undefined)} />}
         </fieldset>
       </section>
       {f.nonGere ? (
@@ -234,6 +279,7 @@ function FinCddEcran({ c }: { c: Contract }) {
             <div class="decl-line"><span class="decl-label"><span>Indemnité de fin de contrat</span><span class="decl-hint">{f.ifcExplication}</span></span><span class="decl-value">{f.ifcAConfirmer ? 'non calculée' : `${euros(ifcNet)} net`}</span></div>
             <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint">{f.regularisationAConfirmer ? 'Non calculée : voir l’encadré plus haut' : f.finCdd === 'suite_cdi' ? 'Ton contrat continue en CDI : rien n’est dû maintenant' : termsAt(c, f.dernierJour).yearType === 'incomplete' ? (f.regulMinutes ? `${hoursLabel(f.regulMinutes)} accueillies mais non payées par la mensualisation` : 'Pas d’heures accueillies au-delà de ce qui a été payé') : 'Accueil toute l’année : pas de régularisation'}</span></span><span class="decl-value">{f.regularisationAConfirmer ? 'non calculée' : euros(f.regularisation)}</span></div>
             <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{f.cpAConfirmer ? 'non calculée' : euros(f.cpIndemnite)}</span></div>
+            {f.indemniteSinistre && <div class="decl-line"><span class="decl-label"><span>Indemnité du sinistre</span><span class="decl-hint">Salaires que tu aurais touchés du {shortDate(f.indemniteSinistre.du)} au {shortDate(f.indemniteSinistre.au)} (code du travail, article L1243-4).</span></span><span class="decl-value">{euros(f.indemniteSinistre.net)}</span></div>}
           </div>
           <div class="spread"><b>{nonCalcule ? 'Total net, hors salaire du dernier mois et sommes non calculées' : 'Total net, hors salaire du dernier mois'}</b><span class="decl-value">{euros(total)}</span></div>
           {ifcNet > 0 && <p class="hint">{MESSAGE_CDD_IFC} Elle est calculée sur {euros(f.assietteNetteCdd ?? 0)} de salaires nets : l’Urssaf la fait déclarer et payer en net.</p>}

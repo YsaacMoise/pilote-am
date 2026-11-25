@@ -477,7 +477,12 @@ describe('[BFC] guide DREETS Bourgogne-Franche-Comté (août 2026)', () => {
     // dimanche (sinon les 3 semaines ne font que 17 jours ouvrables).
     const c = contrat({ start: '2026-09-01', planning: semaine('08:00', '17:00'), rateNet: 400 });
     const ctx = makeCtx(c, [], [conge('cp', '2027-08-02', '2027-08-21')], '2027-09-15');
-    const f = finDeContrat(ctx, '2027-08-16', 'retrait', 0, '2027-08-17'); // 15 jours de préavis (moins d'un an)
+    // T-107 (cas 1) : les congés du 17 au 21/08 tombent dans le préavis. CCN 64.1 : ils le suspendent, sauf accord écrit et
+    // signé de cumul. Le guide finit le contrat le 31/08 sans le dire : c'est la lecture avec accord de cumul. Sans accord, le
+    // préavis est prorogé de 5 jours (05/09) ; sans réponse, l'app pose la question.
+    expect(finDeContrat(ctx, '2027-08-16', 'retrait', 0, '2027-08-17').nonGere?.join(' ')).toMatch(/accord écrit et signé/);
+    expect(finDeContrat(ctx, '2027-08-16', 'retrait', 0, '2027-08-17', undefined, undefined, { cumulCpPreavis: false }).dernierJour).toBe('2027-09-05');
+    const f = finDeContrat(ctx, '2027-08-16', 'retrait', 0, '2027-08-17', undefined, undefined, { cumulCpPreavis: true }); // 15 jours de préavis (moins d'un an)
     expect(f.dernierJour).toBe('2027-08-31');
     // Divergence M-2 : 9 mois × 2,5 = 23 jours pour le guide ; 39 semaines → 25 jours pour l'app. Avec 25 jours, le
     // dixième (702 €) reste au-dessous du maintien (750 €) : l'app verse 0 € de complément en juin, puis le maintien

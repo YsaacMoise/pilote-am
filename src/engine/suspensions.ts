@@ -73,25 +73,42 @@ export function sorteCongesSuspension(l: AmLeave, d: ISODate, leaves: AmLeave[])
  * la période de préavis ». Version du 01/01/2022 au 30/11/2024 : « arrêt de travail consécutif à un accident du travail ou à
  * une maladie professionnelle », sans la condition « survenant en cours de période de préavis ». L'accident de trajet, la
  * paternité et le congé supplémentaire de naissance ne sont pas cités : pas de suspension.
- * Les congés payés (troisième cas, avec l'exception d'un accord écrit de cumul) ne sont pas traités ici : hors T-104, règle
- * actuelle de l'app inchangée (rapports/T-104-execution.md, point ouvert).
+ * T-107 (cas 1) : congés payés, troisième cas de l'art. 64.1, dans ses deux versions (« de prise de congés payés. Néanmoins, et
+ * par exception, les périodes de préavis et de congés payés peuvent se cumuler en cas d'accord écrit et signé des parties »).
+ * `cumulCp` : réponse de l'AM à la question de l'écran Fin. Vrai : accord écrit et signé de cumul, les congés ne suspendent pas
+ * le préavis. Faux : ils le suspendent. Absent : comme faux pour le calcul de la date, mais la réponse est demandée avant tout
+ * montant (`cpPendantPreavis`, fin.ts et preavis.ts).
  * Rend la fin prorogée : chaque jour calendaire de suspension entre le début du préavis et sa fin (prorogée) la recule d'un jour.
  */
-export function finPreavisProrogee(depart: ISODate, fin: ISODate, leaves: AmLeave[]): ISODate {
+export function finPreavisProrogee(depart: ISODate, fin: ISODate, leaves: AmLeave[], cumulCp?: boolean): ISODate {
   const avant2024 = depart < '2024-12-01';
   const suspend = (d: ISODate): boolean => leaves.some((l) => d >= l.from && d <= l.to && (
     l.type === 'maternite'
-    || (l.type === 'at_mp' && (l.atmp === 'accident' || l.atmp === 'maladie_pro') && (avant2024 || l.from >= depart))));
+    || (l.type === 'at_mp' && (l.atmp === 'accident' || l.atmp === 'maladie_pro') && (avant2024 || l.from >= depart))
+    || (l.type === 'cp' && cumulCp !== true)));
   let f = fin;
   for (let d = depart; d <= f; d = addDays(d, 1)) if (suspend(d)) f = addDays(f, 1);
   return f;
 }
 
+/**
+ * T-107 (cas 1) : des congés payés tombent-ils dans le préavis (prorogé par les autres suspensions, et par les congés eux-mêmes
+ * s'il n'y a pas d'accord de cumul) ? Vrai : la réponse sur l'accord écrit de cumul (CCN 64.1) change la date de fin.
+ */
+export function cpPendantPreavis(depart: ISODate, fin: ISODate, leaves: AmLeave[]): boolean {
+  const f = finPreavisProrogee(depart, fin, leaves, false);
+  return leaves.some((l) => l.type === 'cp' && l.from <= f && l.to >= depart);
+}
+
+/** T-107 (cas 1) : question posée une fois, dans l'écran Fin, quand des congés payés tombent dans le préavis */
+export const QUESTION_CUMUL_CP = 'Tu prends des congés payés pendant ton préavis. As-tu, avec les parents, un accord écrit et signé pour que les congés et le préavis se déroulent en même temps ?';
+export const MESSAGE_CUMUL_CP_A_REPONDRE = `${QUESTION_CUMUL_CP} Sans cet accord, les congés suspendent le préavis et le contrat finit plus tard (convention, article 64.1). Réponds à la question dans l’écran « Fin de contrat » et enregistre : l’app calcule les derniers mois ensuite.`;
+
 /** Message à l'AM quand le préavis est prorogé (CCN 64.1) */
 export function messageProrogation(fin: ISODate, prorogee: ISODate): string {
   let n = 0;
   for (let d = fin; d < prorogee; d = addDays(d, 1)) n++;
-  return `Ton préavis est suspendu pendant ton congé maternité ou ton arrêt pour accident du travail ou maladie professionnelle (convention, article 64.1) : il finit ${n} jour${n > 1 ? 's' : ''} plus tard, le ${shortDate(prorogee)}, au lieu du ${shortDate(fin)}.`;
+  return `Ton préavis est suspendu pendant ton congé maternité, ton arrêt pour accident du travail ou maladie professionnelle, ou tes congés payés pris sans accord écrit de cumul (convention, article 64.1) : il finit ${n} jour${n > 1 ? 's' : ''} plus tard, le ${shortDate(prorogee)}, au lieu du ${shortDate(fin)}.`;
 }
 
 /**
