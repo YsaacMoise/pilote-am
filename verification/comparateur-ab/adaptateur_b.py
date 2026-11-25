@@ -30,6 +30,7 @@ from fractions import Fraction
 ICI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.environ.get("ARVELA_B_RACINE", "/home/claude/projet/moteur/B"))  # M6 : copie hors du projet
 import moteur_b as B  # noqa: E402
+from moteur_b.heures import calcul_h9  # noqa: E402  (verif-1 : test de semaine sans heures en plus)
 from moteur_b.calendrier import jours_feries  # noqa: E402  (liste des feries R-JF-01, sans regle de paie)
 from moteur_b.regions import region_valide, feries_locaux_entre  # noqa: E402  (liste des feries locaux, R3)
 from itertools import combinations  # noqa: E402
@@ -789,7 +790,7 @@ def mois_b(ctx, m):
     hc_minutes = [0]  # T-076 (N1) : minutes de HC payees dans le mois (part sure), pour la regularisation L2
 
     def heures():
-        hc = hm = 0
+        hc = hm = hn = 0  # verif-1 (B-4) : hn = heures normales qui compensent une retenue
         hc_haut = 0  # T-076 : plus grande lecture des HC (D1, D4)
         d16 = [0, 0]  # T-076, D16 : HC du mois, lecture 1 (planning remis) et lecture 2 (duree du contrat)
         semaines = sorted({lundi(d) for d in jours})
@@ -802,6 +803,8 @@ def mois_b(ctx, m):
             mai = payees = 0  # T-076, D1 : heures prevues non travaillees mais payees (1er mai ; autres)
             cp_min = 0  # T-103 (H1) : heures prevues des jours de conge paye de la semaine
             retenue = False   # T-076, D2 : absence deduite (art. 111) dans la semaine
+            ret_min = 0  # verif-1 (B-4) : heures prevues retenues de la semaine
+            p_h9 = 0  # verif-1 (B-3) : heures prevues des absences payees hors CP et 1er mai
             for d in sem:
                 pv = ctx.prevu(d)
                 contrat_min += pv
@@ -824,10 +827,13 @@ def mois_b(ctx, m):
                         cp_min += pv
                     if ded is None or ded:
                         retenue = True
+                        ret_min += pv
                     elif nature == "ferie_chome" and d.month == 5 and d.day == 1:
                         mai += pv
                     else:
                         payees += pv
+                        if nature != "cp":
+                            p_h9 += pv
             if ctx.pv:
                 # T-076 (R-PV-04, R-PV-05) : HC sur le prevu de la semaine (L1) ou sur la base du contrat (L2).
                 mensualise(ctx)
@@ -847,12 +853,17 @@ def mois_b(ctx, m):
                     if n_in != n_sem:
                         kw["prorata_base"] = (n_in, n_sem)
                         ref = ref * n_in / n_sem
-                    kw.update(absence_dans_semaine=retenue, absence_retenue=retenue, minutes_1er_mai_chome=mai,
-                              minutes_payees_non_travaillees=payees)
+                    kw.update(absence_dans_semaine=retenue, absence_retenue=retenue, minutes_1er_mai_chome=mai)
                 kw["minutes_conges_payes"] = cp_min  # T-103 (H1)
+                kw["minutes_payees_non_travaillees"] = p_h9  # verif-1 (B-3)
+                kw["minutes_retenues"] = ret_min  # verif-1 (B-4)
+                kw["minutes_en_plus_des_jours"] = extra
                 if ctx.pv_lecture == "L1":
                     kw["minutes_1er_mai_chome"] = mai
-                if min(haut, 2700) <= ref and haut <= 2700:
+                    if ctx.pv_base_contrat is not None:
+                        ref = Fraction(ctx.pv_base_contrat)  # verif-1 (B-5) : reference = duree du contrat
+                if sum(calcul_h9(Fraction(ref), Fraction(reelles), Fraction(cp_min), Fraction(mai), Fraction(p_h9),
+                                 Fraction(ret_min), Fraction(extra))) == 0:
                     continue
                 if lu < a or lu + timedelta(days=6) > b:
                     raise Refus("HORS-COMPARATEUR", "heures", {"motif": "semaine a cheval sur deux mois"})
@@ -860,15 +871,10 @@ def mois_b(ctx, m):
                           reelles, ctx.taux, ctx.maj_hm, majoration_hc_pourcent=ctx.maj_hc, **kw)
                 lo, hi = r["resultat"]["lectures_montant_complementaires"]
                 hc_minutes[0] += Fraction(r["resultat"]["minutes_complementaires"])
-                if "montants_par_lecture" in r["resultat"]:
-                    # D16 : totaux du mois lecture par lecture (planning remis / duree du contrat).
-                    l1_, l2_ = r["resultat"]["montants_par_lecture"]
-                    d16[0] += l1_
-                    d16[1] += l2_
-                else:
-                    hc += lo
-                    hc_haut += hi - lo
+                hc += lo
+                hc_haut += hi - lo
                 hm += r["resultat"]["montant_majorees_centimes"]
+                hn += r["resultat"]["montant_normales_centimes"]
                 continue
             if extra == 0:
                 continue
@@ -876,15 +882,18 @@ def mois_b(ctx, m):
                 raise Refus("HORS-COMPARATEUR", "heures", {"motif": "semaine a cheval sur deux mois"})
             # T-103 (H1 a H4, H6) : conges payes et 1er mai chome comptes ; autres jours non effectues non comptes ;
             # base = heures prevues de la semaine dans le contrat ; retenue a part. Remplace le refus A-09.
-            r = appel("heures_en_plus_semaine_t103", contrat_min, reelles, ctx.taux, ctx.maj_hm,
-                      majoration_hc_pourcent=ctx.maj_hc, minutes_conges_payes=cp_min, minutes_1er_mai_chome=mai)
+            # verif-1 (B-3, B-4) : absence payee comptee pour la duree du contrat ; retenue compensee d'abord.
+            r = appel("heures_en_plus_semaine_h9", contrat_min, reelles, ctx.taux, ctx.maj_hm,
+                      majoration_hc_pourcent=ctx.maj_hc, minutes_conges_payes=cp_min, minutes_1er_mai_chome=mai,
+                      minutes_payees_non_travaillees=p_h9, minutes_retenues=ret_min, minutes_en_plus_des_jours=extra)
             hc += r["resultat"]["montant_complementaires_centimes"]
             hm += r["resultat"]["montant_majorees_centimes"]
+            hn += r["resultat"]["montant_normales_centimes"]
         if d16 != [0, 0]:
-            return Lect(hc + min(d16), [hc + d16[0], hc + d16[1]]), hm
+            return Lect(hc + min(d16), [hc + d16[0], hc + d16[1]]), hm, hn
         if hc_haut:
-            return Lect(hc, [hc, hc + hc_haut]), hm
-        return hc, hm
+            return Lect(hc, [hc, hc + hc_haut]), hm, hn
+        return hc, hm, hn
 
     garde("_heures", heures)
     out["_hc_minutes"] = hc_minutes[0]
@@ -1086,9 +1095,18 @@ def acquisition_b(ctx, y):
             # 48.1.1.2) a partir des faits : bornes, absences non assimilees, arret maladie, semaines sans accueil.
             sa = sorted(x for x in ctx.sans_accueil if x + timedelta(days=6) >= a and x <= b) \
                 if ctx.type == "incomplete" else []
+            cpam = None if ctx.k.get("semaines_cp_am") is None else [d_(x) for x in ctx.k["semaines_cp_am"] if d_(x) in sa]
+            kw_cp = {}
+            if cpam:
+                # verif-1 (B-2) : droits acquis sur la periode precedente (pris pendant celle-ci), calcules par B.
+                prec = acquisition_b(ctx, y - 1)["jours_acquis"]
+                if isinstance(prec, Refus):
+                    raise prec
+                kw_cp["droits_cp_disponibles"] = prec
+            if not ctx.pv:
+                kw_cp["jours_travail_semaine"] = sorted(ctx.jours_travailles)  # verif-1 (B-1), decompte journalier
             r = appel("acquisition_cp_periode", ctx.type, a, b, jours_non_assimiles=non_assimile,
-                      jours_arret_maladie=malade, semaines_sans_accueil=sa,
-                      semaines_cp_am=None if ctx.k.get("semaines_cp_am") is None else [d_(x) for x in ctx.k["semaines_cp_am"] if d_(x) in sa])
+                      jours_arret_maladie=malade, semaines_sans_accueil=sa, semaines_cp_am=cpam, **kw_cp)
         elif complete_periode:
             r = appel("acquisition_cp", "complete", periode_complete=True)
         else:
@@ -1344,6 +1362,45 @@ def icp_b(ctx):
         raise
     ctx.cache["icp"] = v
     return v
+
+def indemnite_deces_b(ctx, deces, dernier_jour):
+    """verif-1 (B-6) : indemnite egale au preavis apres le deces de l'enfant (CCN 119.4.2, 122, 64.2), calculee par B
+    (indemnite_preavis_dispense) comme un preavis dispense du lendemain du deces au dernier jour de la periode :
+    remuneration que l'AM aurait percue (64.2 : « remuneration brute correspondant a la duree du preavis »), feries
+    compris. L'adaptateur ne fait que compter les jours prevus du calendrier. Renvoie {mois : centimes}."""
+    mens = mensualise(ctx)
+
+    def u(d):
+        x = ctx.prevu_hors_dates(d)
+        if not x:
+            return 0
+        return x if ctx.type == "complete" else 1
+
+    noms = list(mois_entre(deces + timedelta(days=1), dernier_jour))
+    mois_l = []
+    for m in noms:
+        a, b = premier(m), dernier(m)
+        jours = list(jours_entre(a, b))
+        if ctx.pv:
+            lundis = sorted({lundi(d) for d in jours})
+            plans = {lu: {j: sum(y - x for x, y in p) for j, p in ctx.semaine_pv(lu).items()} for lu in lundis}
+            p = appel("prevu_du_mois_planning_variable", a.year, a.month, plans, ctx.type)
+        else:
+            contient = ctx.type == "incomplete" and any(lundi(d) in ctx.sans_accueil for d in jours)
+            p = appel("prevu_du_mois", a.year, a.month, dict(ctx.plan_min), ctx.type,
+                      contient_semaine_non_accueil=contient)
+        prevu = p["resultat"]["prevu_minutes"] if ctx.type == "complete" else p["resultat"]["prevu_jours"]
+        periode = [d for d in jours if deces < d <= dernier_jour]
+        mois_l.append({"salaire_mensualise_centimes": mens, "prevu_mois": prevu,
+                       "non_payes": sum(u(d) for d in jours if d < ctx.debut or d > dernier_jour),
+                       "mixte": any(ctx.debut <= d <= deces and u(d) for d in jours),
+                       "prevu_dispense": sum(u(d) for d in periode),
+                       "minutes_dispense": sum(ctx.prevu_hors_dates(d) for d in periode),
+                       "semaine_sans_accueil_dans_dispense": ctx.type == "incomplete" and any(
+                           lundi(d) in ctx.sans_accueil and ctx.plan_jour(d) for d in periode)})
+    r = appel("indemnite_preavis_dispense", ctx.type, mois_l, ctx.taux)
+    return dict(zip(noms, r["resultat"]["detail_centimes"]))
+
 
 def fin_dispense_employeur(ctx, k, out, auteur, motif_b, env):
     """T-074 : fin de contrat avec preavis dispense en tout ou partie par l'employeur (CCN art. 64, 64.2, 66, 122 ;
@@ -1678,7 +1735,20 @@ def fin_b(ctx, k):
         mf = mois_de(fin)
         reg_brut = _brut_comme_a(reg_v, ctx, mf)
         iccp_brut = _brut_comme_a(iccp_v + reg_v, ctx, mf) - reg_brut
+        # verif-1 (B-6) : deces de l'enfant : l'indemnite « egale a l'indemnite compensatrice de preavis definie a
+        # l'article 122 » (CCN 119.4.2) est soumise a cotisations (64.2) ; 121.1 n'exclut que les sommes non soumises
+        # et 119.4.2 calcule l'indemnite de rupture « de la meme maniere » qu'au retrait : elle entre dans le 1/80.
+        # Montant : celui d'un preavis dispense du lendemain du deces au dernier jour de la periode (122 : retenue de
+        # l'art. 111 si la periode finit en cours de mois).
+        pre_deces = 0
+        if motif_b == "deces_enfant":
+            if isinstance(out.get("preavis"), Refus):
+                raise out["preavis"]
+            if out.get("preavis"):
+                dj = appel("periode_indemnite_deces", env, out["preavis"])["resultat"]["dernier_jour"]
+                pre_deces = sum(_brut_comme_a(v, ctx, m) for m, v in indemnite_deces_b(ctx, env, dj).items())
         r = appel("indemnite_rupture", motif_b, auteur, ctx.debut, env, sal, iccp_centimes=iccp_brut, icp_centimes=icp,
+                  indemnite_preavis_centimes=pre_deces,
                   regularisation_centimes=reg_brut, sommes_a_confirmer=a_confirmer, date_fin_contrat=fin)
         out["indemnite_rupture"] = r["resultat"]["indemnite_centimes"]
         if k.get("comparer_assiette"):
