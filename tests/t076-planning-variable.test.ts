@@ -295,7 +295,7 @@ describe('T-076 : corrections après vérification (décisions D1 à D6)', () =>
     expect(b.net).toBe(52000 + 15600);
   });
   it('B1 / D1, revu par la T-103 (H9) : L2, jour d’événement familial payé : ses heures prévues comptent pour la base', () => {
-    // Mardi 03/03 (semaine A, 9 h) : événement familial payé (CCN 48.1.3.1.1 : « sans perte de salaire »).
+    // Mardi 03/03 (semaine A, 9 h) : événement familial payé (CCN 48.1.3.1.1 : « congés rémunérés »).
     const leaves: AmLeave[] = [{ id: 'e', type: 'evenement', from: '2026-03-03', to: '2026-03-03', joursEvenement: 4 }];
     const b = monthBase(makeCtx(l2(), [], leaves, T), '2026-03');
     // Semaine du 02/03 : 45 h prévues, absence payée comprise → 15 HC. Semaine du 16/03 : 15 HC. Total 30 HC.
