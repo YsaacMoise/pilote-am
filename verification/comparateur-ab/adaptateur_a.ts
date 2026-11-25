@@ -99,8 +99,7 @@ function contrat(k: any): Contract {
       preavis: k.rupture.preavis, dernierJourTravaille: k.rupture.dernier_jour_travaille,
       // verif-1 (T-107) : réponses nouvelles (noms donnés par rapports/T-107-moteur-b.md).
       ...(k.rupture.sinistre != null ? { sinistre: k.rupture.sinistre } : {}),
-      ...(k.rupture.cumul_cp_preavis != null ? { cumulCpPreavis: k.rupture.cumul_cp_preavis } : {}),
-      ...(k.rupture.grossesse != null ? { sommeDuePreavis: !k.rupture.grossesse } : {}) } } : {}),
+      ...(k.rupture.cumul_cp_preavis != null ? { cumulCpPreavis: k.rupture.cumul_cp_preavis } : {}), } } : {}),
     ...planningVariable(k),
   } as Contract;
 }

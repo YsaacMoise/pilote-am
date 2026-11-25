@@ -2,7 +2,7 @@
 // indemnité de congés non pris. Aucun document officiel n'est produit.
 import { nonGeresPeriode } from './nonGeres';
 import { pvActif } from './planningVariable';
-import { cumulCpADemander, finPreavis, finsAdmises, MESSAGE_GROSSESSE_A_REPONDRE, preavisEmployeur } from './preavis';
+import { cumulCpADemander, finPreavis, finsAdmises, preavisEmployeur } from './preavis';
 import { alertesProtection, finPreavisProrogee, messageProrogation, MESSAGE_CUMUL_CP_A_REPONDRE } from './suspensions';
 import { FINS_CDD, type DemandeurInexecution, type FinCdd, type FinCddNonGere, type Motif, type Rupture } from './model';
 import { finEssaiCdd, messagesCdd, MESSAGE_CDD_12_MOIS, MESSAGE_CDD_DEVIENT_CDI } from './cdd';
@@ -24,6 +24,11 @@ import { finEssaiMaxCdi, QUESTION_ESSAI_AUTRE_ENFANT } from './preavis';
 
 /** T-109 (correction 10) : inaptitude notifiée avant l'avenant n° 10 */
 export const MESSAGE_INAPTITUDE_AVANT_AVENANT_10 = 'Inaptitude notifiée avant le 1er mai 2026 : la rupture pour inaptitude n’existait pas encore pour l’assistante maternelle (avenant n° 10 de la convention, en vigueur le 1er mai 2026). Le contrat a pris fin par un retrait de l’enfant (convention, article 119.1) : choisis « Les parents retirent l’enfant », avec la date de leur lettre, et dis si le préavis a été fait.';
+
+/** T-109 (décision de la direction du 26/11/2026) : départ sans préavis, les deux cas en texte, sans question */
+// C. trav. L1225-34 vise la salariée qui rompt son contrat : la phrase sur la grossesse n'est dite que si l'AM est à l'origine de
+// la rupture (démission, retraite).
+export const messageIndemniteParents = (net: number, ruptureParAM = true): string => `Les parents peuvent demander ${euros(net)} (salaire net du préavis non fait, en passant par le conseil de prud’hommes ; convention, article 64.2).${ruptureParAM ? ' Si tu es enceinte, rien n’est dû (Code du travail, L1225-34).' : ''}`;
 
 /** T-109 (section 6, point 7) : décès du parent employeur, aucune règle pour l'AM */
 export const MESSAGE_DECES_EMPLOYEUR = 'Décès du parent employeur : la convention ne prévoit pas cette rupture pour l’assistante maternelle (l’article 63.3.1 renvoie au socle des assistants maternels, qui n’en dit rien). Le contrat ne s’arrête donc pas de lui-même. Si l’autre parent ou les héritiers ne le poursuivent pas, ils retirent l’enfant par lettre (convention, article 119.1) : choisis « Les parents retirent l’enfant », avec la date de cette lettre.';
@@ -126,7 +131,8 @@ export interface FinResult {
   /**
    * T-107 (cas 2) : préavis non fait sans l'accord des parents : indemnité que les parents peuvent demander à l'AM, égale à la
    * rémunération nette de la partie du préavis non faite (CCN 64.2, al. 2), du lendemain du dernier jour travaillé à la fin
-   * prévue du préavis. 0 : rien n'est dû (grossesse, C. trav. L1225-34). Information : jamais retirée des sommes dues à l'AM.
+   * prévue du préavis. Si l'AM est enceinte, rien n'est dû (C. trav. L1225-34) : dit en texte, jamais demandé. Information : jamais
+   * retirée des sommes dues à l'AM.
    */
   indemniteDueParents?: { net: number; du: ISODate; au: ISODate };
   /**
@@ -285,11 +291,11 @@ export interface BrutsReels {
  */
 /**
  * T-107 : `reponses` : réponses de l'écran Fin demandées seulement dans leur cas : accord écrit de cumul des congés payés et du
- * préavis (CCN 64.1), grossesse de l'AM qui part sans préavis (C. trav. L1225-34). Absentes : celles enregistrées avec le
+ * préavis (CCN 64.1), essai d'un autre enfant (CCN 95.1). Absentes : celles enregistrées avec le
  * contrat (`ctx.c.rupture`).
  */
 export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0, presentation?: ISODate,
-  inexecutionOuBruts?: Inexecution | BrutsReels, brutsReels?: BrutsReels, reponses?: Pick<Rupture, 'cumulCpPreavis' | 'grossesse'> & Partial<Pick<Rupture, 'essaiAutreEnfant'>>, autreEnfantEnCours = false): FinResult {
+  inexecutionOuBruts?: Inexecution | BrutsReels, brutsReels?: BrutsReels, reponses?: Pick<Rupture, 'cumulCpPreavis'> & Partial<Pick<Rupture, 'essaiAutreEnfant'>>, autreEnfantEnCours = false): FinResult {
   const inexecution = inexecutionOuBruts && 'demandeur' in inexecutionOuBruts ? inexecutionOuBruts : undefined;
   const bruts: BrutsReels = brutsReels ?? (inexecutionOuBruts && !('demandeur' in inexecutionOuBruts) ? inexecutionOuBruts : {});
   // T-076 : un CDD finit sans préavis ni indemnité de rupture (R-CDD-06) : calcul à part, finDeCdd. La façon dont il finit est
@@ -300,10 +306,6 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
   const anc = fullMonthsBetween(c.start, notif);
   const depart = presentation && presentation > notif ? presentation : notif;
   const cumulCpPreavis = reponses ? reponses.cumulCpPreavis : c.rupture?.cumulCpPreavis;
-  // T-109 (règle d'Arvela : aucune donnée de santé hébergée) : la réponse de l'écran sert sur le moment ; sinon, le résultat
-  // neutre enregistré (`sommeDuePreavis`, false : aucune somme due au titre du préavis).
-  const reponseNow = reponses?.grossesse;
-  const grossesse = reponseNow ?? (c.rupture?.sommeDuePreavis === undefined ? undefined : !c.rupture.sommeDuePreavis);
   const refusFin: string[] = [];
   if (motif === 'deces_employeur') refusFin.push(MESSAGE_DECES_EMPLOYEUR);
   // T-109 (correction 7) : CDI, rupture « pendant l'essai » après sa durée maximale (CCN 95.1) : ce n'est pas une rupture pendant
@@ -421,16 +423,12 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
       // d'indemnité de rupture. »
       dernierJour = d;
       finAuDernierJourTravaille = true;
-      if (motif === 'demission' && grossesse === undefined) {
-        refusFin.push(MESSAGE_GROSSESSE_A_REPONDRE);
-      } else if (motif === 'demission' && grossesse) {
-        indemniteDueParents = { net: 0, du: addDays(d, 1), au: preavisFin };
-        alertes.push(reponseNow !== undefined
-          ? `Démission pendant ta grossesse, sans faire ton préavis : c’est ton droit. Tu ne dois rien aux parents pour le préavis non fait (code du travail, article L1225-34). Le contrat finit le ${shortDate(d)}, ton dernier jour travaillé (convention, article 64). Garde le certificat médical de grossesse. L’app n’enregistre pas ta réponse : elle garde seulement « aucune somme due au titre du préavis ».`
-          : `Aucune somme due aux parents au titre du préavis non fait. Le contrat finit le ${shortDate(d)}, ton dernier jour travaillé (convention, article 64).`);
-      } else if (d < preavisFin) {
+      // T-109 (second contrôle qualité, décision de la direction du 26/11/2026) : aucune question sur la grossesse ; les deux cas
+      // sont dits en texte. C. trav. L1225-34 : « La salariée en état de grossesse médicalement constaté peut rompre son contrat
+      // de travail sans préavis et sans devoir d'indemnité de rupture. »
+      if (d < preavisFin) {
         indemniteDueParents = { net: icpDispense(c, addDays(d, 1), preavisFin).net, du: addDays(d, 1), au: preavisFin };
-        alertes.push(`Préavis non fait sans l’accord des parents : le contrat finit le ${shortDate(d)}, ton dernier jour travaillé (convention, article 64). Les parents peuvent te demander une indemnité égale au salaire net de la partie du préavis non faite, du ${shortDate(addDays(d, 1))} au ${shortDate(preavisFin)} : ${euros(indemniteDueParents.net)} (convention, article 64.2). Ils ne peuvent pas la retenir sur les sommes ci-dessous : s’ils la veulent, ils doivent saisir le conseil de prud’hommes (service-public.gouv.fr, fiche « Démission d’une assistante maternelle », F33164).`);
+        alertes.push(`Préavis non fait sans l’accord des parents : le contrat finit le ${shortDate(d)}, ton dernier jour travaillé (convention, article 64). ${messageIndemniteParents(indemniteDueParents.net, motif !== 'retrait')} Ce montant n’est pas retiré des sommes ci-dessous : les parents ne peuvent pas le retenir (service-public.gouv.fr, fiche F33164).`);
       }
     }
   }

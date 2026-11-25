@@ -3,7 +3,7 @@ import { useState } from 'preact/hooks';
 import { ctxFor, putContract, toast, useStore } from '../store';
 import { addDays, addMonths, monthLabel, monthOf, shortDate, today, type Month } from '../engine/dates';
 import { FIN_CDD_LABEL, finDeContrat, finDeCdd, MESSAGE_CDD_IFC, MESSAGE_CDD_PAS_DE_PREAVIS, QUESTION_SINISTRE, type DemandeurInexecution, type FinCdd, type FinCddNonGere, type Motif } from '../engine/fin';
-import { cumulCpADemander, finEssaiMaxCdi, QUESTION_ESSAI_AUTRE_ENFANT, QUESTION_GROSSESSE } from '../engine/preavis';
+import { cumulCpADemander, finEssaiMaxCdi, QUESTION_ESSAI_AUTRE_ENFANT } from '../engine/preavis';
 import { QUESTION_CUMUL_CP } from '../engine/suspensions';
 import { avecPreavisMotif, FINS_CDD, FINS_CDD_NON_GEREES, type Contract, type Rupture } from '../engine/model';
 import { euros, hoursLabel } from '../engine/money';
@@ -47,10 +47,8 @@ export function Fin({ id }: { id?: string }) {
   // T-045 : préavis fait en entier ou non (CCN art. 64 et 64.2) et dernier jour travaillé.
   const [preavisFait, setPreavisFait] = useState<'oui' | DemandeurInexecution>(r0 && r0.preavis !== 'execute' ? r0.preavis : 'oui');
   const [dernierTravaille, setDernierTravaille] = useState<string | null>(r0?.dernierJourTravaille ?? null);
-  // T-107 : réponses demandées seulement dans leur cas (accord écrit de cumul des congés et du préavis ; grossesse).
+  // T-107 : réponses demandées seulement dans leur cas (accord écrit de cumul des congés et du préavis).
   const [cumulCp, setCumulCp] = useState<boolean | undefined>(r0?.cumulCpPreavis);
-  // T-109 : la réponse n'est jamais enregistrée (seul le résultat neutre `sommeDuePreavis` l'est) : elle n'est pas reprise.
-  const [grossesse, setGrossesse] = useState<boolean | undefined>(undefined);
   // T-109 (correction 7) : essai de 30 jours pour un autre enfant de la même famille (CCN 95.1).
   const [essaiAutre, setEssaiAutre] = useState<boolean | undefined>(r0?.essaiAutreEnfant);
   // C-008 : total des salaires bruts lu sur les bulletins Pajemploi, pour ne pas calculer l'indemnité sur une estimation.
@@ -83,12 +81,10 @@ export function Fin({ id }: { id?: string }) {
   for (const b of s.bulletins) if (b.cid === c.id && b.brut) parMois[b.month] = b.brut;
   // T-107 (cas 1) : la question n'est posée que si des congés payés tombent dans un préavis fait en entier.
   const demanderCumul = avecPreavis && !inexecution && cumulCpADemander(c.start, { motif, notif: envoi, presentation: pres }, s.leaves);
-  // T-107 (cas 2) : démission, préavis non fait sans l'accord des parents.
-  const demanderGrossesse = motif === 'demission' && preavisFait === 'am_sans_accord';
   // T-109 (correction 7) : un autre contrat de la même famille était en cours au premier jour de celui-ci.
   const autreEnfantEnCours = !!c.family && s.contracts.some((k) => k.id !== c.id && k.family === c.family && k.start < c.start && (!k.end || k.end >= c.start));
   const demanderEssaiAutre = motif === 'essai' && autreEnfantEnCours && envoi > finEssaiMaxCdi(c, true).fin && envoi <= finEssaiMaxCdi(c).fin;
-  const reponses = { cumulCpPreavis: demanderCumul ? cumulCp : undefined, grossesse: demanderGrossesse ? grossesse : undefined, essaiAutreEnfant: demanderEssaiAutre ? essaiAutre : undefined };
+  const reponses = { cumulCpPreavis: demanderCumul ? cumulCp : undefined, essaiAutreEnfant: demanderEssaiAutre ? essaiAutre : undefined };
   const f = finDeContrat(ctxFor({ ...c, end: undefined }), envoi, motif, s.settings.enfantsACharge, pres, inexecution, { parMois, total: brutTotal, jusqua: brutJusqua }, reponses, autreEnfantEnCours);
   // T-050d (C-4) : le dernier mois est dans les bulletins (total saisi ou brut lu) : l'ICCP et la régularisation y sont déjà.
   const finDansBulletins = ((brutTotal ?? 0) > 0 && brutJusqua >= monthOf(f.dernierJour)) || (parMois[monthOf(f.dernierJour)] ?? 0) > 0;
@@ -96,8 +92,6 @@ export function Fin({ id }: { id?: string }) {
     motif, notif: envoi, ...(pres !== envoi ? { presentation: pres } : {}),
     preavis: inexecution ? inexecution.demandeur : 'execute', ...(inexecution ? { dernierJourTravaille: inexecution.dernierJourTravaille } : {}),
     ...(reponses.cumulCpPreavis !== undefined ? { cumulCpPreavis: reponses.cumulCpPreavis } : {}),
-    // T-109 : résultat neutre seulement (false : aucune somme due au titre du préavis), jamais la réponse.
-    ...(reponses.grossesse !== undefined ? { sommeDuePreavis: !reponses.grossesse } : demanderGrossesse && r0?.sommeDuePreavis !== undefined ? { sommeDuePreavis: r0.sommeDuePreavis } : {}),
     ...(reponses.essaiAutreEnfant !== undefined ? { essaiAutreEnfant: reponses.essaiAutreEnfant } : {}),
   };
   const enregistre = c.end === f.dernierJour && JSON.stringify(c.rupture) === JSON.stringify(rupture);
@@ -151,13 +145,6 @@ export function Fin({ id }: { id?: string }) {
                     { v: 'non', l: 'Non', sub: 'Les congés suspendent le préavis : il finit plus tard (convention, article 64.1).' },
                   ]} />
                 )}
-                {demanderGrossesse && (
-                  <Choices label={QUESTION_GROSSESSE} value={ouiNon(grossesse)} onChange={(v) => setGrossesse(v === 'oui')} options={[
-                    { v: 'oui', l: 'Oui', sub: 'Tu peux partir sans préavis et sans rien devoir aux parents (code du travail, article L1225-34).' },
-                    { v: 'non', l: 'Non' },
-                  ]} />
-                )}
-                {demanderGrossesse && <p class="hint">Ta réponse sert seulement au calcul, maintenant. Elle n’est pas enregistrée : l’app garde seulement s’il y a une somme due au titre du préavis.</p>}
                 {preavisFait !== 'oui' && (
                   <DateInput label="Dernier jour travaillé" hint={preavisFait === 'employeur' ? 'Le dernier jour où tu as accueilli l’enfant. S’ils ne l’ont plus confié dès le jour de la lettre, mets le dernier jour où tu l’as accueilli avant la lettre.' : 'Le dernier jour où tu as accueilli l’enfant.'} value={dernierTravaille ?? envoi} min={preavisFait === 'employeur' ? addDays(envoi, -7) : envoi} onChange={(v) => setDernierTravaille(v || null)} />
                 )}
@@ -209,7 +196,7 @@ export function Fin({ id }: { id?: string }) {
           <div class="decl">
             <div class="decl-line"><span class="decl-label"><span>Indemnité de rupture</span><span class="decl-hint">{f.ruptureExplication}</span></span><span class="decl-value">{ruptureNonCalculee ? 'non calculée' : euros(f.indemniteRupture)}</span></div>
             {motif === 'deces' && <div class="decl-line"><span class="decl-label"><span>Indemnité égale au préavis</span><span class="decl-hint">{f.indemnitePreavisExplication}</span></span><span class="decl-value">{euros(f.indemnitePreavis)}</span></div>}
-            {f.indemniteDueParents && f.indemniteDueParents.net > 0 && <div class="decl-line"><span class="decl-label"><span>Ce que les parents peuvent te demander</span><span class="decl-hint">Salaire net du préavis non fait, du {shortDate(f.indemniteDueParents.du)} au {shortDate(f.indemniteDueParents.au)} (convention, article 64.2). Pas compté dans le total : c’est à eux de le demander.</span></span><span class="decl-value">{euros(f.indemniteDueParents.net)}</span></div>}
+            {f.indemniteDueParents && f.indemniteDueParents.net > 0 && <div class="decl-line"><span class="decl-label"><span>Ce que les parents peuvent te demander</span><span class="decl-hint">Salaire net du préavis non fait, du {shortDate(f.indemniteDueParents.du)} au {shortDate(f.indemniteDueParents.au)} (convention, article 64.2), en passant par le conseil de prud’hommes.{motif !== 'retrait' ? ' Si tu es enceinte, rien n’est dû (Code du travail, L1225-34).' : ''} Pas compté dans le total.</span></span><span class="decl-value">{euros(f.indemniteDueParents.net)}</span></div>}
             {ligneDispense && <div class="decl-line"><span class="decl-label"><span>Indemnité de préavis</span><span class="decl-hint">{ligneDispense.hint}</span></span><span class="decl-value">{ligneDispense.valeur}</span></div>}
             <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint">{ligneRegul.hint}</span></span><span class="decl-value">{ligneRegul.valeur}</span></div>
             <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{f.cpAConfirmer ? 'non calculée' : euros(f.cpIndemnite)}</span></div>

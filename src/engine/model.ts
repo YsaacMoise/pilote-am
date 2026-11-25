@@ -127,20 +127,12 @@ export interface Rupture {
    * congé. Demandé seulement quand des congés tombent dans le préavis.
    */
   cumulCpPreavis?: boolean;
-  /**
-   * T-109 (contrôle qualité de la n° 67 ; règle d'Arvela : aucune donnée de santé hébergée en ligne) : démission, préavis non
-   * fait sans l'accord des parents. Seul le résultat neutre est gardé : `false` = aucune somme due aux parents au titre du
-   * préavis non fait ; `true` = les parents peuvent demander l'indemnité de l'art. 64.2. La réponse à la question de l'écran
-   * (grossesse, C. trav. L1225-34) sert au calcul sur le moment et n'est jamais enregistrée.
+  /*
+   * T-109 (second contrôle qualité de la n° 67, décision de la direction du 26/11/2026) : Arvela ne demande pas si l'AM est
+   * enceinte et n'enregistre rien qui en dépende (ni `grossesse`, ni résultat qui la code). L'écran de fin donne les deux cas
+   * en texte. Les anciens champs `grossesse` et `sommeDuePreavis` (branche jamais publiée) sont retirés à la lecture, à
+   * l'enregistrement et à l'envoi en ligne (absences.ts, ruptureSansSante).
    */
-  sommeDuePreavis?: boolean;
-  /**
-   * Ancien champ (branche T-107, jamais publié) : retiré à la lecture et à l'envoi en ligne (absences.ts, ruptureSansSante).
-   * T-107 (cas 2) : démission, préavis non fait sans l'accord des parents : l'AM est en état de grossesse médicalement
-   * constaté (C. trav. L1225-34, applicable par CASF L423-2, 3° : rupture « sans préavis et sans devoir d'indemnité
-   * de rupture »). Demandé seulement dans ce cas.
-   */
-  grossesse?: boolean;
   /**
    * T-109 (correction 7) : rupture pendant l'essai d'un CDI, contrat conclu pour un autre enfant de la même famille alors qu'un
    * contrat était en cours avec une période d'essai concluante : essai de 30 jours calendaires au plus (CCN 95.1, al. 3).
@@ -411,14 +403,11 @@ export interface AmLeave {
    * Décision du DG du 21/11/2026 (« sans la raison ») : la nature n'est ni enregistrée, ni envoyée, ni affichée.
    */
   joursEvenement?: number;
-  /**
-   * T-109 (contrôle qualité de la n° 67) : nombre de jours ouvrables accordés, par contrat, quand il dépend des jours de travail
-   * du contrat (« sept jours ouvrés » de C. trav. L3142-4, 4°, du 01/07/2020 au 31/12/2021, converti à la saisie en jours
-   * ouvrables jusqu'au septième jour de travail). Seulement des nombres : aucune marque ne révèle l'événement. Absent : `joursEvenement`.
+  /*
+   * T-109 (second contrôle qualité de la n° 67) : aucune marque propre à un événement. Les « sept jours ouvrés » d'avant 2022
+   * (C. trav. L3142-4, 4°) sont convertis à la saisie en `joursEvenement` (jours ouvrables jusqu'au septième jour de travail).
+   * Les anciennes marques `joursOuvres` et `joursEvenementContrat` sont retirées à la lecture et à l'envoi (absences.ts).
    */
-  joursEvenementContrat?: Record<string, number>;
-  /** Ancienne marque (branche T-107, jamais publiée) : retirée à la lecture et à l'envoi en ligne (absences.ts). */
-  joursOuvres?: true;
   /**
    * Événement familial seulement : identifiant interne de l'absence dont celle-ci est la suite (même événement saisi en
    * plusieurs fois), quand l'AM a répondu « oui » à la question de la saisie (décision du DG du 21/11/2026). Ne dit rien

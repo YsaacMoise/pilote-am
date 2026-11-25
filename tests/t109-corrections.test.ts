@@ -127,7 +127,7 @@ describe('C7 : essai d’un CDI (CCN 95.1)', () => {
   });
   it('autre enfant de la même famille : la réponse est demandée, puis 30 jours calendaires (dernier jour 03/02/2026)', () => {
     expect(finDeContrat(ctx(), '2026-02-10', 'essai', 0, undefined, undefined, undefined, undefined, true).nonGere?.[0]).toMatch(/autre enfant/);
-    const oui = { cumulCpPreavis: undefined, grossesse: undefined, essaiAutreEnfant: true };
+    const oui = { cumulCpPreavis: undefined, essaiAutreEnfant: true };
     expect(finDeContrat(ctx(), '2026-02-03', 'essai', 0, undefined, undefined, undefined, oui, true).nonGere).toBeUndefined();
     expect(finDeContrat(ctx(), '2026-02-04', 'essai', 0, undefined, undefined, undefined, oui, true).nonGere).toBeDefined();
     expect(finDeContrat(ctx(), '2026-02-10', 'essai', 0, undefined, undefined, undefined, { ...oui, essaiAutreEnfant: false }, true).nonGere).toBeUndefined();
@@ -257,23 +257,39 @@ import { forRemote } from '../src/sync/plan';
 
 describe('Contrôle qualité de la n° 67 : aucune donnée de santé hébergée, aucune marque qui révèle un événement', () => {
   const rupt = { motif: 'demission' as const, notif: '2026-10-01', preavis: 'am_sans_accord' as const, dernierJourTravaille: '2026-10-10' };
-  it('la réponse « enceinte » devient le résultat neutre ; rien ne part en ligne', () => {
-    expect(ruptureSansSante({ ...rupt, grossesse: true })).toEqual({ ...rupt, sommeDuePreavis: false });
-    expect(ruptureSansSante({ ...rupt, grossesse: false })).toEqual({ ...rupt, sommeDuePreavis: true });
-    const envoye = forRemote('contracts', 'c1', { ...ct(), rupture: { ...rupt, grossesse: true } }) as { rupture: Record<string, unknown> };
-    expect(envoye.rupture).not.toHaveProperty('grossesse');
-    expect(envoye.rupture.sommeDuePreavis).toBe(false);
+  it('aucun champ sur la grossesse, ni la réponse ni un résultat qui la code : retirés à la lecture et à l’envoi', () => {
+    expect(ruptureSansSante({ ...rupt, grossesse: true })).toEqual(rupt);
+    expect(ruptureSansSante({ ...rupt, sommeDuePreavis: false })).toEqual(rupt);
+    const envoye = forRemote('contracts', 'c1', { ...ct(), rupture: { ...rupt, grossesse: true, sommeDuePreavis: false } }) as { rupture: Record<string, unknown> };
+    expect(envoye.rupture).toEqual(rupt);
   });
-  it('fin de contrat calculée avec le résultat neutre enregistré : rien dû aux parents', () => {
-    const c = ct({ start: '2026-01-05', rupture: { ...rupt, sommeDuePreavis: false } } as Partial<Contract>);
+  it('fin de contrat sans question : les deux cas sont dits en texte (CCN 64.2 ; C. trav. L1225-34)', () => {
+    const c = ct({ start: '2026-01-05', rupture: rupt } as Partial<Contract>);
     const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-01', 'demission', 0, undefined, { demandeur: 'am_sans_accord', dernierJourTravaille: '2026-10-10' });
     expect(f.nonGere).toBeUndefined();
-    expect(f.indemniteDueParents?.net).toBe(0);
-    expect(f.alertes.join(' ')).not.toMatch(/grossesse/);
+    expect(f.indemniteDueParents?.net).toBeGreaterThan(0);
+    expect(f.alertes.join(' ')).toMatch(/Les parents peuvent demander .* \(salaire net du préavis non fait, en passant par le conseil de prud’hommes ; convention, article 64\.2\)\. Si tu es enceinte, rien n’est dû \(Code du travail, L1225-34\)\./);
+    // Retrait de l'enfant : l'AM n'est pas à l'origine de la rupture : pas de phrase sur la grossesse.
+    const r = finDeContrat(makeCtx(ct({ start: '2026-01-05' }), [], [], '2026-12-31'), '2026-10-01', 'retrait', 0, undefined, { demandeur: 'am_sans_accord', dernierJourTravaille: '2026-10-10' });
+    expect(r.alertes.join(' ')).not.toMatch(/enceinte/);
   });
-  it('l’ancienne marque joursOuvres est retirée à la lecture et à l’envoi ; le nombre de jours reste', () => {
+  it('les anciennes marques joursOuvres et joursEvenementContrat sont retirées à la lecture et à l’envoi ; le nombre de jours reste', () => {
+    const m = { id: 'e', type: 'evenement' as const, from: '2021-12-31', to: '2022-01-11', joursEvenement: 7, joursEvenementContrat: { c1: 8, c2: 11 } };
+    expect(normaliserAbsence(m)).toEqual({ id: 'e', type: 'evenement', from: '2021-12-31', to: '2022-01-11', joursEvenement: 11 });
     const l = { id: 'e', type: 'evenement' as const, from: '2021-12-31', to: '2022-01-11', joursEvenement: 7, joursOuvres: true as const };
     expect(normaliserAbsence(l)).toEqual({ id: 'e', type: 'evenement', from: '2021-12-31', to: '2022-01-11', joursEvenement: 7 });
     expect(forRemote('leaves', 'e', l)).not.toHaveProperty('joursOuvres');
+  });
+});
+
+import { absenceSaisie } from '../src/engine/absences';
+
+describe('Second contrôle de la n° 67 : « sept jours ouvrés » d’avant 2022, un seul nombre de jours', () => {
+  it('deux contrats (lundi au vendredi ; lundi et mardi) : le plus grand nombre de jours ouvrables (L3142-4 : un minimum)', () => {
+    // Du vendredi 31/12/2021. Contrat lundi-mardi : 7e jour travaillé le lundi 24/01/2022 ; jours ouvrables du 31/12 au 24/01,
+    // sans le 01/01 (férié) ni les dimanches : 1 + 6 + 6 + 6 + 1 = 20. Contrat lundi-vendredi : 8.
+    const a = ct({ start: '2021-09-01' });
+    const b = { ...ct({ start: '2021-09-01', planning: week('08:00', '16:00', [1, 2]) }), id: 'c2' } as Contract;
+    expect(absenceSaisie('evenement', 'deces_enfant_14', 'x', '2021-12-31', '2022-01-24', [a, b])).toEqual({ id: 'x', type: 'evenement', from: '2021-12-31', to: '2022-01-24', joursEvenement: 20 });
   });
 });

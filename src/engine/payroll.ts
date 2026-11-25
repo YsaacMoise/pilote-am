@@ -332,7 +332,7 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
       } else if (amLeave === 'evenement') {
         info.inDivisor = true;
         // T-107 (cas 6) : jours ouvrés (L3142-4, 4°, avant 2022) : jours de travail prévus au contrat.
-        const st = statutJourEvenement(amLeaveAt(ctx.leaves, d)!, d, ctx.leaves, c.reposHebdo ?? 7, undefined, c.id);
+        const st = statutJourEvenement(amLeaveAt(ctx.leaves, d)!, d, ctx.leaves, c.reposHebdo ?? 7);
         // T-103 (C6 à C8) : un jour au-delà de la durée est retenu (absence non payée), avec la raison ; une saisie que l'app
         // ne sait pas lire refuse le mois (nonGeresPeriode).
         if (!st.paye && !st.nonGere) { info.deducted = true; info.raisonRetenue = st.raison; }

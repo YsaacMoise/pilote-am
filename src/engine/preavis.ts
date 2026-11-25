@@ -118,10 +118,7 @@ export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'
     return undefined;
   }
   // T-107 (cas 2) : préavis non fait sans l'accord des parents : le contrat finit au dernier jour travaillé (CCN 64), comme
-  // avec leur accord ; la grossesse de l'AM qui démissionne est demandée une fois (C. trav. L1225-34).
-  if (r.preavis === 'am_sans_accord' && r.motif === 'demission' && r.sommeDuePreavis === undefined && d && d >= r.notif && d <= preavisFin) {
-    return { du: lo(d, end), au: hi(end, preavisFin), message: MESSAGE_GROSSESSE_A_REPONDRE };
-  }
+  // avec leur accord. T-109 : aucune question sur la grossesse (l'écran de fin donne les deux cas en texte).
   if (r.preavis === 'am_acceptee' || r.preavis === 'am_sans_accord') {
     if (!d || d < r.notif || d > preavisFin || (!avecPreavisMotif(r.motif))) {
       return { du: lo(r.notif, end), au: hi(end, preavisFin), message: 'Préavis non fait à ta demande : les dates enregistrées ne concordent pas (dernier jour travaillé manquant, avant la lettre ou après la fin du préavis). Corrige-les dans l’écran « Fin de contrat ».' };
@@ -142,9 +139,6 @@ export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'
   return undefined;
 }
 
-/** T-107 (cas 2) : question de l'écran Fin, posée une fois (démission, préavis non fait sans l'accord des parents) */
-export const QUESTION_GROSSESSE = 'Es-tu enceinte, avec une grossesse constatée par un médecin ?';
-export const MESSAGE_GROSSESSE_A_REPONDRE = `Préavis non fait sans l’accord des parents, après ta démission : ${QUESTION_GROSSESSE.toLowerCase()} Si oui, tu peux partir sans préavis et sans leur devoir d’indemnité (code du travail, article L1225-34). Réponds à la question dans l’écran « Fin de contrat » et enregistre : l’app calcule les derniers mois ensuite.`;
 
 /**
  * T-074 : jour d'un préavis dont les parents ont dispensé l'AM (CCN art. 64.2 : « inexécution totale ou partielle du préavis

@@ -223,14 +223,13 @@ function joursCouverts(chaine: AmLeave[], d: ISODate): ISODate[] {
  *   saisi : elle est retenue (CCN 111), avec la raison, jamais « ni payée ni retenue ».
  * `nonGere` : saisie que l'app ne sait pas lire (avant 2022 ; ancienne saisie sans durée connue).
  */
-export function statutJourEvenement(l: AmLeave, d: ISODate, leaves: AmLeave[] = [l], reposHebdo = 7, _jourTravaille?: (x: ISODate) => boolean, cid?: string): { paye: true } | { paye: false; raison: string; nonGere?: boolean } {
+export function statutJourEvenement(l: AmLeave, d: ISODate, leaves: AmLeave[] = [l], reposHebdo = 7): { paye: true } | { paye: false; raison: string; nonGere?: boolean } {
   const qui = `Événement familial du ${jjmm(l.from)} au ${jjmm(l.to)}`;
   // Décision du DG du 21/11/2026 (« Payer comme avant ») : absence saisie sans nature ni durée : payée.
   if (l.joursEvenement === undefined) return { paye: true };
   const chaine = chaineEvenement(l, leaves);
   const debut = chaine[0];
-  // T-109 : jours accordés pour ce contrat (jours ouvrés convertis en jours ouvrables à la saisie), sinon la durée commune.
-  const duree = (cid !== undefined ? debut.joursEvenementContrat?.[cid] : undefined) ?? debut.joursEvenement ?? 0;
+  const duree = debut.joursEvenement ?? 0;
   if (duree === 0) {
     // T-107 (cas 6) : saisie d'avant la T-107 (événement d'avant 2022, durée alors inconnue) : la durée dépend de l'événement,
     // que l'app n'enregistre pas (décision du DG du 21/11/2026) : il est demandé une fois, en saisissant l'absence de nouveau.

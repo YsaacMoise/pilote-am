@@ -154,9 +154,11 @@ describe('T-074 : préavis dispensé par les parents (CCN art. 64, 64.2, 66, 122
     expect(f.dispense).toBeUndefined();
   });
 
-  it('départ sans accord des parents : toujours refusé', () => {
+  it('départ sans accord des parents : calculé depuis T-107, sans question depuis T-109 ; indemnité que les parents peuvent demander', () => {
     const f = finDeContrat(ctxDe(contract()), '2026-11-23', 'demission', 0, undefined, { demandeur: 'am_sans_accord', dernierJourTravaille: '2026-11-26' });
-    expect(f.nonGere?.length).toBeGreaterThan(0);
+    expect(f.nonGere).toBeUndefined();
+    expect(f.dernierJour).toBe('2026-11-26');
+    expect(f.indemniteDueParents?.net).toBeGreaterThan(0);
   });
 
   it('9 mois atteints à la lettre : indemnité de rupture comptée, indemnité de préavis dans l’assiette (T-103, F4)', () => {

@@ -78,26 +78,20 @@ describe('T-045 : préavis non exécuté (CCN art. 64 et 64.2)', () => {
   // T-107 (cas 2) : préavis non fait sans l'accord des parents, calculé. CCN 64 : fin au dernier jour travaillé ; CCN 64.2,
   // al. 2 : les parents peuvent demander « une indemnité égale au montant de la rémunération nette correspondant à la durée non
   // exécutée du préavis » ; C. trav. L1225-34 (CASF L423-2, 3°) : la salariée enceinte rompt « sans préavis et sans devoir
-  // d'indemnité de rupture ». Démission : la grossesse est demandée une fois.
-  it('T-107 (cas 2) : démission sans l’accord des parents, grossesse non dite : la question est posée, aucun montant', () => {
+  // d'indemnité de rupture ». T-109 : jamais demandé, dit en texte.
+  // T-109 (second contrôle qualité, décision de la direction du 26/11/2026) : aucune question sur la grossesse ; l'écran dit les
+  // deux cas. Les congés non pris sont ceux d'un départ au même jour accepté par les parents (seule la date de fin compte, CCN 64).
+  it('T-107 (cas 2), T-109 : démission sans l’accord des parents : aucune question ; le montant et le cas de la grossesse sont dits', () => {
     const f = finDeContrat(ctxDe(contract()), '2026-10-01', 'demission', 0, undefined, { demandeur: 'am_sans_accord', dernierJourTravaille: '2026-10-10' });
-    expect(f.dernierJour).toBe('2026-10-10');
-    expect(f.nonGere?.join(' ')).toMatch(/enceinte.*L1225-34/);
-    expect(f.totalBrut + f.cpIndemnite + f.regularisation + f.indemniteRupture).toBe(0);
-  });
-  it('T-107 (cas 2) : démission enceinte sans préavis : fin au dernier jour travaillé, rien de dû aux parents', () => {
-    const f = finDeContrat(ctxDe(contract()), '2026-10-01', 'demission', 0, undefined, { demandeur: 'am_sans_accord', dernierJourTravaille: '2026-10-10' }, undefined, { grossesse: true });
     expect(f.nonGere).toBeUndefined();
     expect(f.dernierJour).toBe('2026-10-10');
-    expect(f.indemniteDueParents?.net).toBe(0);
-    expect(f.alertes.join(' ')).toMatch(/L1225-34/);
-    // Mêmes congés non pris qu'un départ au même jour accepté par les parents (seule la date de fin compte, CCN 64).
+    expect(f.alertes.join(' ')).toMatch(/Les parents peuvent demander 590,91\s€ \(salaire net du préavis non fait, en passant par le conseil de prud’hommes ; convention, article 64\.2\)\. Si tu es enceinte, rien n’est dû \(Code du travail, L1225-34\)\./);
     const accepte = finDeContrat(ctxDe(contract()), '2026-10-01', 'demission', 0, undefined, { demandeur: 'am_acceptee', dernierJourTravaille: '2026-10-10' });
     expect(f.cpIndemnite).toBe(accepte.cpIndemnite);
     expect(f.cpIndemnite).toBeGreaterThan(0);
   });
-  it('T-107 (cas 2) : démission sans l’accord des parents, pas enceinte : les parents peuvent demander le net du préavis non fait', () => {
-    const f = finDeContrat(ctxDe(contract()), '2026-10-01', 'demission', 0, undefined, { demandeur: 'am_sans_accord', dernierJourTravaille: '2026-10-10' }, undefined, { grossesse: false });
+  it('T-107 (cas 2) : démission sans l’accord des parents : les parents peuvent demander le net du préavis non fait', () => {
+    const f = finDeContrat(ctxDe(contract()), '2026-10-01', 'demission', 0, undefined, { demandeur: 'am_sans_accord', dernierJourTravaille: '2026-10-10' });
     expect(f.nonGere).toBeUndefined();
     expect(f.dernierJour).toBe('2026-10-10');
     // Préavis d'un mois (13 mois d'ancienneté, CCN 120) : du 01/10 au 31/10/2026. Non fait : du 11/10 au 31/10. Mensualisé net

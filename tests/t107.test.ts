@@ -77,12 +77,9 @@ describe('T-107, cas 1 : congés payés pendant le préavis (CCN 64.1, troisièm
 
 describe('T-107, cas 2 : contrôle du mois (démission enceinte, CT L1225-34)', () => {
   const r = (x: Partial<Rupture>): Rupture => ({ motif: 'demission', notif: '2026-10-01', preavis: 'am_sans_accord', dernierJourTravaille: '2026-10-10', ...x });
-  it('sans réponse sur la grossesse : la question est demandée ; avec la réponse : la fin au dernier jour travaillé concorde', () => {
-    expect(controleFinContrat(contrat({ end: '2026-10-10', rupture: r({}) }))?.message).toMatch(/enceinte.*L1225-34/);
-    // T-109 : seul le résultat neutre est enregistré (sommeDuePreavis), jamais la réponse sur la grossesse.
-    expect(controleFinContrat(contrat({ end: '2026-10-10', rupture: r({ sommeDuePreavis: false }) }))).toBeUndefined();
-    expect(controleFinContrat(contrat({ end: '2026-10-10', rupture: r({ sommeDuePreavis: true }) }))).toBeUndefined();
-    expect(controleFinContrat(contrat({ end: '2026-10-31', rupture: r({ sommeDuePreavis: true }) }))?.message).toMatch(/n’est pas le dernier jour travaillé/);
+  it('T-109 : aucune question sur la grossesse ; la fin au dernier jour travaillé concorde', () => {
+    expect(controleFinContrat(contrat({ end: '2026-10-10', rupture: r({}) }))).toBeUndefined();
+    expect(controleFinContrat(contrat({ end: '2026-10-31', rupture: r({}) }))?.message).toMatch(/n’est pas le dernier jour travaillé/);
   });
 });
 
@@ -135,19 +132,18 @@ describe('T-107, cas 6 : événement familial commencé avant 2022 (ancienne CCN
     expect(libelleDureeSaisie('deces_descendant', '2021-12-20')).toMatch(/Pas de congé.*congé payé ou sans solde/);
     expect(libelleDureeSaisie('mariage', '2021-12-20')).toBe('4 jours ouvrables payés');
     expect(libelleDureeSaisie('deces_enfant_14', '2021-12-20')).toMatch(/7 jours ouvrés/);
-    // T-109 : aucune marque qui révèle l'événement ; seulement des nombres de jours (8 jours ouvrables jusqu'au 7e jour travaillé).
+    // T-109 : aucune marque qui révèle l'événement ; seulement le nombre de jours (8 jours ouvrables jusqu'au 7e jour travaillé).
     const ouvres = absenceSaisie('evenement', 'deces_enfant_14', 'x', '2021-12-31', '2022-01-11', [contrat({ start: '2021-09-01' })])!;
-    expect(ouvres).toMatchObject({ joursEvenement: 7, joursEvenementContrat: { c1: 8 } });
-    expect(ouvres).not.toHaveProperty('joursOuvres');
-    expect(absenceSaisie('evenement', 'mariage', 'x', '2021-12-31', '2022-01-04', [contrat({ start: '2021-09-01' })])).not.toHaveProperty('joursEvenementContrat');
+    // T-109 (second contrôle) : un seul nombre, sans champ propre à ce cas.
+    expect(ouvres).toEqual({ id: 'x', type: 'evenement', from: '2021-12-31', to: '2022-01-11', joursEvenement: 8 });
   });
   it('sept jours ouvrés : jours de travail prévus (lundi au vendredi), fériés exclus : payé le 10/01, retenu le 11/01/2022', () => {
     // Du vendredi 31/12/2021 au mardi 11/01/2022. Jours ouvrés : 31/12 (1) ; samedi 01/01 férié et sans accueil ; 03 au 07/01
     // (2 à 6) ; lundi 10/01 (7) : payés. Mardi 11/01 : 8e, retenu. T-109 : converti à la saisie en jours ouvrables jusqu'au
     // 7e jour travaillé : 31/12, 03 au 08/01 et 10/01 = 8 jours ouvrables ; le calcul paie les mêmes jours.
     const l = absenceSaisie('evenement', 'deces_enfant_14', 'e1', '2021-12-31', '2022-01-11', [contrat({ start: '2021-09-01' })])!;
-    expect(statutJourEvenement(l, '2022-01-10', [l], 7, undefined, 'c1')).toEqual({ paye: true });
-    const st = statutJourEvenement(l, '2022-01-11', [l], 7, undefined, 'c1');
+    expect(statutJourEvenement(l, '2022-01-10', [l], 7)).toEqual({ paye: true });
+    const st = statutJourEvenement(l, '2022-01-11', [l], 7);
     expect(st.paye).toBe(false);
     expect(!st.paye && st.raison).toMatch(/8 jours ouvrables au plus.*ancienne convention, article 13/);
   });

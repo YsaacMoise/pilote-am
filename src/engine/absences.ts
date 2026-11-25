@@ -10,7 +10,7 @@ import { addDays, daysBetween, weekday, type ISODate } from './dates';
 import { holidayName } from './holidays';
 import { planningBrutMin, termsAt } from './payroll';
 import { dureeEvenement, evenementEnJoursOuvres, evenementPrecedentProche, evenementSuivantProche, LIEN_EVENEMENT_JOURS } from './evenements';
-import { AM_ABS_ANCIENNES, type AmAbs, type AmLeave, type Contract, type NatureEvenement, type Rupture } from './model';
+import { AM_ABS_ANCIENNES, type AmAbs, type AmLeave, type Contract, type NatureEvenement } from './model';
 
 /** Absence telle qu'elle peut être lue : forme actuelle, ou saisie d'avant (nature, cas non géré dans `type`) */
 export type AbsenceLue = Omit<AmLeave, 'type'> & { type: AmAbs | 'accident_travail'; nature?: NatureEvenement };
@@ -25,8 +25,13 @@ export function joursEvenementSaisi(nature: NatureEvenement, from: string): numb
  * Une absence déjà à la bonne forme est rendue telle quelle (même objet).
  */
 export function normaliserAbsence(l: AbsenceLue): AmLeave {
-  // T-109 : l'ancienne marque `joursOuvres` (branche T-107, jamais publiée) révélait l'événement : retirée, le nombre reste.
-  if ('joursOuvres' in l) { const { joursOuvres: _o, ...sans } = l; return normaliserAbsence(sans); }
+  // T-109 : les anciennes marques `joursOuvres` et `joursEvenementContrat` (branche jamais publiée) révélaient l'événement :
+  // retirées ; le nombre de jours reste (le plus grand des nombres par contrat, s'il y en avait).
+  if ('joursOuvres' in l || 'joursEvenementContrat' in l) {
+    const { joursOuvres: _o, joursEvenementContrat: parC, ...sans } = l as AbsenceLue & { joursOuvres?: true; joursEvenementContrat?: Record<string, number> };
+    const n = parC ? Object.values(parC) : [];
+    return normaliserAbsence(n.length ? { ...sans, joursEvenement: Math.max(...n) } : sans);
+  }
   const { nature, ...reste } = l;
   if (AM_ABS_ANCIENNES.includes(l.type)) {
     const { joursEvenement: _j, ...sansJours } = reste;
@@ -95,10 +100,11 @@ export function absenceSaisie(choix: ChoixAbsence, nature: NatureEvenement | und
     if (!nature || dureeEvenement(nature, from) === undefined) return undefined;
     const jours = joursEvenementSaisi(nature, from);
     if (!evenementEnJoursOuvres(nature, from)) return { id, type: 'evenement', from, to, joursEvenement: jours };
-    // T-109 : seulement des nombres de jours accordés, par contrat en cours au premier jour.
-    const parContrat: Record<string, number> = {};
-    for (const c of contrats) if (c.start <= from && (!c.end || c.end >= from)) parContrat[c.id] = joursOuvrablesPourOuvres(c, from, jours);
-    return { id, type: 'evenement', from, to, joursEvenement: jours, ...(Object.keys(parContrat).length ? { joursEvenementContrat: parContrat } : {}) };
+    // T-109 (second contrôle qualité) : un seul nombre de jours ouvrables, sans champ propre à ce cas. Plusieurs contrats en
+    // cours : le plus grand nombre, car L3142-4 fixe un minimum (« ne peut être inférieure à ») : aucun contrat ne paie moins
+    // que ses sept jours ouvrés.
+    const actifs = contrats.filter((c) => c.start <= from && (!c.end || c.end >= from));
+    return { id, type: 'evenement', from, to, joursEvenement: actifs.length ? Math.max(...actifs.map((c) => joursOuvrablesPourOuvres(c, from, jours))) : jours };
   }
   return { id, type: choix, from, to };
 }
@@ -176,12 +182,12 @@ export function liensApresSuppression(id: string, leaves: AmLeave[]): AmLeave[] 
 }
 
 /**
- * T-109 (contrôle qualité de la n° 67 ; règle d'Arvela : aucune donnée de santé hébergée en ligne) : forme enregistrée de la
- * rupture. L'ancien champ `grossesse` (branche T-107, jamais publié) est retiré : il devient le résultat neutre
- * `sommeDuePreavis` (false : aucune somme due au titre du préavis). Rend le même objet si rien n'est à retirer.
+ * T-109 (second contrôle qualité de la n° 67 ; règle d'Arvela : aucune donnée de santé hébergée) : forme enregistrée de la
+ * rupture. Les anciens champs `grossesse` et `sommeDuePreavis` (branche jamais publiée ; le second codait la réponse sur la
+ * grossesse) sont retirés, sans rien garder à leur place. Rend le même objet si rien n'est à retirer.
  */
-export function ruptureSansSante<R extends Partial<Rupture> & { grossesse?: boolean }>(r: R): Omit<R, 'grossesse'> {
-  if (!('grossesse' in r)) return r;
-  const { grossesse, ...reste } = r;
-  return grossesse === undefined || reste.sommeDuePreavis !== undefined ? reste : { ...reste, sommeDuePreavis: !grossesse };
+export function ruptureSansSante<R extends object>(r: R): R {
+  if (!('grossesse' in r) && !('sommeDuePreavis' in r)) return r;
+  const { grossesse: _g, sommeDuePreavis: _s, ...reste } = r as R & { grossesse?: unknown; sommeDuePreavis?: unknown };
+  return reste as R;
 }
