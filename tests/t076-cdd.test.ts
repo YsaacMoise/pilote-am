@@ -3,7 +3,7 @@
 // Les attendus sont calculés à la main dans les commentaires, d'après les formules du rapport, avec les conventions de l'app :
 // montants en centimes, arrondi au centime le plus proche, brut estimé = net × 10000 / 7810 (netToBrut), net estimé =
 // brut × 7810 / 10000. Notation : n2b(x) = arrondi(x × 10000 / 7810) ; b2n(x) = arrondi(x × 7810 / 10000).
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { AmLeave, Contract, DayRec, Planning } from '../src/engine/model';
 import { makeCtx, monthBase } from '../src/engine/payroll';
@@ -259,16 +259,18 @@ describe('P2, revu par la T-103 (F12) : CDD avec semaines sans accueil, mode 46 
     const attendus: [string, number][] = [['2026-01', 22727], ['2026-02', 25000], ['2026-03', 25000], ['2026-04', 25000]];
     for (const [m, l1] of attendus) expect(computeMonth(ctx, m).netTotal).toBe(l1);
   });
-  it('fin : régularisation 1 982,73 € (art. 124), IFC 296,00 €, ICCP 325,60 €', () => {
+  it('fin : régularisation 1 982,73 € (art. 124), IFC 296,00 €, ICCP 333,33 €', () => {
     // Régularisation : jours dus = 20 + 15 + 22 + 17 = 74 jours × 8 h × 5,00 € = 2 960,00 € ; versé 977,27 € ; 1 982,73 €.
-    // IFC nette : 10 % × 296000 = 296,00 €. ICCP : (296000 + 29600) / 10 = 325,60 € ; maintien 9 jours × 200 € / 6 = 300,00 €.
+    // IFC nette : 10 % × 296000 = 296,00 €. Dixième : (296000 + 29600) / 10 = 325,60 €. Jours acquis (T-103, C10 bis, semaines
+    // sans accueil : décompte le plus favorable) : journalier, 74 jours d'accueil ÷ 20 × 2,5 = 9,25 → 10 jours ; maintien
+    // 10 × 200 € / 6 = 333,33 €, plus haut que le dixième.
     const f = fin(c, '2026-04-30', 'terme');
     expect(f.regularisation).toBe(198273);
     const ctx = ctxDe({ ...c, end: '2026-04-30' });
     const verse = ['2026-01', '2026-02', '2026-03', '2026-04'].reduce((t, m) => t + computeMonth(ctx, m).netTotal, 0);
     expect(verse + f.regularisation).toBe(296000);
     expect(f.ifcNet).toBe(29600);
-    expect(f.cpIndemnite).toBe(32560);
+    expect(f.cpIndemnite).toBe(33333);
   });
   it('P1 et P2 à la fois : calculé (une seule lecture pour chacun, T-103)', () => {
     const p = cdd({ start: '2026-03-09', trackedFrom: '2026-03-09', cddTerme: '2026-03-27', yearType: 'incomplete', weeks: 2, weeksOff: ['2026-03-16'] });
@@ -306,6 +308,8 @@ describe('Non-régression : un CDI donne exactement les mêmes sorties qu’avan
     // sur les montants : hors de la comparaison.
     const HORS = new Set(['brutConnu', 'periodeDecesFin', 'normalesPlusMin', 'normalesPlusAmount', 'evenementAConfirmer', 'ferieLocalAConfirmer', 'joursCpAConfirmer', 'joursEvenementAConfirmer', 'joursFerieLocalAConfirmer', 'joursMaintienAConfirmer', 'joursMaladieAConfirmer', 'kmAConfirmer']);
     const filtre = (x: unknown) => JSON.parse(JSON.stringify(x, (k, v) => (HORS.has(k) ? undefined : v)));
+    // Recapture (T-103, après relecture des écarts) : T076_RECAPTURE=1 npx vitest run tests/t076-cdd.test.ts
+    if (process.env.T076_RECAPTURE === '1') writeFileSync(new URL('./fixtures/t076-cdi-avant.json', import.meta.url), JSON.stringify(apres));
     expect(filtre(apres)).toEqual(filtre(avant));
   });
 });

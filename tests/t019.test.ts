@@ -108,13 +108,13 @@ describe('T-019 (2), revu par la T-103 (C11) : acquisition en année incomplète
       '2022-04-25', '2022-05-02', '2022-05-09', '2022-07-25', '2022-08-01', '2022-08-08', '2022-08-15', '2022-08-22'];
     expect(acquisition(makeCtx(bertrand({ weeksOff: occ }), [], [], '2022-12-31'), 2021).jours).toBe(18);
   });
-  it('C-CPA-05 (rupture au 30/09/2022, 2 semaines de congés en août) : 7 jours ; la fiche retient 8 (jours d’accueil ÷ 20), 7 en semaines', () => {
-    // Divergence documentée : la fiche compte 58 jours d'accueil ÷ 20 (4 semaines de 5 jours) ; l'arrêt de 1980 compte juin,
-    // mois complet, pour une période, puis le reste au prorata (CCN 48.1.1.2) : 6,96 → 7, comme la formule en semaines de la fiche.
+  it('C-CPA-05 (rupture au 30/09/2022, 2 semaines de congés en août) : 8 jours, comme la fiche (jours d’accueil ÷ 20)', () => {
+    // T-103 (C10 bis) : semaines sans accueil dans la période : décompte le plus favorable (service-public F18260), ici le
+    // décompte journalier : jours d'accueil ÷ 20 (horaires sur 5 jours), comme la fiche.
     const ctx = makeCtx(bertrand({ end: '2022-09-30' }), [], [cp('a', '2022-08-01', '2022-08-13')], '2022-12-31');
     const a = acquisition(ctx, 2022);
     expect(a.aConfirmer).toBeUndefined();
-    expect(a.jours).toBe(7);
+    expect(a.jours).toBe(8);
   });
   it('C-CPI-03 (versement au fur et à mesure) : 12 jours pris en août, sans réserve', () => {
     const ctx = makeCtx(bertrand({ cpMode: 'fur' }), [], [cp('a', '2022-08-01', '2022-08-13')], '2022-12-31');

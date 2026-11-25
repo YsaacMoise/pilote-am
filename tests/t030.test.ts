@@ -97,17 +97,18 @@ describe('T-030 A-23, revu par la T-103 (C10) : acquisition en année complète,
     expect(a.aConfirmer).toBeUndefined();
     expect(a.jours).toBe(30);
   });
-  it('C-CPA-15 (S-BFC fiche 04-III) : 9 mois de travail et 3 mois d’arrêt, 29 jours, comme la fiche', () => {
-    expect(acquisition(makeCtx(c45(), [], [malade('2025-03-01', '2026-07-31')], '2026-12-31'), 2024).jours).toBe(29);
+  it('C-CPA-15 (S-BFC fiche 04-III) : 9 mois de travail et 3 mois d’arrêt : 30 jours ; la fiche, qui compte en mois, retient 29', () => {
+    // T-103 (C10 bis) : absence dans la période : décompte le plus favorable (service-public F18260). En semaines :
+    // juin 2024 à février 2025, 273 jours ÷ 28 = 9,75 × 2,5 = 24,4 ; arrêt de mars à mai, 3 mois × 2 = 6 ; 30,4 → 30 (plafond).
+    expect(acquisition(makeCtx(c45(), [], [malade('2025-03-01', '2026-07-31')], '2026-12-31'), 2024).jours).toBe(30);
   });
   it('C-CPA-14 (S-BFC) : arrêt de 11 semaines : 30 jours ; la fiche, qui jette les périodes commencées, retient 29', () => {
     // Divergence documentée : CCN 48.1.1.2 compte le reste « pro rata temporis » (plus favorable que la fiche).
     expect(acquisition(makeCtx(c45(), [], [malade('2025-10-06', '2025-12-21')], '2026-12-31'), 2025).jours).toBe(30);
   });
-  it('C-CPA-13 (S-BFC) : arrêt de 20 semaines : 28 jours ; la fiche, qui compte en semaines, retient 30', () => {
-    // Divergence documentée : 7 mois complets de travail (17,5) + 11 jours (0,98) ; 3 mois complets d'arrêt (6) + 48 jours
-    // (3,43) = 27,9 → 28. En semaines (32 × 2,5 ÷ 4 + 20 × 2 ÷ 4) : 30. L'arrêt de 1980 écarte le compte en semaines.
-    expect(acquisition(makeCtx(c45(), [], [malade('2024-10-07', '2025-02-23')], '2026-12-31'), 2024).jours).toBe(28);
+  it('C-CPA-13 (S-BFC) : arrêt de 20 semaines : 30 jours, comme la fiche, qui compte en semaines', () => {
+    // T-103 (C10 bis) : décompte le plus favorable (service-public F18260) : en semaines (32 × 2,5 ÷ 4 + 20 × 2 ÷ 4) = 30.
+    expect(acquisition(makeCtx(c45(), [], [malade('2024-10-07', '2025-02-23')], '2026-12-31'), 2024).jours).toBe(30);
   });
   it('C-FIN-09 (S-BFC fiche 11-III) : 23 jours comme la fiche ; indemnité de congés non pris calculée, complément de juin versé', () => {
     const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01', end: '2026-08-31', planning: week('08:00', '17:00'), rateNet: 400 });

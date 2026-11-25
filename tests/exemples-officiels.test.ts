@@ -114,9 +114,10 @@ describe('[OCC52] DDETS 31, accueil sur 52 semaines (version du 30/03/2023)', ()
 
   it('p. 4-5 : congés du 01/09/2021 au 31/05/2022 : 39 semaines → 24,375 → 25 jours, + 2 pour enfant à charge = 27', () => {
     const a = acquisition(ctx(), 2021, 1);
-    // T-103 (C10, C11) : méthode de Cass. soc. 10/01/1980, n° 78-41.140 (mois complets d'abord, reste au prorata de la CCN 48.1.1.2) ; elle rejoint la fiche 4/5 de la même DDETS (2024) et le Code du travail numérique (2025), pas cette fiche de 2023 qui compte en semaines. 9 mois × 2,5 = 22,5 → 23 jours.
-    ecart(a.jours - a.enfantsBonus, 25, 2);
-    ecart(a.jours, 27, 2);
+    // T-103 (C10 bis) : l'AM est absente (malade du 13 au 15/10/2021) : décompte le plus favorable (service-public F18260) :
+    // en semaines, 270 jours de travail ÷ 28 = 9,64 périodes, plus la part de l'arrêt → 24,4 → 25 jours, comme la fiche.
+    ecart(a.jours - a.enfantsBonus, 25, 0);
+    ecart(a.jours, 27, 0);
   });
 
   it('p. 6 : maintien pour 12 jours (2 semaines de 40 h) = 400 € ; dixième 7 676,14 × 10 % = 767,61 €', () => {
@@ -135,8 +136,8 @@ describe('[OCC52] DDETS 31, accueil sur 52 semaines (version du 30/03/2023)', ()
     ecart(ind.dixieme, 82901, 6139);
     // Divergence de méthode M-1 : la fiche compte les 3 jours restants comme 3 jours de travail de 8 h ; l'app (comme
     // le guide BFC d'août 2026, 1/26 du salaire mensualisé par jour ouvrable) compte 27 ÷ 6 semaines = 900 €.
-    // T-103 : 25 jours (23 + 2) au lieu de 27 (C10) : 25 ÷ 6 × 40 h × 5 € = 833,33 €.
-    ecart(ind.maintien, 92000, 8667);
+    // T-103 (C10 bis) : 27 jours, comme la fiche ; reste la divergence M-1 : 27 ÷ 6 × 40 h × 5 € = 900 €.
+    ecart(ind.maintien, 92000, 2000);
   });
 
   it('p. 7 : retrait remis le 01/09/2022 : préavis d’un mois, fin le 30/09/2022', () => {
@@ -147,8 +148,9 @@ describe('[OCC52] DDETS 31, accueil sur 52 semaines (version du 30/03/2023)', ()
 
   it('p. 8 : solde de congés à la rupture : 3 + 11 = 14 jours', () => {
     const f = finDeContrat(ctx(), '2022-09-01', 'retrait', 1);
-    // T-103 (C10, C11) : méthode de Cass. soc. 10/01/1980, n° 78-41.140 (mois complets d'abord, reste au prorata de la CCN 48.1.1.2) ; elle rejoint la fiche 4/5 de la même DDETS (2024) et le Code du travail numérique (2025), pas cette fiche de 2023 qui compte en semaines.
-    ecart(f.cpJoursRestants, 14, 3);
+    // T-103 (C10 bis) : période close, 27 jours comme la fiche (3 restants) ; période en cours (juin à septembre 2022, congés
+    // payés assimilés, aucune absence) : décompte mensuel, 4 mois → 10 jours, la fiche de 2023 compte en semaines (11).
+    ecart(f.cpJoursRestants, 14, 1);
   });
 
   it('p. 9 : indemnité compensatrice 120 € (3 jours) + 400 € (11 jours) = 520 €', () => {
@@ -158,8 +160,8 @@ describe('[OCC52] DDETS 31, accueil sur 52 semaines (version du 30/03/2023)', ()
     // T-050 : congés « à confirmer » par la direction (A-23, T-030 : 11 ou 10 jours en cours, 27 ou 25 jours de la période close selon la lecture) :
     // aucun montant n'est donné ni compté. Écart du lot 3 avant la fusion : 5333.
     expect(f.cpAConfirmer).toBeUndefined();
-    // T-103 (C10) : 23 jours au lieu de 25 pour la période close (méthode de l'arrêt de 1980), et divergence M-1 sur le maintien.
-    ecart(f.cpIndemnite, 52000, 13667);
+    // T-103 (C10 bis) : période close comme la fiche ; période en cours 10 jours au lieu de 11, et divergence M-1 sur le maintien.
+    ecart(f.cpIndemnite, 52000, 6333);
   });
 
   it('p. 10 : indemnité de rupture 11 662,78 ÷ 80 = 145,78 € (assiette : salaires et indemnité compensatrice)', () => {
@@ -173,9 +175,9 @@ describe('[OCC52] DDETS 31, accueil sur 52 semaines (version du 30/03/2023)', ()
     // (51 988). Écarts du lot 3 avant la fusion, congés sûrs : 5321 et 66 (M-1 seule).
     expect(f.cpAConfirmer).toBeUndefined();
     expect(f.ruptureAConfirmer).toBe(false);
-    // T-103 (C10) : 23 jours au lieu de 25 pour la période close (méthode de l'arrêt de 1980), et divergence M-1 sur le maintien.
-    ecart(f.totalBrut, 1166278, 13655);
-    ecart(f.indemniteRupture, 14578, 170);
+    // T-103 (C10 bis) : même écart que l'indemnité compensatrice (p. 9).
+    ecart(f.totalBrut, 1166278, 6321);
+    ecart(f.indemniteRupture, 14578, 79);
   });
 });
 
@@ -249,8 +251,9 @@ describe('[OCC46] DDETS 31, accueil sur 46 semaines ou moins (version du 30/03/2
   it('p. 10 : congés acquis du 01/06 au 30/09/2022 : 11 semaines (dont 2 de congés) et 3 jours → 8 jours', () => {
     const f = finDeContrat(ctx(), '2022-09-01', 'retrait', 2);
     // 12 jours restant de la période précédente + 8 en cours.
-    // T-103 (C10, C11) : méthode de Cass. soc. 10/01/1980, n° 78-41.140 (mois complets d'abord, reste au prorata de la CCN 48.1.1.2) ; elle rejoint la fiche 4/5 de la même DDETS (2024) et le Code du travail numérique (2025), pas cette fiche de 2023 qui compte en semaines. Juin, mois complet de travail, compte pour une période (4 semaines) : 7 jours au lieu de 8.
-    ecart(f.cpJoursRestants, 20, 1);
+    // T-103 (C10 bis) : la période contient des semaines sans accueil : décompte le plus favorable (service-public F18260),
+    // en semaines comme la fiche : 8 jours.
+    ecart(f.cpJoursRestants, 20, 0);
   });
 
   it('p. 11 : indemnité compensatrice 400 € (12 jours restants) + 348,57 € (dixième, régularisation comprise)', () => {

@@ -304,12 +304,12 @@ describe('congés payés (art. 48 et 102)', () => {
     expect(acquisition(ctx, 2026).jours).toBe(23);
   });
   it('arrêt maladie de l’AM : 2 jours par mois au lieu de 2,5 (loi d’avril 2024)', () => {
-    // T-103 (C10, C11) : Cass. soc. 10/01/1980, n° 78-41.140 : mois complets d'abord, reste au prorata (CCN 48.1.1.2).
-    // 8 mois complets de travail (20) ; novembre : 28 jours d'arrêt (2 × 28 ÷ 28 = 2) et 2 jours de travail (2,5 × 2 ÷ 28)
-    // = 22,18 → 23 (23 sans arrêt).
+    // T-103 (C10 bis) : absence dans la période : décompte le plus favorable (service-public F18260). En semaines :
+    // 273 − 28 = 245 jours de travail ÷ 28 = 8,75 périodes × 2,5 = 21,875 ; arrêt : 4 semaines = 1 période × 2 = 2 ;
+    // 23,875 → 24. (Méthode de 1980 : 8 mois + 2 jours, 22,18 → 23.)
     const c = contract({ start: '2026-09-01', trackedFrom: '2026-09-01' });
     const ctx = makeCtx(c, [], [{ id: 'm', type: 'am_malade', from: '2026-11-02', to: '2026-11-29' }], '2027-06-15');
-    expect(acquisition(ctx, 2026).jours).toBe(23);
+    expect(acquisition(ctx, 2026).jours).toBe(24);
   });
   it('arrêt maladie en année incomplète : au prorata des semaines programmées', () => {
     // T-103 (B) : sans les semaines sans accueil au contrat, l'app les demande.

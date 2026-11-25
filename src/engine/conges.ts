@@ -3,7 +3,7 @@ import { addDays, addMonths, addMonthsToDate, cpPeriod, cpPeriodStartYear, daysB
 import { holidayName } from './holidays';
 import { ferieDe, regionDe } from './regions';
 import {
-  H45, inContract, makeCtx, monthBase, plannedPlages, planningBrutMin, semainesSansAccueilAnnee, termsAt,
+  H45, daysPerWeek, inContract, makeCtx, monthBase, plannedPlages, planningBrutMin, semainesSansAccueilAnnee, termsAt,
   toutesSemainesSansAccueil, weeklyMinutes, weeksPerYear, type Ctx,
 } from './payroll';
 import type { AmLeave, Contract } from './model';
@@ -299,7 +299,25 @@ function joursAcquis(ctx: Ctx, from: ISODate, to: ISODate): number {
   };
   const travail = compte1980(a, b, (d) => sorte(d) === 'travail');
   const arret = malade.size ? compte1980(a, b, (d) => sorte(d) === 'maladie') : { mois: 0, semaines: 0, jours: 0 };
-  const periodes = travail.mois + travail.semaines / 4 + travail.jours / 24;
+  // T-103 (C10 bis) : fiche officielle service-public F18260 (reprise par le Code du travail numérique, mise à jour du
+  // 20/02/2026) : « Si le salarié est absent durant la période de référence », le décompte se fait « selon la règle qui lui
+  // est la plus favorable » : mensuel (2,5 jours
+  // par mois), hebdomadaire (2,5 jours toutes les 4 semaines) ou journalier (2,5 jours pour 24 jours de travail, ou 20 si
+  // les horaires sont sur 5 jours par semaine, 22 sur 5,5 jours) ; C. trav. L3141-4 (« quatre semaines ou vingt-quatre
+  // jours »). Mensuel : méthode de Cass. soc. 10/01/1980 (mois complets, puis semaines, puis jours), restes au prorata
+  // (CCN 48.1.1.2). Hebdomadaire : jours calendaires de travail ÷ 7 ÷ 4. Journalier : jours d'accueil prévus et travaillés
+  // ÷ (4 × jours d'accueil par semaine du planning). Le plus haut est retenu. Sans absence ni semaine sans accueil dans la
+  // période (seulement l'embauche ou la fin), le décompte mensuel s'applique seul (fiche 4/5 de la DDETS 31, 05/11/2024 :
+  // septembre à mai, 9 mois → 23 jours ; Code du travail numérique : novembre à mai, 7 mois → 18 jours).
+  let joursCal = 0, joursPlan = 0, absence = false;
+  for (const d of eachDay(a, b)) {
+    if (sorte(d) !== 'travail') { absence = true; continue; }
+    joursCal++;
+    const t = termsAt(c, d);
+    if (planningBrutMin(t, d) > 0) joursPlan += 1 / (4 * Math.max(1, daysPerWeek(t.planning)));
+  }
+  const mensuel = travail.mois + travail.semaines / 4 + travail.jours / 24;
+  const periodes = absence ? Math.max(mensuel, joursCal / 28, joursPlan) : mensuel;
   const maladie = Math.min(CP_MALADIE_PLAFOND, (arret.mois + arret.semaines / 4 + arret.jours / 24) * CP_MALADIE_PAR_4_SEMAINES);
   return periodes * 2.5 + maladie;
 }

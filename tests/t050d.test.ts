@@ -48,13 +48,16 @@ describe('T-050d, B-1, revu par la T-103 : une seule date de fin, l’ICCP et la
     expect(r.dernierJour).toBe('2026-07-31');
     expect(r.regularisation).toBe(60000);
     expect(r.regularisationAConfirmer).toBeUndefined();
-    // T-103 (C11, F7) : jours acquis sûrs ; ICCP de la période en cours = (1 200,00 € de salaires de juin et juillet + 600,00 €
-    // de régularisation + 633,33 € de congés versés en juin) ÷ 10 = 243,33 €. La période précédente est payée en juin.
+    // T-103 (C11, F7, C10 bis) : jours acquis sûrs. Période 2025 (01/09/2025-31/05/2026, 8 semaines sans accueil) : décompte le
+    // plus favorable (service-public F18260), hebdomadaire : 273 − 56 = 217 jours ÷ 28 × 2,5 = 19,4 → 20 jours ; maintien
+    // 20 ÷ 6 × 200 € = 666,67 €, versé en juin. ICCP de la période en cours = (1 200,00 € de salaires de juin et juillet +
+    // 600,00 € de régularisation + 666,67 € de congés versés en juin) ÷ 10 = 246,67 €.
     expect(r.cpAConfirmer).toBeUndefined();
-    expect(r.cpIndemnite).toBe(24333);
+    expect(r.cpIndemnite).toBe(24667);
     expect(r.ruptureAConfirmer).toBeFalsy();
     const juin = cpForMonth({ ...ctx(), c: { ...ctx().c, end: r.dernierJour }, cache: new Map(), finControlee: true }, '2026-06');
-    expect(r.totalBrut).toBe(ASSIETTE + netToBrut(juin.indemnite, '2026-06-30') + netToBrut(r.cpIndemnite, '2026-07-31'));
+    // Au centime près : l'app convertit en brut la somme des nets du dernier bulletin, le test convertit chaque net à part.
+    expect(Math.abs(r.totalBrut - (ASSIETTE + netToBrut(juin.indemnite, '2026-06-30') + netToBrut(r.cpIndemnite, '2026-07-31')))).toBeLessThanOrEqual(1);
     expect(r.indemniteRupture).toBe(Math.round(r.totalBrut / 80));
   });
   it('total des bulletins saisi jusqu’à juillet : 115,24 €, rien n’est compté deux fois, sans réserve', () => {
@@ -88,10 +91,10 @@ describe('T-050d, C-3 : base du dixième incomplète, le message donne un minimu
     expect(f.regularisation).toBe(9100);
     // T-103 (F7, C12) : l'indemnité de l'an dernier n'est plus à confirmer ; CASF L423-6 la met dans la base du dixième.
     expect(f.cpDixiemeEnCours).toBeGreaterThan(Math.round((193200 + f.regularisation) / 10));
-    // Période 2025 (01/11/2025-31/05/2026) : 5 mois complets de travail, plus 23 + 24 jours de novembre et mars (semaines sans
-    // accueil du 17/11 et du 02/03) : (5 + 47 ÷ 28) × 2,5 = 16,7, arrondi à 17 jours (Cass. soc. 10/01/1980 ; CCN 48.1.1.2).
-    // Maintien 17 ÷ 6 × 10 h × 4,20 € = 119,00 €, au-dessus du dixième (112,70 €), versé en juin 2026 et compté dans la base.
-    expect(f.cpDixiemeEnCours).toBe(Math.round((193200 + f.regularisation + 11900) / 10));
+    // Période 2025 (01/11/2025-31/05/2026, semaines sans accueil du 17/11 et du 02/03) : décompte le plus favorable
+    // (T-103, C10 bis ; service-public F18260) : hebdomadaire, 212 − 14 = 198 jours ÷ 28 × 2,5 = 17,7 → 18 jours (mensuel : 16,7).
+    // Maintien 18 ÷ 6 × 10 h × 4,20 € = 126,00 €, au-dessus du dixième (112,70 €), versé en juin 2026 et compté dans la base.
+    expect(f.cpDixiemeEnCours).toBe(Math.round((193200 + f.regularisation + 12600) / 10));
     expect(f.cpAConfirmer).toBeUndefined();
     expect(f.cpIndemnite).toBeGreaterThanOrEqual(f.cpDixiemeEnCours!);
   });
