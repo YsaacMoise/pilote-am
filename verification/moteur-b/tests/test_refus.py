@@ -124,7 +124,8 @@ class Refus(unittest.TestCase):
         self.refus(m.acquisition_cp("complete", report=True), "CP-REPORT")
 
     def test_A_26(self):
-        self.refus(m.indemnite_cp(13, 2400, 450, 100000), "A-26")
+        # Verification 2 (B-7) : refus leve : 13 / 6 x 40 h x 4,50 EUR = 390 EUR (Cass. soc. 09/05/2019, n° 17-26.232).
+        self.assertEqual(m.indemnite_cp(13, 2400, 450, 100000)["resultat"]["maintien_centimes"], 39000)
 
     def test_A_28(self):
         self.refus(m.indemnite_cp(24, 2400, 500, 780000, icp_versee_pendant_periode_centimes=0,

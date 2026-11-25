@@ -363,8 +363,8 @@ class C10C13Conges(unittest.TestCase):
         # 23 jours, 40 h, 4,20 EUR : 23 / 6 x 40 x 4,20 = 644 EUR (plus de refus A-26 en 46 semaines).
         r = m.indemnite_cp(23, 2400, 420, 500000, type_annee="incomplete")
         self.assertEqual(R(r, "indemnite_centimes"), 64400)
-        # 52 semaines : A-26 garde (le tableau ne tranche que pour 46 semaines ou moins).
-        self.assertEqual(m.indemnite_cp(23, 2400, 420, 500000, type_annee="complete")["code"], "A-26")
+        # 52 semaines : meme formule (verification 2, B-7 ; Cass. soc. 09/05/2019, n° 17-26.232).
+        self.assertEqual(R(m.indemnite_cp(23, 2400, 420, 500000, type_annee="complete"), "maintien_centimes"), 64400)
 
 
 class H1H6Heures(unittest.TestCase):

@@ -1239,24 +1239,7 @@ def indemnite_b(ctx, y):
         else:
             sal = salaires_periode(ctx, a, b)
             icp_pendant, icp_prec = icp_periode(ctx, y, a, b)
-            # Verification 2 (B-7) : heures que l'AM aurait faites pendant les conges pris pour ce droit (periode de
-            # prise y+1), seulement si le droit est pris en entier (jours decomptes par B) : fait du planning.
-            hcg = None
-            if ctx.type == "complete" and j % 6:
-                q0, q1 = periode(y + 1)
-                pris = jours_c = 0
-                try:
-                    for l in sorted([x for x in ctx.conges if x["type"] == "cp" and q0 <= x["du"] <= q1],
-                                    key=lambda x: x["du"]):
-                        reprise = l["au"] + timedelta(days=1)
-                        while ctx.prevu(reprise) == 0 or est_ferie(reprise):
-                            reprise += timedelta(days=1)
-                        pris += decompte_b(ctx, l["du"], reprise)
-                        jours_c += sum(ctx.prevu(x) for x in jours_entre(l["du"], l["au"]) if not est_ferie(x))
-                    hcg = jours_c if pris == j else None
-                except Refus:
-                    hcg = None
-            r = appel("indemnite_cp", j, ctx.hebdo, ctx.taux, sal, icp_pendant, icp_prec, hcg, acq["jours_enfants"],
+            r = appel("indemnite_cp", j, ctx.hebdo, ctx.taux, sal, icp_pendant, icp_prec, None, acq["jours_enfants"],
                       type_annee=ctx.type)  # T-103 (C12)
             mc = r["resultat"].get("maintien_centimes")  # T-040d : ARR-01 applique dans B
             res = {"indemnite_cp": r["resultat"]["indemnite_centimes"],

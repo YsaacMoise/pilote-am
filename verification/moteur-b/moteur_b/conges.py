@@ -382,20 +382,17 @@ def _indemnite_cp(jours_conges, heures_hebdo_minutes, taux_horaire_centimes, sal
     # T-103 (C12, A2) : annee incomplete : maintien = jours / 6 x heures habituelles par semaine x taux (CCN
     # 48.1.1.5 ; Cass. soc. 09/05/2019, n° 17-26.232 : « duree normale habituelle d'accueil [...] pendant toute la
     # periode de reference »). Le decompte reel n'est plus une lecture : refus A-26 leve en annee incomplete.
-    if j % 6 == 0 or type_annee == "incomplete":
-        m2 = m1  # semaines entieres : les deux lectures concordent.
+    # Verification 2 (25/11/2026), B-7 (A-26), annee complete aussi : Cass. soc. 09/05/2019, n° 17-26.232, publie
+    # (relu dans la base CASS de la DILA, JURITEXT000038488604) : pour une AM, le maintien se calcule sur « la duree
+    # normale habituelle d'accueil », pas sur les heures particulieres de la periode du conge. CCN 48.1.1.5 : duree
+    # « egale a celle du conge paye », comptee en jours ouvrables : jours / 6 x duree habituelle d'une semaine.
+    # Une seule lecture : refus A-26 leve.
+    if True:
+        m2 = m1
     elif heures_conge_minutes is not None:
         m2 = positif(heures_conge_minutes, "heures_conge_minutes") / 60 * t
     else:
         m2 = None
-    # Verification 2 (25/11/2026), B-7 (A-26) en 52 semaines : CCN 48.1.1.5 : « la remuneration brute que le salarie
-    # aurait percue pour une duree de travail egale a celle du conge paye ». Quand les heures que l'AM aurait faites
-    # pendant le conge sont connues (heures_conge_minutes), c'est la lettre : une seule lecture. La formule des sixiemes
-    # (jours / 6 x salaire d'une semaine) n'est qu'une moyenne ; elle ne donne pas ce que l'AM « aurait percu » quand
-    # le conge ne couvre pas des semaines entieres (ex. lundi a jeudi, 4 jours ouvrables, 32 h prevues : 32 h, pas
-    # 4/6 x 40 h = 26,67 h).
-    if m2 is not None and j % 6 != 0 and type_annee != "incomplete":
-        m1 = m2
     maintiens = [m1] if m2 is None else ([m1] if m2 == m1 else [m1, m2])
     if m2 is None:
         raise NonGere("A-26", regles, precision=(
