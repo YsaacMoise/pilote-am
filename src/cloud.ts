@@ -381,6 +381,9 @@ async function scellerSiBesoin(u: CloudUser) {
   const pem = await be.sequestreClePublique().catch(() => null);
   const code = clesLocales(u.uid)[0];
   if (!pem || !code) return;
+  // La clé scellée doit ouvrir ce coffre (relecture T-125, m2).
+  const sec = lireCode(code);
+  if (!sec || (await ouvrirCle(sec)).id !== coffre) return;
   const v = await sceller({ pem, code, uid: u.uid, coffre, jour: new Date().toISOString().slice(0, 10) });
   await db.put('kv', { k: SEQUESTRE, v });
   await compterPaquets();
@@ -471,6 +474,9 @@ async function envoyer(b: Backend, uid: string, docs: Array<{ s: db.SyncedStore;
   const attente: Array<{ s: db.SyncedStore; k: string }> = [];
   for (const d of docs) {
     if (d.s === 'kv' && d.k === COFFRE) continue;
+    // T-125 (relecture M4) : jamais de pierre tombale sur les paquets des clés d'accès, la copie scellée ni les repères, par
+    // aucun chemin (réunion « garder ce téléphone », restauration hors connexion) : ils ne s'effacent qu'avec le compte.
+    if (d.s === 'kv' && d.v === null && (d.k === SEQUESTRE || d.k.startsWith(PAQUET) || d.k.startsWith(REPERE))) continue;
     if (d.v === null || !(CHIFFRES as readonly string[]).includes(d.s)) { ecrire.push(d); continue; }
     const val: unknown = JSON.parse(d.v);
     const out = await chiffrer(d.s, val, cle);
@@ -641,6 +647,7 @@ const mirror: db.Mirror = {
   put(s, k, value) { enqueueValue(s, k, value); },
   del(s, k) { enqueue(s, k, null); },
   replaced(oldKeys, d) {
+    setTimeout(() => { void compterPaquets(); }, 500);
     for (const s of db.SYNCED) {
       const now = new Set<string>();
       for (const value of (d[s] ?? []) as unknown[]) {
@@ -695,7 +702,9 @@ function attach(u: CloudUser): Promise<void> {
   void renvoi.then(async () => {
     await poserRepere();
     await etablirCoffre(u);
-    if (cle) { if (await ouvrirLocal()) await load(); renvoyerAttente(); await scellerSiBesoin(u); } else void etatOuverture();
+    if (cle) { if (await ouvrirLocal()) await load(); renvoyerAttente(); await scellerSiBesoin(u); }
+    // Demande d'ouverture en cours, montrée sur tous les téléphones du compte, avec « Annuler » (relecture T-125, M1).
+    if (cloudInfo().sequestre || !cle) void etatOuverture();
     void recompterAnciens(lireVus(), true);
     await chiffrerEnLigne(u);
   }).catch((e) => console.warn('coffre', e));

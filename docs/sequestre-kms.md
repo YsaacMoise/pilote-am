@@ -30,7 +30,7 @@ Le compte de service des fonctions de 2e génération est par défaut `<numéro 
 Activer les journaux d'audit « Data Access » de Cloud KMS (IAM › Journaux d'audit) : chaque déchiffrement y est tracé en plus de `sequestre-journal`.
 
 ## 4. E-mails
-Installer l'extension Firebase « Trigger Email from Firestore » (collection `mail`, un serveur d'envoi SMTP à fournir). Sans elle, les demandes marchent, mais aucun e-mail ne part.
+Installer l'extension Firebase « Trigger Email from Firestore » (collection `mail`, un serveur d'envoi SMTP à fournir : nouveau sous-traitant à nommer au registre). **Obligatoire avant d'activer** (avant de coller la clé publique) : sans elle, aucun e-mail ne part et l'AM ne serait pas prévenue d'une demande. Les fonctions refusent tout compte sans adresse confirmée ; elles ne peuvent pas vérifier que l'extension tourne : faire une demande d'essai et vérifier l'e-mail reçu.
 
 ## 5. Déployer
 ```
@@ -41,6 +41,7 @@ avec la variable `SEQUESTRE_CLE_KMS=projects/arvela-app/locations/europe-west9/k
 Publier aussi les règles Firestore (`firebase deploy --only firestore:rules`) : elles ferment `sequestre-demandes`, `sequestre-journal` et `mail` aux clients, et protègent `kv~coffre`.
 
 ## 6. Ce que garantit le montage
-- La clé privée ne sort jamais du boîtier HSM. Seules les fonctions demandent un déchiffrement, et seulement : pour l'AM connectée, sur sa propre copie, 72 heures après sa demande (annulable), avec un e-mail à chaque demande, annulation et ouverture, et une trace de chaque étape.
+- La clé privée ne sort jamais du boîtier HSM. Seules les fonctions demandent un déchiffrement, et seulement : pour l'AM connectée avec une adresse confirmée et une connexion de moins d'une heure, sur sa propre copie, 72 heures après sa demande (annulable depuis chacun de ses téléphones), avec un e-mail à chaque demande, annulation et ouverture, et une trace de chaque étape ; si l'adresse du compte change, l'ancienne est prévenue et aucune demande n'est possible pendant 72 heures ; une seule ouverture par demande (transaction).
+- À la suppression du compte, la fonction `sequestreNettoyage` efface demande, suivi d'adresse et journal du compte.
 - Le contenu scellé porte l'identifiant du compte : copié dans un autre compte, il ne s'ouvre pas.
 - Limite à connaître : quiconque a le contrôle du compte Google Cloud d'Arvela (droits IAM, code des fonctions) peut techniquement faire déchiffrer une copie. C'est pourquoi la double authentification des comptes d'administration (AIPD, mesure 1) est indispensable.

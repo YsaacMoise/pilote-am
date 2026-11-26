@@ -280,6 +280,8 @@ function CleSecours() {
       }}>Enregistrer ma clé dans un fichier</button>
       {voir ? <p class="share-code" style={{ fontSize: '1.1rem', wordBreak: 'break-all' }} aria-label="Clé de secours">{code}</p> : <button class="btn btn-ghost btn-block" onClick={() => setVoir(true)}>Afficher la clé</button>}
       {!state.settings.cleGardee && voir && <button class="btn btn-ghost btn-block" onClick={() => void saveSettings({ cleGardee: today() })}>Je l’ai notée</button>}
+      {cl.ouverture && <Banner tone="warn">Demande de récupération par Arvela en cours</Banner>}
+      {cl.ouverture && <button class="btn btn-danger btn-block" onClick={async () => { await (await cloud()).annulerOuverture(); }}>Annuler la demande</button>}
       {imprimer && (
         <div class="feuille-cle" aria-hidden="true">
           <h1>Arvela : ma clé de secours</h1>
@@ -327,7 +329,7 @@ function EntrerCle() {
           if (fi) { const t = await fi.text(); await run((c) => c.entrerCle(t)); }
         }} />
       </label>
-      {!pret && <button class="btn btn-ghost btn-block" disabled={busy} onClick={() => void run((c) => c.demanderOuverture())}>Récupérer par Arvela</button>}
+      {!pret && cl.sequestre && <button class="btn btn-ghost btn-block" disabled={busy} onClick={() => void run((c) => c.demanderOuverture())}>Récupérer par Arvela</button>}
       {pret && pret > Date.now() && <p role="status">Récupération possible le {quand}</p>}
       {pret && pret <= Date.now() && <button class="btn btn-primary btn-block" disabled={busy} onClick={() => void run((c) => c.ouvrirSequestre())}>Récupérer ma clé</button>}
       {pret && <button class="btn btn-ghost btn-block" disabled={busy} onClick={() => void run((c) => c.annulerOuverture())}>Annuler la demande</button>}

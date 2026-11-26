@@ -8,6 +8,7 @@
 //   - avec une trace de chaque demande, annulation et ouverture (collection sequestre-journal, fermée aux clients).
 // Le contenu déchiffré n'est rendu que s'il porte l'identifiant de ce compte.
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { auth as authV1 } from 'firebase-functions/v1';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { KeyManagementServiceClient } from '@google-cloud/kms';
@@ -20,9 +21,31 @@ const kms = new KeyManagementServiceClient();
 const CLE = process.env.SEQUESTRE_CLE_KMS;
 const opts = { region: 'europe-west9', enforceAppCheck: false };
 
+/**
+ * Compte connecté, avec une adresse e-mail confirmée (relecture T-125, M2 et M6) : sans elle, aucun e-mail de prévenance ne
+ * pourrait partir, donc rien ne se fait.
+ */
 function compte(req) {
   if (!req.auth?.uid) throw new HttpsError('unauthenticated', 'Connecte-toi.');
-  return { uid: req.auth.uid, email: req.auth.token.email };
+  const t = req.auth.token;
+  if (!t.email || t.email_verified !== true) throw new HttpsError('failed-precondition', 'Confirme d’abord ton adresse e-mail.');
+  return { uid: req.auth.uid, email: t.email, authTime: Number(t.auth_time ?? 0) * 1000 };
+}
+const compteRef = (uid) => db.doc(`sequestre-comptes/${uid}`);
+/**
+ * Adresse e-mail du compte suivie (relecture T-125, M2) : si elle change, l'ancienne adresse est prévenue et aucune demande
+ * n'est possible pendant le délai de sécurité. Un voleur du mot de passe qui change l'adresse ne gagne donc rien.
+ */
+async function adresseStable(uid, email) {
+  const cur = (await compteRef(uid).get()).data();
+  if (!cur) { const t = Date.now(); await compteRef(uid).set({ email, depuis: t, premier: t }); return true; }
+  if (cur.email !== email) {
+    await mail(cur.email, 'Arvela : adresse de ton compte changée', `L’adresse de ton compte Arvela est devenue ${email}. Si ce n’est pas toi, écris à contact@arvela.fr.`);
+    await compteRef(uid).set({ email, depuis: Date.now(), ancienne: cur.email });
+    await journal(uid, 'adresse changée');
+    return false;
+  }
+  return Date.now() - cur.depuis >= DELAI_MS || cur.depuis === cur.premier;
 }
 const demandeRef = (uid) => db.doc(`sequestre-demandes/${uid}`);
 const journal = (uid, quoi) => db.collection('sequestre-journal').add({ uid, quoi, quand: FieldValue.serverTimestamp() });
@@ -40,8 +63,11 @@ export const sequestreDemander = onCall(opts, async (req) => {
   const cur = (await demandeRef(uid).get()).data();
   const etat = etatDemande(cur, Date.now());
   if (etat === 'attente' || etat === 'prete') return { pret: cur.pret };
+  if (!(await adresseStable(uid, email))) throw new HttpsError('failed-precondition', 'Adresse e-mail changée récemment : réessaie dans 72 heures.');
+  // Pas de rafale de demandes et d'annulations (relecture T-125, m5).
+  if (cur?.annuleeLe && Date.now() - cur.annuleeLe < 10 * 60 * 1000) throw new HttpsError('resource-exhausted', 'Réessaie dans quelques minutes.');
   const pret = Date.now() + DELAI_MS;
-  await demandeRef(uid).set({ cree: Date.now(), pret, ouverte: false, annulee: false });
+  await demandeRef(uid).set({ cree: Date.now(), pret, ouverte: false, annulee: false, email });
   await journal(uid, 'demande');
   await mail(email, 'Arvela : demande d’ouverture de ta clé de secours',
     `Une demande d’ouverture de ta clé de secours a été faite depuis ton compte. Elle sera possible le ${new Date(pret).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}. Si ce n’est pas toi, ouvre Arvela et annule-la, puis change ton mot de passe.`);
@@ -57,23 +83,45 @@ export const sequestreEtat = onCall(opts, async (req) => {
 
 export const sequestreAnnuler = onCall(opts, async (req) => {
   const { uid, email } = compte(req);
-  await demandeRef(uid).set({ annulee: true }, { merge: true });
+  const cur = (await demandeRef(uid).get()).data();
+  const etat = etatDemande(cur, Date.now());
+  if (etat !== 'attente' && etat !== 'prete') return { ok: true };
+  await demandeRef(uid).set({ annulee: true, annuleeLe: Date.now() }, { merge: true });
   await journal(uid, 'annulation');
   await mail(email, 'Arvela : demande annulée', 'La demande d’ouverture de ta clé de secours a été annulée.');
   return { ok: true };
 });
 
 export const sequestreOuvrir = onCall(opts, async (req) => {
-  const { uid, email } = compte(req);
-  const cur = (await demandeRef(uid).get()).data();
-  if (etatDemande(cur, Date.now()) !== 'prete') throw new HttpsError('failed-precondition', 'Pas encore.');
+  const { uid, email, authTime } = compte(req);
+  // Connexion récente exigée pour ouvrir (relecture T-125, M2) : une session restée ouverte ne suffit pas.
+  if (Date.now() - authTime > 60 * 60 * 1000) throw new HttpsError('unauthenticated', 'Reconnecte-toi, puis recommence.');
+  // La demande est prise par une transaction : deux appels ne l'ouvrent pas deux fois, une annulation l'emporte (m1).
+  await db.runTransaction(async (tx) => {
+    const cur = (await tx.get(demandeRef(uid))).data();
+    if (etatDemande(cur, Date.now()) !== 'prete' || cur.email !== email) throw new HttpsError('failed-precondition', 'Pas encore.');
+    tx.set(demandeRef(uid), { ouverte: true, ouverteLe: Date.now() }, { merge: true });
+  });
   const s = await lireSequestre(uid);
   if (!s || !CLE) throw new HttpsError('failed-precondition', 'Aucune copie scellée.');
-  const [res] = await kms.asymmetricDecrypt({ name: CLE, ciphertext: Buffer.from(s.c, 'base64url') });
-  const contenu = JSON.parse(Buffer.from(res.plaintext).toString('utf8'));
+  let contenu;
+  try {
+    const [res] = await kms.asymmetricDecrypt({ name: CLE, ciphertext: Buffer.from(s.c, 'base64url') });
+    contenu = JSON.parse(Buffer.from(res.plaintext).toString('utf8'));
+  } catch {
+    await demandeRef(uid).set({ ouverte: false }, { merge: true });
+    throw new HttpsError('internal', 'Ouverture impossible. Réessaie.');
+  }
   if (!contenuValide(contenu, uid, s.coffre)) throw new HttpsError('permission-denied', 'Cette copie n’est pas celle de ce compte.');
-  await demandeRef(uid).set({ ouverte: true, ouverteLe: Date.now() }, { merge: true });
   await journal(uid, 'ouverture');
   await mail(email, 'Arvela : clé de secours ouverte', 'Ta clé de secours a été ouverte depuis ton compte. Si ce n’est pas toi, écris à contact@arvela.fr.');
   return contenu;
+});
+
+/** Suppression du compte : demandes, suivi d'adresse et journal du compte effacés (relecture T-125, m6 ; registre). */
+export const sequestreNettoyage = authV1.user().onDelete(async (u) => {
+  await demandeRef(u.uid).delete();
+  await compteRef(u.uid).delete();
+  const j = await db.collection('sequestre-journal').where('uid', '==', u.uid).get();
+  for (const d of j.docs) await d.ref.delete();
 });

@@ -403,7 +403,7 @@ function EntrySheet({ cs, kind, date, edit, ouverte, onClose }: {
       <Sheet title={`Santé ${qui}`} onClose={onClose}>
         <div class="stack">
           <p>Les soins, les températures et les symptômes touchent à la santé {qui}. Pour les noter dans Arvela, il te faut l’accord écrit de ses parents.</p>
-          <p class="hint">Avec leur accord, ces notes sont copiées dans ton compte chiffrées de bout en bout : seuls tes appareils (avec ta clé de secours) et le lien des parents peuvent les lire, pas Arvela. Elles sont effacées 5 ans après la fin du dernier contrat de l’enfant. Les parents peuvent retirer leur accord à tout moment.</p>
+          <p class="hint">Avec leur accord, ces notes sont chiffrées de bout en bout dans ton compte, et effacées 5 ans après la fin du dernier contrat de l’enfant. Les parents peuvent retirer leur accord à tout moment.</p>
           {refusAccord ? (
             <>
               <p role="status">Sans leur accord, n’en note rien ici. Le message prêt à leur envoyer est dans la <a href="#/confidentialite">politique de confidentialité</a>.</p>
