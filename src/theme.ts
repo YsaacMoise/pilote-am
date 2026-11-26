@@ -26,9 +26,9 @@ export function applyTheme() {
   const root = document.documentElement;
   if (t === 'auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', t);
   // Barre du navigateur et de l'app installée de la même couleur que la page
-  const color = effectiveTheme() === 'dark' ? '#1E201D' : '#F7F4EF';
+  const color = effectiveTheme() === 'dark' ? '#161412' : '#F5F2EC';
   document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]').forEach((m) => {
-    if (t === 'auto') m.content = m.media.includes('dark') ? '#1E201D' : '#F7F4EF';
+    if (t === 'auto') m.content = m.media.includes('dark') ? '#161412' : '#F5F2EC';
     else m.content = color;
   });
 }

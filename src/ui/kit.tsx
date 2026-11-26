@@ -18,13 +18,15 @@ export function useErreurAffichee(code: ErreurCode, visible: boolean, pendantFra
 }
 import { centsToInput, parseEuros } from '../engine/money';
 
-// Les deux premières sont celles des enfants de la charte (Terre d'Argile, Sauge Minérale), puis des tons de terre voisins.
-// Initiale en Cormorant gras ≥ 19 px : texte « grand », contraste 3:1 minimum avec le blanc (argile 3,2:1, les autres ≥ 5:1).
+// Vision 1.1 (T-126) : 8 teintes minérales. L'index de chaque enfant ne change pas (données inchangées) ; seule la teinte
+// affichée change. Initiale encre sur les six premières (6 à 8,5:1), porcelaine sur Mousse et Prune (4,9 et 5,1:1).
 // 8 couleurs : 4 enfants accueillis en même temps (CASF L421-4), un de plus par dérogation, et des contrats à temps partiel
 // qui ne se croisent pas. Chaque couleur va à un seul enfant en cours de contrat. Nouvelles couleurs ajoutées à la fin
 // (les contrats existants gardent la leur).
-export const CHILD_COLORS = ['#C87D55', '#5E7165', '#3E5C76', '#6E3F5C', '#8A5A12', '#2F6B6B', '#A4443A', '#6A5A9A'];
-export const COLOR_NAMES = ['Argile', 'Sauge', 'Ardoise', 'Prune', 'Ocre', 'Canard', 'Brique', 'Iris'];
+export const CHILD_COLORS = ['#CDB48A', '#A9B59E', '#B0A194', '#C58F72', '#A497AE', '#7FA39A', '#656D4D', '#7D5E6B'];
+export const COLOR_NAMES = ['Sable', 'Sauge', 'Pierre', 'Argile', 'Bruyère', 'Vert-de-gris', 'Mousse', 'Prune'];
+/** Couleur de l'initiale posée sur chaque teinte (même index que CHILD_COLORS) */
+export const CHILD_INKS = ['#1F1C1A', '#1F1C1A', '#1F1C1A', '#1F1C1A', '#1F1C1A', '#1F1C1A', '#F5F2EC', '#F5F2EC'];
 
 /** Couleurs déjà prises par les autres enfants en cours de contrat (index → prénom) */
 export function couleursPrises(contracts: { id: string; child: string; color: number; end?: string }[], exceptId: string, at: string): Map<number, string> {
@@ -41,7 +43,7 @@ export function couleurLibre(prises: Map<number, string>): number {
 
 export function Gommette({ name, color, size }: { name: string; color: number; size?: 'sm' | 'lg' }) {
   return (
-    <span class={`gommette ${size ?? ''}`} style={{ '--g': CHILD_COLORS[color % CHILD_COLORS.length] } as any} aria-hidden="true">
+    <span class={`gommette ${size ?? ''}`} style={{ '--g': CHILD_COLORS[color % CHILD_COLORS.length], '--gi': CHILD_INKS[color % CHILD_COLORS.length] } as any} aria-hidden="true">
       {(name.trim()[0] ?? '?').toUpperCase()}
     </span>
   );

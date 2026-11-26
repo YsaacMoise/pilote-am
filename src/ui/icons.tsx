@@ -51,15 +51,20 @@ const P: Record<string, JSX.Element> = {
   phone: (<><rect x="6" y="2" width="12" height="20" rx="2" /><path d="M11 18h2" /></>),
   cloud: (<path d="M7 18a5 5 0 0 1-.6-9.96A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z" />),
   lock: (<><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>),
+  // Vision 1.1 : icônes de la barre d'onglets (maquette, trait fin)
+  cadran: (<><path d="M3 17a9 9 0 0 1 18 0" /><path d="M12 17l-5-4" /><circle cx="12" cy="17" r="1.2" fill="currentColor" /></>),
+  carnet: (<><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z" /><path d="M9 9h6M9 13h4" /></>),
+  lunette: (<><circle cx="12" cy="12" r="8.5" /><path d="M12 3.5v2M20.5 12h-2M12 20.5v-2M3.5 12h2" /></>),
+  absente: (<><rect x="3.5" y="5" width="17" height="15" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4M10 13.5l4 4M14 13.5l-4 4" /></>),
   square_plus: (<><rect x="3" y="3" width="18" height="18" rx="4" /><path d="M12 8v8M8 12h8" /></>),
 };
 
 export type IconName = keyof typeof P;
 
-export function Icon({ name, size = 24, label }: { name: IconName; size?: number; label?: string }) {
+export function Icon({ name, size = 24, label, fin }: { name: IconName; size?: number; label?: string; fin?: boolean }) {
   return (
     <svg
-      width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+      width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width={fin ? '1.8' : '2'}
       stroke-linecap="round" stroke-linejoin="round" aria-hidden={label ? undefined : 'true'} role={label ? 'img' : undefined}
       aria-label={label} focusable="false"
     >
