@@ -23,7 +23,7 @@ Garanties :
 ## 2. Décision à prendre : les totaux des données confiées
 Contrats, liens des parents et dates d'écriture sont des données que l'AM confie à Arvela « pour son compte ». Le contrat de traitement des Conditions dit : « Arvela n'utilise ces données que pour faire ce que décrit ce contrat, et ce que tu fais toi-même dans l'app. » Compter ces données pour Arvela n'y est pas écrit. Le RGPD impose au sous-traitant de ne traiter que sur instruction (article 28.3.a) ; un sous-traitant qui décide lui-même d'un usage en devient responsable (article 28.10). Les totaux des comptes ne posent pas cette question.
 - **Choix C (réglage par défaut)** : mise en service tout de suite avec les seuls totaux des comptes. La base n'est pas lue ; le compte de service n'a pas besoin du droit de lecture de la base.
-- **Choix A** : ajouter au contrat de traitement une phrase comme « Arvela compte chaque nuit des totaux anonymes, comme le nombre de contrats en cours ; aucun contenu n'est gardé ni transmis », par une demande de fusion après la T-126 (nouvelle version des Conditions à accepter). Une fois fusionnée : passer `STATS_DONNEES_CONFIEES` à `true` (étape 3, puis étape 4 avec `functions:stats` seulement) et donner le droit de lecture de la base (étape 2).
+- **Choix A** : ajouter au contrat de traitement une phrase comme « Arvela compte chaque nuit des totaux anonymes, comme le nombre de contrats en cours ; aucun contenu n'est gardé ni transmis », et revoir dans Confidentialité la phrase « Il s'engage à ne la consulter qu'avec ton accord » (dire que ce comptage automatique est la seule exception), par une demande de fusion après la T-126 (nouvelle version des Conditions à accepter). Une fois fusionnée, dans cet ordre : (1) donner le droit de lecture de la base (étape 2) ; (2) passer `STATS_DONNEES_CONFIEES` à `true` (étape 3) ; (3) redéployer avec `functions:stats` seulement (étape 4). Dans l'autre ordre, la nuit suivante échoue : rien n'est envoyé, l'échec se lit au journal.
 - **Choix B** : tout mettre en service sans changer les Conditions. Contraire au contrat de traitement tel qu'il est écrit.
 - La session ne tranche pas.
 
@@ -80,13 +80,13 @@ Cet essai crée un second événement ce jour-là. Dans un tableau de bord, pren
 Choix C : aucune lecture de la base. La lecture des comptes (Firebase Authentication) est gratuite.
 
 Choix A. Prix officiels (page Firestore lue le 26/11/2026) : à Paris, 0,036 $ les 100 000 lectures, 50 000 lectures gratuites par jour, partagées avec l'app. Chaque document rendu est une lecture ; une requête sans résultat en coûte une ; un comptage, une par tranche de 1 000.
-Lectures : environ 3 par compte (dernière écriture : 1 dans le cas courant ; contrats : 1 par contrat, au moins 1), plus 2 pour les liens. Un compte qui ouvre l'app chaque jour sans rien saisir en coûte bien plus (chaque document technique des 30 derniers jours est lu : une soixantaine avec deux appareils).
+Lectures : environ 3 par compte (dernière écriture : 1 dans le cas courant ; contrats : 1 par contrat, au moins 1), plus 2 pour les liens. Un compte dont les derniers documents écrits sont tous techniques en coûte quelques-unes de plus : ces documents sont peu nombreux (un repère par appareil, réécrit chaque jour ; le coffre ; la copie scellée ; un paquet par clé d'accès), soit au plus une dizaine de lectures pour ce compte.
 
 | Comptes | Lectures par nuit | Coût si tout est payant | Coût réel |
 |---|---|---|---|
 | 10 | environ 30 | 0,000 01 $ | 0 (part gratuite) |
 | 1 000 | environ 3 000 | 0,001 $ | 0 tant que l'app et la fonction restent sous 50 000 lectures par jour |
-| 10 000 | environ 30 000 ; 150 000 si 2 000 comptes ouvrent l'app sans rien saisir | 0,011 $ à 0,054 $ | de 0,33 $ à 1,6 $ par mois |
+| 10 000 | environ 30 000 (au plus 100 000) | 0,011 $ (au plus 0,036 $) | de 0,33 $ à 1,1 $ par mois |
 
 Le reste est dans les parts gratuites : une exécution de moins d'une minute par nuit (Cloud Run functions), une tâche Cloud Scheduler (3 gratuites par compte de facturation ; la copie scellée n'en utilise pas), 30 à 60 événements par mois chez PostHog (1 million gratuits).
 
@@ -105,3 +105,4 @@ La fonction, sa planification et le compte de service disparaissent. Supprimer a
 - Le premier événement arrive à la première nuit après le déploiement, ou tout de suite par l'étape 5.
 - Vérifié seulement en ligne, à l'étape 5 : le déploiement en Node 22, la création de la tâche Cloud Scheduler, les droits réels du compte de service, la réception par PostHog. Les requêtes n'exigent aucun index composé (vérifié dans le code : un seul champ filtré ou trié par requête).
 - Les tests sur émulateurs (`cd functions/stats && npm run test:emulateurs`) ne tournent pas encore à chaque envoi sur GitHub : à ajouter au fichier des contrôles après la T-126.
+- Dépendances : `npm audit` signale 9 failles modérées, toutes dues à d'anciennes versions de `uuid` tirées par firebase-admin 13 (mêmes versions que la copie scellée). Elles ne touchent que les versions 3, 5 et 6 de `uuid` appelées avec un tampon fourni, sans effet ici. Le correctif demande firebase-admin 14 et firebase-functions 7 : à faire avec la copie scellée, dans une tâche à part.

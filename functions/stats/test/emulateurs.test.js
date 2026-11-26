@@ -150,8 +150,7 @@ test('sans compte exclu : le compte de test est compté', async () => {
 });
 
 /** La fonction elle-même (index.js), avec ses paramètres lus comme en ligne, et un faux réseau à la place de PostHog. */
-async function lancerFonction(env, reponse = { ok: true, status: 200 }) {
-  const envois = [];
+async function lancerFonction(env, reponse = { ok: true, status: 200 }, envois = []) {
   const vrai = globalThis.fetch;
   Object.assign(process.env, env);
   globalThis.fetch = async (url, opts) => { envois.push({ url, corps: JSON.parse(opts.body) }); return reponse; };
@@ -185,10 +184,10 @@ test('la fonction de bout en bout : un seul envoi, paramètres lus, totaux juste
   assert.equal(defaut[0].corps.properties.inscrites_total, 6);
 });
 
-test('PostHog en erreur : la fonction échoue (visible dans les journaux), un seul essai', async () => {
-  let essais = 0;
-  await assert.rejects(lancerFonction({}, { ok: false, status: 500 }).catch((e) => { essais++; throw e; }), /500/);
-  assert.equal(essais, 1);
+test('PostHog en erreur : la fonction échoue (visible dans les journaux), après un seul appel au réseau', async () => {
+  const envois = [];
+  await assert.rejects(lancerFonction({}, { ok: false, status: 500 }, envois), /500/);
+  assert.equal(envois.length, 1);
 });
 
 test('aucune écriture dans Firestore ni dans les comptes', async () => {
