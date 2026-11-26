@@ -3,7 +3,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { activeContracts, ctxFor, logUsage, putLeave, saveSettings, state, toast, uid, updateDay, useStore } from '../store';
 import { addDays, dayLabel, minutes, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NOMS, daysBetween } from '../engine/dates';
 import { dayInfo, libelleFerie, type Ctx, type DayInfo } from '../engine/payroll';
-import { alertesDurees } from '../engine/durees';
+import { alertesDurees, informationsDurees } from '../engine/durees';
 import { AM_ABS_LABEL, CHILD_ABS_LABEL, NATURE_ATMP_LABEL, type NatureAtMp, type ChildAbs, type Contract, type DayRec, type NatureEvenement, type Plage, type Presence } from '../engine/model';
 import { regionDe } from '../engine/regions';
 import { estSuspension } from '../engine/suspensions';
@@ -150,6 +150,8 @@ export function Today() {
         )}
         {/* T-109 (correction 11) : repos de 11 h, 48 h en moyenne, 2 250 h par an (CASF L423-21, L423-22) : alerte, sans blocage. */}
         {alertesDurees(s.contracts.map((c) => ctxFor(c)), day).map((x) => <Banner tone="warn">{x}</Banner>)}
+        {/* T-116 (A3) : dépassement qui n'existe que tous parents réunis : information, pas une alerte (regles/t116-48h.md). */}
+        {informationsDurees(s.contracts.map((c) => ctxFor(c)), day).map((x) => <Banner tone="info">{x}</Banner>)}
         {day === t && forgotten.length > 0 && (
           <Banner tone="warn">
             <strong>{forgotten.length === 1 ? 'Un départ n’a pas été pointé' : `${forgotten.length} départs n’ont pas été pointés`}</strong>

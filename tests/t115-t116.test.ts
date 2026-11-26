@@ -5,7 +5,7 @@ import type { AmLeave, Contract, Planning } from '../src/engine/model';
 import { makeCtx } from '../src/engine/payroll';
 import { computeMonth } from '../src/engine/month';
 import { entretienPlancher } from '../src/engine/rates';
-import { alertesDurees, dureeReunion, travailEntre } from '../src/engine/durees';
+import { alertesDurees, dureeReunion, informationsDurees, travailEntre } from '../src/engine/durees';
 import { MESSAGE_SOLDE_CONGES, soldeCongesInconnu } from '../src/engine/conges';
 import { bornesBande, decaler, finParDefaut, finPourJour, joursBande, libelleBande, peutAvancer, peutReculer } from '../src/ui/bandeJours';
 import { libelleEntretien } from '../src/screens/EntretienSaisie';
@@ -123,7 +123,19 @@ describe('T-116 (A3) : trois enfants accueillis aux mêmes heures', () => {
     expect(dureeReunion([[480, 1020], [600, 1080], [420, 450]])).toBe(630);
     expect(dureeReunion([[480, 720], [720, 1020]])).toBe(540);
   });
-  it('un vrai dépassement reste signalé : 10 h par jour chez une famille, puis 2 h ailleurs', () => {
+  it('dépassement qui n’existe que tous parents réunis : information, pas d’alerte (regles/t116-48h.md)', () => {
+    // Famille M : 8 h – 14 h (30 h) ; famille N : 14 h – 19 h (25 h) ; aucune famille ne dépasse, 55 h tous parents réunis.
+    const a = ct({ planning: week('08:00', '14:00') });
+    const b = { ...ct({ planning: week('14:00', '19:00') }), id: 'c2', family: 'N' } as Contract;
+    const ctxs = [makeCtx(a, [], [], '2026-12-31'), makeCtx(b, [], [], '2026-12-31')];
+    expect(alertesDurees(ctxs, '2026-11-26')).toEqual([]);
+    expect(informationsDurees(ctxs, '2026-11-26').join(' ')).toMatch(/Tous parents réunis, 55 h/);
+  });
+  it('un vrai dépassement reste signalé : 50 h chez une même famille', () => {
+    const a = ct({ planning: week('07:00', '17:00') });
+    expect(alertesDurees([makeCtx(a, [], [], '2026-12-31')], '2026-11-26').join(' ')).toMatch(/chez la famille M/);
+  });
+  it('10 h par jour chez une famille (50 h), puis 2 h ailleurs : alerte, cette famille dépasse seule', () => {
     const a = ct({ planning: week('07:00', '17:00') });
     const b = { ...ct({ planning: week('17:00', '19:00') }), id: 'c2', family: 'N' } as Contract;
     expect(alertesDurees([makeCtx(a, [], [], '2026-12-31'), makeCtx(b, [], [], '2026-12-31')], '2026-11-26').join(' ')).toMatch(/quatre derniers mois/);
