@@ -1,7 +1,7 @@
 import { ABSENCES_PROTEGEES_AIDE, ABSENCES_PROTEGEES_DONNEES } from '../legal';
 import { useEffect, useState } from 'preact/hooks';
 import { activeContracts, ctxFor, logUsage, putLeave, state, toast, uid, updateDay, useStore } from '../store';
-import { addDays, dayLabel, minutes, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NOMS, daysBetween } from '../engine/dates';
+import { addDays, dayLabel, minutes, mondayOf, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NOMS, daysBetween } from '../engine/dates';
 import { dayInfo, libelleFerie, type Ctx, type DayInfo } from '../engine/payroll';
 import { alertesDurees, AMPLITUDE_MAX_MIN, messageAmplitude } from '../engine/durees';
 import { AM_ABS_LABEL, CHILD_ABS_LABEL, NATURE_ATMP_LABEL, type NatureAtMp, type ChildAbs, type Contract, type DayRec, type NatureEvenement, type Plage, type Presence } from '../engine/model';
@@ -270,7 +270,10 @@ export function bornesCadran(heures: readonly number[]): { debut: number; fin: n
 const CX = 170, CY = 178;
 const RAYONS = [146, 126, 106, 86];
 
-/** Demi-cadran de la journée : un anneau par enfant (plein = présence pointée, clair = prévu), aiguille or = maintenant. */
+/**
+ * Demi-cadran de la journée : un anneau par enfant (plein = présence pointée, clair = prévu, pointillé = absent ce jour-là),
+ * aiguille or = maintenant. Bornes de la présence : la pastille de l'enfant marque l'arrivée, une perle claire marque le départ.
+ */
 function Cadran({ kids, day }: { kids: Contract[]; day: string }) {
   const t = today();
   const auj = day === t;
@@ -279,22 +282,35 @@ function Cadran({ kids, day }: { kids: Contract[]; day: string }) {
     const di = dayInfo(ctxFor(c), day);
     const absent = di.kind === 'absent' || di.kind === 'am';
     const prevu: [number, number][] = absent ? [] : di.planned.map((p) => [minutes(p.start), minutes(p.end)]);
+    // Absent ce jour-là (enfant ou AM) : les heures prévues restent visibles, en pointillé.
+    const absents: [number, number][] = absent ? di.planned.map((p) => [minutes(p.start), minutes(p.end)]) : [];
     const faits: [number, number][] = [];
+    const bornes: number[] = [];
     (di.rec?.pres ?? []).forEach((p, i) => {
       if (!p.a) return;
       const a = minutes(p.a);
       // Présence en cours : jusqu'à maintenant le jour même ; un autre jour, jusqu'à la fin prévue (heure retenue).
       const d = p.d ? minutes(p.d) : auj ? now : di.planned[i] ? minutes(di.planned[i].end) : a;
       if (d > a) faits.push([a, d]);
+      // Bornes : arrivée d'une deuxième plage, et départ pointé (la pastille marque la première arrivée).
+      if (faits.length > 1) bornes.push(a);
+      if (p.d) bornes.push(d);
     });
     const textes: string[] = [];
     if (absent && di.rec?.abs) textes.push(CHILD_ABS_LABEL[di.rec.abs]);
     else if (absent && di.amLeave) textes.push(AM_ABS_LABEL[di.amLeave]);
     else textes.push(planText(di));
     (di.rec?.pres ?? []).forEach((p) => { if (p.a) textes.push(`arrivée ${fmtH(p.a)}${p.d ? `, départ ${fmtH(p.d)}` : ''}`); });
-    return { c, prevu, faits, texte: `${c.child} : ${textes.join(', ')}` };
+    return { c, prevu, absents, faits, bornes, texte: `${c.child} : ${textes.join(', ')}` };
   });
-  const toutes = anneaux.flatMap((x) => [...x.prevu, ...x.faits].flat());
+  // Début et fin du cadran : les heures possibles des contrats sur la semaine (même cadran d'un jour à l'autre), élargies si
+  // une présence pointée en sort.
+  const lundi = mondayOf(day);
+  const semaine = kids.flatMap((c) => Array.from({ length: 7 }, (_, k) => dayInfo(ctxFor(c), addDays(lundi, k)).planned).flat().flatMap((p) => [minutes(p.start), minutes(p.end)]));
+  const duJour = anneaux.flatMap((x) => [...x.prevu, ...x.absents, ...x.faits].flat());
+  // Jour sans accueil prévu ni présence (week-end) : pas de cadran, comme avant.
+  if (!duJour.length) return null;
+  const toutes = [...semaine, ...duJour];
   const b = bornesCadran(toutes);
   if (!b) return null;
   const frac = (m: number) => Math.min(1, Math.max(0, (m - b.debut) / (b.fin - b.debut)));
@@ -310,6 +326,12 @@ function Cadran({ kids, day }: { kids: Contract[]; day: string }) {
     if (l <= 0.5) return null;
     return <path key={k} d={demi(r)} class={cls} style={{ '--g': g, strokeDasharray: `${l} ${2 * L}`, strokeDashoffset: -a } as any} />;
   };
+  // Portion d'anneau tracée seule (pour le pointillé des heures d'absence).
+  const portion = (r: number, [m1, m2]: [number, number], g: string, k: string) => {
+    if (frac(m2) - frac(m1) <= 0.005) return null;
+    const [x1, y1] = point(r, m1), [x2, y2] = point(r, m2);
+    return <path key={k} d={`M${x1} ${y1} A${r} ${r} 0 0 1 ${x2} ${y2}`} class="cad-absent" style={{ '--g': g } as any} />;
+  };
   const heureTxt = heureLisible(nowHHMM());
   const ticks: number[] = [];
   for (let m = b.debut + 60; m < b.fin; m += 60) ticks.push(m);
@@ -323,6 +345,10 @@ function Cadran({ kids, day }: { kids: Contract[]; day: string }) {
           {anneaux.map((_, i) => <path d={demi(RAYONS[i])} class="cad-piste" />)}
           {anneaux.map((x, i) => x.prevu.map((p, j) => arc(RAYONS[i], p, 'cad-prevu', CHILD_COLORS[x.c.color % CHILD_COLORS.length], `p${i}-${j}`)))}
           {anneaux.map((x, i) => x.faits.map((p, j) => arc(RAYONS[i], p, 'cad-fait', CHILD_COLORS[x.c.color % CHILD_COLORS.length], `f${i}-${j}`)))}
+          {anneaux.map((x, i) => x.absents.map((p, j) => portion(RAYONS[i], p, CHILD_COLORS[x.c.color % CHILD_COLORS.length], `a${i}-${j}`)))}
+        </g>
+        <g class="cad-bornes">
+          {anneaux.map((x, i) => x.bornes.map((m) => { const [bx, by] = point(RAYONS[i], m); return <circle cx={bx} cy={by} r="4.5" style={{ '--g': CHILD_COLORS[x.c.color % CHILD_COLORS.length] } as any} />; }))}
         </g>
         <g class="cad-reperes" stroke-width="1.5" stroke-linecap="round">
           {ticks.map((m) => { const [x1, y1] = point(160, m); const [x2, y2] = point(168, m); return <line x1={x1} y1={y1} x2={x2} y2={y2} />; })}
@@ -341,7 +367,8 @@ function Cadran({ kids, day }: { kids: Contract[]; day: string }) {
         {auj && <text x={CX} y="150" text-anchor="middle" class="cad-maintenant">{heureTxt}</text>}
         <g class="cad-initiales" text-anchor="middle">
           {anneaux.map((x, i) => {
-            const debuts = [...x.prevu, ...x.faits].map((p) => p[0]);
+            // Pastille : à l'arrivée une fois l'enfant arrivé (borne de début), sinon au début prévu.
+            const debuts = (x.faits.length ? x.faits : [...x.prevu, ...x.absents]).map((p) => p[0]);
             if (!debuts.length) return null;
             const [px, py] = point(RAYONS[i], Math.min(...debuts));
             const k = x.c.color % CHILD_COLORS.length;
