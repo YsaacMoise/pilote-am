@@ -41,13 +41,22 @@ export function Fin({ id }: { id?: string }) {
   const [cid, setCid] = useState(id ?? s.contracts[0]?.id);
   // T-045b : les réponses enregistrées avec le contrat sont reprises à l'ouverture de l'écran.
   const r0 = s.contracts.find((x) => x.id === (id ?? s.contracts[0]?.id))?.rupture;
-  const [notif, setNotif] = useState(r0?.notif ?? today());
-  const [motif, setMotif] = useState<Motif>(r0?.motif ?? 'retrait');
-  const [remise, setRemise] = useState<'recommande' | 'main_propre'>('recommande');
+  // T-122 (décision 1 du DG) : aucun motif, aucune date ni aucune réponse proposés d'avance ; écran en trois temps.
+  const [etape, setEtape] = useState<1 | 2 | 3>(r0 ? 3 : 1);
+  const [errFin, setErrFin] = useState<string[]>([]);
+  const [notifS, setNotif] = useState(r0?.notif ?? '');
+  const [motifS, setMotif0] = useState<Motif | undefined>(r0?.motif);
+  const setMotif = (v: Motif) => { setMotif0(v); setErrFin([]); };
+  const [remiseS, setRemise] = useState<'recommande' | 'main_propre' | undefined>(r0 ? 'recommande' : undefined);
   // Première présentation : suit la date d'envoi tant qu'elle n'est pas saisie (relecture contradictoire, point 1).
   const [presentation, setPresentation] = useState<string | null>(r0?.presentation ?? null);
   // T-045 : préavis fait en entier ou non (CCN art. 64 et 64.2) et dernier jour travaillé.
-  const [preavisFait, setPreavisFait] = useState<'oui' | DemandeurInexecution>(r0 && r0.preavis !== 'execute' ? r0.preavis : 'oui');
+  const [preavisS, setPreavisFait] = useState<'oui' | DemandeurInexecution | undefined>(r0 ? (r0.preavis !== 'execute' ? r0.preavis : 'oui') : undefined);
+  // Calcul inchangé : les réponses données (les valeurs de repli ne servent qu'avant la réponse, rien n'est montré avant le 3e temps).
+  const notif = notifS || today();
+  const motif: Motif = motifS ?? 'retrait';
+  const remise = remiseS ?? 'recommande';
+  const preavisFait = preavisS ?? 'oui';
   const [dernierTravaille, setDernierTravaille] = useState<string | null>(r0?.dernierJourTravaille ?? null);
   // T-107 : réponses demandées seulement dans leur cas (accord écrit de cumul des congés et du préavis).
   const [cumulCp, setCumulCp] = useState<boolean | undefined>(r0?.cumulCpPreavis);
@@ -113,29 +122,35 @@ export function Fin({ id }: { id?: string }) {
   const periode = f.brutsEstimes.length === 1 ? monthLabel(f.brutsEstimes[0]) : `${f.brutsEstimes.length} mois, ${deMois(monthLabel(f.brutsEstimes[0] ?? '2026-01'))} à ${monthLabel(f.brutsEstimes[f.brutsEstimes.length - 1] ?? '2026-01')}`;
   return (
     <>
-      <Topbar title="Fin de contrat" back="#/plus" screen="fin" />
+      <Topbar title={`Fin du contrat · ${c.child}`} back={`#/enfant/${c.id}`} screen="fin" />
       <main>
-        {choixEnfant}
-        <p class="muted">Une simulation pour savoir ce qui t’est dû. L’app ne produit pas les documents officiels (certificat de travail, attestation France Travail, reçu pour solde de tout compte) : c’est au parent employeur de les établir.</p>
-        <section class="card">
+        {etape === 1 && choixEnfant}
+        <p class="eyebrow">{etape} sur 3 · {['Pourquoi', 'La lettre et ses dates', 'Ce qui t’est dû'][etape - 1]}</p>
+        {etape === 1 && <p class="muted">Une simulation pour savoir ce qui t’est dû. L’app ne produit pas les documents officiels (certificat de travail, attestation France Travail, reçu pour solde de tout compte) : c’est au parent employeur de les établir.</p>}
+        {etape === 1 && <section class="card">
           <fieldset>
-            <legend>La rupture</legend>
-            <Choices label="Pourquoi le contrat s’arrête-t-il ?" value={motif} onChange={setMotif} options={CHOIX_MOTIF} />
+            <legend>Pourquoi</legend>
+            <Choices label="Pourquoi le contrat s’arrête-t-il ?" value={motifS} onChange={setMotif} options={CHOIX_MOTIF} />
+          </fieldset>
+        </section>}
+        {etape === 2 && <section class="card">
+          <fieldset>
+            <legend>La lettre et ses dates</legend>
             {avecPreavis ? (
               <>
-                <Choices label="Comment la lettre est-elle remise ?" value={remise} onChange={(v) => { setRemise(v); setPresentation(null); }} options={[
+                <Choices label="Comment la lettre est-elle remise ?" value={remiseS} onChange={(v) => { setRemise(v); setPresentation(null); setErrFin([]); }} options={[
                   { v: 'recommande', l: 'En recommandé avec accusé de réception' },
                   { v: 'main_propre', l: 'En main propre, contre décharge', sub: 'La personne qui la reçoit signe et date un double.' },
                 ]} />
-                {remise === 'recommande' ? (
+                {remiseS === undefined ? null : remiseS === 'recommande' ? (
                   <>
-                    <DateInput label="Date d’envoi de la lettre" hint="Le jour où elle est postée. Il sert à compter ton ancienneté." value={notif} min={c.start} onChange={changeEnvoi} />
+                    <DateInput label="Date d’envoi de la lettre" hint="Le jour où elle est postée. Il sert à compter ton ancienneté." value={notifS} min={c.start} onChange={changeEnvoi} />
                     <DateInput label="Date de première présentation de la lettre" hint="Le premier passage du facteur, noté sur l’accusé de réception ou l’avis de passage. Le préavis commence ce jour-là, pas le jour de l’annonce orale." value={presVue} min={envoi} onChange={(v) => setPresentation(v || null)} />
                   </>
                 ) : (
-                  <DateInput label="Date de remise en main propre" hint="La date écrite sur la décharge. Le préavis commence ce jour-là, pas le jour de l’annonce orale." value={notif} min={c.start} onChange={changeEnvoi} />
+                  <DateInput label="Date de remise en main propre" hint="La date écrite sur la décharge. Le préavis commence ce jour-là, pas le jour de l’annonce orale." value={notifS} min={c.start} onChange={changeEnvoi} />
                 )}
-                <Choices label="Le préavis est-il effectué en entier ?" value={preavisFait} onChange={setPreavisFait} options={[
+                <Choices label="Le préavis est-il effectué en entier ?" value={preavisS} onChange={(v) => { setPreavisFait(v); setErrFin([]); }} options={[
                   { v: 'oui', l: 'Oui, effectué ou en cours' },
                   { v: 'am_acceptee', l: 'Non : je pars plus tôt, avec l’accord des parents', sub: 'Le contrat finit à ton dernier jour travaillé.' },
                   { v: 'employeur', l: 'Non : les parents me dispensent de le faire', sub: 'Ils te paient jusqu’à la date prévue de fin du préavis.' },
@@ -147,15 +162,15 @@ export function Fin({ id }: { id?: string }) {
                     { v: 'non', l: 'Non', sub: 'Les congés suspendent le préavis : il finit plus tard (convention, article 64.1).' },
                   ]} />
                 )}
-                {preavisFait !== 'oui' && (
+                {preavisS !== undefined && preavisS !== 'oui' && (
                   <DateInput label="Dernier jour travaillé" hint={preavisFait === 'employeur' ? 'Le dernier jour où tu as accueilli l’enfant. S’ils ne l’ont plus confié dès le jour de la lettre, mets le dernier jour où tu l’as accueilli avant la lettre.' : 'Le dernier jour où tu as accueilli l’enfant.'} value={dernierTravaille ?? envoi} min={preavisFait === 'employeur' ? addDays(envoi, -7) : envoi} onChange={(v) => setDernierTravaille(v || null)} />
                 )}
               </>
             ) : motif === 'agrement' ? (
-              <DateInput label="Date de la décision du conseil départemental" hint="La date à laquelle le conseil départemental t’a notifié la suspension, la modification ou le retrait de ton agrément. Le contrat s’arrête ce jour-là, sans préavis (convention, article 119.3)." value={notif} min={c.start} onChange={changeEnvoi} />
+              <DateInput label="Date de la décision du conseil départemental" hint="La date à laquelle le conseil départemental t’a notifié la suspension, la modification ou le retrait de ton agrément. Le contrat s’arrête ce jour-là, sans préavis (convention, article 119.3)." value={notifS} min={c.start} onChange={changeEnvoi} />
             ) : avecLettre ? (
               <>
-                <DateInput label="Date de la lettre (envoi ou remise)" hint="Ce motif n’a pas de préavis : le contrat s’arrête à cette date." value={notif} min={c.start} onChange={changeEnvoi} />
+                <DateInput label="Date de la lettre (envoi ou remise)" hint="Ce motif n’a pas de préavis : le contrat s’arrête à cette date." value={notifS} min={c.start} onChange={changeEnvoi} />
                 {demanderEssaiAutre && (
                   <Choices label={QUESTION_ESSAI_AUTRE_ENFANT} value={ouiNon(essaiAutre)} onChange={(v) => setEssaiAutre(v === 'oui')} options={[
                     { v: 'oui', l: 'Oui', sub: 'L’essai de ce contrat dure au plus 30 jours (convention, article 95.1).' },
@@ -164,10 +179,24 @@ export function Fin({ id }: { id?: string }) {
                 )}
               </>
             ) : (
-              <DateInput label="Date du décès" value={notif} min={c.start} onChange={setNotif} />
+              <DateInput label="Date du décès" value={notifS} min={c.start} onChange={setNotif} />
             )}
           </fieldset>
-        </section>
+        </section>}
+        {etape < 3 && errFin.length > 0 && <p class="err" role="alert">Pour continuer : {errFin.join(' ; ')}.</p>}
+        {etape < 3 && <button class="btn btn-primary btn-block btn-lg" onClick={() => {
+          const e: string[] = [];
+          if (etape === 1 && !motifS) e.push('choisis pourquoi le contrat s’arrête');
+          if (etape === 2) {
+            if (avecPreavis && !remiseS) e.push('indique comment la lettre est remise');
+            if (!notifS) e.push('indique la date');
+            if (avecPreavis && !preavisS) e.push('indique si le préavis est effectué en entier');
+          }
+          setErrFin(e);
+          if (!e.length) { setEtape(etape === 1 ? 2 : 3); window.scrollTo(0, 0); }
+        }}>Continuer</button>}
+        {etape > 1 && <button class="btn btn-ghost btn-block" onClick={() => { setErrFin([]); setEtape(etape === 3 ? 2 : 1); }}>{etape === 3 ? 'La lettre et ses dates' : 'Pourquoi'}</button>}
+        {etape === 3 && <>
         {/* T-119 : congés de départ calculés par l'app, en attente de la réponse de l'AM (un geste) : la fin en dépend. */}
         {soldesDepartAConfirmer(ctxFor(c).c) && <section class="card stack" aria-labelledby="fin-depart"><h2 id="fin-depart">Tes congés au début du suivi</h2><CongesDepart c={c} /></section>}
         {f.nonGere && f.nonGere.every((t) => t === MESSAGE_CONGES_DEPART) ? (
@@ -218,6 +247,15 @@ export function Fin({ id }: { id?: string }) {
           <p class="hint">Enregistre la date de fin ({shortDate(f.dernierJour)}) et tes réponses sur la lettre et le préavis : le calcul de chaque mois s’en sert. Sans elles, l’app ne calcule pas les derniers mois du contrat.</p>
           {enregistre ? <p>Enregistrée.</p> : <button class="btn btn-primary btn-block" onClick={enregistrer}>Enregistrer la fin du contrat</button>}
         </section>
+        {/* T-122 (décision 3 du DG) : les bulletins d'avant Arvela, facultatifs, rendent ce calcul plus juste. */}
+        {c.trackedFrom > c.start && surBrut && (
+          <section class="card stack-sm" aria-labelledby="fin-bul">
+            <h2 id="fin-bul">Bulletins d’avant Arvela</h2>
+            <p class="hint">Facultatifs. Le salaire brut de chaque bulletin compte dans les salaires sur lesquels se calcule l’indemnité de rupture (1/80, convention, article 121.1) ; un mois d’avant le {shortDate(c.trackedFrom)} sans bulletin n’y est pas compté.{f.manquants.length ? ` ${f.manquants.length} mois sans bulletin.` : ''}</p>
+            <a class="btn btn-outline" href={`#/historique/${c.id}`}>Ajouter des bulletins</a>
+          </section>
+        )}
+        </>}
       </main>
     </>
   );
