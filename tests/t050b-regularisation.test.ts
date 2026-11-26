@@ -14,8 +14,7 @@ vi.mock('../src/engine/conges', async (importOriginal) => {
 });
 import type { AmLeave, Contract, Planning } from '../src/engine/model';
 import { makeCtx } from '../src/engine/payroll';
-import { congesNonPris, finDeContrat } from '../src/engine/fin';
-import { euros } from '../src/engine/money';
+import { finDeContrat } from '../src/engine/fin';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
   const p: Planning = {};
@@ -41,33 +40,10 @@ function contract(over: Partial<Contract> = {}): Contract {
 const EVENEMENT: AmLeave = { id: 'e', type: 'evenement', from: '2026-03-10', to: '2026-03-11', joursEvenement: 0 }; // durée non gérée : jours « à confirmer »
 
 
-describe('T-050b, A-50 : régularisation à confirmer et congés non pris', () => {
-  // Retrait envoyé le 10/06/2026 : fin le 24/06/2026, ou le 25/06 (date de fin à confirmer) ; 2 jours d'événement familial
-  // à confirmer en mars : régularisation « dus » ou « retenus ».
-  const ctx = () => makeCtx(contract(), [], [EVENEMENT], '2026-11-18');
-  it('l’indemnité change avec la régularisation : « à confirmer », non comptée, avec chaque montant', () => {
-    const r = finDeContrat(ctx(), '2026-06-10', 'retrait');
-    expect(r.regularisationAConfirmer).toBeDefined();
-    expect(r.cpAConfirmer).toMatch(/^Indemnité de congés non pris à confirmer : elle dépend .*de la régularisation de fin de contrat, qui entre dans la base du dixième/);
-    expect(r.cpIndemnite).toBe(0);
-    const endCtx = { ...ctx(), c: { ...contract(), end: r.dernierJour }, cache: new Map(), finControlee: true };
-    for (const reg of [102909, 100364]) {
-      const x = congesNonPris(endCtx, endCtx.c, r.dernierJour, 0, reg);
-      expect(r.cpAConfirmer).toContain(`Fin le 24/06/2026, régularisation de ${euros(reg)} : ${euros(x.cpIndemnite)}`);
-    }
-    expect(r.regularisationAConfirmer).toContain(euros(102909));
-    expect(r.regularisationAConfirmer).toContain(euros(100364));
-    expect(r.ruptureAConfirmer).toBe(true);
-    expect(r.alertes.join(' ')).toMatch(/ni l’indemnité de congés non pris ni la régularisation de fin de contrat à confirmer/);
-  });
-  it('sans jours à confirmer : régularisation sûre, indemnité donnée, régularisation dans la base', () => {
-    const c0 = () => makeCtx(contract(), [], [], '2026-11-18');
-    const r = finDeContrat(c0(), '2026-10-28', 'retrait');
+describe('T-050b, A-50, revu par la T-103 : ancienne saisie sans durée', () => {
+  it('fin de contrat : aucune régularisation « à confirmer »', () => {
+    const r = finDeContrat(makeCtx(contract(), [], [EVENEMENT], '2026-11-18'), '2026-06-10', 'retrait');
     expect(r.regularisationAConfirmer).toBeUndefined();
-    expect(r.cpAConfirmer).toBeUndefined();
-    const endCtx = { ...c0(), c: { ...contract(), end: r.dernierJour }, cache: new Map(), finControlee: true };
-    expect(r.cpIndemnite).toBe(congesNonPris(endCtx, endCtx.c, r.dernierJour, 0, r.regularisation).cpIndemnite);
-    expect(r.cpDixiemeEnCours).toBe(congesNonPris(endCtx, endCtx.c, r.dernierJour, 0, r.regularisation).dixiemeEnCours);
-    expect(r.cpDixiemeEnCours! - congesNonPris(endCtx, endCtx.c, r.dernierJour, 0, 0).dixiemeEnCours).toBe(Math.round(r.regularisation / 10));
   });
 });
+

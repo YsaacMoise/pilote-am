@@ -263,7 +263,10 @@ def officiels():
                        {"sortie": "jours_enfants", "fonction": "jours_enfants_a_charge", "args": [25, 35, 1],
                         "cle": "jours_supplementaires"}],
                       {"total": 27}, renommer=R(jours_acquis="total", jours_enfants="jours_enfants"),
-                      sorties=["jours_acquis", "jours_enfants"]))
+                      sorties=["jours_acquis", "jours_enfants"],
+                      # T-103 : la fiche S-DURAND compte l'arrêt maladie de Mme Durand d'octobre 2021 (C-ABS-01, mercredi au
+                      # vendredi) dans la même période de référence : donné à A comme dans la fiche.
+                      ev={"absences_am": [{"type": "am_malade", "du": "2021-10-13", "au": "2021-10-15"}]}))
     S.append(acq_case("C-CPA-03", dict(DURAND, fin="2022-09-30"), 2022,
                       acq_b("complete", mois=4, semaines=17, jours=88, jours_par_semaine=5), {"jours_acquis": 11}))
     S.append(acq_case("C-CPA-03", dict(DURAND, fin="2022-09-30", enfants_a_charge=1), 2022,
@@ -281,7 +284,9 @@ def officiels():
                       renommer=R(jours_enfants="jours_enfants", jours_acquis="total"),
                       sorties=["jours_enfants", "jours_acquis"],
                       propage={"total": "SUS-11 (acquisition de C-CPA-04)"}))
-    S.append(acq_case("C-CPA-05", dict(BERTRAND, fin="2022-09-30"), 2022,
+    # T-109 : la source (S-BERTRAND, p. 10, 7.3) compte « 11 semaines (dont les 2 semaines de conges payes pris [...] au mois
+    # d'aout) et 3 jours » : deux des semaines sans accueil d'aout sont des conges payes de l'AM (manquaient a la situation).
+    S.append(acq_case("C-CPA-05", dict(BERTRAND, fin="2022-09-30", semaines_cp_am=["2022-08-15", "2022-08-22"]), 2022,
                       acq_b("incomplete", semaines=11, jours=58, jours_par_semaine=5), {"jours_acquis": 8}))
     S.append(off("C-CPA-06", "congés payés", {"jours_acquis": 25},
                  [{"type": "absent", "non_comparable": True, "sorties": ["jours_acquis"],
@@ -646,10 +651,12 @@ def grille():
                              {"jours": [{"date": d, "abs": "parents"} for d in ["2026-09-08", "2026-09-09"]]},
                              theme="enfant absent à la demande des parents"))
                 S.append(sit(f"G-{base}-S05", "absences", k, [mois("m", "2026-09")],
-                             {"jours": [{"date": d, "abs": "malade_certif"} for d in ["2026-09-15", "2026-09-16", "2026-09-17"]]},
+                             {"jours": [{"date": d, "abs": "malade_certif", "certifDu": "2026-09-15", "certifAu": "2026-09-17"}  # T-103 (C3)
+                                       for d in ["2026-09-15", "2026-09-16", "2026-09-17"]]},
                              theme="enfant malade avec certificat, 3 jours"))
                 S.append(sit(f"G-{base}-S06", "absences", k, [mois("m", "2026-09")],
-                             {"jours": [{"date": d, "abs": "malade_certif"} for d in jours_ouvres("2026-09-14", "2026-09-23")]},
+                             {"jours": [{"date": d, "abs": "malade_certif", "certifDu": "2026-09-14", "certifAu": "2026-09-23"}  # T-103 (C3)
+                                       for d in jours_ouvres("2026-09-14", "2026-09-23")]},
                              theme="enfant malade avec certificat, 8 jours ouvrés"))
                 S.append(sit(f"G-{base}-S07", "absences", k, [mois("m", "2026-09")],
                              {"absences_am": [conge("am_malade", "2026-09-14", "2026-09-15")]}, theme="AM malade 2 jours"))
@@ -836,8 +843,13 @@ def grille():
                   "jours": [{"date": "2026-09-15", "pres": [["08:00", "19:00"]]}]},
                  theme="AM absente un jour et heures en plus le lendemain"))
     S.append(sit("X-ENFANT-2-EPISODES", "absences", k, [mois("m", "2026-09")],
-                 {"jours": [{"date": d, "abs": "malade_certif"} for d in
-                            ["2026-09-07", "2026-09-08", "2026-09-09", "2026-09-21", "2026-09-22", "2026-09-23"]]},
+                 {"jours": [{"date": d, "abs": "malade_certif", "certifDu": du, "certifAu": au}  # T-103 (C3)
+                            for d, du, au in [("2026-09-07", "2026-09-07", "2026-09-09"),
+                                              ("2026-09-08", "2026-09-07", "2026-09-09"),
+                                              ("2026-09-09", "2026-09-07", "2026-09-09"),
+                                              ("2026-09-21", "2026-09-21", "2026-09-23"),
+                                              ("2026-09-22", "2026-09-21", "2026-09-23"),
+                                              ("2026-09-23", "2026-09-21", "2026-09-23")]]},
                  theme="enfant malade avec certificat, deux fois 3 jours"))
     S.append(sit("X-KM-A37", "indemnités", dict(k, km_taux=45), [{"id": "m", "type": "mois", "mois": "2026-09", "sorties": ["km"]}],
                  {"jours": [{"date": d, "km": 10} for d in ["2026-09-07", "2026-09-08"]]},
@@ -853,6 +865,7 @@ def grille():
     S += situations_t076()  # T-076 : planning variable (PV-*) et CDD (CDD-*)
     S += situations_t076_d()  # T-076 : decisions D1 a D11, fins de contrat a planning variable (verification B)
     S += situations_t076_e()  # T-076 : decisions D15 a D19 et R2 (relecteur independant)
+    S += situations_t103()  # T-103 : regles du tableau rapports/T-103-inventaire.md (calculateur-arvela)
     return S
 
 
@@ -1023,6 +1036,16 @@ def situations_t027():
         S.append(sit(f"EVT-MOIS-2023-{nom}", "absences", k22, [mois("m", "2023-03")],
                      {"absences_am": [dict(conge("evenement", du, au), nature=nat)]},
                      theme="mois avec congé pour événement familial nommé (2023)"))
+    # 6. T-109 (troisieme controle qualite de la n° 67) : « sept jours ouvres » (L3142-4, 4°, deces d'un enfant de moins de 25
+    # ans, evenement du 01/07/2020 au 31/12/2021), comptes contrat par contrat. Meme absence du 31/12/2021 au 24/01/2022 pour
+    # deux contrats de la meme AM : lundi au vendredi (7e jour ouvre le 10/01) et lundi-mardi (7e jour ouvre le 24/01).
+    lm = {"1": [["08:00", "16:00"]], "2": [["08:00", "16:00"]]}
+    for nom, k21, au in (("LV", contrat_grille("C52", "H40", "T420", debut="2021-09-06"), "2022-01-10"),
+                         ("LM", contrat_grille("C52", "H40", "T420", debut="2021-09-06", planning=lm), "2022-01-24"),
+                         ("LV-SUITE", contrat_grille("C52", "H40", "T420", debut="2021-09-06"), "2022-01-24")):
+        S.append(sit(f"EVT-OUVRES-2021-{nom}", "absences", k21, [mois("m", "2022-01")],
+                     {"absences_am": [dict(conge("evenement", "2021-12-31", au), nature="deces_enfant_14")]},
+                     theme="sept jours ouvres comptes pour chaque contrat (T-109)"))
     for an in ("C52", "I46"):
         ka = contrat_grille(an, "H40", "T420")
         for nom, (nat, du, au) in conges_evt.items():
@@ -1471,9 +1494,17 @@ def situations_t076():
     k = kcdd("2026-01-05", "2026-05-29")
     S.append(sit("CDD-TERME", "CDD", k, fin_cdd("2026-05-29", "terme", ["2026-01", "2026-05"]),
                  theme="CDD de 5 mois au terme", marques=mc))
-    for fc in ("suite_cdi", "refus_cdi", "commun_accord", "employeur", "force_majeure", "inaptitude"):
+    for fc in ("suite_cdi", "refus_cdi", "commun_accord", "employeur"):
         S.append(sit(f"CDD-FIN-{fc.upper()}", "CDD", kcdd("2026-01-05", "2026-05-29"),
                      fin_cdd("2026-05-29", fc), theme=f"CDD, fin « {fc} » (R-CDD-08)", marques=mc))
+    # verif-1 (T-107, cas 4) : force majeure et inaptitude sont des ruptures avant le terme (L1243-1) : fin le 31/03.
+    for fc in ("force_majeure", "inaptitude"):
+        kfm = kcdd("2026-01-05", "2026-05-29", fin="2026-03-31")
+        if fc == "force_majeure":
+            kfm["rupture"] = {"sinistre": False}  # force majeure sans sinistre : ni IFC ni indemnite de L1243-4 al. 2
+        S.append(sit(f"CDD-FIN-{fc.upper()}", "CDD", kfm,
+                     fin_cdd("2026-03-31", fc, ["2026-03"]), theme=f"CDD rompu le 31/03, « {fc} » (L1243-1, L1243-10)",
+                     marques=mc))
     for fc, fin in (("initiative_am", "2026-04-30"), ("faute_grave", "2026-04-15"), ("commun_accord", "2026-04-30"),
                     ("employeur", "2026-04-30"), ("essai", "2026-01-09")):
         S.append(sit(f"CDD-ANTICIPE-{fc.upper()}", "CDD", kcdd("2026-01-05", "2026-05-29", fin=fin),
@@ -1725,6 +1756,235 @@ def situations_t076_e():
                       {"id": "ind", "type": "cp_indemnite", "periode": 2025, "sorties": ["indemnite_cp"]}],
                      theme="fin d'un CDI à planning variable, jours non pris de la période précédente (R2, R-PV-13)",
                      marques=m))
+    return S
+
+
+MARQUE_T103 = "T-103 : règle du tableau validé par le DG le 24/11/2026 (rapports/T-103-inventaire.md)"
+
+
+def situations_t103():
+    """T-103 : situations qui exercent chaque regle du tableau (lignes M, F, C, H, R, D).
+    Aucun resultat attendu n'est calcule ici : A et B sont seulement compares."""
+    S = []
+
+    def ajoute(id_, domaine, k, calculs, ev=None, theme=None):
+        S.append(sit(id_, domaine, k, calculs, ev, theme=theme or domaine, marques={"*": MARQUE_T103}))
+
+    # M1 a M3 : entretien. Duree du jour = temps de travail de l'art. 99 ; contrat « montant fixe par journee »
+    # (contrat.entretien_jour, centimes par journee) ; jour hors planning ; minimum de 114.1.
+    ent = [{"id": "m", "type": "mois", "mois": "2026-09", "sorties": ["entretien"]}]
+    for id_, hr, jour_tarif, pres, jour_ in [
+        ("M1-ARRIVEE-AVANT", "H40", None, ["07:00", "16:00"], "2026-09-15"),
+        ("M1-DEPART-APRES", "H40", None, ["08:00", "18:30"], "2026-09-15"),
+        ("M1-ARRIVEE-APRES", "H40", None, ["10:00", "16:00"], "2026-09-15"),
+        ("M2-JOUR-LONG", "H45", 300, ["07:00", "19:00"], "2026-09-15"),
+        ("M2-JOUR-COURT", "H40", 300, ["08:00", "10:00"], "2026-09-15"),
+        ("M2-JOUR-LONG-400", "H40", 400, ["07:30", "18:00"], "2026-09-15"),
+        ("M3-HORS-PLANNING-2H", "H25", 400, ["09:00", "11:00"], "2026-09-19"),
+        ("M3-HORS-PLANNING-11H", "H25", 300, ["07:00", "18:00"], "2026-09-19"),
+        ("M3-HORS-PLANNING-MERCREDI", "H32", 400, ["08:00", "16:00"], "2026-09-16"),
+    ]:
+        k = contrat_grille("C52", hr, "T420")
+        if jour_tarif is None:
+            k["entretien_horaire"] = "50"
+            k.pop("entretien_jour")
+        else:
+            k["entretien_jour"] = jour_tarif
+        ajoute(f"T103-{id_}", "indemnités", k, ent, {"jours": [{"date": jour_, "pres": [pres]}]},
+               theme="T-103 entretien (M1 a M3)")
+
+    # F1 a F8, H7 : fins de contrat. La date « fin » du contrat suit F1 corrige (jour de la premiere presentation =
+    # 1er jour) : c'est un fait de la situation. Preavis execute (rupture.preavis = « execute ») ou dispense par
+    # l'employeur (rupture.preavis = « employeur », inexecution du calcul de fin).
+    sorties_fin = ["preavis", "date_fin_preavis", "iccp", "regularisation_fin", "indemnite_rupture",
+                   "indemnite_preavis"]
+
+    def fin_exec(id_, an, debut, notif, fin, motif, ev=None):
+        k = dict(contrat_grille(an, "H40", "T420", debut=debut), fin=fin)
+        k["rupture"] = {"motif": motif, "notif": notif, "preavis": "execute"}
+        ajoute(f"T103-{id_}", "fin de contrat", k,
+               [{"id": "f", "type": "fin", "notification": notif, "motif": motif, "sorties": sorties_fin}], ev,
+               theme="T-103 fin de contrat (F1 a F8)")
+
+    def fin_disp(id_, an, debut, notif, dernier, fin, motif="retrait", ev=None):
+        k = dict(contrat_grille(an, "H40", "T420", debut=debut), fin=fin)
+        k["rupture"] = {"motif": motif, "notif": notif, "preavis": "employeur", "dernier_jour_travaille": dernier}
+        ajoute(f"T103-{id_}", "fin de contrat", k,
+               [{"id": "f", "type": "fin", "notification": notif, "motif": motif, "sorties": sorties_fin,
+                 "inexecution": {"demandeur": "employeur", "dernier_jour_travaille": dernier}}], ev,
+               theme="T-103 préavis dispensé (F3 a F7, H7)")
+
+    fin_exec("F1-RETRAIT-1M-15", "C52", "2025-09-01", "2026-10-15", "2026-11-14", "retrait")
+    fin_exec("F1-RETRAIT-1M-31", "C52", "2025-01-06", "2026-01-31", "2026-02-28", "retrait")
+    fin_exec("F1-RETRAIT-15J", "C52", "2026-03-02", "2026-10-15", "2026-10-29", "retrait")
+    fin_exec("F1-RETRAIT-8J-SAMEDI", "C52", "2026-09-07", "2026-11-14", "2026-11-21", "retrait")
+    fin_exec("F2-DEMISSION-15J", "C52", "2026-03-02", "2026-10-15", "2026-10-29", "demission")
+    fin_exec("F2-DEMISSION-15J-I46", "I46", "2026-03-02", "2026-10-15", "2026-10-29", "demission")
+    fin_exec("F3-NEUF-MOIS-A-LA-FIN", "C52", "2026-01-05", "2026-09-28", "2026-10-12", "retrait")
+    fin_exec("F4-RETRAIT-1M-I46", "I46", "2025-09-01", "2026-09-15", "2026-10-14", "retrait")
+    fin_disp("F5-MOIS-MIXTE", "C52", "2025-09-01", "2026-09-15", "2026-09-30", "2026-10-14")
+    fin_disp("F5-MOIS-MIXTE-15J", "C52", "2026-03-02", "2026-09-14", "2026-09-18", "2026-09-28")
+    fin_disp("F6-I46-DISPENSE", "I46", "2026-09-07", "2026-10-12", "2026-10-14", "2026-10-19")
+    fin_disp("F3-DISPENSE-NEUF-MOIS-A-LA-FIN", "C52", "2026-01-05", "2026-09-28", "2026-10-02", "2026-10-12")
+    fin_disp("H7-MALADIE-PENDANT-DISPENSE", "C52", "2025-09-01", "2026-09-15", "2026-09-25", "2026-10-14",
+             ev={"absences_am": [conge("am_malade", "2026-10-05", "2026-10-09")]})
+    fin_disp("H7-ENFANT-ABSENT-PENDANT-DISPENSE", "C52", "2025-09-01", "2026-09-15", "2026-09-25", "2026-10-14",
+             ev={"jours": [{"date": "2026-10-06", "abs": "parents"}]})
+    # F8 : deces de l'enfant ; la fin du contrat est le jour du deces (CCN 119.4.2).
+    for id_, debut, deces in (("F8-DECES-15J", "2026-03-02", "2026-09-15"), ("F8-DECES-1M", "2025-06-02", "2026-01-31"),
+                              ("F8-DECES-8J", "2026-08-03", "2026-09-30")):
+        k = contrat_grille("C52", "H40", "T420", debut=debut, fin=deces)
+        ajoute(f"T103-{id_}", "fin de contrat", k,
+               [{"id": "f", "type": "fin", "notification": deces, "motif": "deces",
+                 "sorties": ["preavis", "date_fin_preavis", "indemnite_rupture"]}], theme="T-103 décès (F8)")
+
+    # C1 a C5 : enfant malade (CCN 105). Entrees : jours[].certifDu, certifAu (dates du certificat) ;
+    # contrat.balances.maladieDeduits (jours deja retenus avant le suivi) et maladieDeduitsLongue (booleen) ;
+    # contrat.suivi_depuis (date du debut du suivi, existante).
+    sep = [mois("m", "2026-09")]
+
+    def malade(du, au, jours_):
+        return [{"date": d, "abs": "malade_certif", "certifDu": du, "certifAu": au} for d in jours_]
+
+    for id_, hr, du, au in (("C1-8J", "H40", "2026-09-14", "2026-09-21"), ("C1-13J", "H40", "2026-09-14", "2026-09-26"),
+                            ("C2-14J-PEU-ACCUEIL", "H10", "2026-09-07", "2026-09-20"),
+                            ("C2-20J", "H40", "2026-09-07", "2026-09-26"), ("C1-3J", "H25", "2026-09-15", "2026-09-17")):
+        for an in ("C52", "I46"):
+            k = contrat_grille(an, hr, "T420")
+            ajoute(f"T103-{id_}-{an}", "absences", k, sep,
+                   {"jours": malade(du, au, jours_planifies(k["planning"], du, au))}, theme="T-103 enfant malade (C1, C2)")
+    kc4 = contrat_grille("C52", "H40", "T420", debut="2025-09-17", suivi_depuis="2026-01-05",
+                         balances={"maladieDeduits": 3, "maladieDeduitsLongue": False})
+    ajoute("T103-C4-ANNIVERSAIRE", "absences", kc4, sep,
+           {"jours": malade("2026-09-08", "2026-09-11", jours_ouvres("2026-09-08", "2026-09-11"))
+            + malade("2026-09-21", "2026-09-23", jours_ouvres("2026-09-21", "2026-09-23"))},
+           theme="T-103 enfant malade, deux périodes de 12 mois (C4, C5)")
+    ajoute("T103-C5-ORIGINE-MANQUANTE", "absences",
+           contrat_grille("C52", "H40", "T420", debut="2025-09-01", suivi_depuis="2026-01-05",
+                          balances={"maladieDeduits": 2}), sep,
+           {"jours": malade("2026-09-08", "2026-09-09", jours_ouvres("2026-09-08", "2026-09-09"))},
+           theme="T-103 enfant malade, origine des jours déjà retenus non saisie (C5)")
+    kl = contrat_grille("C52", "H40", "T420", debut="2025-09-01", suivi_depuis="2026-09-01",
+                        balances={"maladieDeduits": 10, "maladieDeduitsLongue": True})
+    ajoute("T103-C5-LONGUE-DEJA-FAITE-COURTE", "absences", kl, sep,
+           {"jours": malade("2026-09-08", "2026-09-10", jours_ouvres("2026-09-08", "2026-09-10"))},
+           theme="T-103 enfant malade, absence longue déjà faite, courte absence (C5)")
+    ajoute("T103-C5-LONGUE-DEJA-FAITE-LONGUE", "absences", kl, sep,
+           {"jours": malade("2026-09-07", "2026-09-22", jours_ouvres("2026-09-07", "2026-09-22"))},
+           theme="T-103 enfant malade, deuxième absence longue dans la période (A-18)")
+    ajoute("T103-C3-SANS-DATES", "absences", contrat_grille("C52", "H40", "T420"), sep,
+           {"jours": [{"date": "2026-09-15", "abs": "malade_certif"}]}, theme="T-103 enfant malade sans dates (C3)")
+
+    # C6 a C9 : evenements familiaux. Entrees : contrat.reposHebdo (1 = lundi ... 7 = dimanche) ;
+    # absences_am[].ijSecu (centimes, conge de deuil).
+    def evt(nat, du, au, **kw):
+        return {"absences_am": [dict(conge("evenement", du, au), nature=nat, **kw)]}
+
+    k22 = contrat_grille("C52", "H40", "T420", debut="2022-01-03")
+    ajoute("T103-C6-HANDICAP-AVRIL-2024", "absences", k22, [mois("m", "2024-04")],
+           evt("handicap_enfant", "2024-04-08", "2024-04-13"), theme="T-103 événement avant le 01/05/2024 (C6)")
+    ajoute("T103-C6-DECES-ENFANT-AVRIL-2024", "absences", k22, [mois("m", "2024-04")],
+           evt("deces_enfant", "2024-04-08", "2024-04-20"), theme="T-103 événement avant le 01/05/2024 (C6)")
+    for an in ("C52", "I46"):
+        ajoute(f"T103-C7-MARIAGE-11-NOVEMBRE-{an}", "absences", contrat_grille(an, "H40", "T420"), [mois("m", "2026-11")],
+               evt("mariage", "2026-11-09", "2026-11-13"), theme="T-103 férié pendant un congé (C7)")
+        ajoute(f"T103-C9-DEUIL-{an}", "absences", contrat_grille(an, "H40", "T420"), sep,
+               evt("deuil", "2026-09-14", "2026-09-22", ijSecu=15000), theme="T-103 congé de deuil, IJ saisies (C9)")
+    pdim = semaine([1, 2, 3, 4, 7], "08:00", "16:00")
+    ajoute("T103-C8-DIMANCHE-REPOS-SAMEDI", "absences", contrat_grille("C52", "H40", "T420", planning=pdim, reposHebdo=6),
+           sep, evt("mariage", "2026-09-17", "2026-09-21"), theme="T-103 planning avec dimanche (C8)")
+    ajoute("T103-C8-DIMANCHE-SANS-REPOS", "absences", contrat_grille("C52", "H40", "T420", planning=pdim),
+           sep, evt("mariage", "2026-09-17", "2026-09-21"), theme="T-103 planning avec dimanche, repos non saisi (C8)")
+
+    # C15 a C17 : decompte des conges payes.
+    kcp = contrat_grille("C52", "H40", "T420", debut="2024-06-03", suivi_depuis="2025-06-01", soldes={"cp_restants": 30})
+    cpd = {"id": "d", "type": "cp_decompte", "du": "2026-09-14", "au": "2026-09-19", "reprise": "2026-09-21"}
+    ajoute("T103-C15-ARRET-PENDANT-CP", "congés payés", kcp, [cpd, mois("m", "2026-09")],
+           {"absences_am": [conge("cp", "2026-09-14", "2026-09-19"), conge("am_malade", "2026-09-16", "2026-09-17")]},
+           theme="T-103 arrêt maladie pendant le congé (C15)")
+    ajoute("T103-C16-FIN-AVANT-REPRISE", "congés payés", dict(kcp, fin="2026-09-16"),
+           [dict(cpd, au="2026-09-25", reprise="2026-09-28")],
+           {"absences_am": [conge("cp", "2026-09-14", "2026-09-25")]}, theme="T-103 contrat fini avant la reprise (C16)")
+    ajoute("T103-C17-CP-ET-SANS-SOLDE", "congés payés", kcp, [mois("m", "2026-09")],
+           {"absences_am": [conge("cp", "2026-09-14", "2026-09-18"), conge("sans_solde", "2026-09-17", "2026-09-17")]},
+           theme="T-103 double saisie sur un jour (C17)")
+
+    # C10 a C13 : jours acquis (Cass. soc. 10/01/1980 ; CCN 48.1.1.2) et maintien (C12). Entree nouvelle :
+    # contrat.semaines_cp_am (lundis, parmi semaines_sans_accueil, des semaines de conges payes de l'AM ; reserve de
+    # B sur C11, voir le rapport).
+    acq = [{"id": "acq", "type": "cp_acquisition", "periode": 2025}, {"id": "ind", "type": "cp_indemnite", "periode": 2025}]
+    for id_, debut, ev in (("C10-DEBUT-1ER", "2025-09-01", None), ("C10-DEBUT-3", "2025-09-03", None),
+                           ("C10-DEBUT-17", "2025-09-17", None),
+                           ("C10-SANS-SOLDE-3J", "2025-06-02", {"absences_am": [conge("sans_solde", "2026-02-09", "2026-02-11")]}),
+                           ("C10-SANS-SOLDE-2S", "2025-06-02", {"absences_am": [conge("sans_solde", "2026-02-09", "2026-02-20")]})):
+        for hr in ("H40", "H32"):
+            ajoute(f"T103-{id_}-{hr}", "congés payés", contrat_grille("C52", hr, "T420", debut=debut), acq, ev,
+                   theme="T-103 jours acquis en 52 semaines (C10)")
+    # T-109 (controle n° 4 de la n° 67) : absence payee par les parents, du 01/10 au 15/12/2025 (dix semaines et six jours) :
+    # comptee pour les conges seulement si les parents l'acceptent (CCN 48.1.1.2 ; L3141-5) ; examen de grossesse : oui
+    # (L1225-16). Attendu (H40) : 26 jours si non, 30 si oui. Dix semaines tout juste (06/10 au 14/12) : 27 si non.
+    def payee(t, du="2025-10-01", au="2025-12-15", **kw):
+        return {"absences_am": [dict(conge(t, du, au), **kw)]}
+    for id_, ev in (("NON", payee("remuneree", comptePourConges=False)), ("DEFAUT", payee("remuneree")),
+                    ("OUI", payee("remuneree", comptePourConges=True)), ("EXAMEN", payee("examen_grossesse")),
+                    ("SANS-SOLDE", payee("sans_solde")),
+                    ("NON-10S", payee("remuneree", "2025-10-06", "2025-12-14", comptePourConges=False)),
+                    ("OUI-10S", payee("remuneree", "2025-10-06", "2025-12-14", comptePourConges=True))):
+        # Contrat de 40 h seulement (essai du controleur). Sur 4 jours (H32), A et B different deja pour un conge sans
+        # solde aux memes dates (26 et 25 : decomptes hebdomadaire et journalier, T-103 C10 bis) : ecart signale a la
+        # direction (rapport T-109, section 10), sans lien avec l'absence payee.
+        for hr in ("H40",):
+            ajoute(f"T109-ABS-PAYEE-CP-{id_}-{hr}", "congés payés", contrat_grille("C52", hr, "T420", debut="2025-06-02"), acq, ev,
+                   theme="T-109 absence payée et congés acquis (contrôle n° 4)")
+    cp_am = ["2025-08-04", "2025-08-11", "2025-08-18", "2025-12-22", "2025-12-29"]  # 5 des 6 semaines sans accueil
+    for id_, debut, cpam in (("C11-AVEC-CP-AM", "2024-09-02", cp_am), ("C11-SANS-CP-AM-SAISI", "2024-09-02", None),
+                             ("C11-DEBUT-SEPT-CP-AM", "2025-09-01", ["2025-12-22", "2025-12-29"]),
+                             ("C11-AUCUNE-CP-AM", "2025-09-01", [])):
+        for hr in ("H40", "H25"):
+            k = contrat_grille("I46", hr, "T420", debut=debut)
+            if cpam is not None:
+                k["semaines_cp_am"] = cpam
+            ajoute(f"T103-{id_}-{hr}", "congés payés", k, acq, theme="T-103 jours acquis et maintien en 46 semaines (C11, C12)")
+
+    # H1 a H4, H6 : heures complementaires et majorees d'une semaine avec un jour non travaille.
+    def longs(du, au, fin="18:00"):
+        return [{"date": d, "pres": [["08:00", fin]]} for d in jours_ouvres(du, au)]
+
+    hsit = [
+        ("H1-CP-DANS-LA-SEMAINE", kcp, {"absences_am": [conge("cp", "2026-09-14", "2026-09-15")],
+                                        "jours": longs("2026-09-16", "2026-09-18")}),
+        ("H2-ENFANT-ABSENT-PAYE", kcp, {"jours": [{"date": "2026-09-14", "abs": "parents"}]
+                                        + longs("2026-09-15", "2026-09-18", "19:00")}),
+        ("H3-FERIE-11-NOVEMBRE", kcp, {"jours": longs("2026-11-09", "2026-11-10", "19:00")
+                                       + longs("2026-11-12", "2026-11-13", "19:00")}),
+        ("H4-SEMAINE-COUPEE", contrat_grille("C52", "H40", "T420", debut="2026-09-16"),
+         {"jours": longs("2026-09-16", "2026-09-18", "19:00")}),
+        ("H6-AM-MALADE-ET-HEURES", kcp, {"absences_am": [conge("am_malade", "2026-09-14", "2026-09-14")],
+                                         "jours": longs("2026-09-15", "2026-09-18", "19:00")}),
+    ]
+    for id_, k, ev in hsit:
+        mm = "2026-11" if "NOVEMBRE" in id_ else "2026-09"
+        ajoute(f"T103-{id_}", "heures en plus", k, [mois("m", mm)], ev, theme="T-103 heures en plus (H1 a H6)")
+
+    # R1, R3, R4 : regions. Entree : absences_am[].ijSecu pour une maladie de l'AM ou de son enfant en Alsace-Moselle.
+    kam = contrat_grille("C52", "H40", "T420", region="alsace_moselle")
+    ajoute("T103-R1-VENDREDI-SAINT", "régions", kam, [mois("m", "2026-04")], theme="T-103 Vendredi saint ordinaire (R1)")
+    ajoute("T103-R1-26-DECEMBRE", "régions", kam, [mois("m", "2025-12")], theme="T-103 26 décembre ordinaire (R1)")
+    ajoute("T103-R3-MALADIE-IJ", "régions", kam, sep,
+           {"absences_am": [dict(conge("am_malade", "2026-09-14", "2026-09-16"), ijSecu=4500)]},
+           theme="T-103 maladie de l'AM en Alsace-Moselle, IJ saisies (R3)")
+    ajoute("T103-R3-ENFANT-AM-IJ-0", "régions", kam, sep,
+           {"absences_am": [dict(conge("am_enfant_malade", "2026-09-14", "2026-09-15"), ijSecu=0)]},
+           theme="T-103 enfant malade de l'AM en Alsace-Moselle (R3)")
+    ajoute("T103-R3-MALADIE-SANS-IJ", "régions", kam, sep,
+           {"absences_am": [conge("am_malade", "2026-09-14", "2026-09-16")]}, theme="T-103 IJ non saisies (R3)")
+    ajoute("T103-R4-27-AVRIL", "régions", contrat_grille("C52", "H40", "T420", region="mayotte"), [mois("m", "2026-04")],
+           theme="T-103 27 avril à Mayotte (R4)")
+    # D3 : minimum legal 0,281 x SMIC au centime superieur (janvier 2022 : 0,281 x 10,57 = 2,97017 EUR).
+    for d in ("2022-01-01", "2022-05-01", "2026-09-01"):
+        ajoute(f"T103-D3-MINIMUM-{d}", "minimum", contrat_grille("C52", "H40", "T420", debut="2022-01-03"),
+               [{"id": "mn", "type": "minimum_conventionnel", "date": d, "sorties": ["minimum_brut"]}],
+               theme="T-103 minimum légal au centime supérieur (D3)")
     return S
 
 

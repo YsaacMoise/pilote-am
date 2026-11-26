@@ -13,12 +13,13 @@ import type { AmLeave, Contract, Planning } from '../src/engine/model';
 import { makeCtx } from '../src/engine/payroll';
 import { finDeCdd, finDeContrat } from '../src/engine/fin';
 import { monthsBetween } from '../src/engine/dates';
-import { euros } from '../src/engine/money';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning { const p: Planning = {}; for (const d of days) p[d] = [{ start, end }]; return p; }
 
-describe('T-078 R1 : CDD suivi après son début, plancher L1242-16 à confirmer', () => {
+describe('T-078 R1, revu par la T-103 : plancher L1242-16, congés déjà payés déduits', () => {
   // CDD du 01/09/2025 au 31/08/2026, 45 h du lundi au vendredi, 5,00 € net, 52 semaines : 975,00 € net par mois.
+  // Plancher : 10 % des salaires du CDD et de l'IFC = 1 287,00 €. Lecture de la finalité de L1242-16 (signalée au DG) : le
+  // total des congés payés pour le CDD (ICCP, compléments versés, maintien des jours pris en année complète) atteint ce dixième.
   const cdd = (over: Partial<Contract> = {}): Contract => ({
     id: 'c1', child: 'Léa', family: 'Martin', color: 0, start: '2025-09-01', yearType: 'complete', weeks: 52, weeksOff: [],
     planning: week('08:00', '17:00'), rateNet: 500, majoration: 10, entretienJour: 0, repasPrix: 0, repasParJour: 0, kmTaux: 0,
@@ -30,31 +31,28 @@ describe('T-078 R1 : CDD suivi après son début, plancher L1242-16 à confirmer
   // Mois de septembre 2025 à juin 2026 en historique (975,00 € net chacun), suivi par l'app à partir du 01/07/2026.
   const historique = monthsBetween('2025-09', '2026-06').map((m) => ({ month: m, net: 97500, source: 'manuel' as const }));
 
-  it('suivi dès le début, congés pris en juin 2026 : part sûre et écart au plancher à confirmer (témoin)', () => {
+  it('suivi dès le début, congés pris en juin 2026 : payés dans le salaire, le plancher est atteint, ICCP 411,15 €', () => {
     const f = fin(cdd(), [{ id: 'cp', type: 'cp', from: '2026-06-01', to: '2026-06-27' }]);
-    expect(f.cpIndemnite).toBe(40950);
-    expect(f.cpPartAConfirmer?.lectures).toEqual([128700, 40950]);
+    expect(f.cpAConfirmer).toBeUndefined();
+    expect(f.cpIndemnite).toBe(41115);
   });
-  it('suivi à partir du 01/07/2026, historique, 0 jour restant : 1 287,00 € n’est plus donné sûr', () => {
+  it('suivi à partir du 01/07/2026 : les jours pris avant le suivi sont demandés (B)', () => {
     const f = fin(cdd({ trackedFrom: '2026-07-01', history: historique }));
     expect(f.nonGere).toBeUndefined();
-    expect(f.cpIndemnite).toBeLessThan(128700);
-    expect(f.cpPartAConfirmer).toBeDefined();
-    expect(Math.max(...f.cpPartAConfirmer!.lectures)).toBe(128700);
-    expect(f.cpPartAConfirmer!.message).toContain('L1242-16');
-    expect(f.cpPartAConfirmer!.message).toContain('pas depuis son début');
+    expect(f.cpIndemnite).toBe(0);
+    expect(f.cpAConfirmer).toMatch(/jours de congés payés pris pendant le CDD avant cette date/);
+    expect(fin(cdd({ trackedFrom: '2026-07-01', history: historique, cddCpPrisAvantSuivi: 0 })).cpIndemnite).toBe(128700);
   });
-  it('suivi dès le début, aucun congé pris : plancher L1242-16 donné sûr (témoin)', () => {
+  it('suivi dès le début, aucun congé pris : ICCP + complément de juin = plancher (1 287,00 €)', () => {
     const f = fin(cdd());
-    expect(f.cpPartAConfirmer?.message ?? '').not.toContain('pas depuis son début');
-    expect(f.cpIndemnite).toBeGreaterThanOrEqual(128700);
+    expect(f.cpAConfirmer).toBeUndefined();
+    expect(f.cpIndemnite).toBe(127365);
   });
 });
 
-describe('T-078 R2 : Alsace-Moselle, préavis dispensé, 9 mois atteints à la fin du préavis local', () => {
+describe('T-078 R2, revu par la T-103 (R2) : Alsace-Moselle, préavis de la convention seul', () => {
   // 52 semaines, 45 h du lundi au vendredi, 7,45 € net, début lundi 05/01/2026. Retrait, lettre le 01/09/2026 (7 mois),
   // dispense dès le 01/09 (dernier jour travaillé 31/08). Convention : 15 jours, fin le 15/09/2026 (8 mois à la fin).
-  // Lecture B (L1234-16) : six semaines, fin le 12/10/2026 (9 mois à la fin).
   const contrat = (over: Partial<Contract> = {}): Contract => ({
     id: 'c1', child: 'Léa', family: 'Martin', color: 0, start: '2026-01-05', yearType: 'complete', weeks: 52, weeksOff: [],
     planning: week('08:00', '17:00'), rateNet: 745, majoration: 10, entretienJour: 422, repasPrix: 0, repasParJour: 0,
@@ -64,22 +62,13 @@ describe('T-078 R2 : Alsace-Moselle, préavis dispensé, 9 mois atteints à la f
   } as Contract);
   const dispense = { demandeur: 'employeur' as const, dernierJourTravaille: '2026-08-31' };
   const fin = (c: Contract) => finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-09-01', 'retrait', 0, undefined, dispense);
-
-  it('Bas-Rhin : « pas d’indemnité » n’est plus donné sûr ; valeur à la fin du préavis local (12/10/2026)', () => {
-    const f = fin(contrat({ alsaceMoselle: true, departement: '67' }));
-    expect(f.nonGere).toBeUndefined();
-    expect(f.dernierJour).toBe('2026-09-15');
-    expect(f.indemniteRupture).toBe(0);
-    expect(f.ruptureAConfirmer).toBe(true);
-    expect(f.ruptureExplication).toMatch(/^À confirmer/);
-    expect(f.ruptureVariantes).toContain('fin le 15/09/2026 : pas d’indemnité (8 mois)');
-    expect(f.ruptureVariantes).toContain('préavis local de six semaines (Alsace-Moselle, à confirmer), fin le 12/10/2026 : ');
-    expect(f.ruptureVariantes).toContain(euros(21818));
-    expect(f.ruptureVariantes).toContain(euros(18594));
-  });
-  it('même cas en métropole : 9 mois à aucune date, pas d’indemnité, sûr (témoin)', () => {
-    const f = fin(contrat());
-    expect(f.indemniteRupture).toBe(0);
-    expect(f.ruptureAConfirmer).toBeFalsy();
+  it('Bas-Rhin comme en métropole : 8 mois à la fin du contrat, pas d’indemnité, sans réserve', () => {
+    for (const c of [contrat({ alsaceMoselle: true, departement: '67' }), contrat()]) {
+      const f = fin(c);
+      expect(f.nonGere).toBeUndefined();
+      expect(f.dernierJour).toBe('2026-09-15');
+      expect(f.indemniteRupture).toBe(0);
+      expect(f.ruptureAConfirmer).toBeFalsy();
+    }
   });
 });

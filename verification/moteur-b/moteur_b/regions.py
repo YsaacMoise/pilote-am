@@ -52,11 +52,10 @@ def feries_locaux(annee, region):
     Noel) ; Mayotte : C. trav. L3422-2, 1° (27 avril). Metropole : aucun.
     Le Vendredi saint vaut pour toute AM d'Alsace-Moselle (R3 ne retient pas la
     sous-lecture « commune ayant un temple protestant »)."""
-    region = region_valide(region)
-    if region == "alsace_moselle":
-        return {paques(annee) - timedelta(days=2): "Vendredi saint", date(annee, 12, 26): "26 decembre"}
-    if region == "mayotte":
-        return {date(annee, 4, 27): "27 avril (abolition de l'esclavage)"}
+    region_valide(region)
+    # T-103 (R1, R4) : plus aucun ferie « a confirmer ». Alsace-Moselle : Vendredi saint et 26 decembre ne sont pas
+    # feries pour l'AM (L3134-1, al. 2) : jours ordinaires. Mayotte : le 27 avril est un ferie legal (L3422-2),
+    # dans calendrier.jours_feries(annee, "mayotte"). Les refus A77-FERIE-* ne sont donc plus emis.
     return {}
 
 

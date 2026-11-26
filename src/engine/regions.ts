@@ -1,9 +1,8 @@
 // T-077 : règles propres à l'Alsace-Moselle (Bas-Rhin, Haut-Rhin, Moselle) et à Mayotte.
 // Rapports : calculateur-arvela, regles/t077-alsace-moselle.md, regles/t077-mayotte.md ; règles retenues :
-// regles/t077-decisions.md (R0 à R7). Un point qu'aucun texte ne tranche est calculé dans ses deux lectures (décision du DG
-// du 22/11/2026) : l'app ne verse que ce qui est dû dans les deux, et chiffre l'écart « à confirmer ».
-import { addDays, type ISODate } from './dates';
-import { holidaysOf } from './holidays';
+// regles/t077-decisions.md (R0 à R7), revues par la T-103 (calculateur-arvela, rapports/T-103-inventaire.md, R1 à R7).
+import type { ISODate } from './dates';
+import { holidayName } from './holidays';
 import type { Contract } from './model';
 
 export type Region = 'metropole' | 'alsaceMoselle' | 'mayotte';
@@ -73,42 +72,36 @@ export function smicMayotte(d: ISODate): number | undefined {
 }
 
 /**
- * R3 : jours fériés locaux, deux lectures (question DDETS).
- * - Alsace-Moselle : CT L3134-13, « 2° Le Vendredi Saint dans les communes ayant un temple protestant ou une église mixte »
- *   et « 12° Le premier et le second jour de Noël ». Lecture A : fériés ordinaires de l'AM (CCN 47.2, « dispositions légales
- *   et réglementaires de droit commun ») ; lecture B : non applicables (L3134-1 al. 2 exclut « l'éducation des enfants » et
- *   « les emplois à domicile par une personne physique » ; CASF L423-2 n'y renvoie pas).
- * - Mayotte : CT L3422-2, « 1° Le 27 avril à Mayotte ». Lecture A : férié ordinaire (CCN 47.2) ; lecture B : la CCN ne
- *   viserait que la liste nationale (L3133-1).
+ * T-103 (R1, R4) : jours fériés de l'assistante maternelle selon la région.
+ * - Alsace-Moselle : le Vendredi saint et le 26 décembre (C. trav. L3134-13) ne sont pas fériés pour l'AM. L3134-1, al. 2 :
+ *   les règles locales du chapitre « ne s'appliquent pas […] à l'éducation des enfants […], aux emplois à domicile par une
+ *   personne physique » ; CASF L423-2 ne rend pas ce chapitre applicable à l'AM ; CCN 47.2 renvoie aux fériés « de droit
+ *   commun » (L3133-1).
+ * - Mayotte : le 27 avril (abolition de l'esclavage, C. trav. L3422-2, 1°) est férié. L3422-3 : à Mayotte, les listes de
+ *   L3133-1 et L3422-2 forment ensemble la liste légale ; CCN 47.2 renvoie aux fériés légaux.
  */
-export function feriesLocaux(region: Region, y: number): Map<ISODate, string> {
-  const out = new Map<ISODate, string>();
-  if (region === 'alsaceMoselle') {
-    const lundiPaques = [...holidaysOf(y).entries()].find(([, n]) => n === 'Lundi de Pâques')?.[0];
-    if (lundiPaques) out.set(addDays(lundiPaques, -3), 'Vendredi saint');
-    out.set(`${y}-12-26`, '26 décembre');
-  } else if (region === 'mayotte') {
-    out.set(`${y}-04-27`, '27 avril (abolition de l’esclavage)');
-  }
-  return out;
+export function ferieDe(region: Region, d: ISODate): string | undefined {
+  return holidayName(d) ?? (region === 'mayotte' && d.slice(5) === '04-27' ? '27 avril (abolition de l’esclavage)' : undefined);
 }
 
-export function ferieLocal(region: Region, d: ISODate): string | undefined {
-  if (region === 'metropole') return undefined;
-  return feriesLocaux(region, Number(d.slice(0, 4))).get(d);
-}
-
-/** Texte de la question, commun aux messages des jours fériés locaux. */
-export function pourquoiFerieLocal(region: Region, nom: string): string {
-  if (region === 'alsaceMoselle') {
-    return `Le ${nom} est férié en Alsace-Moselle (code du travail, article L3134-13${nom === 'Vendredi saint' ? ', dans les communes qui ont un temple protestant ou une église mixte' : ''}). Aucun texte ne dit s’il l’est pour une assistante maternelle : le même code exclut « l’éducation des enfants » et « les emplois à domicile » de ces règles locales. La question sera posée à la DDETS.`;
-  }
-  return `Le ${nom} est férié à Mayotte (code du travail, article L3422-2). Aucun texte ne dit si la convention le compte parmi les fériés de l’assistante maternelle (article 47.2). La question sera posée à la DDETS.`;
-}
-
-/** R4 : maintien de salaire du droit local (Alsace-Moselle, CT L1226-23), deux lectures (question DDETS). */
+/**
+ * T-103 (R3, décision du DG du 24/11/2026) : en Alsace-Moselle, absence pour la maladie de l'AM ou de son enfant : salaire
+ * maintenu, moins les indemnités journalières saisies (C. trav. L1226-23 ; Cass. soc. 13/04/2005, n° 03-41.877 ;
+ * 04/12/2024, n° 23-11.485 ; 27/05/2025, n° 24-11.388).
+ */
 export const MESSAGE_MAINTIEN_LOCAL =
-  'Absence pour ta maladie ou celle de ton enfant : ces jours ne sont ni payés ni retenus. En Alsace-Moselle, le code du travail (article L1226-23) maintient le salaire d’une courte absence subie, moins les indemnités journalières de la sécurité sociale. Aucun texte ne dit s’il vaut pour l’assistante maternelle d’un particulier : la convention (annexe 3, article 3.1) l’écarte. Selon la lecture, les parents te doivent le salaire de ces jours moins tes indemnités journalières (ton relevé de la CPAM), ou rien. La question sera posée à la DDETS. Mets-toi d’accord avec les parents, par écrit.';
+  'Absence pour ta maladie ou celle de ton enfant, en Alsace-Moselle : les parents maintiennent ton salaire, moins les indemnités journalières de la Sécurité sociale (code du travail, article L1226-23 ; Cour de cassation, 13/04/2005 et 04/12/2024).';
+export const MESSAGE_IJ_MAINTIEN_LOCAL =
+  'Absence pour ta maladie ou celle de ton enfant, en Alsace-Moselle : indique le montant des indemnités journalières de la Sécurité sociale reçues pour cette absence (0 si tu n’en as pas reçu). Les parents maintiennent ton salaire moins ce montant (code du travail, article L1226-23). L’app ne calcule pas ce mois sans lui.';
+/**
+ * T-104 (R-ABS-08) : congé maternité, paternité, congé supplémentaire de naissance, accident du travail ou maladie
+ * professionnelle en Alsace-Moselle : même maintien (L1226-23 ; Cass. soc. 27/05/2025, n° 24-11.388, publié : congé de
+ * paternité ; décision du DG du 24/11/2026, maintien pour toute absence).
+ */
+export const MESSAGE_MAINTIEN_LOCAL_SUSPENSION =
+  'Congé ou arrêt en Alsace-Moselle : les parents maintiennent ton salaire, moins les indemnités journalières de la Sécurité sociale (code du travail, article L1226-23 ; Cour de cassation, 27/05/2025, pour un congé de paternité).';
+export const MESSAGE_IJ_MAINTIEN_LOCAL_SUSPENSION =
+  'Congé ou arrêt en Alsace-Moselle : indique le montant des indemnités journalières de la Sécurité sociale reçues pour cette absence (0 si tu n’en as pas reçu). Les parents maintiennent ton salaire moins ce montant (code du travail, article L1226-23). L’app calcule ce mois dès que c’est saisi.';
 
 /** R6 : CSG et CRDS. Aucune ligne CSG ou CRDS dans les taux de l'AM à Mayotte (Urssaf, au 01/01/2026). */
 export function partNonDeductibleRegion(region: Region, metropole: number): number {
@@ -117,4 +110,4 @@ export function partNonDeductibleRegion(region: Region, metropole: number): numb
 
 /** R2 : majoration de 4 % du titre AM-GE à Mayotte. */
 export const MINIMUM_SANS_TITRE_MAYOTTE =
-  'À Mayotte, l’Urssaf écrit que la majoration de 4 % du titre « Assistant maternel - garde d’enfants » ne s’applique pas. Aucun texte lu ne l’écarte (la convention vaut aussi à Mayotte) : la question sera posée à la DDETS. Ce minimum ne la compte pas.';
+  'Ce minimum ne compte pas la majoration de l’annexe 5 de la convention pour le titre « Assistant maternel – assistant parental » (ancien titre « garde d’enfants »). Elle vaut aussi à Mayotte (convention, article 2 : la convention « est également applicable à Mayotte » pour les assistants maternels). Si tu as ce titre, ton taux doit être au-dessus de ce minimum, majoration comprise.';

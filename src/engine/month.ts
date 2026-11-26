@@ -1,12 +1,11 @@
 // Récapitulatif mensuel par enfant, dans l'ordre de la déclaration Pajemploi.
 import { lastDay, monthLabel, type Month } from './dates';
 import { cpForMonth } from './conges';
-import { MESSAGE_MOIS_DEJA_DECLARE, ctxLectureCdd2, libelleSalaireAConfirmer, monthBase, naturesAConfirmer, termsAt, type Ctx, type MonthBase } from './payroll';
-import { libelleLecturesCdd } from './cdd';
-import { netToBrut, REDUCTION_HS } from './rates';
+import { brutConnu, brutDuNet, monthBase, termsAt, type Ctx, type MonthBase } from './payroll';
+import { REDUCTION_HS } from './rates';
 import { regionDe } from './regions';
 
-export const MESSAGE_REDUCTION_HS_MAYOTTE = 'Mayotte : la réduction de cotisations de tes heures complémentaires et majorées n’est pas estimée par l’app (les cotisations y sont différentes). Pajemploi la calcule : regarde ton relevé.';
+export const MESSAGE_REDUCTION_HS_MAYOTTE = 'Mayotte : l’app ne calcule pas la réduction de cotisations de tes heures complémentaires et majorées. Ses règles à Mayotte (ordonnance n° 96-1122 et ses textes) ne sont pas encore lues dans l’app. Pajemploi la calcule : regarde ton relevé.';
 import { euros, hoursLabel } from './money';
 
 export interface MonthResult extends MonthBase {
@@ -14,13 +13,12 @@ export interface MonthResult extends MonthBase {
   cpIndemnite: number;
   cpComplement: number;
   cpNote?: string;
-  /** Congés payés dus ce mois mais à confirmer : non comptés dans le total (T-019) */
-  cpAConfirmer?: string;
-  /** T-076 (P-PV-5) : part des congés payés à confirmer (méthode du maintien, horaires variables), hors du total */
-  cpMaintienAConfirmer?: number;
   /** Salaire net à déclarer, congés compris */
   netTotal: number;
+  /** Brut du mois : celui du bulletin, ou net × brut ÷ net du contrat (T-103, D1) ; estimation interne si `brutConnu` est faux */
   brutEstime: number;
+  /** T-103 (D1) : le brut est exact (bulletin ou taux horaire brut du contrat) ; sinon l'écran le demande */
+  brutConnu: boolean;
   /**
    * Heures complémentaires et majorées (CGI art. 81 quater, CSS art. L241-17 : pour une assistante maternelle, heures
    * au-delà du contrat jusqu'à 45 h et heures au-delà de 45 h, prévues au contrat ou en plus) : valeur nette déclarée.
@@ -28,68 +26,77 @@ export interface MonthResult extends MonthBase {
   hsNet: number;
   /** Brut estimé de ces heures */
   hsBrut: number;
-  /** Réduction de cotisations salariales de ces heures, versée en plus du net déclaré (estimation) */
-  reductionHS: number;
   /**
-   * T-076 (P1, P2) : CDD dont le salaire a deux lectures. Le mois affiché est la lecture la plus basse (part sûre, dans
-   * `netTotal`) ; `cddAConfirmer` est l'écart, hors du total. `cddLectures` : salaire net du mois, congés compris, lecture 1
-   * puis lecture 2. Absent : une seule lecture, ou les deux donnent le même montant.
+   * Réduction de cotisations salariales de ces heures (CSS L241-17, I, 7° ; D241-21 : 11,31 % de leur brut). T-109 : elle
+   * s'ajoute au net déclaré dans la somme versée à l'AM (totalAVerser, `reductionVersee`). Comptée dans le total seulement
+   * sur le brut exact (`brutConnu`) ; sans le taux horaire brut du contrat, l'écran le demande (`reductionHSManquante`).
    */
-  cddAConfirmer?: number;
-  cddLectures?: [number, number];
+  reductionHS: number;
+  /** T-109 : heures complémentaires ou majorées ce mois, mais brut inconnu : la réduction attend le taux horaire brut */
+  reductionHSManquante: boolean;
 }
 
-/** T-076 : mois d'un CDD à deux lectures (P1, P2) : part sûre = la plus basse, écart à confirmer (decisions-direction, section 2) */
+/** Mois calculé (T-103 : une seule lecture, aussi pour un CDD : F11, F12) */
 export function computeMonth(ctx: Ctx, m: Month, enfants = 0): MonthResult {
-  const r1 = computeMonthLecture(ctx, m, enfants);
-  const ctx2 = ctxLectureCdd2(ctx);
-  if (!ctx2 || r1.nonGere.length || !r1.active || r1.fromHistory) return r1;
-  const r2 = computeMonthLecture(ctx2, m, enfants);
-  if (r2.nonGere.length || r2.netTotal === r1.netTotal) return r1;
-  const bas = r2.netTotal < r1.netTotal ? r2 : r1;
-  const ecart = Math.abs(r1.netTotal - r2.netTotal);
-  const l = libelleLecturesCdd(ctx.c);
-  const message = `Salaire du CDD : ${euros(ecart)} à confirmer, non compris dans le total. ${l.pourquoi} Lecture 1 (${l.l1}) : ${euros(r1.netTotal)} ; lecture 2 (${l.l2}) : ${euros(r2.netTotal)}. L’app verse le plus bas. Mets-toi d’accord avec les parents, par écrit.`;
-  return { ...bas, alerts: [...bas.alerts, message], cddAConfirmer: ecart, cddLectures: [r1.netTotal, r2.netTotal] };
+  return computeMonthLecture(ctx, m, enfants);
 }
 
 function computeMonthLecture(ctx: Ctx, m: Month, enfants = 0): MonthResult {
   const b = monthBase(ctx, m);
   const cp = cpForMonth(ctx, m, enfants);
   const netTotal = b.net + cp.indemnite + cp.complement;
-  const alerts = cp.aConfirmer ? [...b.alerts, cp.aConfirmer] : [...b.alerts];
+  const alerts = [...b.alerts];
+  // T-103 : indemnité de congés non calculée (donnée à saisir) : le mois attend la donnée, comme un cas non géré.
+  const nonGere = cp.aConfirmer && !b.nonGere.includes(cp.aConfirmer) ? [...b.nonGere, cp.aConfirmer] : b.nonGere;
   // T-077 : à Mayotte, la réduction de cotisations des heures complémentaires et majorées (CSS L241-17) n'est pas estimée :
   // en métropole, ses 11,31 % sont les cotisations vieillesse de l'AM, qui sont différentes à Mayotte (Urssaf : 5,54 %).
   const mayotte = regionDe(ctx.c) === 'mayotte';
   if (mayotte && b.complAmount + b.majAmount + b.majContratAmount > 0) alerts.push(MESSAGE_REDUCTION_HS_MAYOTTE);
-  if (cp.maintienAConfirmer && cp.maintienMessage) {
-    alerts.push(cp.maintienMessage);
-    // T-076, D5 : un mois déclaré ne change pas après coup ; une saisie tardive suit le mécanisme existant des mois déclarés.
-    if (lastDay(m) < ctx.today && !alerts.includes(MESSAGE_MOIS_DEJA_DECLARE)) alerts.push(MESSAGE_MOIS_DEJA_DECLARE);
-  }
   const hsNet = b.complAmount + b.majAmount + b.majContratAmount;
-  const hsBrut = netToBrut(hsNet, lastDay(m), regionDe(ctx.c));
+  const hsBrut = brutDuNet(ctx.c, hsNet, lastDay(m));
+  const exact = !!b.brut || brutConnu(ctx.c, lastDay(m));
   return {
     ...b,
     alerts,
-    cpAConfirmer: cp.aConfirmer,
-    ...(cp.maintienAConfirmer ? { cpMaintienAConfirmer: cp.maintienAConfirmer } : {}),
+    nonGere,
     cpJours: cp.jours,
     cpIndemnite: cp.indemnite,
     cpComplement: cp.complement,
     cpNote: cp.note,
     netTotal,
-    brutEstime: b.brut ?? netToBrut(netTotal, lastDay(m), regionDe(ctx.c)),
+    brutEstime: b.brut ?? brutDuNet(ctx.c, netTotal, lastDay(m)),
+    brutConnu: !!b.brut || brutConnu(ctx.c, lastDay(m)),
     hsNet,
     hsBrut,
     reductionHS: mayotte ? 0 : Math.round(hsBrut * REDUCTION_HS),
+    reductionHSManquante: !mayotte && !exact && hsNet > 0,
   };
 }
 
 /** Total à verser par la famille : salaire net, entretien, repas et kilomètres (écran Mois, message au parent, relevé) */
-export function totalAVerser(r: MonthResult): number {
-  return r.netTotal + r.entretien + r.repas + r.km;
+/**
+ * T-103 (M7) : mois en cours. Le salaire mensualisé couvre tout le mois (CCN 109) ; l'entretien et les repas suivent les
+ * jours de travail effectif (114.1, 114.2) et ne sont connus que jusqu'à aujourd'hui. Renvoie « JJ/MM » (aujourd'hui) pour
+ * un mois en cours, sinon undefined. Remplace « Provisoire jusqu'à la fin du mois ».
+ */
+export function moisEnCoursAu(today: string, m: Month): string | undefined {
+  return today.slice(0, 7) === m && today < lastDay(m) ? `${today.slice(8, 10)}/${today.slice(5, 7)}` : undefined;
 }
+
+/**
+ * T-109 (comparateur, correction 1) : la réduction de cotisations des heures complémentaires et majorées (CSS L241-17, I, 7° ;
+ * D241-21) est versée à l'AM en plus du net déclaré : elle entre dans le total.
+ */
+export function totalAVerser(r: MonthResult): number {
+  return r.netTotal + reductionVersee(r) + r.entretien + r.repas + r.km;
+}
+
+/** T-109 : réduction comptée dans le total (brut exact seulement : jamais un montant estimé) */
+export function reductionVersee(r: MonthResult): number {
+  return r.brutConnu ? (r.reductionHS ?? 0) : 0;
+}
+
+export const MESSAGE_REDUCTION_HS_BRUT = 'Heures complémentaires ou majorées ce mois : leur réduction de cotisations (11,31 % de leur brut) s’ajoute à la somme à verser. Indique ton taux horaire brut dans le contrat pour qu’elle soit comptée dans le total.';
 
 export interface DeclLine { label: string; value: string; hint?: string }
 
@@ -101,15 +108,17 @@ export function declarationLines(ctx: Ctx, r: MonthResult, pourParents = false):
   // T-031 : mois refusé (cas non géré) : aucune case à déclarer n'est proposée.
   if (r.nonGere.length) return [];
   const t = termsAt(ctx.c, `${r.month}-01`);
-  const complete = t.yearType === 'complete';
+  // T-104 (cas 2) : accueil occasionnel, jours de congés déclarés le mois où ils sont versés (Urssaf : « cette case concerne
+  // uniquement les gardes de 46 semaines ou moins, ou les gardes occasionnelles »).
+  const complete = t.yearType === 'complete' && !t.accueilOccasionnel;
   const majCompl = t.majorationCompl ?? 0;
   return [
-    { label: 'Heures normales', value: `${r.heuresNormales} h`, hint: 'Les heures payées chaque mois, jusqu’à 45 h par semaine, arrondies à l’heure' },
+    { label: 'Heures normales', value: `${r.heuresNormales} h`, hint: t.accueilOccasionnel ? 'Les heures d’accueil payées ce mois, jusqu’à 45 h par semaine, arrondies à l’heure' : 'Les heures payées chaque mois, jusqu’à 45 h par semaine, arrondies à l’heure' },
     { label: 'Jours d’activité', value: `${r.joursActivite}` },
     {
       label: 'Jours de congés payés',
-      value: complete ? '0' : r.cpAConfirmer ? 'à confirmer' : `${r.cpJours}`,
-      hint: complete ? 'Année complète : les congés sont compris dans le salaire' : r.cpAConfirmer ? 'Le nombre de jours acquis n’est pas encore tranché' : undefined,
+      value: complete ? '0' : `${r.cpJours}`,
+      hint: complete ? 'Année complète : les congés sont compris dans le salaire' : undefined,
     },
     {
       label: 'Heures complémentaires',
@@ -121,10 +130,10 @@ export function declarationLines(ctx: Ctx, r: MonthResult, pourParents = false):
       value: hoursLabel(r.majContratMin + r.majMin),
       hint: `Au-delà de 45 h dans la semaine, prévues au contrat ou en plus, +${termsAt(ctx.c, `${r.month}-01`).majoration}\u00a0%`,
     },
-    { label: 'Salaire net', value: `${euros(r.netTotal)}${r.cpAConfirmer ? ' + congés à confirmer' : ''}${r.cpMaintienAConfirmer ? ` + ${euros(r.cpMaintienAConfirmer)} de congés à confirmer` : ''}${r.complAConfirmerAmount ? ` + ${euros(r.complAConfirmerAmount)} d’heures complémentaires à confirmer` : ''}${r.evenementAConfirmer ? ` + ${euros(r.evenementAConfirmer)} ${pourParents ? 'de salaire' : libelleSalaireAConfirmer(r)} à confirmer` : ''}${r.cddAConfirmer ? ` + ${euros(r.cddAConfirmer)} de salaire du CDD à confirmer` : ''}` },
-    { label: 'Indemnités d’entretien', value: r.entretienAConfirmer ? `${euros(r.entretien)} + ${euros(r.entretienAConfirmer)} à confirmer` : euros(r.entretien), hint: `${r.presenceDays} jour${r.presenceDays > 1 ? 's' : ''} d’accueil` },
+    { label: 'Salaire net', value: euros(r.netTotal) },
+    { label: 'Indemnités d’entretien', value: euros(r.entretien), hint: `${r.presenceDays} jour${r.presenceDays > 1 ? 's' : ''} d’accueil${moisEnCoursAu(ctx.today, r.month) ? ` au ${moisEnCoursAu(ctx.today, r.month)}` : ''}` },
     { label: 'Frais de repas', value: euros(r.repas) },
-    { label: 'Frais kilométriques', value: r.kmAConfirmer ? `${euros(r.km)} + ${r.kmAConfirmer} km à confirmer` : euros(r.km) },
+    { label: 'Frais kilométriques', value: euros(r.km) },
   ];
 }
 
@@ -147,26 +156,19 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   for (const l of lines) out.push(`• ${l.label} : ${l.value}`);
   out.push('');
   out.push('Détail du salaire net :');
-  out.push(`• Salaire mensualisé : ${euros(r.salaireMens)}`);
+  if (c.accueilOccasionnel) out.push(`• Salaire des heures d’accueil du mois : ${euros(r.base)}`);
+  else out.push(`• Salaire mensualisé : ${euros(r.salaireMens)}`);
   if (r.retenue) out.push(`• Retenue pour absence : −${euros(r.retenue)}`);
+  if (r.normalesPlusAmount) out.push(`• Heures faites en plus la semaine d’une absence, au taux du contrat : ${euros(r.normalesPlusAmount)}`);
   if (r.complAmount) out.push(`• Heures complémentaires : ${euros(r.complAmount)}`);
   if (r.majAmount) out.push(`• Heures majorées en plus du contrat : ${euros(r.majAmount)}`);
   if (r.regulAvenant) out.push(`• Régularisation à l’avenant : ${euros(r.regulAvenant)}`);
   if (r.ferieAmount) out.push(`• Majoration jours fériés travaillés : ${euros(r.ferieAmount)}`);
   if (r.cpIndemnite) out.push(`• Indemnité de congés payés : ${euros(r.cpIndemnite)}`);
   if (r.cpComplement) out.push(`• Complément de congés payés : ${euros(r.cpComplement)}`);
-  if (r.cpAConfirmer) out.push('• Indemnité de congés payés : à confirmer ensemble');
-  if (r.cpMaintienAConfirmer) out.push(`• Congés payés : + ${euros(r.cpMaintienAConfirmer)} à confirmer ensemble`);
-  if (r.complAConfirmerAmount) out.push(`• Heures complémentaires : + ${euros(r.complAConfirmerAmount)} à confirmer ensemble`);
-  // Décision du DG du 21/11/2026 : comme le lien des parents, le texte envoyé aux parents ne nomme pas la raison.
-  if (r.evenementAConfirmer) out.push(`• Salaire : + ${euros(r.evenementAConfirmer)} de salaire à confirmer ensemble`);
-  // T-076 (P1, P2) : salaire d'un CDD qui dépend de la façon de le calculer.
-  if (r.cddAConfirmer) out.push(`• Salaire du CDD : + ${euros(r.cddAConfirmer)} à confirmer ensemble (deux façons de calculer, question posée à la DDETS)`);
+  if (reductionVersee(r)) out.push(`• Réduction de cotisations des heures complémentaires et majorées, versée en plus du salaire net : ${euros(reductionVersee(r))}`);
   out.push('');
-  if (r.entretienAConfirmer) out.push(`• Indemnité d’entretien : ${euros(r.entretienAConfirmer)} à confirmer ensemble (${raisonsEntretienAConfirmer(r)})`);
-  if (r.kmAConfirmer) out.push(`• Frais kilométriques : ${r.kmAConfirmer} km à confirmer ensemble (familles qui ont demandé le trajet, enfants dans la voiture)`);
-  const aConfirmer = partsAConfirmer(r, true);
-  out.push(`Total à me verser : ${euros(totalAVerser(r))}${aConfirmer.length ? `, sans ${aConfirmer.join(' ni ')} à confirmer` : ''}`);
+  out.push(`Total à me verser : ${euros(totalAVerser(r))}`);
   out.push('');
   out.push('Calcul fait avec l’application Arvela, outil d’aide indépendant de l’Urssaf : la déclaration Pajemploi fait foi.');
   out.push('');
@@ -174,26 +176,3 @@ export function declarationText(ctx: Ctx, r: MonthResult, amName: string): strin
   return out.join('\n');
 }
 
-/** T-044c : raisons de la part d'entretien à confirmer, selon le cas (contrat par heure ou par jour) */
-export function raisonsEntretienAConfirmer(r: Pick<MonthResult, 'entretienJoursDuree' | 'entretienJoursTarifJour' | 'entretienJoursHorsPlanning'>): string {
-  const out: string[] = [];
-  if (r.entretienJoursDuree) out.push(`${r.entretienJoursDuree > 1 ? 'des journées comptées' : 'une journée comptée'} en temps de présence de l’enfant ou en temps de travail, selon la lecture`);
-  if (r.entretienJoursTarifJour) out.push(`tarif du contrat par jour, ${r.entretienJoursTarifJour > 1 ? 'journées' : 'journée'} d’une autre durée que le planning`);
-  if (r.entretienJoursHorsPlanning) out.push(`tarif du contrat par jour, ${r.entretienJoursHorsPlanning > 1 ? 'journées' : 'journée'} hors planning`);
-  return out.join(' ; ');
-}
-
-/**
- * Parts du mois sorties du total parce qu'elles sont à confirmer (T-025 C-5 : à dire partout où le total s'affiche).
- * `pourParents` : l'événement familial devient « une part du salaire » (DG, 21/11/2026 : aucun motif d'absence de l'AM
- * sur le lien des parents).
- */
-export function partsAConfirmer(r: Pick<MonthResult, 'cpAConfirmer' | 'evenementAConfirmer' | 'kmAConfirmer'> & Partial<Pick<MonthResult, 'joursCpAConfirmer' | 'joursEvenementAConfirmer' | 'joursMaladieAConfirmer' | 'joursFerieLocalAConfirmer' | 'joursMaintienAConfirmer' | 'entretienAConfirmer' | 'ferieLocalAConfirmer' | 'cpMaintienAConfirmer' | 'complAConfirmerAmount' | 'cddAConfirmer'>>, pourParents = false): string[] {
-  // T-030 : un salaire à confirmer peut venir de congés pris peut-être au-delà des droits (année complète, A-23).
-  // T-033 : ou de jours d'enfant malade (art. 105, lectures divergentes).
-  const salaire = !r.evenementAConfirmer ? [] : naturesAConfirmer(r).map((n) => ({
-    evenement: pourParents ? 'une part du salaire' : 'l’événement familial', cp: 'les congés pris au-delà des droits', maladie: 'les jours d’enfant malade', ferieLocal: 'les jours fériés locaux',
-    // Lien des parents (décision du DG du 21/11/2026) : aucun motif d'absence de l'AM, et pas de donnée de santé.
-    maintien: pourParents ? 'une part du salaire' : 'les jours d’absence pour maladie' })[n]).filter((x, i, a) => a.indexOf(x) === i);
-  return [r.cpAConfirmer || r.cpMaintienAConfirmer ? 'les congés payés' : '', r.complAConfirmerAmount ? 'une part des heures complémentaires' : '', ...salaire, r.cddAConfirmer ? 'une part du salaire du CDD' : '', r.entretienAConfirmer ? 'une part de l’entretien' : '', r.ferieLocalAConfirmer ? 'la majoration d’un férié local' : '', r.kmAConfirmer ? 'les kilomètres' : ''].filter(Boolean);
-}

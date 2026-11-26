@@ -7,8 +7,8 @@
 //   réalisé ».
 // - Art. 64.2, al. 1, 66 et 122 : inexécution imposée par l'employeur : indemnité compensatrice jusqu'à la date prévue de fin.
 //   T-074 : ce cas est calculé (tests/t074-preavis-dispense.test.ts).
-// - Art. 64.2, al. 2, fin : sans accord, l'AM doit une indemnité à l'employeur ; CASF L423-26 : dommages et intérêts. Le solde
-//   dû à l'AM peut en dépendre : « non géré ».
+// - Art. 64.2, al. 2, fin : sans accord, l'employeur peut demander à l'AM une indemnité égale au net du préavis non fait.
+//   T-107 (cas 2) : calculé ; rien n'est dû par l'AM enceinte qui démissionne (C. trav. L1225-34).
 // Les montants du cas accepté sont comparés au même calcul de l'app pour un contrat qui finit le même jour sans préavis
 // (faute grave notifiée ce jour-là) : seule la date de fin change, la règle ne fixe rien d'autre.
 import { describe, expect, it } from 'vitest';
@@ -60,8 +60,6 @@ describe('T-045 : préavis non exécuté (CCN art. 64 et 64.2)', () => {
     expect(f.preavisFin).toBe('2026-10-31');
     expect(f.dernierJour).toBe('2026-10-15');
     expect(f.nonGere).toBeUndefined();
-    // La date de fin ne dépend plus de la fin du préavis à confirmer : pas de variante.
-    expect(f.ruptureVariantes).toBeUndefined();
     expect(f.regularisationAConfirmer).toBeUndefined();
     const ref = finDeContrat(ctxDe(c), '2026-10-15', 'faute_grave');
     expect(f.totalBrut).toBe(ref.totalBrut);
@@ -77,11 +75,35 @@ describe('T-045 : préavis non exécuté (CCN art. 64 et 64.2)', () => {
     expect(f.dispense).toMatchObject({ du: '2026-10-11', au: '2026-10-31' });
   });
 
-  it('préavis non fait sans l’accord de l’employeur : fin au dernier jour travaillé, montants non gérés', () => {
+  // T-107 (cas 2) : préavis non fait sans l'accord des parents, calculé. CCN 64 : fin au dernier jour travaillé ; CCN 64.2,
+  // al. 2 : les parents peuvent demander « une indemnité égale au montant de la rémunération nette correspondant à la durée non
+  // exécutée du préavis » ; C. trav. L1225-34 (CASF L423-2, 3°) : la salariée enceinte rompt « sans préavis et sans devoir
+  // d'indemnité de rupture ». T-109 : jamais demandé, dit en texte.
+  // T-109 (second contrôle qualité, décision de la direction du 26/11/2026) : aucune question sur la grossesse ; l'écran dit les
+  // deux cas. Les congés non pris sont ceux d'un départ au même jour accepté par les parents (seule la date de fin compte, CCN 64).
+  it('T-107 (cas 2), T-109 : démission sans l’accord des parents : aucune question ; le montant et le cas de la grossesse sont dits', () => {
     const f = finDeContrat(ctxDe(contract()), '2026-10-01', 'demission', 0, undefined, { demandeur: 'am_sans_accord', dernierJourTravaille: '2026-10-10' });
+    expect(f.nonGere).toBeUndefined();
     expect(f.dernierJour).toBe('2026-10-10');
-    expect(f.nonGere?.join(' ')).toMatch(/64\.2/);
-    expect(f.totalBrut + f.cpIndemnite + f.regularisation + f.indemniteRupture).toBe(0);
+    expect(f.alertes.join(' ')).toMatch(/Les parents peuvent demander 590,91\s€ \(salaire net du préavis non fait, en passant par le conseil de prud’hommes ; convention, article 64\.2\)\. Si tu es enceinte, rien n’est dû \(Code du travail, L1225-34\)\./);
+    const accepte = finDeContrat(ctxDe(contract()), '2026-10-01', 'demission', 0, undefined, { demandeur: 'am_acceptee', dernierJourTravaille: '2026-10-10' });
+    expect(f.cpIndemnite).toBe(accepte.cpIndemnite);
+    expect(f.cpIndemnite).toBeGreaterThan(0);
+  });
+  it('T-107 (cas 2) : démission sans l’accord des parents : les parents peuvent demander le net du préavis non fait', () => {
+    const f = finDeContrat(ctxDe(contract()), '2026-10-01', 'demission', 0, undefined, { demandeur: 'am_sans_accord', dernierJourTravaille: '2026-10-10' });
+    expect(f.nonGere).toBeUndefined();
+    expect(f.dernierJour).toBe('2026-10-10');
+    // Préavis d'un mois (13 mois d'ancienneté, CCN 120) : du 01/10 au 31/10/2026. Non fait : du 11/10 au 31/10. Mensualisé net
+    // 40 h × 52 ÷ 12 × 5 € = 866,67 € ; octobre 2026 : 22 jours de 8 h prévus (176 h), dont 15 jours (120 h) après le 10/10.
+    // CCN 122 et 111 : 866,67 × 120 ÷ 176 = 590,91 €.
+    expect(f.indemniteDueParents).toEqual({ net: 59091, du: '2026-10-11', au: '2026-10-31' });
+    expect(f.alertes.join(' ')).toMatch(/590,91.*64\.2/);
+  });
+  it('T-107 (cas 2) : retrait de l’enfant, l’AM part sans leur accord : même indemnité possible (pas de question de grossesse)', () => {
+    const f = finDeContrat(ctxDe(contract()), '2026-10-01', 'retrait', 0, undefined, { demandeur: 'am_sans_accord', dernierJourTravaille: '2026-10-10' });
+    expect(f.nonGere).toBeUndefined();
+    expect(f.indemniteDueParents?.net).toBe(59091);
   });
 
   it('saisies incohérentes : refus clair, jamais un montant', () => {

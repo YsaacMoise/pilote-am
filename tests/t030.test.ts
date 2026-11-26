@@ -83,42 +83,41 @@ describe('T-030 CPA-03 : jours pour enfant à charge acquis au 31 mai seulement'
 
 import { finDeContrat } from '../src/engine/fin';
 import { cpForMonth } from '../src/engine/conges';
-describe('T-030 A-23 : acquisition en année complète, mois ou périodes de 4 semaines', () => {
-  // CCN 48.1.1.2 et C. trav. L3141-4 : « mois de travail » ou « période équivalente » (4 semaines), sans dire comment
-  // compter une période commencée. DREETS Occitanie compte les fractions de semaines, DREETS Bourgogne-Franche-Comté les
-  // mois ou les périodes entières : le nombre est à confirmer quand les deux lectures diffèrent, et rien n'est payé.
+describe('T-030 A-23, revu par la T-103 (C10) : acquisition en année complète, une seule méthode (Cass. soc. 10/01/1980)', () => {
+  // Mois complets d'abord, reste au prorata (CCN 48.1.1.2), arrêt maladie à 2 jours par mois (L3141-5-1), arrondi au supérieur.
   const malade = (from: string, to: string): AmLeave => ({ id: 'm', type: 'am_malade', from, to });
   const c45 = (over: Partial<Contract> = {}) => contract({ start: '2024-06-01', trackedFrom: '2024-06-01', rateNet: 450, ...over });
-  it('C-CPA-16 (S-BFC fiche 07) : embauche au 1er janvier, 13 jours (mois) ou 14 (semaines) : à confirmer, 13 parmi les lectures', () => {
+  it('C-CPA-16 (S-BFC fiche 07) : embauche au 1er janvier, 13 jours, comme la fiche', () => {
     const a = acquisition(makeCtx(c45({ start: '2026-01-01', trackedFrom: '2026-01-01' }), [], [], '2026-12-31'), 2025);
-    expect(a.aConfirmer?.lectures.map((l) => l.jours)).toEqual([14, 13]);
+    expect(a.aConfirmer).toBeUndefined();
+    expect(a.jours).toBe(13);
   });
-  it('C-CPA-16 : 2e période entière, 30 jours sûrs', () => {
+  it('C-CPA-16 : 2e période entière, 30 jours', () => {
     const a = acquisition(makeCtx(c45({ start: '2026-01-01', trackedFrom: '2026-01-01' }), [], [], '2027-12-31'), 2026);
     expect(a.aConfirmer).toBeUndefined();
     expect(a.jours).toBe(30);
   });
-  it('C-CPA-15 (S-BFC fiche 04-III) : 9 mois de travail et 3 mois d’arrêt, 29 jours (BFC) ou 30 : à confirmer', () => {
-    const a = acquisition(makeCtx(c45(), [], [malade('2025-03-01', '2026-07-31')], '2026-12-31'), 2024);
-    expect(a.aConfirmer?.lectures.map((l) => l.jours)).toEqual([30, 29]);
+  it('C-CPA-15 (S-BFC fiche 04-III) : 9 mois de travail et 3 mois d’arrêt : 30 jours ; la fiche, qui compte en mois, retient 29', () => {
+    // T-103 (C10 bis) : absence dans la période : décompte le plus favorable (service-public F18260). En semaines :
+    // juin 2024 à février 2025, 273 jours ÷ 28 = 9,75 × 2,5 = 24,4 ; arrêt de mars à mai, 3 mois × 2 = 6 ; 30,4 → 30 (plafond).
+    expect(acquisition(makeCtx(c45(), [], [malade('2025-03-01', '2026-07-31')], '2026-12-31'), 2024).jours).toBe(30);
   });
-  it('C-CPA-14 (S-BFC) : arrêt de 11 semaines, 29 jours (périodes entières) ou 30 : à confirmer', () => {
-    const a = acquisition(makeCtx(c45(), [], [malade('2025-10-06', '2025-12-21')], '2026-12-31'), 2025);
-    expect(a.aConfirmer?.lectures.map((l) => l.jours)).toContain(29);
+  it('C-CPA-14 (S-BFC) : arrêt de 11 semaines : 30 jours ; la fiche, qui jette les périodes commencées, retient 29', () => {
+    // Divergence documentée : CCN 48.1.1.2 compte le reste « pro rata temporis » (plus favorable que la fiche).
+    expect(acquisition(makeCtx(c45(), [], [malade('2025-10-06', '2025-12-21')], '2026-12-31'), 2025).jours).toBe(30);
   });
-  it('C-CPA-13 (S-BFC) : arrêt de 20 semaines, 30 jours sûrs (toutes les lectures donnent 30)', () => {
-    const a = acquisition(makeCtx(c45(), [], [malade('2024-10-07', '2025-02-23')], '2026-12-31'), 2024);
-    expect(a.aConfirmer).toBeUndefined();
-    expect(a.jours).toBe(30);
+  it('C-CPA-13 (S-BFC) : arrêt de 20 semaines : 30 jours, comme la fiche, qui compte en semaines', () => {
+    // T-103 (C10 bis) : décompte le plus favorable (service-public F18260) : en semaines (32 × 2,5 ÷ 4 + 20 × 2 ÷ 4) = 30.
+    expect(acquisition(makeCtx(c45(), [], [malade('2024-10-07', '2025-02-23')], '2026-12-31'), 2024).jours).toBe(30);
   });
-  it('C-FIN-09 (S-BFC fiche 11-III) : ICCP à confirmer, aucun montant donné ; complément de juin non versé', () => {
+  it('C-FIN-09 (S-BFC fiche 11-III) : 23 jours comme la fiche ; indemnité de congés non pris calculée, complément de juin versé', () => {
     const c = contract({ start: '2025-09-01', trackedFrom: '2025-09-01', end: '2026-08-31', planning: week('08:00', '17:00'), rateNet: 400 });
     const ctx = makeCtx(c, [], [{ id: 'cp', type: 'cp', from: '2026-06-08', to: '2026-06-27' }], '2026-12-31');
     const f = finDeContrat(ctx, '2026-08-17', 'retrait');
-    expect(f.cpIndemnite).toBe(0);
-    expect(f.cpAConfirmer).toMatch(/à confirmer/);
-    expect(acquisition(ctx, 2025).aConfirmer?.lectures.map((l) => l.jours)).toEqual([25, 23]);
-    expect(cpForMonth(ctx, '2026-06').aConfirmer).toBeDefined();
+    expect(f.cpAConfirmer).toBeUndefined();
+    expect(f.cpIndemnite).toBeGreaterThan(0);
+    expect(acquisition(ctx, 2025).jours).toBe(23);
+    expect(cpForMonth(ctx, '2026-06').aConfirmer).toBeUndefined();
   });
   it('période entière sans absence : 30 jours, rien à confirmer', () => {
     const a = acquisition(makeCtx(c45(), [], [], '2026-12-31'), 2024);
@@ -127,17 +126,18 @@ describe('T-030 A-23 : acquisition en année complète, mois ou périodes de 4 s
   });
 });
 
-import { indemnite } from '../src/engine/conges';
-describe('T-030 A-26 : formule du maintien en année incomplète', () => {
-  // CCN 48.1.1.5 et 102.1.2.2 : pas de formule. Urssaf et DREETS Occitanie : jours ÷ 6 × heures × taux ;
-  // DREETS Bourgogne-Franche-Comté (C-CPI-13 : « 13/26 X 540 € =270 € ») : jours ÷ 26 × salaire mensualisé.
-  it('C-CPI-13 : 46 s, 40 h, 4,50 €, 36 semaines, 13 jours : 390 € (semaines) ou 270 € (1/26) : indemnité à confirmer', () => {
+import { indemnite, maintien } from '../src/engine/conges';
+describe('T-030 A-26, revu par la T-103 (C12) : formule du maintien en année incomplète', () => {
+  // CCN 48.1.1.5 ; Cass. soc. 09/05/2019, n° 17-26.232 (AM) : rémunération qu'elle aurait perçue pendant le congé, sur la
+  // durée habituelle d'accueil : jours ÷ 6 × heures par semaine × taux (Urssaf, DREETS Occitanie). Le 1/26 (DREETS BFC) écarté.
+  it('C-CPI-13 : 46 s, 40 h, 4,50 €, 36 semaines, 13 jours : 390 € au maintien, sans réserve', () => {
     // Contrat d'un an commencé le 1er juin 2025, semaines sans accueil saisies : jours acquis sûrs, seul le maintien diffère.
     const off = ['2025-07-07', '2025-07-14', '2025-07-21', '2025-07-28', '2025-08-04', '2025-08-11', '2025-08-18', '2025-08-25',
       '2025-10-27', '2025-12-22', '2025-12-29', '2026-02-16', '2026-02-23', '2026-04-13', '2026-04-20', '2026-05-04'];
     const c = contract({ start: '2025-06-01', trackedFrom: '2025-06-01', yearType: 'incomplete', weeks: 36, weeksOff: off, rateNet: 450 });
-    const ind = indemnite(makeCtx(c, [], [], '2026-12-31'), 2025);
-    expect(ind.aConfirmer?.message).toMatch(/1\/26/);
+    const ctx = makeCtx(c, [], [], '2026-12-31');
+    expect(maintien(ctx, 13, '2026-06-01', 2025)).toBe(39000);
+    expect(indemnite(ctx, 2025).aConfirmer?.message ?? '').not.toMatch(/1\/26/);
   });
 });
 

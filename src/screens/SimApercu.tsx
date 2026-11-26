@@ -4,7 +4,7 @@ import { useState } from 'preact/hooks';
 import { planningRegulier, simuler, simulationParDefaut } from '../engine/simulation';
 import { today } from '../engine/dates';
 import { euros } from '../engine/money';
-import { BAREMES_VERIFIES_JUSQU_AU, baremesProvisoires, ratesConnus } from '../engine/rates';
+import { BAREMES_VERIFIES_JUSQU_AU, baremesAttendus, ratesConnus } from '../engine/rates';
 import { logUsage } from '../store';
 import { Icon } from '../ui/icons';
 
@@ -28,7 +28,7 @@ export function SimApercu() {
   return (
     <section class="sim-apercu" aria-labelledby="sim-t">
       <div class="sim-apercu-txt">
-        <span class="eyebrow">Simulateur gratuit · règles {(baremesProvisoires(d) ? BAREMES_VERIFIES_JUSQU_AU : d).slice(0, 4)}</span>
+        <span class="eyebrow">Simulateur gratuit · règles {(baremesAttendus(d) ? BAREMES_VERIFIES_JUSQU_AU : d).slice(0, 4)}</span>
         <h2 id="sim-t">Le coût réel d’une assistante maternelle pour une famille</h2>
         <p>Salaire, aide de la CAF et crédit d’impôt, calculés en direct : le reste à payer chaque mois. Pour répondre aux parents que tu rencontres.</p>
       </div>

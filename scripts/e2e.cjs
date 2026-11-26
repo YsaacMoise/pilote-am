@@ -60,8 +60,15 @@ async function run(scheme) {
   // Contrat repris en cours d'année
   await p.getByLabel('Prénom de l’enfant').fill('Lou');
   await p.getByLabel('Nom de la famille').fill('Petit');
-  await p.getByLabel('Date de début réelle').fill('2026-09-01');
+  // T-107 : l'écran Contrat a changé (T-079, T-031, T-076, T-104) : « Premier jour d'accueil », département, planning,
+  // accueil régulier, CDI ou CDD.
+  await p.getByLabel('Premier jour d’accueil').fill('2026-09-01');
+  await p.getByLabel('Dans quel département accueilles-tu l’enfant ?').fill('31 – Haute-Garonne');
+  await p.getByRole('radio', { name: /^Oui, une semaine type qui se répète/ }).click();
+  await p.getByRole('radio', { name: /^Régulier/ }).click();
+  await p.getByRole('radio', { name: /^CDI/ }).click();
   await p.getByLabel('Taux horaire net').fill('3,50');
+  await p.getByRole('radio', { name: /^Par jour d’accueil/ }).click();
   await p.getByText('Reprise d’un contrat en cours').waitFor();
   await shot('01-contrat');
   await p.getByRole('button', { name: 'Enregistrer et reprendre l’historique' }).click();
@@ -86,13 +93,14 @@ async function run(scheme) {
   // Pointage en un geste + annulation
   await p.goto(base + '#/');
   const card = p.locator('article.kid', { hasText: 'Lou' });
-  await card.getByRole('button', { name: 'Arrivée' }).click();
+  await card.getByRole('button', { name: /^Arrivée de Lou à/ }).click();
   assert(await toastHas(/^Arrivée de Lou à/), 'arrivée pointée en un geste');
   await p.locator('.toast').getByRole('button', { name: 'Annuler' }).click();
-  await card.getByRole('button', { name: 'Arrivée' }).waitFor();
+  await card.getByRole('button', { name: /^Arrivée de Lou à/ }).waitFor();
   assert(true, 'annulation de l’arrivée');
-  await card.getByRole('button', { name: 'Arrivée' }).click();
-  await card.getByRole('button', { name: 'Départ' }).click();
+  await card.getByRole('button', { name: /^Arrivée de Lou à/ }).click();
+  // T-048 : le bouton s'appelle « Départ » (l'heure est celle du moment).
+  await card.getByRole('button', { name: 'Départ', exact: true }).click();
   assert(await toastHas(/^Départ de Lou/), 'départ pointé en un geste');
   await shot('03-aujourdhui');
 
@@ -100,7 +108,7 @@ async function run(scheme) {
   const strip = p.locator('.daystrip button');
   await strip.nth(4).click();
   await p.getByRole('button', { name: /Modifier la journée \(Lou\)/ }).click();
-  await p.getByRole('radio', { name: /Malade, avec certificat/ }).click();
+  await p.getByRole('radio', { name: /malade, avec certificat/ }).click();
   await shot('04-journee');
   await p.getByRole('button', { name: 'Enregistrer' }).click();
   await card.getByText('Retenu sur le salaire').waitFor();
@@ -110,6 +118,8 @@ async function run(scheme) {
   await strip.nth(5).click();
   await p.getByRole('button', { name: 'Je serai absente' }).click();
   await p.getByRole('radio', { name: /Événement familial/ }).click();
+  // T-023 : l'événement est demandé pour proposer la durée (il n'est pas enregistré).
+  await p.getByRole('radio', { name: /^Mon mariage ou mon PACS/ }).click();
   await p.getByRole('button', { name: 'Enregistrer' }).click();
   assert(await toastHas(/Événement familial/), 'absence de l’AM enregistrée');
 
@@ -185,8 +195,9 @@ async function run(scheme) {
   await p.getByRole('link', { name: 'Contrôler le bulletin' }).click();
   await p.getByLabel('Salaire net').fill('100,00');
   await p.getByLabel('Salaire brut').fill('200,00');
-  await p.getByText('Net et brut incohérents').waitFor();
-  assert(true, 'contrôle : incohérence net/brut détectée');
+  // T-103 (D1, D6) : le brut est contrôlé avec le taux horaire brut du contrat ; sans lui, l'app le demande.
+  await p.getByText('Brut non contrôlé').waitFor();
+  assert(true, 'contrôle : brut non contrôlé sans le taux brut du contrat, taux demandé');
   await shot('07-controle');
 
   // Ça coince

@@ -3,20 +3,22 @@
 // - R1 : brut = net ÷ part ; métropole 78,10 % ; Alsace-Moselle 78,10 − 1,30 = 76,80 % (1,50 % avant avril 2022 : 76,60 %) ;
 //   Mayotte 100 − 11,80 = 88,20 % (Urssaf, taux salariaux de l'AM à Mayotte au 01/01/2026).
 // - R2 : repères nets Urssaf (« Bas-Rhin, Haut-Rhin et Moselle » 3,23 € ; « Mayotte » 3,70 € au 01/06/2026).
-// - R3 : 26 décembre et Vendredi saint (CT L3134-13), 27 avril à Mayotte (CT L3422-2) : à confirmer.
-// - R4 : maintien du droit local (CT L1226-23) : jours de maladie de l'AM à confirmer en Alsace-Moselle seulement.
-// - R5 : préavis de six semaines (CT L1234-16 1°) : écart chiffré.
-// - R6 : Mayotte, abattement avec le SMIC de Mayotte (9,56 € au 01/06/2026) ou national ; pas de CSG ni de CRDS.
+// Revu par la T-103 (calculateur-arvela, rapports/T-103-inventaire.md, R1 à R7) :
+// - R1 : Vendredi saint et 26 décembre pas fériés pour l'AM (C. trav. L3134-1, al. 2) ; R4 : 27 avril férié à Mayotte (L3422-2).
+// - R3 (décision du DG du 24/11/2026) : maintien du droit local (L1226-23) pour toute absence pour maladie de l'AM ou de son
+//   enfant, moins les indemnités journalières saisies (demandées si absentes).
+// - R2 : pas de préavis local (L1234-16 vise les employés « chez des particuliers »).
+// - R6 : Mayotte, abattement avec le SMIC de Mayotte (BOFiP, SMIC en vigueur pendant la garde) ; pas de CSG ni de CRDS.
 import { describe, expect, it } from 'vitest';
 import type { AmLeave, Bulletin, Contract, DayRec, Planning } from '../src/engine/model';
-import { makeCtx, monthBase } from '../src/engine/payroll';
-import { computeMonth, partsAConfirmer } from '../src/engine/month';
+import { dayInfo, makeCtx, monthBase } from '../src/engine/payroll';
+import { computeMonth } from '../src/engine/month';
 import { decompteConge } from '../src/engine/conges';
 import { finDeContrat } from '../src/engine/fin';
 import { fiscalYear } from '../src/engine/fiscal';
 import { controle } from '../src/engine/controle';
 import { minimumBrut, netToBrut, ratesAtRegion } from '../src/engine/rates';
-import { feriesLocaux, regionDe } from '../src/engine/regions';
+import { ferieDe, MESSAGE_IJ_MAINTIEN_LOCAL, regionDe } from '../src/engine/regions';
 import { nonGeresContrat } from '../src/engine/nonGeres';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
@@ -48,11 +50,12 @@ describe('T-077 R0 : région et périmètre', () => {
     expect(nonGeresContrat(contract(MY))).toEqual([]);
     expect(monthBase(makeCtx(contract(AM), [], [], '2026-11-22'), '2026-10').nonGere).toEqual([]);
   });
-  it('fériés locaux : Vendredi saint et 26 décembre (Alsace-Moselle), 27 avril (Mayotte)', () => {
-    expect([...feriesLocaux('alsaceMoselle', 2026).keys()].sort()).toEqual(['2026-04-03', '2026-12-26']);
-    expect([...feriesLocaux('alsaceMoselle', 2025).keys()].sort()).toEqual(['2025-04-18', '2025-12-26']);
-    expect([...feriesLocaux('mayotte', 2026).keys()]).toEqual(['2026-04-27']);
-    expect(feriesLocaux('metropole', 2026).size).toBe(0);
+  it('T-103 (R1, R4) : fériés de l’AM : ni Vendredi saint ni 26 décembre en Alsace-Moselle ; 27 avril à Mayotte', () => {
+    expect(ferieDe('alsaceMoselle', '2026-04-03')).toBeUndefined();
+    expect(ferieDe('alsaceMoselle', '2026-12-26')).toBeUndefined();
+    expect(ferieDe('alsaceMoselle', '2026-12-25')).toBeDefined();
+    expect(ferieDe('mayotte', '2026-04-27')).toMatch(/27 avril/);
+    expect(ferieDe('metropole', '2026-04-27')).toBeUndefined();
   });
 });
 
@@ -87,197 +90,150 @@ describe('T-077 R2 : minimum', () => {
     expect(m.certain).toBe(420);
     expect(m.source).toBe('grille');
   });
-  it('contrôle du bulletin : part du net attendue par région', () => {
+  it('contrôle du bulletin : minimum net de la région ; brut contrôlé avec le taux brut du contrat (T-103, D1)', () => {
     const b = { id: '', cid: 'c1', month: '2026-10', source: 'manuel', net: 88200, brut: 100000 } as Bulletin;
     const ctxM = makeCtx(contract(MY), [], [], '2026-11-22');
     const r = computeMonth(ctxM, '2026-10');
-    expect(controle(b, r, 500, 'mayotte').find((x) => x.title.startsWith('Net et brut'))?.level).toBe('ok');
-    expect(controle(b, r, 500).find((x) => x.title.startsWith('Net et brut'))?.level).toBe('warn');
+    expect(controle(b, r, 500, 'mayotte').find((x) => x.title === 'Brut non contrôlé')).toBeDefined();
     expect(controle(b, r, 300, 'mayotte').find((x) => x.title === 'Taux du contrat sous le minimum')?.detail).toMatch(/3,70/);
   });
 });
 
-describe('T-077 R3 : jours fériés locaux, deux lectures', () => {
-  it('26/12/2025 prévu non travaillé : ni payé ni retenu, 8 h sur 184 h à confirmer (art. 111)', () => {
+describe('T-077 R3, revu par la T-103 (R1, R4) : fériés de l’AM selon la région', () => {
+  it('26/12/2025 en Alsace-Moselle : jour ordinaire, comme en métropole', () => {
     const met = monthBase(makeCtx(contract(), [], [], '2026-11-22'), '2025-12');
     const als = monthBase(makeCtx(contract(AM), [], [], '2026-11-22'), '2025-12');
-    expect(met.base).toBe(86667);
-    expect(met.evenementAConfirmer).toBe(0);
-    // Décembre 2025 : 23 jours prévus de 8 h = 184 h ; 86 666,67 × 176 ÷ 184 = 82 898,55.
-    expect(als.base).toBe(82899);
-    expect(als.evenementAConfirmer).toBe(86667 - 82899);
-    expect(als.joursFerieLocalAConfirmer).toBe(1);
-    expect(als.alerts.join(' ')).toMatch(/26 décembre \(26\/12\), jour prévu non travaillé/);
-    expect(als.joursActivite).toBe(met.joursActivite - 1);
+    expect(als.base).toBe(met.base);
+    expect(als.joursActivite).toBe(met.joursActivite);
+    expect(als.alerts.join(' ')).not.toMatch(/à confirmer|26 décembre/);
   });
-  it('26/12/2025 travaillé : salaire payé, majoration de 10 % à confirmer (8 h × 5 € × 10 % = 4,00 €)', () => {
+  it('26/12/2025 travaillé en Alsace-Moselle : pas de majoration de férié', () => {
     const recs = [rec('2025-12-26', { pres: [{ a: '08:00', d: '16:00' }] })];
     const als = monthBase(makeCtx(contract(AM), recs, [], '2026-11-22'), '2025-12');
-    expect(als.base).toBe(86667);
     expect(als.ferieAmount).toBe(0);
-    expect(als.ferieLocalAConfirmer).toBe(400);
     expect(als.net).toBe(86667);
   });
-  it('Mayotte : 27/04/2026 (lundi) à confirmer ; l’Alsace-Moselle a le Vendredi saint (03/04)', () => {
+  it('Mayotte : 27/04/2026 (lundi) férié chômé, payé ; travaillé : majoration de 10 % (CCN 47.2)', () => {
     const my = monthBase(makeCtx(contract(MY), [], [], '2026-11-22'), '2026-04');
-    const als = monthBase(makeCtx(contract(AM), [], [], '2026-11-22'), '2026-04');
     const met = monthBase(makeCtx(contract(), [], [], '2026-11-22'), '2026-04');
-    expect(met.evenementAConfirmer).toBe(0);
-    expect(my.joursFerieLocalAConfirmer).toBe(1);
-    expect(my.alerts.join(' ')).toMatch(/27 avril/);
-    expect(als.joursFerieLocalAConfirmer).toBe(1);
-    expect(my.evenementAConfirmer).toBe(als.evenementAConfirmer);
+    expect(my.base).toBe(met.base);
+    expect(dayInfo(makeCtx(contract(MY), [], [], '2026-11-22'), '2026-04-27').kind).toBe('ferie');
+    expect(dayInfo(makeCtx(contract(), [], [], '2026-11-22'), '2026-04-27').kind).not.toBe('ferie');
+    const t = monthBase(makeCtx(contract(MY), [rec('2026-04-27', { ferieTravaille: true, pres: [{ a: '08:00', d: '16:00' }] })], [], '2026-11-22'), '2026-04');
+    expect(t.ferieAmount).toBe(400); // 8 h × 5,00 € × 10 %
   });
-  it('absence de l’enfant saisie un férié local : payée dans les deux lectures, rien à confirmer', () => {
-    const recs = [rec('2025-12-26', { abs: 'parents' })];
-    const als = monthBase(makeCtx(contract(AM), recs, [], '2026-11-22'), '2025-12');
-    expect(als.evenementAConfirmer).toBe(0);
+  it('lundi de Pâques 06/04/2026 en Alsace-Moselle : le jour prévu avant est le Vendredi saint, jour ordinaire', () => {
+    const recs = [rec('2026-04-03', { pres: [{ a: '08:00', d: '16:00' }] })];
+    const als = monthBase(makeCtx(contract(AM), recs, [], '2026-11-22'), '2026-04');
     expect(als.base).toBe(86667);
+    expect(als.alerts.join(' ')).not.toMatch(/Férié du 06\/04/);
   });
-  it('férié national dont la condition de l’art. 47.2 dépend d’un férié local : à confirmer', () => {
-    // Lundi de Pâques 06/04/2026. Jour prévu juste avant : le vendredi 03/04 (Vendredi saint) dans la lecture B ; le jeudi 02/04
-    // dans la lecture A (le férié local est sauté, art. 47.2). L'AM est malade le jeudi 02/04 : condition manquée en A
-    // seulement. Le 06/04 est donc à confirmer, comme le 03/04 lui-même ; le 02/04 relève de R4 (maintien).
-    const leaves = [leave('am_malade', '2026-04-02', '2026-04-02')];
-    const als = monthBase(makeCtx(contract(AM), [], leaves, '2026-11-22'), '2026-04');
-    expect(als.joursFerieLocalAConfirmer).toBe(2);
-    expect(als.joursMaintienAConfirmer).toBe(1);
-    expect(als.alerts.join(' ')).toMatch(/Férié du 06\/04 : ni payé ni retenu/);
-    // Métropole : le 03/04 est un jour ordinaire travaillé, le lundi de Pâques est payé.
-    const met = monthBase(makeCtx(contract(), [], leaves, '2026-11-22'), '2026-04');
-    expect(met.alerts.join(' ')).not.toMatch(/Férié du 06\/04/);
-  });
-  it('congé payé du 22/12/2025 au 02/01/2026 : 9 jours si le 26/12 est férié, 10 sinon', () => {
+  it('congé payé du 22/12/2025 au 02/01/2026 : 10 jours en Alsace-Moselle comme en métropole', () => {
     const cp = leave('cp', '2025-12-22', '2026-01-02');
     const als = decompteConge(makeCtx(contract(AM), [], [cp], '2026-11-22'), cp);
     const met = decompteConge(makeCtx(contract(), [], [cp], '2026-11-22'), cp);
     expect(met.jours).toBe(10);
-    expect(met.aConfirmer).toBeUndefined();
-    expect(als.jours).toBe(9);
-    expect(als.aConfirmer).toMatch(/9 jours si c’est un férié pour toi, 10 sinon/);
+    expect(als.jours).toBe(10);
+    expect(als.demande).toBeUndefined();
   });
 });
 
-describe('T-077 R4 : maintien de salaire du droit local (Alsace-Moselle)', () => {
+describe('T-077 R4, revu par la T-103 (R3, décision du DG) : maintien du droit local (Alsace-Moselle)', () => {
   const leaves = [leave('am_malade', '2026-09-14', '2026-09-15')];
-  it('Alsace-Moselle : jours ni payés ni retenus ; leur salaire est la retenue de la métropole', () => {
+  it('Alsace-Moselle : salaire maintenu, moins les indemnités journalières saisies (L1226-23)', () => {
     const met = monthBase(makeCtx(contract(), [], leaves, '2026-11-22'), '2026-09');
-    const als = monthBase(makeCtx(contract(AM), [], leaves, '2026-11-22'), '2026-09');
+    const als = monthBase(makeCtx(contract(AM), [], [{ ...leaves[0], ijSecu: 5000 }], '2026-11-22'), '2026-09');
     expect(met.retenue).toBeGreaterThan(0);
-    expect(als.base).toBe(met.base);
-    expect(als.evenementAConfirmer).toBe(met.retenue);
-    expect(als.joursMaintienAConfirmer).toBe(2);
+    expect(als.retenue).toBe(0);
+    expect(als.ijDeduites).toBe(5000);
+    expect(als.base).toBe(86667 - 5000);
     expect(als.alerts.join(' ')).toMatch(/L1226-23/);
+    expect(als.nonGere).toEqual([]);
+  });
+  it('indemnités journalières non saisies : le mois les demande (B)', () => {
+    const als = monthBase(makeCtx(contract(AM), [], leaves, '2026-11-22'), '2026-09');
+    expect(als.nonGere).toContain(MESSAGE_IJ_MAINTIEN_LOCAL);
   });
   it('Mayotte : retenue normale', () => {
     const met = monthBase(makeCtx(contract(), [], leaves, '2026-11-22'), '2026-09');
     const my = monthBase(makeCtx(contract(MY), [], leaves, '2026-11-22'), '2026-09');
     expect(my.base).toBe(met.base);
-    expect(my.evenementAConfirmer).toBe(0);
   });
-  it('enfant de l’AM malade : même règle', () => {
-    const l = [leave('am_enfant_malade', '2026-09-14', '2026-09-14')];
-    expect(monthBase(makeCtx(contract(AM), [], l, '2026-11-22'), '2026-09').joursMaintienAConfirmer).toBe(1);
+  it('enfant de l’AM malade : même règle (Cass. soc. 04/12/2024)', () => {
+    const l = [{ ...leave('am_enfant_malade', '2026-09-14', '2026-09-14'), ijSecu: 0 }];
+    const als = monthBase(makeCtx(contract(AM), [], l, '2026-11-22'), '2026-09');
+    expect(als.retenue).toBe(0);
+    expect(als.base).toBe(86667);
   });
 });
 
-describe('T-077 R5 : préavis du droit local (Alsace-Moselle)', () => {
-  it('retrait après un an : un mois (convention) ou six semaines (droit local), écart chiffré', () => {
+describe('T-077 R5, revu par la T-103 (R2) : pas de préavis local pour l’AM', () => {
+  it('retrait après un an : un mois (convention), comme en métropole', () => {
     const als = finDeContrat(makeCtx(contract(AM), [], [], '2026-12-31'), '2026-10-01', 'retrait');
     const met = finDeContrat(makeCtx(contract(), [], [], '2026-12-31'), '2026-10-01', 'retrait');
-    expect(met.preavisLocalAConfirmer).toBeUndefined();
     expect(als.preavisFin).toBe(met.preavisFin);
-    expect(als.preavisLocalAConfirmer).toMatch(/11\/11\/2026/);
-    expect(als.preavisLocalAConfirmer).toMatch(/de salaire en plus/);
-    expect(als.alertes).toContain(als.preavisLocalAConfirmer);
+    expect(als.alertes.join(' ')).not.toMatch(/six semaines|à confirmer/);
   });
 });
 
-describe('T-077 R5 : autres motifs', () => {
-  it('démission après un an : même écart ; ancienneté de moins de 3 mois : 8 jours ou six semaines', () => {
-    const dem = finDeContrat(makeCtx(contract(AM), [], [], '2026-12-31'), '2026-10-01', 'demission');
-    expect(dem.preavisLocalAConfirmer).toMatch(/11\/11\/2026/);
-    expect(dem.preavisLocalAConfirmer).not.toMatch(/dispensent/);
+describe('T-077 R5, revu par la T-103 (R2) : autres motifs', () => {
+  it('démission et décès : préavis de la convention, sans écart local', () => {
+    for (const motif of ['demission', 'deces'] as const) {
+      const f = finDeContrat(makeCtx(contract(AM), [], [], '2026-12-31'), '2026-10-01', motif);
+      expect(f.alertes.join(' ')).not.toMatch(/six semaines|à confirmer/);
+    }
     const court = finDeContrat(makeCtx(contract({ ...AM, start: '2026-09-01', trackedFrom: '2026-09-01' }), [], [], '2026-12-31'), '2026-10-01', 'retrait');
     expect(court.preavisFin).toBe('2026-10-08');
-    expect(court.preavisLocalAConfirmer).toMatch(/11\/11\/2026/);
-  });
-  it('décès de l’enfant : indemnité égale au préavis, écart de six semaines chiffré', () => {
-    const f = finDeContrat(makeCtx(contract(AM), [], [], '2026-12-31'), '2026-10-01', 'deces');
-    expect(f.preavisLocalAConfirmer).toMatch(/Indemnité égale au préavis à confirmer/);
-  });
-  it('Mayotte et métropole : aucun préavis local', () => {
-    expect(finDeContrat(makeCtx(contract(MY), [], [], '2026-12-31'), '2026-10-01', 'retrait').preavisLocalAConfirmer).toBeUndefined();
   });
 });
 
 describe('T-077 : textes', () => {
-  it('lien des parents : aucun motif d’absence de l’AM (décision du DG du 21/11/2026)', () => {
-    const r = { cpAConfirmer: undefined, evenementAConfirmer: 1000, kmAConfirmer: 0, joursMaintienAConfirmer: 2 };
-    expect(partsAConfirmer(r, true).join(' ')).not.toMatch(/maladie/);
-    expect(partsAConfirmer(r).join(' ')).toMatch(/maladie/);
-  });
-  it('congé qui finit la veille du 26/12 : seul le férié local est nommé', () => {
+  it('congé qui finit la veille du 26/12 : rien à corriger', () => {
     const cp = leave('cp', '2025-12-22', '2025-12-25');
     const d = decompteConge(makeCtx(contract(AM), [], [cp], '2026-11-22'), cp);
-    expect(d.aConfirmer ?? '').not.toMatch(/27\/12/);
+    expect(d.demande).toBeUndefined();
   });
 });
 
-describe('T-077 R6 : revenu imposable à Mayotte', () => {
-  it('abattement au SMIC de Mayotte, l’autre lecture affichée ; pas de CSG ni de CRDS', () => {
+describe('T-077 R6, revu par la T-103 : revenu imposable à Mayotte', () => {
+  it('abattement au SMIC de Mayotte (BOFiP, SMIC en vigueur pendant la garde) ; pas de CSG ni de CRDS', () => {
     const ctx = makeCtx(contract(MY), [], [], '2026-12-31');
     const f = fiscalYear(ctx, 2026);
-    expect(f.abattementSmicNational).toBeGreaterThan(f.abattement);
-    expect(f.aConfirmer).toMatch(/SMIC de Mayotte/);
     expect(f.smics).toEqual([933, 956]);
     let net = 0;
     for (let k = 1; k <= 12; k++) net += computeMonth(ctx, `2026-${String(k).padStart(2, '0')}` as `${number}-${string}`).netTotal;
-    // Mois avec un jour à confirmer (27 avril) : salaire à confirmer non compté, comme ailleurs.
     expect(f.netImposable).toBe(net);
-    const fm = fiscalYear(makeCtx(contract(), [], [], '2026-12-31'), 2026);
-    expect(fm.aConfirmer).toBeUndefined();
-    expect(fm.abattementSmicNational).toBeUndefined();
+    expect(f.nonGere ?? '').not.toMatch(/à confirmer/);
   });
 });
 
-describe('T-077 R7 : simulateur en Alsace-Moselle', () => {
-  it('résultat donné, et l’autre lecture (sans Vendredi saint ni 26 décembre) chiffrée', async () => {
+describe('T-077 R7, revu par la T-103 (R1) : simulateur en Alsace-Moselle', () => {
+  it('mêmes fériés qu’en métropole (Vendredi saint et 26 décembre non fériés pour l’AM)', async () => {
     const { simuler, simulationParDefaut } = await import('../src/engine/simulation');
     const d = '2026-11-01';
     const base = { ...simulationParDefaut(d), entretien: 400, entretienMode: 'jour' as const };
-    const a = simuler({ ...base, alsaceMoselle: true }, d);
-    expect(a.feriesLocauxB).toBeDefined();
-    expect(a.feriesLocauxB!.feriesAn).toBeLessThan(a.feriesAn);
-    // Moins de fériés : plus de jours d'accueil, donc au moins autant d'entretien.
-    expect(a.feriesLocauxB!.entretien).toBeGreaterThanOrEqual(a.entretien);
-    expect(simuler({ ...base, alsaceMoselle: false }, d).feriesLocauxB).toBeUndefined();
+    expect(simuler({ ...base, alsaceMoselle: true }, d).feriesAn).toBe(simuler({ ...base, alsaceMoselle: false }, d).feriesAn);
   });
 });
 
-describe('T-077 : relecture (D1, D2)', () => {
-  it('relevé et lien des parents : un férié local est dit à confirmer, jamais « undefined »', async () => {
+describe('T-077 : relecture (D1, D2), revu par la T-103', () => {
+  it('relevé et lien des parents : jamais « undefined » ni « à confirmer »', async () => {
     const { buildSnapshot } = await import('../src/partage/snapshot');
     const ctx = makeCtx(contract(AM), [], [], '2026-01-10');
-    const snap = buildSnapshot({ ctx, journal: [], amName: 'Nadia', enfants: 0, now: 0 });
-    const txt = JSON.stringify(snap);
-    expect(txt).not.toMatch(/undefined/);
-    if (txt.includes('2025-12-26')) expect(txt).toMatch(/Jour férié local \(26 décembre\), à confirmer/);
+    const txt = JSON.stringify(buildSnapshot({ ctx, journal: [], amName: 'Nadia', enfants: 0, now: 0 }));
+    expect(txt).not.toMatch(/undefined|à confirmer/);
   });
-  it('dixième des congés : la raison du salaire à confirmer n’est pas « événement familial »', async () => {
+  it('dixième des congés : base complète en Alsace-Moselle', async () => {
     const { baseDixieme } = await import('../src/engine/conges');
-    const bd = baseDixieme(makeCtx(contract(AM), [], [], '2026-11-22'), 2025);
-    expect(bd.joursFerieLocalAConfirmer).toBeGreaterThan(0);
-    expect(bd.joursEvenementAConfirmer).toBe(0);
+    expect(baseDixieme(makeCtx(contract(AM), [], [], '2026-11-22'), 2025).aConfirmer).toBe(false);
   });
 });
 
 describe('T-077 et T-074 : férié local pendant un préavis dispensé (vérificateur P5-1)', () => {
-  it('26/12/2025 dans la dispense : payé dans les deux lectures, rien à confirmer', () => {
+  it('26/12/2025 dans la dispense : payé, comme en métropole', () => {
     const c = contract({ ...AM, end: '2025-12-31', rupture: { motif: 'retrait', notif: '2025-12-01', preavis: 'employeur', dernierJourTravaille: '2025-12-19' } as Contract['rupture'] });
     const met = monthBase(makeCtx({ ...c, alsaceMoselle: false }, [], [], '2026-11-22'), '2025-12');
     const als = monthBase(makeCtx(c, [], [], '2026-11-22'), '2025-12');
-    expect(als.joursFerieLocalAConfirmer).toBe(0);
     expect(als.base).toBe(met.base);
   });
 });

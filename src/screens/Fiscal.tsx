@@ -2,6 +2,7 @@ import { useState } from 'preact/hooks';
 import { ctxFor, useStore } from '../store';
 import { monthOf, today } from '../engine/dates';
 import { fiscalYears } from '../engine/fiscal';
+import { MESSAGE_TAUX_BRUT } from '../engine/payroll';
 import { euros, eurosArrondis, eurosTexte } from '../engine/money';
 import { plafondHS, repasAvantageParAnnee } from '../engine/rates';
 import { Banner, Gommette, Topbar } from '../ui/kit';
@@ -24,6 +25,9 @@ export function Fiscal() {
   const imposableAffiche = Math.max(0, e(tot.recu) - e(tot.abat));
   const reste = (r: { recu: number; abattement: number }) => e(r.recu) - e(r.abattement);
   const negatif = rows.some((r) => reste(r.f) < 0);
+  // T-103 (D1) : sans brut connu (taux horaire brut du contrat) ou avec des mois sans bulletin, le revenu n'est pas donné.
+  const brutInconnu = rows.some((r) => r.f.brutInconnu);
+  const aDemander = brutInconnu || partiel;
   return (
     <>
       <Topbar title="Impôts" back="#/plus" screen="fiscal" />
@@ -34,24 +38,25 @@ export function Fiscal() {
           <button class="icon-btn" aria-label="Année suivante" disabled={year >= cur} onClick={() => setYear(year + 1)}><Icon name="right" /></button>
         </div>
         <section class="card stack" aria-labelledby="imp">
-          <span class="muted" id="imp">Revenu imposable estimé{year === cur ? ' à ce jour' : ''}</span>
-          <span class="total">{eurosArrondis(imposableAffiche)}</span>
+          <span class="muted" id="imp">Revenu imposable{year === cur ? ' à ce jour' : ''}</span>
+          <span class="total">{aDemander ? 'non calculé' : eurosArrondis(imposableAffiche)}</span>
           <dl class="kv">
             <dt>Sommes reçues (salaires, entretien, repas, kilomètres)</dt><dd>{eurosArrondis(tot.recu)}</dd>
             <dt>Abattement spécifique</dt><dd>−{eurosArrondis(tot.abat)}</dd>
           </dl>
           {tot.hsExo > 0 && <p class="hint">Heures complémentaires et majorées exonérées d’impôt : {eurosArrondis(tot.hsExo)}, à part, sur la ligne des heures supplémentaires exonérées (case 1GH). Elles ne sont pas imposées mais comptent dans le revenu fiscal de référence.{tot.hsImp > 0 ? ` Le plafond de ${eurosArrondis(plafondHS(year))} est dépassé : ${eurosArrondis(tot.hsImp)} restent imposables.` : ''}</p>}
-          <p class="hint">Montants estimés, arrondis à l’euro comme sur la déclaration : le salaire imposable dépend d’un brut estimé à partir du net.</p>
+          <p class="hint">Montants arrondis à l’euro, comme sur la déclaration.</p>
           <p class="hint">Avec le régime spécial des assistantes maternelles, tu déclares ce montant au lieu du salaire pré-rempli. Compare avec le pré-rempli : le plus favorable est à retenir.</p>
         </section>
-        {partiel && <Banner tone="warn">Des mois manquent dans l’historique : l’estimation est incomplète.</Banner>}
+        {partiel && <Banner tone="warn">Des mois manquent dans l’historique : ajoute leurs bulletins. Le revenu imposable n’est pas calculé sans eux.</Banner>}
+        {brutInconnu && <Banner tone="warn">{MESSAGE_TAUX_BRUT} Le salaire net imposable compte la CSG non déductible et la CRDS, calculées sur le brut.</Banner>}
         {nonGere.map((t) => <Banner tone="warn">{t}</Banner>)}
         {moisHisto > 0 && <Banner tone="warn">{moisHisto} mois viennent de bulletins saisis : l’app n’y connaît ni les heures complémentaires et majorées, ni les kilomètres. Le revenu imposable est donc un peu trop haut, et le montant exonéré trop bas : pour la case 1GH, garde celui que Pajemploi a pré-rempli.</Banner>}
         {rows.map(({ c, f }) => (
           <section class="card stack" aria-label={`Impôts, ${c.child}`}>
             <div class="row"><Gommette name={c.child} color={c.color} size="sm" /><h2>{c.child}</h2></div>
             <dl class="kv">
-              <dt>Salaire net imposable estimé</dt><dd>{eurosArrondis(f.netImposable)}</dd>
+              <dt>Salaire net imposable</dt><dd>{f.brutInconnu ? 'non calculé' : eurosArrondis(f.netImposable)}</dd>
               {f.hsValeur > 0 && (<><dt>Heures complémentaires et majorées exonérées (déjà retirées)</dt><dd>{eurosArrondis(f.hsExonere)}</dd></>)}
               <dt>Entretien et repas</dt><dd>{eurosArrondis(f.entretienRepas)}</dd>
               {f.km > 0 && (<><dt>Indemnités kilométriques</dt><dd>{eurosArrondis(f.km)}</dd></>)}
@@ -60,7 +65,6 @@ export function Fiscal() {
               <dt>Abattement ({f.facteur} × SMIC {f.smics.length > 1 ? f.smics.map(euros).join(' puis ') : euros(f.smic)} par jour)</dt><dd>−{eurosArrondis(f.abattement)}</dd>
               <dt>Reste après abattement</dt><dd>{reste(f) < 0 ? `−${eurosArrondis(-reste(f))}` : eurosArrondis(reste(f))}</dd>
             </dl>
-            {f.aConfirmer && <Banner tone="warn">{f.aConfirmer}</Banner>}
             {(f.abattement < f.abattementBrut || (negatif && reste(f) < 0)) && <p class="hint">L’abattement est plafonné au total des sommes reçues pour tous les enfants, pas enfant par enfant : le reste d’un enfant peut être négatif, seul le total compte.</p>}
           </section>
         ))}
@@ -69,8 +73,8 @@ export function Fiscal() {
           <div class="more-body">
             <p>Article 80 sexies du code général des impôts : pour chaque enfant et chaque jour d’accueil, l’abattement vaut 3 fois le SMIC horaire (4 fois pour un enfant en situation de handicap ou de maladie), au prorata si la journée dure moins de 8 heures. Le SMIC retenu est celui en vigueur le jour de la garde.</p>
             <p>Quand les parents fournissent les repas, chaque jour d’accueil ajoute la valeur d’un repas aux sommes reçues ({repasAvantageParAnnee().map((x) => `${eurosTexte(x.montant)} en ${x.annee}`).join(', ')} selon l’Urssaf ; pour les autres années, l’app ne connaît pas la valeur et te le dit) : c’est un avantage en nature imposable, selon impots.gouv.</p>
-            <p>Le salaire net imposable est estimé : net versé + CSG non déductible et CRDS (2,9 % de 98,25 % du brut estimé).</p>
-            <p>Les heures complémentaires (au-delà du contrat, jusqu’à 45 h dans la semaine) et les heures majorées (au-delà de 45 h, prévues au contrat ou en plus) sont exonérées d’impôt jusqu’à {eurosArrondis(plafondHS(year))} par an, tous employeurs réunis (article 81 quater du code général des impôts). Elles sont retirées du salaire imposable avec la réduction de cotisations qui les accompagne (11,31 % de leur brut, article L241-17 du code de la sécurité sociale ; montant estimé, à comparer avec ton bulletin). Les mois repris d’un bulletin n’ont pas ce détail : leurs heures restent comptées comme imposables.</p>
+            <p>Le salaire net imposable : net versé + CSG non déductible et CRDS (2,9 % de 98,25 % du brut).</p>
+            <p>Les heures complémentaires (au-delà du contrat, jusqu’à 45 h dans la semaine) et les heures majorées (au-delà de 45 h, prévues au contrat ou en plus) sont exonérées d’impôt jusqu’à {eurosArrondis(plafondHS(year))} par an, tous employeurs réunis (article 81 quater du code général des impôts). Elles sont retirées du salaire imposable avec la réduction de cotisations qui les accompagne (11,31 % de leur brut, article L241-17 du code de la sécurité sociale ; à comparer avec ton bulletin). Les mois repris d’un bulletin n’ont pas ce détail : leurs heures restent comptées comme imposables.</p>
             <p>Les indemnités kilométriques versées par les parents font partie des sommes reçues, comme l’entretien et les repas (bulletin officiel des impôts, BOI-RSA-CHAMP-10-20-10 § 440 et 460).</p>
           </div>
         </details>

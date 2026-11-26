@@ -2,10 +2,11 @@
 // Aucun nouveau calcul : tout vient de computeMonth, declarationLines et dayInfo, comme l'écran Mois.
 // Ce n'est pas un bulletin de salaire : ni brut, ni cotisations, ni net imposable.
 import { eachDay, firstDay, lastDay, monthLabel, monthOf, shortDate, type ISODate, type Month } from '../engine/dates';
-import { computeMonth, declarationLines, totalAVerser, type DeclLine } from '../engine/month';
+import { computeMonth, declarationLines, reductionVersee, totalAVerser, type DeclLine } from '../engine/month';
 import { dayInfo, inContract, type Ctx } from '../engine/payroll';
 import { euros, hoursLabel } from '../engine/money';
 import { AM_ABS_LABEL, CHILD_ABS_LABEL } from '../engine/model';
+import { estSuspension } from '../engine/suspensions';
 
 export const MENTION_RELEVE =
   'Document de travail établi avec Arvela, outil d’aide indépendant de l’Urssaf et de Pajemploi. Il ne remplace pas le bulletin de salaire Pajemploi, qui fait foi.';
@@ -26,7 +27,7 @@ export interface ReleveDonnees {
   mois: Month;
   /** « novembre 2026 » */
   moisLabel: string;
-  provisoire: boolean;
+  moisEnCours: boolean;
   titre: string;
   enfant: string;
   famille: string;
@@ -78,7 +79,7 @@ export function releveDonnees(
   const r = computeMonth(ctx, m, o.enfants ?? 0);
   const aujourdhui = ctx.today;
   // Mois en cours, sauf si le contrat s'est déjà terminé avant aujourd'hui.
-  const provisoire = m >= monthOf(aujourdhui) && !(c.end && c.end < aujourdhui);
+  const moisEnCours = m >= monthOf(aujourdhui) && !(c.end && c.end < aujourdhui);
   const lignes: ReleveLigne[] = [];
   let prevuMin = 0, reelMin = 0, absEnfant = 0, absAm = 0, feries = 0;
   for (const d of eachDay(firstDay(m), lastDay(m))) {
@@ -91,10 +92,9 @@ export function releveDonnees(
     reelMin += di.presentMin;
     let reel = '';
     let absence = '';
-    if (di.kind === 'am' && di.amLeave) { absence = AM_ABS_LABEL[di.amLeave]; if (di.plannedMin > 0) absAm++; }
-    // T-077 (R3) : un férié local ou un férié qui en dépend est à confirmer, jamais compté comme férié chômé certain.
-    else if (di.kind === 'ferie' && !di.ferie) absence = `Férié local à confirmer : ${di.ferieLocal}`;
-    else if (di.kind === 'ferie') { absence = `Férié : ${di.ferie}${di.aConfirmer ? ' (à confirmer)' : ''}`; if (!di.aConfirmer) feries++; }
+    // T-104 : congé maternité, paternité, de naissance, accident du travail : jamais nommés sur ce qui part aux parents.
+    if (di.kind === 'am' && di.amLeave) { absence = estSuspension(di.amLeave) || di.amLeave === 'non_gere' || di.amLeave === 'examen_grossesse' || di.amLeave === 'remuneree' ? 'Absente' : AM_ABS_LABEL[di.amLeave]; if (di.plannedMin > 0) absAm++; }
+    else if (di.kind === 'ferie') { absence = `Férié : ${di.ferie}${di.deducted ? ' (non payé)' : ''}`; feries++; }
     else if (di.kind === 'absent' && di.rec?.abs) {
       absence = CHILD_ABS_LABEL[di.rec.abs] + (di.deducted ? ', retenu' : ', payé');
       if (di.plannedMin > 0) absEnfant++;
@@ -108,7 +108,7 @@ export function releveDonnees(
   }
   const totaux = [
     { label: 'Heures prévues au planning', value: hoursLabel(prevuMin) },
-    { label: provisoire ? 'Heures d’accueil à ce jour' : 'Heures d’accueil', value: hoursLabel(reelMin) },
+    { label: moisEnCours ? 'Heures d’accueil à ce jour' : 'Heures d’accueil', value: hoursLabel(reelMin) },
     { label: 'Jours d’accueil', value: `${r.presenceDays}` },
   ];
   if (absEnfant) totaux.push({ label: 'Jours d’absence de l’enfant', value: `${absEnfant}` });
@@ -116,6 +116,7 @@ export function releveDonnees(
   if (feries) totaux.push({ label: 'Jours fériés chômés', value: `${feries}` });
   const montants: ReleveDonnees['montants'] = [
     { label: 'Salaire net', value: euros(r.netTotal) },
+    ...(reductionVersee(r) ? [{ label: 'Réduction de cotisations des heures complémentaires et majorées', value: euros(reductionVersee(r)) }] : []),
     { label: 'Indemnités d’entretien', value: euros(r.entretien) },
     { label: 'Repas', value: euros(r.repas) },
     { label: 'Kilomètres', value: euros(r.km) },
@@ -125,8 +126,8 @@ export function releveDonnees(
   return {
     mois: m,
     moisLabel: moisL,
-    provisoire,
-    titre: provisoire ? 'Relevé du mois, provisoire' : 'Relevé du mois',
+    moisEnCours,
+    titre: moisEnCours ? `Relevé du mois en cours, au ${aujourdhui.slice(8, 10)}/${aujourdhui.slice(5, 7)}` : 'Relevé du mois',
     enfant: c.child,
     famille: c.family,
     am: o.amName.trim(),

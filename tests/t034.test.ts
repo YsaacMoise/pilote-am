@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AmLeave, Contract, Planning } from '../src/engine/model';
 import { makeCtx, monthBase, salaireMensualise } from '../src/engine/payroll';
-import { finDeContrat, MESSAGE_PREAVIS_DEMISSION_3_12, MESSAGE_PREAVIS_FIN } from '../src/engine/fin';
+import { finDeContrat } from '../src/engine/fin';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
   const p: Planning = {};
@@ -110,22 +110,17 @@ describe('T-034 point 4 : indemnité d’entretien du contrat sous le minimum (C
   });
 });
 
-describe('T-034 point 5 : préavis de démission de 3 mois à 1 an, durée en conflit (CASF L423-26 / CCN art. 120)', () => {
+describe('T-034 point 5, revu par la T-103 (F2) : démission de 3 mois à 1 an, 15 jours (CCN 120, plus favorable)', () => {
+  // CASF L423-26 : un mois, « à moins que l'employeur n'accepte d'abréger cette durée » ; CCN 120 : 15 jours ; C. trav.
+  // L2251-1 (CASF L423-2) : la convention plus favorable s'applique.
   const ctxDepuis = (start: string) => makeCtx(contract({ start, trackedFrom: start }), [], [], '2026-12-31');
-  it('démission à 6 mois : le message dit le conflit de durée, les 15 jours appliqués et la date de fin à confirmer', () => {
+  it('démission à 6 mois : 15 jours calendaires, sans réserve', () => {
     const f = finDeContrat(ctxDepuis('2026-04-01'), '2026-10-15', 'demission');
-    expect(f.preavisLabel).toBe('15 jours calendaires');
-    expect(f.preavisFinAConfirmer).toContain(MESSAGE_PREAVIS_DEMISSION_3_12);
-    expect(f.preavisFinAConfirmer).toContain(MESSAGE_PREAVIS_FIN);
-    expect(f.preavisFinAConfirmer).toMatch(/L423-26\) prévoit un mois, la convention \(article 120\) 15 jours/);
+    expect(f.preavisLabel).toBe('15 jours calendaires (convention collective, article 120)');
+    expect(f.alertes.join(' ')).not.toMatch(/à confirmer/);
   });
-  it('date de fin calculée avec 15 jours, premier jour compté (méthode de l’app)', () => {
+  it('date de fin calculée avec 15 jours, premier jour compté', () => {
     const f = finDeContrat(ctxDepuis('2026-04-01'), '2026-10-15', 'demission');
     expect(f.preavisFin).toBe('2026-10-29');
-  });
-  it('démission à plus d’un an, ou avant 3 mois, et retrait de 3 mois à 1 an : pas de conflit de durée', () => {
-    expect(finDeContrat(ctxDepuis('2025-01-06'), '2026-10-15', 'demission').preavisFinAConfirmer).toBe(MESSAGE_PREAVIS_FIN);
-    expect(finDeContrat(ctxDepuis('2026-09-01'), '2026-10-15', 'demission').preavisFinAConfirmer).toBe(MESSAGE_PREAVIS_FIN);
-    expect(finDeContrat(ctxDepuis('2026-04-01'), '2026-10-15', 'retrait').preavisFinAConfirmer).toBe(MESSAGE_PREAVIS_FIN);
   });
 });

@@ -33,14 +33,14 @@ const BERTRAND_OFF = ['2021-10-25', '2021-11-01', '2021-12-20', '2021-12-27', '2
 const bertrand = (over: Partial<Contract> = {}) => contract({ alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false, start: '2021-09-01', trackedFrom: '2021-09-01', yearType: 'incomplete', weeks: 36,
   weeksOff: BERTRAND_OFF, majoration: 15, ...over });
 
-describe('T-028 : congés payés à confirmer dans le compteur fiscal', () => {
-  it('le mois où des congés sont à confirmer est signalé, comme l’événement familial', () => {
+describe('T-028, revu par la T-103 : compteur fiscal sans « congés à confirmer »', () => {
+  it('Mme Bertrand (semaines sans accueil saisies) : juin 2022 est compté, rien n’est signalé à confirmer', () => {
     const f = fiscalYear(makeCtx(bertrand(), [], [], '2022-12-31'), 2022);
-    expect(f.nonGere).toMatch(/Congés payés à confirmer en juin 2022 : ils ne sont pas comptés/);
+    expect(f.nonGere ?? '').not.toMatch(/à confirmer/);
   });
   it('sans congés à confirmer, rien n’est signalé', () => {
     const f = fiscalYear(makeCtx(contract({ start: '2025-06-01', trackedFrom: '2025-06-01', alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false }), [], [], '2026-10-31'), 2026);
-    expect(f.nonGere ?? '').not.toMatch(/Congés payés à confirmer/);
+    expect(f.nonGere ?? '').not.toMatch(/à confirmer/);
   });
 });
 
@@ -50,11 +50,13 @@ const leave = (type: AbsenceLue['type'], from: string, to: string): AmLeave => n
 
 describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
   for (const [nom, over, motif] of [
-    // T-077 : l'Alsace-Moselle est calculée ; l'accueil de 47 à 51 semaines reste refusé (A-01).
-    ['47 à 51 semaines (A-01)', { yearType: 'incomplete', weeks: 48 }, /47 à 51 semaines par an : non géré/],
+    // T-077 : l'Alsace-Moselle est calculée. T-107 (cas 3) : 47 à 51 semaines, c'est l'accueil sur 52 semaines (CCN 97.1,
+    // 102.2) : le contrat est à passer en année complète, donnée demandée une fois ; aucun montant avant.
+    ['47 à 51 semaines (A-01), contrat à passer en année complète', { yearType: 'incomplete', weeks: 48 }, /Plus de 46 semaines d’accueil par an.*« Année complète »/],
     // T-076 : planning variable sans ses données (cycle ou plannings, heures payées chaque mois) : contrat à compléter.
     ['horaires qui changent (semaines A et B), données absentes', { planningVariable: true }, /semaines A et B.*contrat à compléter/],
-    ['accueil occasionnel (CCN art. 97.2)', { accueilOccasionnel: true }, /Accueil occasionnel : non géré/],
+    // T-104 : l'accueil occasionnel est calculé ; sans ses périodes d'accueil, le contrat est à compléter.
+    ['accueil occasionnel (CCN art. 97.2), périodes d’accueil absentes', { accueilOccasionnel: true }, /Accueil occasionnel : contrat à compléter/],
   ] as [string, Partial<Contract>, RegExp][]) {
     it(`${nom} : mois refusé, aucune case, aucun montant envoyé`, () => {
       const ctx = makeCtx(ok(over), [], [], '2026-10-31');
@@ -89,7 +91,7 @@ describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
   });
   it('congés : jours acquis et indemnité à confirmer, juin sans complément versé', () => {
     const ctx = makeCtx(ok({ yearType: 'incomplete', weeks: 48 }), [], [], '2026-10-31');
-    expect(acquisition(ctx, 2025).aConfirmer?.message).toMatch(/47 à 51 semaines/);
+    expect(acquisition(ctx, 2025).aConfirmer?.message).toMatch(/Plus de 46 semaines/);
     expect(indemnite(ctx, 2025).aConfirmer).toBeDefined();
     const juin = cpForMonth(ctx, '2026-06');
     expect(juin.complement).toBe(0);
@@ -97,7 +99,7 @@ describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
   });
   it('soldes de départ (reprise) : pas proposés', () => {
     const s = soldesDeDepart(ok({ yearType: 'incomplete', weeks: 48, start: '2024-09-01' }), '2026-10-01', 0);
-    expect(s.aConfirmer).toMatch(/47 à 51 semaines/);
+    expect(s.aConfirmer).toMatch(/Plus de 46 semaines/);
   });
   it('fin de contrat : aucun montant', () => {
     const f = finDeContrat(makeCtx(ok({ planningVariable: true }), [], [], '2026-10-31'), '2026-10-15', 'retrait');
@@ -118,55 +120,62 @@ describe('T-031 : cas du contrat refusés (charte, verrou 6)', () => {
   });
 });
 
-describe('T-031 : absences non gérées (congé maternité, paternité, de naissance, accident du travail)', () => {
-  for (const type of ['maternite', 'paternite', 'naissance_supp', 'accident_travail'] as AbsenceLue['type'][]) {
-    it(`${type} : seuls les mois touchés sont refusés`, () => {
+// T-104 (décision du DG du 25/11/2026 : « les quatre cas doivent être gérés ») : ces absences sont calculées. Seule une saisie
+// à qui il manque une donnée (raison d'une ancienne saisie « non gérée », nature d'un arrêt pour accident) fait attendre le mois.
+describe('T-104 (remplace T-031) : congé maternité, paternité, de naissance, accident du travail calculés', () => {
+  for (const type of ['maternite', 'paternite', 'naissance_supp'] as AbsenceLue['type'][]) {
+    it(`${type} : mois calculés`, () => {
       const ctx = makeCtx(ok(), [], [leave(type, '2026-03-02', '2026-04-10')], '2026-10-31');
-      expect(computeMonth(ctx, '2026-03').nonGere.join(' ')).toMatch(/Absence non gérée par l’app du 02\/03.* au 10\/04.*: le salaire de ces jours/);
-      expect(computeMonth(ctx, '2026-04').nonGere.length).toBe(1);
-      expect(computeMonth(ctx, '2026-05').nonGere).toEqual([]);
-      expect(computeMonth(ctx, '2026-02').nonGere).toEqual([]);
+      for (const m of ['2026-02', '2026-03', '2026-04', '2026-05']) expect(computeMonth(ctx, m).nonGere).toEqual([]);
     });
   }
-  it('la période de congés qui contient l’absence passe à confirmer, la suivante non', () => {
+  it('ancienne saisie « accident_travail » : le mois demande la nature de l’arrêt, une fois', () => {
+    const ctx = makeCtx(ok(), [], [leave('accident_travail', '2026-03-02', '2026-04-10')], '2026-10-31');
+    expect(computeMonth(ctx, '2026-03').nonGere.join(' ')).toMatch(/Arrêt du 02\/03\/2026 au 10\/04\/2026 : ouvre « Congés » et dis si c’est un accident du travail, un accident de trajet ou une maladie professionnelle/);
+    expect(computeMonth(ctx, '2026-05').nonGere).toEqual([]);
+  });
+  it('congé maternité : jours de congés acquis calculés (travail effectif, L3141-5, 2°)', () => {
     const ctx = makeCtx(ok(), [], [leave('maternite', '2026-03-02', '2026-04-10')], '2027-10-31');
-    expect(acquisition(ctx, 2025).aConfirmer?.message).toMatch(/Absence non gérée par l’app/);
+    expect(acquisition(ctx, 2025).aConfirmer).toBeUndefined();
     expect(acquisition(ctx, 2026).aConfirmer).toBeUndefined();
   });
-  it('fin de contrat après une absence non gérée : aucun montant', () => {
+  it('fin de contrat après un arrêt dont la nature manque : la question est posée, aucun montant', () => {
     const f = finDeContrat(makeCtx(ok(), [], [leave('accident_travail', '2026-03-02', '2026-03-20')], '2026-10-31'), '2026-10-15', 'retrait');
-    expect(f.nonGere?.join(' ')).toMatch(/Absence non gérée par l’app du 02\/03/);
+    expect(f.nonGere?.join(' ')).toMatch(/Arrêt du 02\/03\/2026 au 20\/03\/2026/);
     expect(f.cpIndemnite).toBe(0);
   });
 });
 
-describe('A-01 : accueil de 47 à 51 semaines (CCN art. 97.1, question 2 posée à la DDETS le 18/11/2026)', () => {
-  it('48 semaines en année incomplète : mois refusé', () => {
+describe('A-01, T-107 (cas 3) : accueil de 47 à 51 semaines (CCN art. 97.1 et 102.2)', () => {
+  it('48 semaines en année incomplète : contrat à passer en année complète (52 semaines, congés compris)', () => {
     const r = computeMonth(makeCtx(ok({ yearType: 'incomplete', weeks: 48 }), [], [], '2026-10-31'), '2026-03');
-    expect(r.nonGere.join(' ')).toMatch(/47 à 51 semaines par an : non géré/);
+    expect(r.nonGere.join(' ')).toMatch(/Plus de 46 semaines d’accueil par an, sans compter tes congés : c’est l’accueil sur 52 semaines/);
+    expect(r.nonGere.join(' ')).not.toMatch(/non géré|sans l’app/);
   });
   it('46 semaines : pas refusé à ce titre', () => {
     const r = computeMonth(makeCtx(ok({ yearType: 'incomplete', weeks: 46 }), [], [], '2026-10-31'), '2026-03');
     expect(r.nonGere.join(' ')).not.toMatch(/47 à 51/);
   });
-  it('avenant à 50 semaines : refusé', () => {
+  it('avenant à 50 semaines : avenant à passer en année complète', () => {
     const c = ok({ avenants: [{ id: 'a', from: '2026-06-01', changes: { yearType: 'incomplete', weeks: 50 } }] });
-    expect(computeMonth(makeCtx(c, [], [], '2026-10-31'), '2026-07').nonGere.join(' ')).toMatch(/47 à 51/);
+    expect(computeMonth(makeCtx(c, [], [], '2026-10-31'), '2026-07').nonGere.join(' ')).toMatch(/Plus de 46 semaines/);
+  });
+  it('passé en année complète : calculé comme un accueil sur 52 semaines (salaire 52/12)', () => {
+    const r = computeMonth(makeCtx(ok({ yearType: 'complete', weeks: 52 }), [], [], '2026-10-31'), '2026-03');
+    expect(r.nonGere).toEqual([]);
   });
 });
 
-describe('PREAVIS-DATE-FIN : date de fin du préavis sans texte (regles/triage-f3.md)', () => {
+describe('PREAVIS-DATE-FIN, revu par la T-103 (F1) : une seule date de fin, sans réserve', () => {
+  // CCN 64.1 et 120 ; CASF L423-24 ; fiche officielle F2883 : le jour de la première présentation est le premier jour du
+  // préavis ; un mois finit la veille du même quantième.
   const ctx = () => makeCtx(ok({ start: '2024-09-01', trackedFrom: '2024-09-01' }), [], [], '2026-10-31');
-  it('retrait et démission : date gardée, signalée à confirmer', () => {
+  it('retrait et démission (plus d’un an) : un mois, du 15/10 au 14/11/2026', () => {
     for (const motif of ['retrait', 'demission'] as const) {
       const f = finDeContrat(ctx(), '2026-10-15', motif);
-      expect(f.preavisFin > '2026-10-15').toBe(true);
-      expect(f.preavisFinAConfirmer).toMatch(/Date de fin du préavis à confirmer/);
+      expect(f.preavisFin).toBe('2026-11-14');
+      expect(f.alertes.join(' ')).not.toMatch(/à confirmer/);
     }
-  });
-  it('inaptitude et décès : pas de préavis à faire, rien à confirmer', () => {
-    expect(finDeContrat(ctx(), '2026-10-15', 'inaptitude').preavisFinAConfirmer).toBeUndefined();
-    expect(finDeContrat(ctx(), '2026-10-15', 'deces').preavisFinAConfirmer).toBeUndefined();
   });
 });
 

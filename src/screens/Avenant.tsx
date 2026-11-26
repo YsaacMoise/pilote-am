@@ -13,6 +13,8 @@ import { Banner, Choices, DateInput, EuroInput, NumberInput, Seg, Topbar } from 
 import { Icon } from '../ui/icons';
 import { PlanDay, avenantSummary } from './Contrat';
 import { AIDE_ANNEE, AIDE_COMPLEMENTAIRES, AIDE_SEMAINES } from './textes-contrat';
+import { PlanningVariableSaisie } from './PlanningVariableSaisie';
+import { manquesPV } from '../engine/planningVariable';
 
 function pickTerms(c: Contract): Terms {
   const t = {} as Terms;
@@ -37,12 +39,22 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
     return b ? { ...pickTerms(b), ...(existing ? structuredClone(existing.changes) : {}) } : undefined;
   });
   const [signe, setSigne] = useState(existing?.signe ?? '');
+  // T-104 (cas 3) : plannings remis semaine par semaine : gardés au contrat (datés par leur lundi), modifiables ici.
+  const [plans, setPlans] = useState(c?.planningsSemaines);
   const [errors, setErrors] = useState<string[]>([]);
   if (!c || !t) return (<><Topbar title="Avenant" back="#/plus" screen="avenant" /><main><Banner tone="warn">Contrat introuvable.</Banner></main></>);
 
   const before = base(date)!;
   const set = (p: Partial<Terms>) => { setT({ ...t, ...p }); setErrors([]); };
-  const preview: Contract = { ...c, ...t };
+  const preview: Contract = { ...c, ...t, planningsSemaines: plans };
+  // T-104 (cas 3) : saisie des horaires variables de l'avenant (mêmes écrans que le contrat).
+  const setPV = (p: Partial<Contract>) => {
+    const { planningsSemaines, ...reste } = p;
+    if ('planningsSemaines' in p) setPlans(planningsSemaines);
+    const termes: Partial<Terms> = {};
+    for (const k of TERM_KEYS) if (k in reste) (termes as any)[k] = (reste as any)[k];
+    set(termes);
+  };
   const wk = weeklyMinutes(t.planning);
   // T-077 (R2) : repère net, minimum légal et texte du titre AM-GE de la région du contrat.
   const rates = ratesAtRegion(date, regionDe(c));
@@ -59,14 +71,15 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
     if (semaines4751(t!.yearType, t!.weeks)) errs.push(NON_GERE_47_51);
     else if (t!.yearType === 'incomplete' && (t!.weeks < 1 || t!.weeks > 46)) errs.push('En année incomplète, le nombre de semaines va de 1 à 46.');
     if (others.some((a) => a.from === date)) errs.push('Un autre avenant commence déjà ce jour-là : modifie-le plutôt.');
-    if (wk <= 0) errs.push('Le planning est vide.');
+    if (!t!.planningVariable && wk <= 0) errs.push('Le planning est vide.');
+    for (const m of t!.planningVariable ? manquesPV(preview) : []) errs.push(`Horaires qui changent : indique ${m}.`);
     for (let d = 1; d <= 7; d++) for (const p of t!.planning[d] ?? []) if (p.end <= p.start) errs.push('Une heure de fin est avant le début.');
     setErrors(errs);
     // C-101 : chaque enregistrement refusé est noté (relecture contradictoire : le deuxième refus passait inaperçu).
     if (errs.length) logErreur('avenant_incomplet');
     if (errs.length) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const av: Av = { id: existing?.id ?? uid(), from: date, ...(signe ? { signe } : {}), changes };
-    const next: Contract = { ...c!, avenants: [...others, av].sort((a, b) => (a.from < b.from ? -1 : 1)) };
+    const next: Contract = { ...c!, ...(plans ? { planningsSemaines: plans } : {}), avenants: [...others, av].sort((a, b) => (a.from < b.from ? -1 : 1)) };
     const prev = await putContract(next);
     logUsage(existing ? 'avenant_modifie' : 'avenant_cree', 'avenant');
     toast(`Avenant à partir du ${date.split('-').reverse().join('/')} enregistré`, prev ? async () => { await putContract(prev); } : undefined);
@@ -86,7 +99,7 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
       <main>
         {errors.length > 0 && (
           <Banner tone="warn">
-            <strong>À vérifier</strong>
+            <strong>À corriger avant d’enregistrer</strong>
             <ul style={{ margin: 0, paddingLeft: '20px' }}>{errors.map((e) => <li>{e}</li>)}</ul>
           </Banner>
         )}
@@ -104,6 +117,7 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
             <legend>La rémunération</legend>
             <EuroInput label="Taux horaire net" hint={!rates ? MESSAGE_PERIODE_NON_GEREE : rates.minConvNet === undefined ? `Minimum en ${monthLabel(month)} : ${libelleMinimumBrut(minimumBrut(date, regionDe(c))!)} (pas de repère net dans l’app)` : `Minimum conventionnel en ${monthLabel(month)} : ${euros(rates.minConvNet)} net`} cents={t.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
             {t.rateNet > 0 && rates?.minConvNet !== undefined && t.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel.</Banner>}
+            <EuroInput label="Taux horaire brut" hint="Écrit dans l’avenant, à côté du net (convention, article 41.1)." cents={t.rateBrut} allowEmpty onChange={(v) => set({ rateBrut: v ?? undefined })} />
             {rates?.minConvNet !== undefined && <p class="hint">{MINIMUM_SANS_TITRE}</p>}
             {/* T-044b (C2-1) : un avenant daté dans le passé recalcule les mois depuis sa date : le dire. */}
             <EntretienSaisie t={t} set={set} passe={date < firstDay(monthOf(today())) && (changes.entretienJour != null || changes.entretienHeure != null || changes.entretienMode != null)} />
@@ -125,17 +139,18 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
         <section class="card">
           <fieldset>
             <legend>Le planning</legend>
-            {!c.planningVariable && <Seg label="Année complète ou incomplète ?" value={t.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(t.weeks, 46) || 46 })}
-              options={[{ v: 'complete', l: 'Année complète' }, { v: 'incomplete', l: 'Année incomplète' }]} />}
-            {!c.planningVariable && <p class="hint">{AIDE_ANNEE}</p>}
-            {!c.planningVariable && t.yearType === 'incomplete' && <NumberInput label="Semaines d’accueil prévues au contrat" hint={AIDE_SEMAINES} value={t.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />}
-            {semaines4751(t.yearType, t.weeks) && <Banner tone="warn">{NON_GERE_47_51}</Banner>}
+            <Seg label="Année complète ou incomplète ?" value={t.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(t.weeks, 46) || 46 })}
+              options={[{ v: 'complete', l: 'Année complète' }, { v: 'incomplete', l: 'Année incomplète' }]} />
+            <p class="hint">{AIDE_ANNEE}</p>
+            {t.yearType === 'incomplete' && <NumberInput label="Semaines d’accueil prévues au contrat" hint={AIDE_SEMAINES} value={t.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />}
+            {/* T-104 (cas 3) : l'avenant peut changer les horaires variables, ou passer d'un planning fixe à des horaires variables et inversement. */}
+            <Choices label="Avec cet avenant, le planning est-il le même chaque semaine ?" value={t.planningVariable ? 'non' : 'oui'} onChange={(v) => set({ planningVariable: v === 'non' })}
+              options={[{ v: 'oui', l: 'Oui, une semaine type qui se répète' }, { v: 'non', l: 'Non, il change d’une semaine à l’autre', sub: 'Semaines A et B, ou planning remis par les parents.' }]} />
+            {semaines4751(t.yearType, t.weeks) && <><Banner tone="warn">{NON_GERE_47_51}</Banner><button class="btn btn-secondary" onClick={() => set({ yearType: 'complete', weeks: 52 })}>Passer en année complète (52 semaines)</button></>}
             {before.yearType === 'incomplete' && t.yearType === 'complete' && <p class="hint">Le contrat passe de l’année incomplète à l’année complète : l’app calcule une régularisation à la date de l’avenant (heures accueillies et pas encore payées), versée avec le salaire de ce mois.</p>}
             {before.yearType === 'incomplete' && t.yearType === 'incomplete' && <p class="hint">Année incomplète : la régularisation se fait en fin de contrat, pas à l’avenant.</p>}
-            {/* T-076 : horaires variables, l'app ne sait pas changer un cycle ou des plannings par avenant (refus, planningVariable.ts). */}
-            {c.planningVariable && <Banner tone="warn">Tes horaires changent d’une semaine à l’autre : l’app ne sait pas encore changer le cycle, les plannings, les heures payées chaque mois ni le type d’année par un avenant. Ne change ici que le taux, l’entretien, les repas ou les kilomètres.</Banner>}
-            {!c.planningVariable && [1, 2, 3, 4, 5, 6, 7].map((d) => <PlanDay d={d} plages={t.planning[d] ?? []} onChange={(p) => set({ planning: { ...t.planning, [d]: p } as Planning })} />)}
-            {!c.planningVariable && <div class="banner info" style={{ marginTop: '4px' }}>
+            {!t.planningVariable && [1, 2, 3, 4, 5, 6, 7].map((d) => <PlanDay d={d} plages={t.planning[d] ?? []} onChange={(p) => set({ planning: { ...t.planning, [d]: p } as Planning })} />)}
+            {!t.planningVariable && <div class="banner info" style={{ marginTop: '4px' }}>
               <span class="b-ico"><Icon name="clock" /></span>
               <div class="b-body">
                 <span><b>{hoursLabel(wk)}</b> par semaine sur {daysPerWeek(t.planning)} jours</span>
@@ -144,6 +159,8 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
             </div>}
           </fieldset>
         </section>
+
+        {t.planningVariable && <PlanningVariableSaisie c={preview} set={setPV} />}
 
         <section class="card stack" aria-label="Ce qui change">
           <h2>Ce qui change</h2>

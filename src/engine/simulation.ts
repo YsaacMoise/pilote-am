@@ -124,7 +124,9 @@ export interface CmgCalc {
   depassePlafond: boolean;
   /**
    * Part des cotisations prise en charge par la CAF (CSS D531-17 I) : 1 sous le plafond,
-   * sinon plafond × heures ÷ coût, arrondi au centième supérieur (mesuré sur le simulateur Urssaf).
+   * sinon plafond × heures ÷ coût, arrondi au centième supérieur. T-109 (comparateur, correction 23) : D531-17, I, ne prévoit
+   * aucun arrondi ; l'arrondi est celui du simulateur officiel Urssaf/Pajemploi (calculerResteACharge, relevé du 01/11/2026,
+   * tests/urssaf-reference.test.ts, cas c03 et c05 : sans lui, 1,82 € et 12,90 € d'écart sur les cotisations prises en charge).
    */
   partCotisations: number;
   params: CmgParams;
@@ -267,18 +269,15 @@ export function repasDuJour(plages: Plage[], type: TypeRepas): boolean {
 export { bornesKm } from './km';
 
 /** Jours fériés des 12 mois qui suivent `d`, par jour de la semaine (1 = lundi … 7 = dimanche). */
-export function feriesParJour(d: ISODate, alsaceMoselle: boolean): number[] {
+/**
+ * Fériés de l'année qui vient, par jour de la semaine. T-103 (R1) : en Alsace-Moselle, le Vendredi saint et le 26 décembre ne
+ * sont pas fériés pour l'AM (C. trav. L3134-1, al. 2) : seuls les fériés de droit commun (L3133-1) comptent.
+ */
+export function feriesParJour(d: ISODate): number[] {
   const out = [0, 0, 0, 0, 0, 0, 0, 0];
   const fin = addDays(d, 365);
   for (const y of [Number(d.slice(0, 4)), Number(d.slice(0, 4)) + 1]) {
-    const jours = [...holidaysOf(y).keys()];
-    // Alsace-Moselle : Vendredi saint et 26 décembre en plus (code du travail L3134-13)
-    if (alsaceMoselle) {
-      const lundiPaques = [...holidaysOf(y).entries()].find(([, n]) => n === 'Lundi de Pâques')?.[0];
-      if (lundiPaques) jours.push(addDays(lundiPaques, -3));
-      jours.push(`${y}-12-26`);
-    }
-    for (const j of jours) if (j >= d && j < fin) out[weekday(j)]++;
+    for (const j of holidaysOf(y).keys()) if (j >= d && j < fin) out[weekday(j)]++;
   }
   return out;
 }
@@ -295,11 +294,6 @@ export interface SimInput {
   tauxBrut: number;
   /** L'assistante maternelle travaille en Alsace-Moselle (Bas-Rhin, Haut-Rhin, Moselle) : cotisations salariales plus élevées */
   alsaceMoselle: boolean;
-  /**
-   * T-077 (R7) : Alsace-Moselle, Vendredi saint et 26 décembre comptés comme fériés (lecture A, défaut) ou non (lecture B,
-   * `false`). Les deux lectures sont calculées : voir `feriesLocauxB`.
-   */
-  feriesLocaux?: boolean;
   /** Indemnité d'entretien prévue au contrat (centimes), par jour ou par heure ; le minimum légal s'applique chaque jour */
   entretien: number;
   entretienMode: 'jour' | 'heure';
@@ -425,11 +419,6 @@ export interface SimResult {
   depensesAnnuelles: number;
   /** Coût mensuel réel, crédit d'impôt réparti sur 12 mois */
   reel: number;
-  /**
-   * T-077 (R7) : Alsace-Moselle, mêmes résultats sans le Vendredi saint ni le 26 décembre (lecture B : fériés locaux non
-   * applicables à l'AM). Absent ailleurs, ou quand le résultat est déjà la lecture B.
-   */
-  feriesLocauxB?: { reel: number; entretien: number; repas: number; feriesAn: number };
   /** Heures maximales par semaine pour ce planning (2 250 h par an) */
   heuresMax: number;
   /** Jours où l'amplitude dépasse 13 h (11 h de repos obligatoire) */
@@ -449,6 +438,40 @@ export const HEURES_MAX_JOUR = 13;
 export const HEURES_SANS_ACCORD = 48;
 /** Plafond annuel avec l'accord de l'AM, tous contrats confondus (CASF L423-22) */
 export const HEURES_MAX_AN = 2250;
+
+/**
+ * T-103 (S7) : indemnité de congés payés d'une période de référence (1er juin au 31 mai) en année incomplète, pour le
+ * simulateur. CCN 48.1.1.5 : la plus favorable du dixième de la rémunération de la période et du maintien (salaire
+ * qu'aurait touché l'AM pendant le congé : jours ouvrables ÷ 6 semaines, Cass. soc. 09/05/2019, n° 17-26.232). Jours acquis :
+ * 2,5 jours par période de quatre semaines de travail (C. trav. L3141-4 : « quatre semaines » valent un mois ; CCN 48.1.1.2),
+ * au prorata, arrondi supérieur, 30 au plus ; les semaines sans accueil ne sont pas du travail (L3141-5), sauf les congés payés
+ * pris dans la limite des droits (L3141-5, 1° ; CCN 48.1.1.3). Première période : aucun droit, aucune semaine de congés ne
+ * compte. Droits de la période précédente (`droits`, en jours) : les semaines de congés comptent pour ces jours (jours ÷ 6,
+ * 5 semaines au plus) ; `true` (mois moyen) : même accueil chaque année, calcul répété jusqu'à ce qu'il ne change plus.
+ * T-109 (comparateur, correction 8) :
+ * avant, mois × semaines ÷ 52 et 5 semaines de congés comptées en entier. Exemple : 40 semaines, 180 € par semaine, droits
+ * acquis : (40 + 28 ÷ 6) ÷ 4 × 2,5 = 27,9 → 28 jours ; 28 ÷ 6 × 180 € = 840,00 €. Hypothèse de la simulation, dite à
+ * l'écran : les semaines sans accueil sont réparties dans l'année.
+ */
+export function joursCongesSimules(n: number, moisPeriode: number, droits: boolean | number): number {
+  const acquis = (cpJours: number) => Math.min(30, Math.ceil(((n + Math.min(5, cpJours / 6)) * moisPeriode / 12 / 4) * 2.5 - 1e-9));
+  if (typeof droits === 'number') return acquis(droits);
+  let j = acquis(0);
+  if (!droits) return j;
+  for (let k = 0; k < 10; k++) {
+    const suivant = Math.min(30, Math.ceil(((n + Math.min(5, j / 6)) / 4) * 2.5 - 1e-9));
+    if (suivant === j) break;
+    j = suivant;
+  }
+  return acquis(j);
+}
+
+export function congesPeriodeSimulee(i: Pick<SimInput, 'yearType' | 'semainesAbsence'>, salaireMensualise: number, baseDixieme: number, moisPeriode: number, droits: boolean | number): number {
+  const n = semainesAccueil(i);
+  const jours = joursCongesSimules(n, moisPeriode, droits);
+  const semaine = n > 0 ? (salaireMensualise * 12) / n : 0;
+  return Math.max(Math.round(baseDixieme * 0.1), Math.round((jours / 6) * semaine));
+}
 
 export function semainesAccueil(i: Pick<SimInput, 'yearType' | 'semainesAbsence'>): number {
   return i.yearType === 'complete' ? 52 : Math.min(46, 52 - 5 - Math.max(1, Math.round(i.semainesAbsence)));
@@ -533,7 +556,7 @@ export function simuler(i: SimInput, d: ISODate): SimResult {
 
   // Jour par jour : entretien (minimum légal de la journée), repas, et jours fériés sans accueil.
   // Un férié tombe en moyenne sur une semaine d'accueil dans la proportion semaines travaillées ÷ 52.
-  const feries = feriesParJour(d, i.alsaceMoselle && i.feriesLocaux !== false);
+  const feries = feriesParJour(d);
   const parJour: SimResult['parJour'] = [];
   const repasAn: Record<TypeRepas, number> = { petitDej: 0, dejeuner: 0, gouter: 0, diner: 0 };
   let joursAnExact = 0, entretienAn = 0, repasMontantAn = 0, feriesAn = 0;
@@ -560,8 +583,9 @@ export function simuler(i: SimInput, d: ISODate): SimResult {
   const kmMois = Math.max(0, i.kmMois || 0);
   const km = Math.round(kmMois * Math.max(0, i.kmTaux || 0));
   const kmBornes = bornesKm(i.cv || 5, kmMois * 12, d);
-  // Année incomplète : congés payés en plus du salaire mensualisé (≈ 10 % du salaire de l'année), répartis ici sur 12 mois.
-  const congesAnnuels = i.yearType === 'incomplete' ? Math.round(salaire * 12 * 0.1) : 0;
+  // Année incomplète : congés payés en plus du salaire mensualisé, répartis ici sur 12 mois. T-103 (S7) : CCN 48.1.1.5, le plus
+  // haut du dixième et du maintien (congesPeriodeSimulee, une période complète, droits de l'an passé acquis).
+  const congesAnnuels = i.yearType === 'incomplete' ? congesPeriodeSimulee(i, salaire, salaire * 12, 12, true) : 0;
   const congesMois = Math.round(congesAnnuels / 12);
 
   // Cotisations : sur le brut du mois (salaire et congés), plus la part fixe.
@@ -626,10 +650,6 @@ export function simuler(i: SimInput, d: ISODate): SimResult {
     reste, resteHoraire: heuresMoisMin > 0 && n ? Math.round(reste / n / (heuresMoisMin / 60)) : 0,
     creditEligible, creditAnnuel, depensesAnnuelles: depenses,
     reel: reste - Math.round(creditAnnuel / 12),
-    ...(i.alsaceMoselle && i.feriesLocaux === undefined ? (() => {
-      const b = simuler({ ...i, feriesLocaux: false }, d);
-      return { feriesLocauxB: { reel: b.reel, entretien: b.entretien, repas: b.repas, feriesAn: b.feriesAn } };
-    })() : {}),
     heuresMax, joursTropLongs,
     depasseAnnuel: heuresSemMin / 60 > heuresMax,
     accordNecessaire: heuresSemMin > HEURES_SANS_ACCORD * 60,

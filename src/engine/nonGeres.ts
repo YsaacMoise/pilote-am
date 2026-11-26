@@ -4,6 +4,9 @@ import { addDays, shortDate, type ISODate } from './dates';
 import { controleFinContrat, jourDispense } from './preavis';
 import { nonGeresCdd } from './cdd';
 import type { AmLeave, Contract } from './model';
+import { statutJourEvenement } from './evenements';
+import { donneeSuspensionManquante } from './suspensions';
+import { messageOccasionnelACompleter } from './occasionnel';
 import { messagePVACompleter, nonGeresContratPV, nonGeresPeriodePV } from './planningVariable';
 
 export const NON_GERE_ALSACE =
@@ -18,6 +21,7 @@ export const NON_GERE_MAYOTTE =
  */
 export const NON_GERE_PLANNING_VARIABLE =
   'Horaires qui changent d’une semaine à l’autre (semaines A et B, planning remis chaque mois) : non géré. L’app ne sait calculer qu’une semaine type qui se répète. Fais la paie sans l’app.';
+/** T-104 : plus utilisé par le calcul (l'accueil occasionnel est calculé) ; gardé pour mémoire du texte d'avant. */
 export const NON_GERE_OCCASIONNEL =
   'Accueil occasionnel : non géré. L’app ne calcule que l’accueil régulier, sur 52 semaines ou sur 46 semaines ou moins (article 97.1 de la convention). Fais la paie sans l’app.';
 // T-076 (22/11/2026) : le CDD est calculé (regles/t076-cdd.md). L'ancien refus NON_GERE_CDD (T-033) est retiré ; restent
@@ -28,6 +32,7 @@ export const NON_GERE_OCCASIONNEL =
  * et Mayotte pour un CDI à horaires fixes ; T-076 calcule les horaires variables et le CDD en métropole. Les deux ensemble n'ont
  * été vérifiés par aucune des deux (aucune situation du second moteur) : ils restent refusés, comme avant la fusion.
  */
+/** T-104 : plus utilisé par le calcul ; texte gardé pour mémoire. */
 export const NON_GERE_REGION_PV_CDD =
   'Horaires qui changent d’une semaine à l’autre ou CDD, en Alsace-Moselle ou à Mayotte : non géré pour l’instant. L’app calcule ces contrats en métropole, et l’Alsace-Moselle et Mayotte pour un CDI à horaires fixes, pas encore les deux ensemble. Fais la paie sans l’app.';
 /**
@@ -35,23 +40,34 @@ export const NON_GERE_REGION_PV_CDD =
  * avec un planning fixe seulement ; avant la fusion, il était refusé pour un contrat à horaires variables (T-076, qui ne
  * l'avait pas) et les horaires variables l'étaient aussi (integration). Il reste refusé, comme avant la fusion.
  */
+/** T-104 : plus utilisé par le calcul ; texte gardé pour mémoire. */
 export const NON_GERE_PV_DISPENSE =
   'Préavis non fait à la demande des parents, avec des horaires qui changent d’une semaine à l’autre : non géré pour l’instant. L’app calcule chacun des deux cas seul, pas encore les deux ensemble. Fais les derniers mois et la fin du contrat avec les parents.';
-/** A-01 : CCN art. 97.1 ne connaît que 52 semaines ou 46 semaines et moins ; question 2 posée à la DDETS le 18/11/2026 */
+/**
+ * A-01, T-107 (cas 3, regles/t107-47-51-semaines.md) : CCN 97.1, l'accueil régulier « peut s'effectuer selon l'une des deux
+ * modalités suivantes » : 52 semaines « y compris les congés payés du salarié », ou 46 semaines ou moins « hors congés payés du
+ * salarié ». CCN 102.2 : l'AM a un repos annuel de 30 jours ouvrables (5 semaines), congés complémentaires non rémunérés
+ * compris. De 47 à 51 semaines d'accueil hors congés, il reste au plus 5 semaines sans accueil : toutes peuvent être, et sont,
+ * le repos annuel de l'AM. C'est la première modalité (52 semaines, congés compris) ; la seconde exige au moins 6 semaines
+ * sans accueil (46 au plus). Une semaine de plus où les parents ne confient pas l'enfant est une absence de l'enfant, payée
+ * (CCN 105). Le contrat est donc à passer en année complète : donnée demandée une fois (contrat ou avenant).
+ */
 export const NON_GERE_47_51 =
-  'Accueil de 47 à 51 semaines par an : non géré. La convention ne prévoit que 52 semaines, ou 46 semaines et moins (article 97.1). Ne choisis ni 46 semaines ni toute l’année à la place : la paie serait fausse. La question est posée à la DDETS. En attendant, fais la paie sans l’app.';
+  'Plus de 46 semaines d’accueil par an, sans compter tes congés : c’est l’accueil sur 52 semaines de la convention, tes congés payés compris (article 97.1). Les semaines sans accueil sont tes 5 semaines de repos : congés payés si tu les as acquis, sinon congés complémentaires non payés (article 102.2). Si les parents ne confient pas l’enfant une autre semaine, c’est une absence de l’enfant, payée (article 105). Passe le contrat (ou l’avenant) en « Année complète », puis note tes congés dans « Congés » : l’app calcule les mois ensuite. L’année incomplète, c’est au moins 6 semaines sans accueil : 46 semaines ou moins.';
 /** Décision du DG du 18/11/2026 : contrat sans réponse aux 4 questions (3 de T-031, CDD de T-033), mois non calculé */
 export const CONTRAT_A_COMPLETER =
   'Contrat à compléter : ouvre le contrat et réponds aux 4 questions (lieu de travail, horaires, accueil régulier, CDI ou CDD). L’app ne calcule pas ce mois avant.';
 
-/** Message d'une absence non gérée (sans le cas précis, qui n'est pas enregistré : décision du DG du 21/11/2026) */
+/**
+ * T-104 : absence dont une donnée manque pour la calculer : saisie d'avant sans sa raison (`non_gere`), ou arrêt pour accident
+ * du travail sans sa nature ou sans le jour de l'accident (suspensions.ts). Le mois attend la réponse, demandée une fois.
+ */
 export function messageAbsenceNonGeree(l: AmLeave): string {
-  const quand = l.from === l.to ? `le ${shortDate(l.from)}` : `du ${shortDate(l.from)} au ${shortDate(l.to)}`;
-  return `Absence non gérée par l’app ${quand} (congé maternité, paternité, de naissance, accident du travail ou maladie professionnelle) : le salaire de ces jours, tes congés payés et la fin de contrat en dépendent. Fais ces mois sans l’app et vérifie avec les parents.`;
+  return donneeSuspensionManquante(l) ?? '';
 }
 
 export function estAbsenceNonGeree(l: AmLeave): boolean {
-  return l.type === 'non_gere';
+  return !!donneeSuspensionManquante(l);
 }
 
 /** Cas du contrat lui-même (tous ses mois) */
@@ -63,13 +79,19 @@ export function nonGeresContrat(c: Pick<Contract, 'alsaceMoselle' | 'planningVar
   // T-077 : l'Alsace-Moselle et Mayotte sont calculées (regions.ts ; regles/t077-decisions.md). Messages gardés pour les écrans.
   // T-076 : planning variable calculé (spécification regles/t076-decisions-direction.md, section 1). Données incomplètes :
   // contrat à compléter, avec ce qui manque. Données complètes : seuls les cas du passage 2 restent refusés.
-  if ((c.planningVariable || c.cdd) && (c.alsaceMoselle || c.mayotte)) out.push(NON_GERE_REGION_PV_CDD);
-  if (c.planningVariable) {
+  // T-104 : horaires variables ou CDD en Alsace-Moselle ou à Mayotte : calculés. Les règles locales (fériés, maintien du salaire,
+  // taux, cotisations) sont lues jour par jour par le moteur, quel que soit le contrat ; le CDD suit le code du travail, qui
+  // s'applique à Mayotte « sous réserve des adaptations prévues par le présent titre » (C. trav. L1521-1), sans adaptation pour
+  // le CDD (L1521-1 à L1524 lus, base LEGI de la DILA) ; CASF L423-2, 4°, partout. Plus de refus (rapports/T-104-execution.md).
+  void NON_GERE_REGION_PV_CDD;
+  if (c.planningVariable && !c.accueilOccasionnel) {
     const m = messagePVACompleter(c);
     if (m) out.push(m);
-    else out.push(...nonGeresContratPV(c as Contract));
   }
-  if (c.accueilOccasionnel) out.push(NON_GERE_OCCASIONNEL);
+  // T-104 (cas 3) : données qui manquent aux conditions d'un avenant (horaires variables ou retour à un planning fixe).
+  out.push(...nonGeresContratPV(c as Contract));
+  // T-104 (cas 2) : accueil occasionnel calculé (occasionnel.ts). Données incomplètes : contrat à compléter.
+  if (c.accueilOccasionnel) { const m = messageOccasionnelACompleter(c as Contract); if (m) out.push(m); }
   out.push(...nonGeresCdd(c));
   return out;
 }
@@ -85,6 +107,12 @@ export function contratACompleter(c: Pick<Contract, 'alsaceMoselle' | 'planningV
  * préavis ; `connu`, seulement quand une réponse enregistrée ne concorde pas (jours de congés acquis : aucun montant n'est
  * versé sans passer par le mois ou la fin de contrat, qui font le contrôle complet) ; `non`, contexte de fin.ts déjà contrôlé.
  */
+/** T-103 (C8) : donnée manquante, demandée une fois au contrat */
+export const MESSAGE_REPOS_HEBDO = 'Ton planning prévoit le dimanche : indique dans le contrat ton jour de repos de la semaine (convention, article 46). L’app en a besoin pour compter les jours de ton congé pour événement familial.';
+export function planningAvecDimanche(c: Contract): boolean {
+  return [c.planning, ...(c.avenants ?? []).map((x) => x.changes.planning), ...(c.cycle ?? []), ...Object.values(c.planningsSemaines ?? {})].some((p) => !!p && (p[7]?.length ?? 0) > 0);
+}
+
 export function nonGeresPeriode(c: Contract, leaves: AmLeave[], from: ISODate, to: ISODate, controleFin: 'tout' | 'connu' | 'non' = 'tout'): string[] {
   const out = nonGeresContrat(c);
   // Décision du DG du 18/11/2026 : sans réponse aux 4 questions, l'app ne sait pas si le cas est géré : rien n'est calculé.
@@ -101,6 +129,14 @@ export function nonGeresPeriode(c: Contract, leaves: AmLeave[], from: ISODate, t
     const m = messageAbsenceNonGeree(l);
     if (!out.includes(m)) out.push(m);
   }
+  // T-103 (C6, C8) : événement familial que l'app ne sait pas lire (avant 2022, ancienne saisie sans durée), et planning
+  // qui prévoit le dimanche sans jour de repos hebdomadaire au contrat (CCN 46, décompte des jours ouvrables).
+  for (const l of leaves) {
+    if (l.type !== 'evenement' || l.joursEvenement === undefined || l.to < a || l.from > b) continue;
+    const st = statutJourEvenement(l, l.from, leaves, c.reposHebdo ?? 7);
+    if (!st.paye && st.nonGere && !out.includes(st.raison)) out.push(st.raison);
+    if (c.reposHebdo === undefined && planningAvecDimanche(c) && !out.includes(MESSAGE_REPOS_HEBDO)) out.push(MESSAGE_REPOS_HEBDO);
+  }
   // T-074 (D1) : absence de l'AM (congés, maladie, événement…) un jour du préavis dont les parents l'ont dispensée. Aucun
   // texte ne dit si ce jour est payé comme préavis (art. 64.2) ou traité comme absence, ni si le préavis est suspendu
   // (art. 64.1 : congés payés, accident du travail). Rien n'est calculé : jamais une retenue en silence.
@@ -116,13 +152,12 @@ export function nonGeresPeriode(c: Contract, leaves: AmLeave[], from: ISODate, t
   }
   // Intégration T-078 : préavis dispensé (T-074) d'un contrat à horaires variables (T-076) : mois qui contiennent un jour
   // dispensé (du lendemain du dernier jour travaillé à la fin du contrat, comme jourDispense), et la fin du contrat.
-  if (c.planningVariable && c.rupture?.preavis === 'employeur' && c.end) {
-    const du = addDays(c.rupture.dernierJourTravaille ?? c.rupture.notif, 1);
-    if (du <= b && c.end >= a && !out.includes(NON_GERE_PV_DISPENSE)) out.push(NON_GERE_PV_DISPENSE);
-  }
+  // T-104 : calculé. Les jours dispensés sont payés comme prévus (payroll.ts, jourDispense), heures complémentaires prévues
+  // comprises (H9) ; l'indemnité de préavis les compte (fin.ts, icpDispense). Plus de refus.
+  void NON_GERE_PV_DISPENSE;
   // T-045b (P3-B1, C3-1 de V5) : date de fin saisie qui ne concorde pas avec le préavis, ou préavis sans réponse.
   if (controleFin !== 'non' && (controleFin === 'tout' || c.rupture)) {
-    const f = controleFinContrat(c);
+    const f = controleFinContrat(c, leaves);
     if (f && f.du <= to && f.au >= from) out.push(f.message);
   }
   return out;

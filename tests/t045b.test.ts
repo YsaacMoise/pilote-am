@@ -52,9 +52,9 @@ describe('T-045b : le mois où finit le contrat connaît le préavis', () => {
     expect(mois(c2, '2026-11').nonGere.join(' ')).toMatch(/date prévue de fin du préavis/);
   });
 
-  it('cas C enregistré (départ sans accord) : mois de fin refusé', () => {
+  it('cas C enregistré (départ sans accord) : calculé depuis T-107, sans question depuis T-109 (fin au dernier jour travaillé)', () => {
     const c = contract({ end: '2026-11-13', rupture: R({ preavis: 'am_sans_accord', dernierJourTravaille: '2026-11-13' }) });
-    expect(mois(c, '2026-11').nonGere.length).toBeGreaterThan(0);
+    expect(mois(c, '2026-11').nonGere).toEqual([]);
   });
 
   it('cas A enregistré (dispense demandée par l’AM, acceptée) : fin au dernier jour travaillé, le mois est calculé', () => {

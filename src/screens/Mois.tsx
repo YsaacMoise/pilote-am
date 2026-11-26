@@ -2,10 +2,10 @@ import { AVERTISSEMENT_CALCUL, PAJEMPLOI_PLUS_DATE, PAJEMPLOI_PLUS_RAPPEL } from
 import { useState } from 'preact/hooks';
 import { ctxFor, logUsage, toast, useStore, state } from '../store';
 import { addMonths, dayLabel, eachDay, firstDay, lastDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
-import { computeMonth, declarationLines, declarationText, totalAVerser } from '../engine/month';
+import { computeMonth, declarationLines, declarationText, MESSAGE_REDUCTION_HS_BRUT, moisEnCoursAu, totalAVerser } from '../engine/month';
 import { dayInfo, termsAt } from '../engine/payroll';
-import { euros, eurosArrondis, hoursLabel } from '../engine/money';
-import { MESSAGE_BAREMES_PROVISOIRES, baremesProvisoires } from '../engine/rates';
+import { euros, hoursLabel } from '../engine/money';
+import { baremesAttendus, messageBaremesAttendus } from '../engine/rates';
 import { CHILD_ABS_LABEL, AM_ABS_LABEL, type Contract } from '../engine/model';
 import { Banner, Gommette, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
@@ -124,13 +124,23 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
     );
   }
 
-  // T-031 : cas non géré : aucun montant, aucune case, pas d'envoi au parent.
+  // T-103 (D4) : barèmes du mois pas encore publiés : aucun calcul « provisoire ».
+  if (baremesAttendus(firstDay(month))) {
+    return (
+      <section class="card stack" aria-labelledby="bar-t">
+        <h2 id="bar-t">Ce mois n’est pas encore calculé</h2>
+        <Banner tone="info">{messageBaremesAttendus(monthLabel(month))}</Banner>
+      </section>
+    );
+  }
+
+  // T-031 : cas non géré ou donnée à saisir (T-103) : aucun montant, aucune case, pas d'envoi au parent.
   if (r.nonGere.length) {
     return (
       <section class="card stack" aria-labelledby="ng-t">
         <h2 id="ng-t">Ce mois n’est pas calculé</h2>
         {r.nonGere.map((t) => <Banner tone="warn">{t}</Banner>)}
-        <p class="hint">L’app ne donne aucun montant pour ce mois. Déclare-le avec les parents, sans l’app.</p>
+        <p class="hint">L’app ne donne aucun montant pour ce mois tant que ce qui est dit ci-dessus n’est pas réglé. Une donnée à saisir : saisis-la, le mois se calcule aussitôt. Un cas non géré : déclare ce mois avec les parents, sans l’app.</p>
         <a class="btn btn-outline" href={`#/contrat/${c.id}`}>Ouvrir le contrat</a>
       </section>
     );
@@ -145,11 +155,12 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
       <section class="summary stack" aria-labelledby="tot">
         <span class="summary-label" id="tot">À verser par la famille {c.family ? `(${c.family})` : ''}</span>
         <span class="total">{euros(totalVerse)}</span>
-        <span class="summary-sub">dont salaire net {euros(r.netTotal)}, soit {r.brut ? euros(r.brutEstime) : `environ ${eurosArrondis(r.brutEstime)}`} brut</span>
-        {current && <span class="summary-note">Provisoire jusqu’à la fin du mois</span>}
+        <span class="summary-sub">dont salaire net {euros(r.netTotal)}{r.brutConnu ? `, soit ${euros(r.brutEstime)} brut` : ''}</span>
+        {r.brutConnu && r.reductionHS > 0 && <span class="summary-sub">et réduction de cotisations des heures complémentaires et majorées {euros(r.reductionHS)}</span>}
+        {!r.brutConnu && <span class="summary-note">Brut : <a href={`#/contrat/${c.id}`}>indique ton taux horaire brut dans le contrat</a></span>}
+        {current && moisEnCoursAu(ctx.today, month) && <span class="summary-note">Mois en cours : entretien et repas comptés jusqu’au {moisEnCoursAu(ctx.today, month)}</span>}
       </section>
 
-      {baremesProvisoires(lastDay(month)) && <Banner tone="info">{MESSAGE_BAREMES_PROVISOIRES}</Banner>}
       {!c.pajemploiPlus && (!c.end || c.end >= PAJEMPLOI_PLUS_DATE) && <Banner tone="info">{PAJEMPLOI_PLUS_RAPPEL}</Banner>}
       {r.alerts.map((a) => <Banner tone="warn">{a}</Banner>)}
       {r.cpNote && <Banner tone="info" icon="sun">{r.cpNote}</Banner>}
@@ -194,24 +205,30 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
         <summary>Comment c’est calculé</summary>
         <div class="more-body">
           <dl class="kv">
-            <dt>Salaire de base (le même chaque mois)</dt><dd>{euros(r.salaireMens)}</dd>
+            {/* T-104 (cas 2) : accueil occasionnel, salaire non mensualisé (CCN 108.2, 109.3). */}
+            {c.accueilOccasionnel
+              ? (<><dt>Heures d’accueil payées ({hoursLabel(r.normalesMin ?? 0)} au taux du contrat)</dt><dd>{euros(r.base)}</dd></>)
+              : (<><dt>Salaire de base (le même chaque mois)</dt><dd>{euros(r.salaireMens)}</dd>
             <dt>{termsAt(c, `${month}-01`).yearType === 'complete' ? 'Heures du planning type ce mois (art. 111)' : 'Jours du planning type ce mois (art. 111)'}</dt>
-            <dd>{termsAt(c, `${month}-01`).yearType === 'complete' ? hoursLabel(r.divisorMin) : r.divisorDays}</dd>
+            <dd>{termsAt(c, `${month}-01`).yearType === 'complete' ? hoursLabel(r.divisorMin) : r.divisorDays}</dd></>)}
             {r.retenue > 0 && (<><dt>Retenue ({termsAt(c, `${month}-01`).yearType === 'complete' ? hoursLabel(r.deductedMin) : `${r.deductedDays} j`} non payés)</dt><dd>−{euros(r.retenue)}</dd></>)}
             {!!r.regulAvenant && (<><dt>Régularisation à l’avenant</dt><dd>{euros(r.regulAvenant)}</dd></>)}
+            {(r.normalesPlusAmount ?? 0) > 0 && (<><dt>Heures en plus la semaine d’une absence ({hoursLabel(r.normalesPlusMin ?? 0)}, taux du contrat)</dt><dd>{euros(r.normalesPlusAmount ?? 0)}</dd></>)}
             {r.complAmount > 0 && (<><dt>Heures complémentaires ({hoursLabel(r.complMin)})</dt><dd>{euros(r.complAmount)}</dd></>)}
             {r.majAmount > 0 && (<><dt>Heures majorées en plus ({hoursLabel(r.majMin)})</dt><dd>{euros(r.majAmount)}</dd></>)}
             {r.ferieAmount > 0 && (<><dt>Fériés travaillés</dt><dd>{euros(r.ferieAmount)}</dd></>)}
             {r.cpIndemnite > 0 && (<><dt>Congés payés</dt><dd>{euros(r.cpIndemnite)}</dd></>)}
             {r.cpComplement > 0 && (<><dt>Complément congés</dt><dd>{euros(r.cpComplement)}</dd></>)}
             <dt>Salaire net</dt><dd>{euros(r.netTotal)}</dd>
-            <dt>Entretien ({r.presenceDays} j)</dt><dd>{euros(r.entretien)}{r.entretienAConfirmer ? ` + ${euros(r.entretienAConfirmer)} à confirmer` : ''}</dd>
+            {r.brutConnu && r.reductionHS > 0 && (<><dt>Réduction de cotisations des heures complémentaires et majorées</dt><dd>{euros(r.reductionHS)}</dd></>)}
+            <dt>Entretien ({r.presenceDays} j)</dt><dd>{euros(r.entretien)}</dd>
             {r.repas > 0 && (<><dt>Repas</dt><dd>{euros(r.repas)}</dd></>)}
             {r.km > 0 && (<><dt>Kilomètres</dt><dd>{euros(r.km)}</dd></>)}
           </dl>
-          {r.reductionHS > 0 && <p class="muted small">Heures complémentaires et majorées : elles ouvrent une réduction de tes cotisations d’environ {eurosArrondis(r.reductionHS)} (11,31 % de leur brut, art. L241-17 du code de la sécurité sociale), que Pajemploi ajoute en principe à la somme à verser : vérifie-la sur ton bulletin. Ces heures sont aussi exonérées d’impôt, dans la limite de 7 500 € par an.</p>}
+          {r.brutConnu && r.reductionHS > 0 && <p class="muted small">Heures complémentaires et majorées : elles ouvrent une réduction de tes cotisations de {euros(r.reductionHS)} (11,31 % de leur brut, code de la sécurité sociale, art. L241-17 et D241-21), comptée dans le total à verser. Ces heures sont aussi exonérées d’impôt, dans la limite de 7 500 € par an.</p>}
+          {r.reductionHSManquante && <p class="muted small">{MESSAGE_REDUCTION_HS_BRUT}</p>}
           <p class="muted small">
-            {termsAt(c, `${month}-01`).yearType === 'complete'
+            {c.accueilOccasionnel ? 'Accueil occasionnel : heures d’accueil du mois × taux horaire ; congés payés : 10 % des salaires de l’accueil, versés à sa fin (art. 109.3 et 102.1.2.3).' : termsAt(c, `${month}-01`).yearType === 'complete'
               ? 'Année complète : retenue = salaire mensualisé × heures non payées ÷ heures prévues dans le mois (art. 111).'
               : 'Année incomplète : retenue = salaire mensualisé × jours non payés ÷ jours prévus dans le mois (art. 111).'}
           </p>
@@ -219,9 +236,13 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
       </details>
 
       <div class="row">
-        <label for="other-day" class="label" style={{ flex: 1 }}>Corriger un autre jour</label>
-        <input id="other-day" class="input" style={{ width: 'auto' }} type="date" min={firstDay(month)} max={lastDay(month) < today() ? lastDay(month) : today()}
-          onChange={(e) => { const v = (e.target as HTMLInputElement).value; if (v) onEdit(v); (e.target as HTMLInputElement).value = ''; }} />
+        <span class="label" style={{ flex: 1 }}>Corriger un autre jour</span>
+        {/* T-103 (M5) : un champ date vide s'affiche sur iPhone comme un cadre blanc. Bouton visible, champ date transparent par-dessus. */}
+        <span class="btn btn-outline pick-day">
+          <Icon name="edit" size={18} />Choisir un jour
+          <input id="other-day" aria-label="Choisir un jour à corriger" type="date" min={firstDay(month)} max={lastDay(month) < today() ? lastDay(month) : today()}
+            onChange={(e) => { const v = (e.target as HTMLInputElement).value; if (v) onEdit(v); (e.target as HTMLInputElement).value = ''; }} />
+        </span>
       </div>
       <section class="stack-sm" aria-labelledby="exc-t">
         <h2 id="exc-t" class="section-title">Ce qui a changé ce mois-ci</h2>
@@ -232,7 +253,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
             {exceptions.map((di) => {
               let sub = '';
               if (di.kind === 'am' && di.amLeave) sub = AM_ABS_LABEL[di.amLeave];
-              else if (di.kind === 'ferie') sub = di.ferie ? `Férié : ${di.ferie}` : `Férié local à confirmer : ${di.ferieLocal}`;
+              else if (di.kind === 'ferie') sub = `Férié : ${di.ferie}${di.deducted ? ', non payé' : ''}`;
               else if (di.rec?.abs) sub = CHILD_ABS_LABEL[di.rec.abs] + (di.deducted ? ', retenu' : ', payé');
               else if (di.departOublie) sub = 'Départ non pointé';
               else if (di.extraMin) sub = `+${hoursLabel(di.extraMin)} en plus`;

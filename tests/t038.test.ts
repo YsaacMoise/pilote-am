@@ -8,13 +8,13 @@ import { describe, expect, it } from 'vitest';
 import type { AmLeave, Contract, Planning } from '../src/engine/model';
 import { makeCtx, MESSAGE_MOIS_DEJA_DECLARE, messageMoisSansSoldeChange, monthBase, salaireMensualise } from '../src/engine/payroll';
 import { finDeContrat } from '../src/engine/fin';
-import { euros } from '../src/engine/money';
 import { ratesAt } from '../src/engine/rates';
 import { RULES } from '../src/screens/Regles';
 import { NON_GERE_MAYOTTE, nonGeresContrat } from '../src/engine/nonGeres';
 import { acquisition } from '../src/engine/conges';
 import { libelleDureeSaisie, statutJourEvenement } from '../src/engine/evenements';
 import { normaliserAbsence } from '../src/engine/absences';
+import { computeMonth as computeMonthRef } from '../src/engine/month';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
   const p: Planning = {};
@@ -42,37 +42,15 @@ const EVENEMENT: AmLeave = { id: 'e', type: 'evenement', from: '2026-03-10', to:
 const SANS_SOLDE: AmLeave = { id: 's', type: 'sans_solde', from: '2026-03-10', to: '2026-03-11' };
 const fin = (leaves: AmLeave[], c = contract()) => finDeContrat(makeCtx(c, [], leaves, '2026-11-18'), '2026-10-28', 'retrait');
 
-describe('T-038 B-1 : la régularisation ne verse jamais en silence un salaire « à confirmer »', () => {
-  it('mars 2026 : 2 jours d’événement à confirmer, 54,55 € sortis du salaire (art. 111 : 600 × 2 ÷ 22)', () => {
+describe('T-038 B-1, revu par la T-103 : plus de jours « à confirmer » à faire entrer dans la régularisation', () => {
+  it('ancienne saisie d’événement sans durée (0) : le mois est refusé avec la consigne, rien n’est « à confirmer »', () => {
     expect(salaireMensualise(contract())).toBe(60000);
-    const b = monthBase(makeCtx(contract(), [], [EVENEMENT], '2026-11-18'), '2026-03');
-    expect(b.evenementAConfirmer).toBe(5455);
-    expect(b.base).toBe(60000 - 5455);
+    expect(computeMonthRef(makeCtx(contract(), [], [EVENEMENT], '2026-11-18'), '2026-03').nonGere.join(' ')).toMatch(/ne connaît pas encore sa durée/);
   });
-  it('fin de contrat (sonde S1) : régularisation à confirmer, ni comptée ni donnée, avec les deux lectures', () => {
-    const sans = fin([]);
-    const retenu = fin([SANS_SOLDE]);
-    const f = fin([EVENEMENT]);
-    expect(sans.regularisationAConfirmer).toBeUndefined();
-    expect(sans.regularisation).toBeGreaterThan(0);
-    // Avant la correction : sans.regularisation + 54,55 € comptés dans le total.
-    expect(f.regularisation).toBe(0);
-    expect(f.regularisationAConfirmer).toContain(`${euros(sans.regularisation)} si les jours à confirmer sont dus`);
-    expect(f.regularisationAConfirmer).toContain(`${euros(retenu.regularisation)} s’ils ne le sont pas`);
-    // Le congé sans solde retient les mêmes 2 jours : la lecture « non dus » est plus basse que la lecture « dus ».
-    expect(retenu.regularisation).toBeLessThan(sans.regularisation);
-  });
-  it('avenant qui passe en année complète au 01/09/2026 : rien n’est versé, les deux montants sont dans l’alerte', () => {
-    const av = { avenants: [{ id: 'a1', from: '2026-09-01', changes: { yearType: 'complete' as const, weeks: 52 } }] };
-    const ref = monthBase(makeCtx(contract(av), [], [], '2026-11-18'), '2026-09');
-    const retenu = monthBase(makeCtx(contract(av), [], [SANS_SOLDE], '2026-11-18'), '2026-09');
-    const b = monthBase(makeCtx(contract(av), [], [EVENEMENT], '2026-11-18'), '2026-09');
-    expect(ref.regulAvenant).toBeGreaterThan(0);
-    expect(b.regulAvenant).toBeUndefined();
-    expect(b.net).toBe(ref.net - ref.regulAvenant!);
-    const alerte = b.alerts.find((a) => a.startsWith('Régularisation à l’avenant du 01/09 à confirmer'));
-    expect(alerte).toContain(`${euros(ref.regulAvenant!)} si les jours à confirmer sont dus`);
-    expect(alerte).toContain(`${euros(retenu.regulAvenant!)} s’ils ne le sont pas`);
+  it('fin de contrat avec un congé sans solde : régularisation calculée, sans « à confirmer »', () => {
+    const f = fin([SANS_SOLDE]);
+    expect(f.regularisationAConfirmer).toBeUndefined();
+    expect(f.regularisation).toBeLessThan(fin([]).regularisation);
   });
 });
 
@@ -80,66 +58,56 @@ describe('T-038 B-1 : la régularisation ne verse jamais en silence un salaire �
 const complete = (over: Partial<Contract> = {}) => contract({ start: '2026-06-01', trackedFrom: '2026-06-01', yearType: 'complete', weeks: 52, weeksOff: [], ...over });
 const finC = (notif: string, motif: 'retrait' | 'demission', presentation?: string) => finDeContrat(makeCtx(complete(), [], [], '2027-01-18'), notif, motif, 0, presentation);
 
-describe('T-038 AC-2 : date de fin du préavis à confirmer, indemnité de congés non pris comparée à la fin J+1', () => {
-  it('fin le 22/10/2026 ou le 23/10/2026 : même indemnité, elle reste comptée', () => {
+describe('T-038 AC-2, revu par la T-103 (F1) : une seule date de fin, indemnité de congés non pris sans réserve', () => {
+  it('fin le 22/10/2026 : indemnité comptée', () => {
     const f = finC('2026-10-08', 'retrait');
     expect(f.dernierJour).toBe('2026-10-22');
     expect(f.cpAConfirmer).toBeUndefined();
     expect(f.cpIndemnite).toBeGreaterThan(0);
   });
-  it('fin le 23/10/2026 : le lendemain, le nombre de jours acquis devient à confirmer ; rien n’est compté', () => {
+  it('fin le 23/10/2026 : indemnité comptée (jours acquis par la méthode de l’arrêt du 10/01/1980, C10, C11)', () => {
     const f = finC('2026-10-09', 'retrait');
-    const lendemain = finC('2026-10-09', 'retrait', '2026-10-10');
     expect(f.dernierJour).toBe('2026-10-23');
-    expect(lendemain.dernierJour).toBe('2026-10-24');
-    // À la fin du 24/10, l'acquisition elle-même est à confirmer (A-23, deux fiches DREETS) : pas de montant.
-    expect(lendemain.cpAConfirmer).toMatch(/Tes jours de congés de cette période sont à confirmer/);
-    expect(f.cpIndemnite).toBe(0);
-    expect(f.cpAConfirmer).toMatch(/^Indemnité de congés non pris à confirmer/);
-    expect(f.cpAConfirmer).toMatch(/Fin le 23\/10\/2026 : [\d\s\u202f\u00a0]+,\d\d\u00a0€/);
-    expect(f.cpAConfirmer).toContain('Fin le 24/10/2026 : nombre de jours à confirmer');
+    expect(f.cpAConfirmer).toBeUndefined();
+    expect(f.cpIndemnite).toBeGreaterThan(0);
   });
 });
 
-describe('T-038 AC-1 : démission de 3 mois à 1 an, durée en conflit (CASF L423-26 : un mois ; CCN art. 120 : 15 jours)', () => {
-  it('retrait à 4 mois (15 jours, sans conflit) : indemnité de congés non pris comptée', () => {
+describe('T-038 AC-1, revu par la T-103 (F2) : démission de 3 mois à 1 an, 15 jours (CCN 120)', () => {
+  it('retrait à 4 mois (15 jours) : indemnité de congés non pris comptée', () => {
     const f = finC('2026-10-05', 'retrait');
     expect(f.dernierJour).toBe('2026-10-19');
     expect(f.cpAConfirmer).toBeUndefined();
     expect(f.cpIndemnite).toBeGreaterThan(0);
   });
-  it('démission à la même date : le préavis d’un mois finirait le 04/11/2026 ; l’indemnité change, elle est à confirmer', () => {
+  it('démission à la même date : même fin, même indemnité, sans réserve', () => {
     const f = finC('2026-10-05', 'demission');
     const retrait = finC('2026-10-05', 'retrait');
     expect(f.dernierJour).toBe('2026-10-19');
-    expect(f.cpIndemnite).toBe(0);
-    expect(f.cpAConfirmer).toMatch(/^Indemnité de congés non pris à confirmer : elle dépend de la durée du préavis et de sa date de fin/);
-    expect(f.cpAConfirmer).toContain(`Fin le 19/10/2026 : ${euros(retrait.cpIndemnite)}`);
-    expect(f.cpAConfirmer).toContain('Préavis d’un mois, fin le 04/11/2026');
+    expect(f.cpAConfirmer).toBeUndefined();
+    expect(f.cpIndemnite).toBe(retrait.cpIndemnite);
   });
-  it('année incomplète : la régularisation est calculée pour les deux durées et mise à confirmer si elle change', () => {
+  it('année incomplète : même régularisation pour la démission et le retrait, sans réserve', () => {
     const c = contract({ start: '2026-03-02', trackedFrom: '2026-03-02' });
     const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-14', 'demission');
     const r = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-14', 'retrait');
     expect(f.dernierJour).toBe(r.dernierJour);
-    expect(r.regularisationAConfirmer).toBeUndefined();
-    expect(f.regularisation).toBe(0);
-    expect(f.regularisationAConfirmer).toMatch(/^Régularisation à confirmer : elle dépend de la durée du préavis et de sa date de fin/);
-    expect(f.regularisationAConfirmer).toContain(`Fin le 28/10/2026 : ${euros(r.regularisation)}`);
-    expect(f.regularisationAConfirmer).toContain('Préavis d’un mois, fin le 13/11/2026');
+    expect(f.regularisationAConfirmer).toBeUndefined();
+    expect(f.regularisation).toBe(r.regularisation);
   });
 });
 
-describe('T-038 R-1 : décès de l’enfant, indemnité égale au préavis, premier jour non fixé par un texte', () => {
+describe('T-038 R-1, revu par la T-103 (F8) : décès de l’enfant, indemnité égale au préavis à partir du lendemain', () => {
+  // CCN 119.4.2 : rupture « au jour du décès », « dernier salaire dû au jour du décès » : la période de l'indemnité part du lendemain.
   const c = complete({ start: '2024-09-02', trackedFrom: '2024-09-02' });
-  it('décès le mercredi 14/10/2026 : un mois du 15/10 ou du 14/10, montants différents, rien n’est compté', () => {
+  it('décès le mercredi 14/10/2026 : un mois du 15/10 au 14/11/2026, compté', () => {
     const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-14', 'deces');
-    expect(f.indemnitePreavis).toBe(0);
-    expect(f.indemnitePreavisAConfirmer).toMatch(/Du 15\/10\/2026 au 14\/11\/2026 \(lendemain du décès\) : .* ; du 14\/10\/2026 au 13\/11\/2026 \(jour du décès\) : /);
+    expect(f.indemnitePreavis).toBeGreaterThan(0);
+    expect(f.indemnitePreavisExplication).toMatch(/du 15\/10\/2026 au 14\/11\/2026/);
+    expect(f.alertes.join(' ')).toMatch(/article 119\.4\.2/);
   });
-  it('décès le samedi 31/10/2026 : même montant quel que soit le premier jour (novembre entier, R-FIN-05), compté', () => {
+  it('décès le samedi 31/10/2026 : novembre entier, compté', () => {
     const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-31', 'deces');
-    expect(f.indemnitePreavisAConfirmer).toBeUndefined();
     expect(f.indemnitePreavis).toBe(salaireMensualise(c));
   });
 });
@@ -167,21 +135,20 @@ describe('T-038 point 10 (G-6) : un jour de l’enfant noté « sans solde » ne
 describe('T-038 AC-3 : écran de saisie d’un événement familial, le texte suit le moteur', () => {
   const statut = (nature: Parameters<typeof libelleDureeSaisie>[0], from: string) =>
     statutJourEvenement(normaliserAbsence({ id: 'e', type: 'evenement', from, to: from, nature }), from);
-  it('décès d’un enfant en 2022 : le moteur met « à confirmer », l’écran n’annonce plus « 5 jours ouvrables payés »', () => {
-    expect(statut('deces_enfant', '2022-06-01').paye).toBe(false);
-    expect(libelleDureeSaisie('deces_enfant', '2022-06-01')).toBe('Période non gérée (avant le 01/05/2024) : durée à vérifier avec les parents');
+  it('décès d’un enfant en 2022 (T-103, C6) : payé, l’écran annonce 5 jours ouvrables payés', () => {
+    expect(statut('deces_enfant', '2022-06-01').paye).toBe(true);
+    expect(libelleDureeSaisie('deces_enfant', '2022-06-01')).toBe('5 jours ouvrables payés');
   });
-  it('décès d’un enfant de moins de 25 ans en 2023 (jours ouvrés contre ouvrables) : plus de « Indemnisé par la Sécurité sociale »', () => {
-    expect(libelleDureeSaisie('deces_enfant_14', '2023-03-01')).not.toMatch(/Sécurité sociale/);
-    expect(libelleDureeSaisie('deces_enfant_14', '2023-03-01')).toMatch(/^Période non gérée/);
+  it('décès d’un enfant de moins de 25 ans en 2023 (T-103) : 9 jours ouvrables, qui couvrent les 7 jours ouvrés de la loi', () => {
+    expect(libelleDureeSaisie('deces_enfant_14', '2023-03-01')).toBe('9 jours ouvrables payés');
   });
   it('mariage en 2026 : payé par le moteur, l’écran annonce 4 jours ouvrables payés (CCN 48.1.3.1.1, L3142-4 1°)', () => {
     expect(statut('mariage', '2026-10-05').paye).toBe(true);
     expect(libelleDureeSaisie('mariage', '2026-10-05')).toBe('4 jours ouvrables payés');
   });
-  it('congé de deuil en 2026 : non géré par le moteur, l’écran le dit', () => {
-    expect(statut('deuil', '2026-10-05').paye).toBe(false);
-    expect(libelleDureeSaisie('deuil', '2026-10-05')).toMatch(/^Non géré par l’app/);
+  it('congé de deuil en 2026 (T-103, C9) : payé, l’écran demande le montant des indemnités journalières', () => {
+    expect(statut('deuil', '2026-10-05').paye).toBe(true);
+    expect(libelleDureeSaisie('deuil', '2026-10-05')).toMatch(/^8 jours ouvrables, salaire maintenu moins les indemnités journalières/);
   });
 });
 
@@ -196,9 +163,9 @@ describe('T-038 M-1, M-2 : repères nets du minimum AM lus sur la page Urssaf (m
 
 describe('T-038 M-3 : écran Règles complété', () => {
   const regle = (debut: string) => RULES.find((x) => x.t.startsWith(debut))!;
-  it('fin de contrat : conflit de durée de la démission (CASF L423-26 / CCN art. 120) et montants à confirmer', () => {
-    expect(regle('Fin de contrat').r).toMatch(/L423-26\) prévoit un mois, la convention 15 jours/);
-    expect(regle('Fin de contrat').choix).toMatch(/ne sont pas comptés dans le total/);
+  it('fin de contrat (T-103) : démission de 3 mois à 1 an, 15 jours ; rien « à confirmer »', () => {
+    expect(regle('Fin de contrat').r).toMatch(/de 3 mois à 1 an, la convention, plus favorable que la loi, prévoit 15 jours/);
+    expect(`${regle('Fin de contrat').r} ${regle('Fin de contrat').choix}`).not.toMatch(/à confirmer|DDETS|environ/);
   });
   it('congés payés : jours pour enfant à charge acquis au 31 mai (CCN 48.1.3.3, CPA-03)', () => {
     expect(regle('Congés payés').choix).toMatch(/acquis au 31 mai.*48\.1\.3\.3/);
@@ -225,49 +192,28 @@ describe('T-038 G-1 : mois terminé avec un jour noté « sans solde » (retenu 
   });
 });
 
-describe('T-038 suite, point 1 : indemnité de rupture d’un retrait quand la fin du préavis bouge d’un jour', () => {
-  // Début le 03/06/2024 (début de période de référence) : les congés de la période sont sûrs, l'assiette est complète.
+describe('T-038 suite, point 1, revu par la T-103 (F1) : indemnité de rupture d’un retrait, une seule date de fin', () => {
   const c = complete({ start: '2024-06-03', trackedFrom: '2024-06-03' });
-  // T-050b (A-45, regles/t050-trois-regles.md, point 2) : l'assiette comprend l'indemnité de congés non pris. Fin en
-  // novembre : ses jours de la période en cours sont « à confirmer » (A-23, T-030 : 15 ou 13 jours), donc l'indemnité de
-  // rupture l'est aussi, avant même la question de la date de fin. Les deux tests de novembre gardent leurs dates et
-  // vérifient cette raison ; le mécanisme des variantes est vérifié en mai, où les congés non pris sont sûrs.
-  it('fin le jeudi 12/11/2026 ou le vendredi 13/11/2026 : deux montants, « à confirmer », non comptée', () => {
+  it('fin le jeudi 12/11/2026 : indemnité comptée, sans variante', () => {
     const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-13', 'retrait');
-    const lendemain = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-13', 'retrait', 0, '2026-10-14');
     expect(f.dernierJour).toBe('2026-11-12');
-    expect(lendemain.dernierJour).toBe('2026-11-13');
-    expect(f.ruptureAConfirmer).toBe(true);
-    expect(f.cpAConfirmer).toBeDefined();
-    expect(f.alertes.join(' ')).toMatch(/Indemnité de rupture à confirmer : elle ne compte pas encore l’indemnité de congés non pris à confirmer/);
-    expect(lendemain.indemniteRupture).not.toBe(f.indemniteRupture);
+    expect(f.cpAConfirmer).toBeUndefined();
+    expect(f.ruptureAConfirmer).toBeFalsy();
+    expect(f.indemniteRupture).toBeGreaterThan(0);
   });
-  it('fin le lundi 04/05/2026 ou le mardi 05/05/2026 : deux montants, « à confirmer », non comptée (congés non pris sûrs)', () => {
+  it('lettre présentée un jour plus tard : la fin suit la présentation (CCN 64.1, fiche F2883), un seul montant chaque fois', () => {
     const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-04-05', 'retrait');
     const lendemain = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-04-05', 'retrait', 0, '2026-04-06');
     expect(f.dernierJour).toBe('2026-05-04');
     expect(lendemain.dernierJour).toBe('2026-05-05');
-    expect(f.cpAConfirmer).toBeUndefined();
-    expect(lendemain.cpAConfirmer).toBeUndefined();
-    expect(f.ruptureAConfirmer).toBe(true);
-    expect(f.ruptureVariantes).toContain(`Fin le 04/05/2026 : ${euros(f.indemniteRupture)}`);
-    // T-050b : la variante compte la même assiette que le calcul de la fin au 05/05 (indemnité de congés non pris comprise).
-    expect(f.ruptureVariantes).toContain(`Fin le 05/05/2026 : ${euros(lendemain.indemniteRupture)}`);
+    expect(f.ruptureAConfirmer).toBeFalsy();
+    expect(lendemain.ruptureAConfirmer).toBeFalsy();
     expect(lendemain.indemniteRupture).not.toBe(f.indemniteRupture);
   });
-  it('fin le vendredi 13/11/2026 : le samedi n’est pas un jour d’accueil, même montant, comptée', () => {
-    const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-10-14', 'retrait');
-    expect(f.ruptureVariantes).toBeUndefined();
-    // T-050b : « à confirmer » ici pour une autre raison, l'indemnité de congés non pris à confirmer (voir plus haut).
-    expect(f.ruptureAConfirmer).toBe(true);
-    expect(f.alertes.join(' ')).toMatch(/elle ne compte pas encore l’indemnité de congés non pris à confirmer/);
-    expect(f.indemniteRupture).toBeGreaterThan(0);
-  });
-  it('fin le vendredi 15/05/2026 : le samedi n’est pas un jour d’accueil, même montant, comptée (congés non pris sûrs)', () => {
+  it('fin le vendredi 15/05/2026 : comptée', () => {
     const f = finDeContrat(makeCtx(c, [], [], '2026-12-31'), '2026-04-16', 'retrait');
     expect(f.dernierJour).toBe('2026-05-15');
     expect(f.cpAConfirmer).toBeUndefined();
-    expect(f.ruptureVariantes).toBeUndefined();
     expect(f.ruptureAConfirmer).toBeFalsy();
     expect(f.indemniteRupture).toBeGreaterThan(0);
   });

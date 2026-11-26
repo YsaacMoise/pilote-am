@@ -1,13 +1,19 @@
 // Préavis : durée (CCN art. 120), date de fin (méthode de l'app) et contrôle de la date de fin saisie (T-045b).
 // Module séparé de fin.ts pour que le calcul des mois (nonGeres.ts) s'en serve sans dépendre de fin.ts.
 import { addDays, addMonthsToDate, fullMonthsBetween, shortDate, type ISODate } from './dates';
-import type { Contract, Rupture } from './model';
+import { avecPreavisMotif, type AmLeave, type Contract, type Rupture } from './model';
+import { cpPendantPreavis, finPreavisProrogee, MESSAGE_CUMUL_CP_A_REPONDRE } from './suspensions';
 
-/** Durée du préavis selon l'ancienneté, rupture par l'employeur (R-FIN-02, CCN art. 120) */
+/**
+ * Durée du préavis selon l'ancienneté (R-FIN-02, CCN art. 120), rupture par les parents ou par l'AM. T-109 (comparateur, 7.1 ;
+ * correction 14) : démission avant 3 mois, 8 jours calendaires : CASF L423-26 ne règle que l'enfant confié « depuis au moins
+ * trois mois » ; la CCN, étendue sans réserve sur l'article 120 (arrêté du 06/10/2021), comble ce silence ; de 3 mois à moins
+ * d'un an, 15 jours, plus favorable que le mois du CASF (C. trav. L2251-1).
+ */
 export function preavisEmployeur(anc: number): { label: string; jours?: number } {
-  if (anc < 3) return { label: '8 jours calendaires', jours: 8 };
-  if (anc < 12) return { label: '15 jours calendaires', jours: 15 };
-  return { label: '1 mois' };
+  if (anc < 3) return { label: '8 jours calendaires (convention collective, article 120)', jours: 8 };
+  if (anc < 12) return { label: '15 jours calendaires (convention collective, article 120)', jours: 15 };
+  return { label: '1 mois (convention collective, article 120)' };
 }
 
 /** Dernier jour d'un préavis qui commence le jour `depart` (méthode de l'app, voir PREAVIS-DATE-FIN) */
@@ -19,37 +25,41 @@ export function finPreavis(depart: ISODate, p: { jours?: number }): ISODate {
 }
 
 /**
- * Fin du préavis calculée par l'app et dates de fin admises quand le préavis est fait en entier : la fin calculée, le
- * lendemain (aucun texte ne dit si le jour de présentation compte, MESSAGE_PREAVIS_FIN) et, pour une démission de 3 mois à
- * moins d'un an, la fin d'un préavis d'un mois et son lendemain (CASF L423-26 contre CCN art. 120). Sans préavis (inaptitude,
- * faute grave, essai, décès) : la date d'envoi ou du décès (CCN art. 64.3, 64.4, 119.4.2).
- */
-/**
  * T-077 (R5) : préavis du droit local d'Alsace-Moselle, lecture B (CT L1234-16 1° : six semaines pour les « personnes employées
  * chez des particuliers », aussi pour la démission, L1234-17-1). Fin de ce préavis quand il est plus long que celui de la
  * convention ; sinon `undefined`.
  */
 export function finPreavisLocal(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'>): ISODate | undefined {
-  if (r.motif !== 'retrait' && r.motif !== 'demission') return undefined;
+  if (!avecPreavisMotif(r.motif)) return undefined;
   const depart = r.presentation && r.presentation > r.notif ? r.presentation : r.notif;
   const ccn = finPreavis(depart, preavisEmployeur(fullMonthsBetween(start, r.notif)));
   const local = finPreavis(depart, { jours: 42 });
   return local > ccn ? local : undefined;
 }
 
-export function finsAdmises(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'>, alsaceMoselle = false): { preavisFin: ISODate; admises: ISODate[] } {
-  if (r.motif !== 'retrait' && r.motif !== 'demission') return { preavisFin: r.notif, admises: [r.notif] };
+/**
+ * Fin du préavis calculée par l'app quand le préavis est fait en entier : une seule date (T-103, F1 et F2 : le jour de la
+ * première présentation est le premier jour du préavis, fiche F2883). Sans préavis (inaptitude, faute grave ou lourde, essai,
+ * décès) : la date d'envoi ou du décès (CCN art. 64.3, 64.4, 119.4.2, 63.3.2). T-109 (correction 21) : commentaire mis à jour.
+ * `leaves` (T-104) : préavis fait en entier seulement, absences de l'AM pour la prorogation de l'art. 64.1 (congé de
+ * maternité, accident du travail ou maladie professionnelle : suspensions.ts). Sans `leaves` : fin sans prorogation (préavis
+ * dont les parents dispensent l'AM, ou fait en partie à sa demande).
+ */
+export function finsAdmises(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'> & Partial<Pick<Rupture, 'cumulCpPreavis'>>, _alsaceMoselle = false, leaves: AmLeave[] = []): { preavisFin: ISODate; admises: ISODate[] } {
+  // T-103 (F1, F2, R2) : une seule date de fin du préavis (fiche officielle F2883 ; CCN 120 ; pas de préavis local pour l'AM).
+  if (!avecPreavisMotif(r.motif)) return { preavisFin: r.notif, admises: [r.notif] };
   const anc = fullMonthsBetween(start, r.notif);
   const depart = r.presentation && r.presentation > r.notif ? r.presentation : r.notif;
-  const preavisFin = finPreavis(depart, preavisEmployeur(anc));
-  const admises = [preavisFin, addDays(preavisFin, 1)];
-  if (r.motif === 'demission' && anc >= 3 && anc < 12) {
-    const finMois = finPreavis(depart, {});
-    admises.push(finMois, addDays(finMois, 1));
-  }
-  const local = alsaceMoselle ? finPreavisLocal(start, r) : undefined;
-  if (local) admises.push(local, addDays(local, 1));
-  return { preavisFin, admises };
+  // T-107 (cas 1) : congés payés pendant le préavis, suspension sauf accord écrit de cumul (CCN 64.1).
+  const preavisFin = finPreavisProrogee(depart, finPreavis(depart, preavisEmployeur(anc)), leaves, r.cumulCpPreavis);
+  return { preavisFin, admises: [preavisFin] };
+}
+
+/** T-107 (cas 1) : préavis fait en entier, des congés payés y tombent et la réponse sur l'accord de cumul manque */
+export function cumulCpADemander(start: ISODate, r: Pick<Rupture, 'motif' | 'notif' | 'presentation'> & Partial<Pick<Rupture, 'cumulCpPreavis'>>, leaves: AmLeave[]): boolean {
+  if ((!avecPreavisMotif(r.motif)) || r.cumulCpPreavis !== undefined) return false;
+  const depart = r.presentation && r.presentation > r.notif ? r.presentation : r.notif;
+  return cpPendantPreavis(depart, finPreavis(depart, preavisEmployeur(fullMonthsBetween(start, r.notif))), leaves);
 }
 
 const lo2 = (a: ISODate, b: ISODate) => (a < b ? a : b);
@@ -62,7 +72,7 @@ const REGLE_DISPENSE = 'si les parents t’ont dispensée de tout ou partie du p
  * touchée (`du`, `au`) et le message de refus. Jamais un total silencieux : chaque mois, régularisation ou période de
  * congés qui touche cette période est refusé (nonGeresPeriode).
  */
-export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'> & Partial<Pick<Contract, 'alsaceMoselle' | 'mayotte' | 'cdd'>>): { du: ISODate; au: ISODate; message: string } | undefined {
+export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'> & Partial<Pick<Contract, 'alsaceMoselle' | 'mayotte' | 'cdd'>>, leaves: AmLeave[] = []): { du: ISODate; au: ISODate; message: string } | undefined {
   const end = c.end;
   if (!end) return undefined;
   const r = c.rupture;
@@ -85,7 +95,9 @@ export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'
       message: `Fin du contrat le ${shortDate(end)} : l’app ne sait pas si le préavis a été fait. Or ${REGLE_DISPENSE}, et le dernier mois change selon la réponse. Réponds aux questions de l’écran « Fin de contrat » et enregistre-les : les derniers mois seront calculés ensuite.`,
     };
   }
-  const { preavisFin, admises } = finsAdmises(c.start, r, !!c.alsaceMoselle && !c.mayotte);
+  // T-104 : prorogation de l'art. 64.1 seulement pour un préavis fait en entier (dernière branche ci-dessous).
+  const { preavisFin } = finsAdmises(c.start, r, !!c.alsaceMoselle && !c.mayotte);
+  const { preavisFin: preavisFinFait, admises } = finsAdmises(c.start, r, !!c.alsaceMoselle && !c.mayotte, leaves);
   const lo = (...d: ISODate[]) => d.reduce((a, b) => (a < b ? a : b));
   const hi = (...d: ISODate[]) => d.reduce((a, b) => (a > b ? a : b));
   const d = r.dernierJourTravaille;
@@ -94,7 +106,7 @@ export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'
     // regles/t074-preavis-dispense.md). Le contrat finit à la date prévue de fin du préavis (art. 64) : la fin calculée, ou
     // le lendemain (date de fin à confirmer, comme pour un préavis fait en entier). Les jours dispensés sont payés comme des
     // jours d'absence voulue par les parents, sans entretien (jourDispense, payroll.ts).
-    if (!d || (d < r.notif && d < addDays(r.notif, -7)) || d > preavisFin || (r.motif !== 'retrait' && r.motif !== 'demission')) {
+    if (!d || (d < r.notif && d < addDays(r.notif, -7)) || d > preavisFin || (!avecPreavisMotif(r.motif))) {
       return { du: lo(d ?? r.notif, r.notif, end), au: hi(end, preavisFin), message: 'Préavis non fait à la demande des parents : les dates enregistrées ne concordent pas (dernier jour travaillé manquant, avant la lettre ou après la fin du préavis). Corrige-les dans l’écran « Fin de contrat ».' };
     }
     if (!admises.includes(end)) {
@@ -105,14 +117,10 @@ export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'
     }
     return undefined;
   }
-  if (r.preavis === 'am_sans_accord') {
-    return {
-      du: lo(d ?? r.notif, end), au: hi(end, preavisFin),
-      message: 'Préavis non fait sans l’accord des parents : ils peuvent te demander une indemnité égale au salaire net de la partie du préavis non faite (convention, article 64.2) et des dommages et intérêts (code de l’action sociale et des familles, article L423-26). L’app ne calcule pas ce cas. Fais ces mois avec les parents.',
-    };
-  }
-  if (r.preavis === 'am_acceptee') {
-    if (!d || d < r.notif || d > preavisFin || (r.motif !== 'retrait' && r.motif !== 'demission')) {
+  // T-107 (cas 2) : préavis non fait sans l'accord des parents : le contrat finit au dernier jour travaillé (CCN 64), comme
+  // avec leur accord. T-109 : aucune question sur la grossesse (l'écran de fin donne les deux cas en texte).
+  if (r.preavis === 'am_acceptee' || r.preavis === 'am_sans_accord') {
+    if (!d || d < r.notif || d > preavisFin || (!avecPreavisMotif(r.motif))) {
       return { du: lo(r.notif, end), au: hi(end, preavisFin), message: 'Préavis non fait à ta demande : les dates enregistrées ne concordent pas (dernier jour travaillé manquant, avant la lettre ou après la fin du préavis). Corrige-les dans l’écran « Fin de contrat ».' };
     }
     if (end !== d) {
@@ -122,12 +130,15 @@ export function controleFinContrat(c: Pick<Contract, 'start' | 'end' | 'rupture'
   }
   if (!admises.includes(end)) {
     return {
-      du: lo(end, preavisFin), au: hi(end, preavisFin),
-      message: `La date de fin du contrat (${shortDate(end)}) ne concorde pas avec la fin du préavis calculée (${shortDate(preavisFin)}) pour un préavis fait en entier. Si le préavis n’a pas été fait en entier, dis-le dans l’écran « Fin de contrat » ; sinon corrige la date de fin.`,
+      du: lo(end, preavisFinFait), au: hi(end, preavisFinFait),
+      message: `La date de fin du contrat (${shortDate(end)}) ne concorde pas avec la fin du préavis calculée (${shortDate(preavisFinFait)}) pour un préavis fait en entier. Si le préavis n’a pas été fait en entier, dis-le dans l’écran « Fin de contrat » ; sinon corrige la date de fin.`,
     };
   }
+  // T-107 (cas 1) : congés payés dans le préavis sans réponse sur l'accord écrit de cumul (CCN 64.1) : demandée une fois.
+  if (cumulCpADemander(c.start, r, leaves)) return { du: lo(r.notif, end), au: hi(end, preavisFinFait), message: MESSAGE_CUMUL_CP_A_REPONDRE };
   return undefined;
 }
+
 
 /**
  * T-074 : jour d'un préavis dont les parents ont dispensé l'AM (CCN art. 64.2 : « inexécution totale ou partielle du préavis
@@ -139,3 +150,23 @@ export function jourDispense(c: Pick<Contract, 'end' | 'rupture'>, d: ISODate): 
   const r = c.rupture;
   return !!r && r.preavis === 'employeur' && !!r.dernierJourTravaille && d > r.dernierJourTravaille && !!c.end && d <= c.end;
 }
+
+/**
+ * T-109 (comparateur, correction 7) : dernier jour possible de la période d'essai d'un CDI (CCN 95.1). « La durée maximale de
+ * la période d'essai dépend du nombre de jours de travail hebdomadaire fixé dans le contrat de travail » : 3 mois pour 1, 2 ou
+ * 3 jours calendaires par semaine ; 2 mois pour 4 jours et plus ; 30 jours calendaires pour un autre enfant de la même famille
+ * quand un contrat en cours avait une période d'essai concluante (`autreEnfant`). Planning variable : 2 mois seulement si
+ * chaque semaine type a 4 jours ou plus. Le premier jour du contrat est le premier jour de l'essai.
+ */
+export function finEssaiMaxCdi(c: Contract, autreEnfant?: boolean): { fin: ISODate; regle: string } {
+  if (autreEnfant) return { fin: addDays(c.start, 29), regle: '30 jours calendaires pour l’accueil d’un autre enfant de la même famille, après un essai concluant' };
+  const semaines = c.planningVariable && c.cycle?.length ? c.cycle : c.planningVariable && c.planningsSemaines ? Object.values(c.planningsSemaines) : [c.planning];
+  const jours = (p: Record<string, unknown[] | undefined> | undefined) => Object.values(p ?? {}).filter((x) => Array.isArray(x) && x.length > 0).length;
+  const quatre = semaines.length > 0 && semaines.every((p) => jours(p as Record<string, unknown[] | undefined>) >= 4);
+  return quatre
+    ? { fin: addDays(addMonthsToDate(c.start, 2), -1), regle: '2 mois quand tu travailles 4 jours ou plus par semaine pour ces parents' }
+    : { fin: addDays(addMonthsToDate(c.start, 3), -1), regle: '3 mois quand tu travailles 1, 2 ou 3 jours par semaine pour ces parents' };
+}
+
+/** T-109 : question posée quand un autre contrat de la même famille était en cours au début de celui-ci */
+export const QUESTION_ESSAI_AUTRE_ENFANT = 'Quand ce contrat a commencé, tu gardais déjà un autre enfant de cette famille : ce premier contrat avait-il une période d’essai, qui s’est bien passée ?';

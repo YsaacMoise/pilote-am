@@ -2,9 +2,10 @@
 import { useEffect, useState } from 'preact/hooks';
 import * as db from './db';
 import type { AmLeave, Bulletin, Contract, DayRec, Journal, Settings } from './engine/model';
-import { makeCtx, type Ctx } from './engine/payroll';
-import { today } from './engine/dates';
-import { liensApresSuppression, normaliserAbsences, type AbsenceLue } from './engine/absences';
+import { brutDuNet, makeCtx, monthBase, type Ctx } from './engine/payroll';
+import { addMonths, firstDay, lastDay, monthOf, today, type Month } from './engine/dates';
+import { computeMonth } from './engine/month';
+import { liensApresSuppression, normaliserAbsences, ruptureSansSante, type AbsenceLue } from './engine/absences';
 import { ecranDe, evErreur, type ErreurCode } from './usage-events';
 
 export interface Feedback { id: string; ts: number; screen: string; text: string }
@@ -67,7 +68,13 @@ export async function load(): Promise<void> {
   ]);
   const s = kv.find((x) => x.k === 'settings');
   state.settings = { ...DEFAULT_SETTINGS, ...((s?.v as Settings) ?? {}) };
-  state.contracts = contracts.sort((a, b) => a.createdAt - b.createdAt);
+  // T-109 (décision de la direction du 26/11/2026 : rien sur la grossesse à la démission) : une rupture gardée avec les anciens
+  // champs « grossesse » ou « sommeDuePreavis » les perd, puis est réécrite (téléphone et compte en ligne).
+  const contratsSains = contracts.map((c) => (c.rupture && ruptureSansSante(c.rupture) !== c.rupture ? { ...c, rupture: ruptureSansSante(c.rupture) as Contract['rupture'] } : c));
+  for (const c of contratsSains.filter((c, i) => c !== contracts[i])) {
+    try { await db.put('contracts', c); } catch { /* réécrit au prochain chargement */ }
+  }
+  state.contracts = contratsSains.sort((a, b) => a.createdAt - b.createdAt);
   state.days = new Map(days.map((d) => [d.key, d]));
   // Décision du DG du 21/11/2026 (« sans la raison ») : une absence enregistrée avec sa nature ou son cas non géré est
   // ramenée à la forme sans raison, puis réécrite (téléphone et compte en ligne). Jours et dates gardés.
@@ -107,7 +114,9 @@ export async function saveSettings(patch: Partial<Settings>) {
   emit();
 }
 
-export async function putContract(c: Contract) {
+export async function putContract(c0: Contract) {
+  // T-109 : jamais de réponse de santé enregistrée avec la rupture (ruptureSansSante).
+  const c = c0.rupture && ruptureSansSante(c0.rupture) !== c0.rupture ? { ...c0, rupture: ruptureSansSante(c0.rupture) as Contract['rupture'] } : c0;
   const prev = state.contracts.find((x) => x.id === c.id);
   state.contracts = prev ? state.contracts.map((x) => (x.id === c.id ? c : x)) : [...state.contracts, c];
   await db.put('contracts', c);
@@ -257,9 +266,39 @@ export function ctxFor(c: Contract, at = today()): Ctx {
   let x = ctxCache.get(k);
   if (!x) {
     x = makeCtx(c, [...state.days.values()].filter((d) => d.cid === c.id), state.leaves, at, enfants, moins21);
+    x.autresContrats = state.contracts.filter((o) => o.id !== c.id);
+    x.partIJ = (l) => partIJContrat(c, l);
+    x.kmAnnee = state.settings?.kmAnnee;
     ctxCache.set(k, x);
   }
   return x;
+}
+
+/**
+ * T-103 (N1) : part de ce contrat dans les indemnités journalières de l'absence `l`. CSS R323-4 (LEGIARTI000051226486, en
+ * vigueur depuis le 22/02/2025, base LEGI de la DILA) : « 1/91,25 du montant des trois dernières paies des mois civils
+ * antérieurs à la date de l'interruption de travail », plafond « calculé pour un mois sur l'ensemble des revenus » : tous
+ * les employeurs. La part d'un parent est son salaire brut de ces trois mois sur le total (contrats de l'app, plus les
+ * salaires hors de l'app saisis par l'AM) ; le plafond s'applique au total, la part reste la même.
+ * `undefined` : les salaires hors de l'app ne sont pas saisis, ou aucun salaire n'est connu.
+ */
+const ijEnCours = new Set<string>();
+export function partIJContrat(c: Contract, l: AmLeave): number | undefined {
+  if (l.ijSalairesAutres === undefined) return undefined;
+  const debut = monthOf(l.from);
+  const mois = [3, 2, 1].map((k) => addMonths(debut, -k));
+  // Salaire brut du mois, congés payés versés compris (computeMonth). Un calcul de congés qui reviendrait sur cette absence
+  // (période de référence en cours) est coupé : le mois est alors lu sans ses congés (monthBase).
+  const brutMois = (x: Contract, m: Month) => {
+    const cle = `${l.id}|${x.id}|${m}`;
+    if (ijEnCours.has(cle)) return brutDuNet(x, monthBase(ctxFor(x), m).net, lastDay(m));
+    ijEnCours.add(cle);
+    try { const r = computeMonth(ctxFor(x), m); return r.nonGere.length ? 0 : r.brutEstime; } finally { ijEnCours.delete(cle); }
+  };
+  const brut = (x: Contract) => mois.reduce((t, m) => (x.start > lastDay(m) || (x.end && x.end < firstDay(m)) ? t : t + brutMois(x, m)), 0);
+  const ici = brut(c);
+  const total = state.contracts.reduce((t, x) => t + (x.id === c.id ? ici : brut(x)), 0) + l.ijSalairesAutres;
+  return total > 0 ? ici / total : undefined;
 }
 
 export function activeContracts(at = today()): Contract[] {

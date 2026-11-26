@@ -1,7 +1,8 @@
 import { useState } from 'preact/hooks';
 import { regionDe } from '../engine/regions';
 import { ctxFor, logUsage, putBulletin, state, toast, uid, useStore } from '../store';
-import { addMonths, monthLabel, monthOf, today, type Month } from '../engine/dates';
+import { addMonths, lastDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
+import { termsAt } from '../engine/payroll';
 import { computeMonth } from '../engine/month';
 import { controle } from '../engine/controle';
 import { euros } from '../engine/money';
@@ -26,7 +27,7 @@ export function Controle({ cid, month }: { cid?: string; month?: string }) {
   const r = computeMonth(ctxFor(c), m, state.settings.enfantsACharge);
   const filled = b.net != null || b.brut != null || b.heures != null;
   // T-031 : mois non calculé (cas non géré) : pas de comparaison avec un calcul que l'app ne sait pas faire.
-  const checks = filled && !r.nonGere.length ? controle({ id: '', cid: c.id, month: m, source: 'manuel', ...b } as Bulletin, r, c.rateNet, regionDe(c)) : [];
+  const checks = filled && !r.nonGere.length ? controle({ id: '', cid: c.id, month: m, source: 'manuel', ...b } as Bulletin, r, c.rateNet, regionDe(c), termsAt(c, lastDay(m)).rateBrut) : [];
 
   async function onPdf(f: File | undefined) {
     if (!f) return;
@@ -97,7 +98,7 @@ export function Controle({ cid, month }: { cid?: string; month?: string }) {
                 <div class="stack-sm" style={{ gap: '2px' }}><b>{x.title}</b><span class="muted small">{x.detail}</span></div>
               </div>
             ))}
-            <p class="hint">Le brut est contrôlé par sa cohérence avec le net (environ 78 % pour une assistante maternelle) et le minimum conventionnel.</p>
+            <p class="hint">Le brut est contrôlé avec le taux horaire brut de ton contrat, et comparé au minimum conventionnel.</p>
           </section>
         )}
         {filled && (

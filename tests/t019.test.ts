@@ -66,93 +66,78 @@ describe('T-019 (1) décompte des jours de congés pris, R-CP-09', () => {
     const l = cp('a', '2022-08-01', '2022-08-13');
     expect(decompteConge(makeCtx(bertrand(), [], [l], '2022-12-31'), l).jours).toBe(12);
   });
-  it('R-CP-09 : un arrêt maladie pendant le congé rend le décompte ambigu ; l’app le signale au lieu de choisir', () => {
-    // « Les jours de CP qui coïncident avec un arrêt maladie ne sont pas décomptés » : le traitement des jours d'arrêt
-    // entre le dernier jour saisi et la reprise n'est pas écrit (contre-vérification, point 2, CCN 48.1.1.3).
+  it('T-103 (C15) : un arrêt maladie pendant le congé : ce jour n’est pas décompté (CCN 48.1.1.3), sans réserve', () => {
+    // CCN 48.1.1.3 : « les jours de congés payés qui coïncident avec la période de l'arrêt de travail ne sont pas décomptés ».
     const l = cp('a', '2026-03-09', '2026-03-13');
+    const sans = decompteConge(amLMJV([l]), l).jours;
     const ctx = amLMJV([l, { id: 'm', type: 'am_malade', from: '2026-03-12', to: '2026-03-12' }]);
     const d = decompteConge(ctx, l);
-    expect(d.aConfirmer).toMatch(/à confirmer/);
-    const k = compteur(ctx, '2026-04-01');
-    expect(k.decompteAConfirmer.length).toBe(1);
-    expect(k.depassement).toBe(false);
-    expect(monthBase(ctx, '2026-03').alerts.join(' ')).toMatch(/nombre de jours décomptés à confirmer/);
+    expect(d.demande).toBeUndefined();
+    expect(d.jours).toBe(sans - 1);
+    expect(compteur(ctx, '2026-04-01').decompteAConfirmer).toEqual([]);
+    expect(monthBase(ctx, '2026-03').alerts.join(' ')).not.toMatch(/à confirmer/);
   });
-  it('R-CP-09 : contrat qui finit avant la reprise : décompte signalé à confirmer', () => {
+  it('T-103 (C17) : une autre absence saisie pendant le congé : le mois demande laquelle garder', () => {
+    const l = cp('a', '2026-03-09', '2026-03-13');
+    const ctx = amLMJV([l, { id: 's', type: 'sans_solde', from: '2026-03-12', to: '2026-03-12' }]);
+    expect(decompteConge(ctx, l).demande).toMatch(/une autre absence est saisie sur les mêmes jours/);
+    expect(monthBase(ctx, '2026-03').nonGere.join(' ')).toMatch(/Garde la bonne saisie/);
+  });
+  it('T-103 (C16) : contrat qui finit avant la reprise : décompte jusqu’à la fin du contrat (CCN 48.1.1.3), sans réserve', () => {
     const l = cp('a', '2026-07-20', '2026-07-24');
-    const ctx = makeCtx(contract({ end: '2026-07-25' }), [], [l], '2026-12-31'); // fin le samedi : ce samedi compte-t-il ?
-    expect(decompteConge(ctx, l).aConfirmer).toMatch(/Le contrat finit avant ta reprise/);
+    const ctx = makeCtx(contract({ end: '2026-07-25' }), [], [l], '2026-12-31'); // fin le samedi : jour ouvrable décompté
+    const d = decompteConge(ctx, l);
+    expect(d.demande).toBeUndefined();
+    expect(d.jours).toBe(decompteConge(makeCtx(contract({ end: '2026-07-24' }), [], [l], '2026-12-31'), l).jours + 1);
   });
 });
 
-describe('T-019 (2) acquisition en année incomplète : « à confirmer », SUS-11', () => {
-  it('C-CPA-04 (Mme Bertrand) : plus de 17 jours ; les deux lectures officielles sont données, 20 jours en semaines', () => {
-    const ctx = makeCtx(bertrand(), [], [], '2022-12-31');
-    const a = acquisition(ctx, 2021);
-    expect(a.aConfirmer).toBeDefined();
-    const [sem, mois] = a.aConfirmer!.lectures;
-    expect(sem.methode).toBe('semaines');
-    // C-CPA-04 : « (31 semaines ÷ 4 semaines) x 2,5 jours = 19,37 » ; « 155 jours ÷ 20 jours … x 2,5 jours = 19,37 jours » ;
-    // « arrondis à 20 jours ouvrables »
-    expect(sem.jours).toBe(20);
-    // C-CPA-12 (S-BFC, même forme de contrat : embauche au 1er septembre, 36 semaines) : 9 mois × 2,5 = 22,5, arrondi à 23
-    expect(mois.methode).toBe('mois');
-    expect(mois.jours).toBe(23);
-    expect(a.aConfirmer!.message).toMatch(/à confirmer/);
-    expect(a.aConfirmer!.message).toMatch(/Urssaf/);
-    expect(a.aConfirmer!.message).toMatch(/Bourgogne-Franche-Comté/);
-    expect(a.aConfirmer!.message).not.toMatch(/\b17 jours\b/);
+describe('T-019 (2), revu par la T-103 (C11) : acquisition en année incomplète, une seule méthode (Cass. soc. 10/01/1980)', () => {
+  it('C-CPA-04 (Mme Bertrand) : 20 jours, comme la fiche (« 31 semaines ÷ 4 × 2,5 = 19,37 » « arrondis à 20 »)', () => {
+    const a = acquisition(makeCtx(bertrand(), [], [], '2022-12-31'), 2021);
+    expect(a.aConfirmer).toBeUndefined();
+    expect(a.jours).toBe(20);
   });
-  it('C-CPA-04 : avec 2 enfants à charge (AM de 39 ans), 24 jours dans la lecture en semaines', () => {
+  it('C-CPA-04 : avec 2 enfants à charge (AM de 39 ans), 24 jours', () => {
     const a = acquisition(makeCtx(bertrand(), [], [], '2022-12-31'), 2021, 2);
-    expect(a.aConfirmer!.lectures[0].jours).toBe(24);
-    expect(a.aConfirmer!.lectures.every((l) => l.enfantsBonus === 4)).toBe(true);
+    expect(a.jours).toBe(24);
+    expect(a.enfantsBonus).toBe(4);
   });
-  it('C-CPA-07 (fiche DREETS Occitanie 3/5) : 18 jours en semaines, 23 en mois (SUS-11 : « 23 jours contre 18 »)', () => {
+  it('C-CPA-07 (fiche DREETS Occitanie 3/5) : 18 jours, comme la fiche (« 28 semaines ÷ 4 × 2,5 = 17,5 », « arrondi à 18 »)', () => {
     const occ = ['2021-10-25', '2021-11-01', '2021-12-20', '2021-12-27', '2022-02-14', '2022-02-21', '2022-02-28', '2022-04-18',
       '2022-04-25', '2022-05-02', '2022-05-09', '2022-07-25', '2022-08-01', '2022-08-08', '2022-08-15', '2022-08-22'];
-    const a = acquisition(makeCtx(bertrand({ weeksOff: occ }), [], [], '2022-12-31'), 2021);
-    // C-CPA-07 : « (28 semaines ÷ 4 semaines) x 2,5j = 17,5 jours », « arrondi à 18 »
-    expect(a.aConfirmer!.lectures.map((l) => l.jours)).toEqual([18, 23]);
+    expect(acquisition(makeCtx(bertrand({ weeksOff: occ }), [], [], '2022-12-31'), 2021).jours).toBe(18);
   });
-  it('C-CPA-05 (Mme Bertrand, rupture au 30 septembre 2022, 2 semaines de congés en août) : 58 jours d’accueil, donc 8 jours', () => {
-    // « 58 jours ÷ 20 jours … x 2,5 jours = 7,25 jours » « arrondis à 8 jours » ; « Mme Bertrand a donc acquis 8 jours »
+  it('C-CPA-05 (rupture au 30/09/2022, 2 semaines de congés en août) : 8 jours, comme la fiche (jours d’accueil ÷ 20)', () => {
+    // T-103 (C10 bis) : semaines sans accueil dans la période : décompte le plus favorable (service-public F18260), ici le
+    // décompte journalier : jours d'accueil ÷ 20 (horaires sur 5 jours), comme la fiche.
     const ctx = makeCtx(bertrand({ end: '2022-09-30' }), [], [cp('a', '2022-08-01', '2022-08-13')], '2022-12-31');
-    const a = acquisition(ctx, 2022).aConfirmer!;
-    expect(a.lectures[0].jours).toBe(8); // « 58 jours ÷ 20 jours … x 2,5 jours = 7,25 » « arrondis à 8 »
-    // La formule en semaines donne 7 (« 11 semaines ÷ 4 … = 6,87 » « arrondis à 7 ») : elle reste un contrôle.
-    expect(a.controles).toContain(7);
+    const a = acquisition(ctx, 2022);
+    expect(a.aConfirmer).toBeUndefined();
+    expect(a.jours).toBe(8);
   });
-  it('C-CPI-03 (versement au fur et à mesure) : 12 jours pris en août, à confirmer (T-030, formule du maintien A-26)', () => {
-    // S-BERTRAND page 8 : au fur et à mesure, « 600 € » + « 400 € brut » (maintien en heures). Les deux lectures des jours
-    // acquis donnent ce montant. T-030 : la fiche DREETS Bourgogne-Franche-Comté calcule le maintien au 1/26 du salaire
-    // mensualisé en année incomplète (C-CPI-13), ce qui change le versement : rien n'est versé, le mois est à confirmer.
+  it('C-CPI-03 (versement au fur et à mesure) : 12 jours pris en août, sans réserve', () => {
     const ctx = makeCtx(bertrand({ cpMode: 'fur' }), [], [cp('a', '2022-08-01', '2022-08-13')], '2022-12-31');
-    const aout = cpForMonth(ctx, '2022-08');
-    expect(aout.aConfirmer).toMatch(/1\/26/);
-    expect(aout.indemnite).toBe(0);
+    expect(cpForMonth(ctx, '2022-08').aConfirmer).toBeUndefined();
   });
-  it('SUS-11 : aucun montant faux en juin ; la déclaration affiche « à confirmer »', () => {
+  it('juin 2022 : indemnité de congés versée, cases Pajemploi sans « à confirmer »', () => {
     const ctx = makeCtx(bertrand(), [], [], '2022-12-31');
     const juin = cpForMonth(ctx, '2022-06');
-    expect(juin.indemnite).toBe(0);
-    expect(juin.aConfirmer).toMatch(/Indemnité de congés payés à confirmer/);
-    expect(indemnite(ctx, 2021).aConfirmer).toBeDefined();
-    const r = computeMonth(ctx, '2022-06');
-    expect(r.cpAConfirmer).toBeDefined();
-    const lignes = declarationLines(ctx, r);
-    expect(lignes.find((l) => l.label === 'Jours de congés payés')?.value).toBe('à confirmer');
-    expect(lignes.find((l) => l.label === 'Salaire net')?.value).toMatch(/congés à confirmer/);
+    expect(juin.aConfirmer).toBeUndefined();
+    expect(juin.jours).toBe(20);
+    expect(juin.indemnite).toBe(indemnite(ctx, 2021).montant);
+    const lignes = declarationLines(ctx, computeMonth(ctx, '2022-06'));
+    expect(lignes.find((l) => l.label === 'Jours de congés payés')?.value).toBe('20');
+    expect(lignes.find((l) => l.label === 'Salaire net')?.value).not.toMatch(/à confirmer/);
   });
-  it('SUS-11 : à la fin du contrat, les congés non pris d’une année incomplète sont « à confirmer », sans montant', () => {
+  it('fin du contrat : congés non pris d’une année incomplète calculés', () => {
     const f = finDeContrat(makeCtx(bertrand(), [], [], '2022-12-31'), '2022-05-02', 'retrait');
-    expect(f.cpAConfirmer).toMatch(/à confirmer/);
-    expect(f.cpIndemnite).toBe(0);
+    expect(f.cpAConfirmer).toBeUndefined();
+    expect(f.cpIndemnite).toBeGreaterThan(0);
   });
-  it('SUS-11 : sans toutes les semaines sans accueil, les lectures ne sont pas calculées et la raison est dite', () => {
+  it('sans toutes les semaines sans accueil au contrat : l’app les demande (B)', () => {
     const a = acquisition(makeCtx(bertrand({ weeksOff: [] }), [], [], '2022-12-31'), 2021);
-    expect(a.aConfirmer!.lectures.length).toBe(0);
-    expect(a.aConfirmer!.message).toMatch(/il manque des semaines sans accueil/);
+    expect(a.aConfirmer?.message).toMatch(/Indique dans le contrat toutes tes semaines sans accueil/);
   });
   it('R-CP-01 : année complète, rien ne change (C-CPA-09 : 30 jours pour une période complète)', () => {
     const a = acquisition(makeCtx(contract({ start: '2025-06-01', trackedFrom: '2025-06-01' }), [], [], '2026-06-15'), 2025);

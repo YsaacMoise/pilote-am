@@ -31,6 +31,13 @@ jobs:
           npx tsc --noEmit -p .
           npm test
           npm run build
+      # T-109 (comparateur, point (m) ; décision du DG du 21/11/2026) : le second moteur tourne aussi avant chaque publication.
+      # Le moindre désaccord avec le moteur de l'app, cas officiels compris, arrête la publication.
+      - name: Second moteur (rien n'est publié en cas de désaccord)
+        working-directory: main
+        run: |
+          (cd verification/moteur-b && python3 -m unittest discover -s tests)
+          python3 verification/verifier_paie.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: site

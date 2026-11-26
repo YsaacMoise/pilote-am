@@ -192,7 +192,7 @@ function LinkChoice() {
       <button class="btn btn-outline btn-block" disabled={busy} onClick={() => void go('phone')}>Garder ce qui est sur ce téléphone</button>
       <p class="hint">Ton compte prend le contenu de ce téléphone. Ce qui n’était que dans le compte est effacé.</p>
       <button class="btn btn-ghost btn-block" disabled={busy} onClick={() => void go('merge')}>Tout garder</button>
-      <p class="hint">Les enfants des deux côtés restent. À vérifier ensuite dans Plus.</p>
+      <p class="hint">Les enfants des deux côtés restent. Si un enfant apparaît deux fois, ouvre le double dans Plus et choisis « Supprimer ce contrat ».</p>
       {error && <Banner tone="warn">{error}</Banner>}
     </section>
   );

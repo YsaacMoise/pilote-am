@@ -81,8 +81,12 @@ function contrat(k: any): Contract {
     cpMode: k.cp_mode ?? 'juin', majoreFiscal: false, trackedFrom: k.suivi_depuis ?? k.debut,
     balances: {
       cpRestants: k.soldes?.cp_restants ?? 0, cpEnCours: k.soldes?.cp_en_cours ?? 0,
-      maladieDeduits: k.soldes?.maladie_deduits ?? 0,
+      maladieDeduits: k.balances?.maladieDeduits ?? k.soldes?.maladie_deduits ?? 0,
+      // T-103 (C5) : origine des jours déjà retenus (nom repris par B, rapports/T-103-moteur-b.md).
+      ...(k.balances?.maladieDeduitsLongue !== undefined ? { maladieDeduitsLongue: k.balances.maladieDeduitsLongue } : {}),
     },
+    // T-103 (C8) : jour de repos hebdomadaire du contrat.
+    ...(k.reposHebdo != null ? { reposHebdo: k.reposHebdo } : {}),
     history: k.historique ?? [], createdAt: 0,
     // T-042c : montant horaire transmis tel quel quand A sait le lire ; sinon rien (refus visible dans « mois »).
     ...(k.entretien_horaire != null && A_ENTRETIEN_HORAIRE ? { entretienHeure: montant(k.entretien_horaire) } : {}),
@@ -92,7 +96,10 @@ function contrat(k: any): Contract {
       ...(a.type_annee ? { yearType: a.type_annee } : {}), ...(a.semaines ? { weeks: a.semaines } : {}),
       ...(a.semaines_sans_accueil ? { weeksOff: a.semaines_sans_accueil } : {}) } })) } : {}),
     ...(k.rupture ? { rupture: { motif: k.rupture.motif, notif: k.rupture.notif, presentation: k.rupture.presentation,
-      preavis: k.rupture.preavis, dernierJourTravaille: k.rupture.dernier_jour_travaille } } : {}),
+      preavis: k.rupture.preavis, dernierJourTravaille: k.rupture.dernier_jour_travaille,
+      // verif-1 (T-107) : réponses nouvelles (noms donnés par rapports/T-107-moteur-b.md).
+      ...(k.rupture.sinistre != null ? { sinistre: k.rupture.sinistre } : {}),
+      ...(k.rupture.cumul_cp_preavis != null ? { cumulCpPreavis: k.rupture.cumul_cp_preavis } : {}), } } : {}),
     ...planningVariable(k),
   } as Contract;
 }
@@ -104,13 +111,26 @@ function contexte(s: any): Ctx {
     pres: j.pres ? j.pres.map(([a, d]: string[]) => ({ a, d })) : undefined,
     abs: j.abs, extra: j.extra, ferieTravaille: j.ferie_travaille, repas: j.repas, km: j.km,
     kmPartage: j.km_partage === undefined ? undefined : j.km_partage, kmEnfants: j.km_enfants ?? undefined,
+    // T-103 (C3) : dates du certificat médical.
+    ...(j.certifDu ? { certifDu: j.certifDu } : {}), ...(j.certifAu ? { certifAu: j.certifAu } : {}),
   }));
   // Décision du DG du 21/11/2026 (« sans la raison ») : l'app enregistre la durée de l'événement, pas sa nature ; la
   // situation donne la nature, ramenée ici à la forme enregistrée (absences.ts).
   // Lien « suite de » posé comme au chargement de l'app (même nature, 15 jours au plus), puis nature retirée.
   const leaves: AmLeave[] = normaliserAbsences((s.evenements?.absences_am ?? []).map((l: any, i: number) => ({
     id: `l${i}`, type: l.type, from: l.du, to: l.au, ...(l.nature ? { nature: l.nature } : {}),
+    // T-103 (C9, R3) : indemnités journalières saisies.
+    ...(l.ijSecu != null ? { ijSecu: l.ijSecu } : {}),
+    // T-109 (contrôle n° 4) : « absence payée » : les parents la comptent-ils pour les congés ?
+    ...(l.comptePourConges != null ? { comptePourConges: l.comptePourConges } : {}),
   })));
+  // T-103 (C11) : semaines sans accueil où l'AM prend ses congés payés (donnée de B) : dans l'app, ce sont des congés
+  // payés saisis, du lundi au samedi (« Je serai absente », congés payés).
+  for (const lundi of (s.contrat.semaines_cp_am ?? []) as string[]) {
+    const sam = new Date(lundi + 'T12:00:00Z'); sam.setUTCDate(sam.getUTCDate() + 5);
+    leaves.push({ id: `cp-${lundi}`, type: 'cp', from: lundi, to: sam.toISOString().slice(0, 10) });
+  }
+  leaves.sort((x, y) => x.from.localeCompare(y.from));
   // T-033 (M6) : âge de l'AM (R-CP-03) passé comme dans l'app : dernière année y où elle a moins de 21 ans au 30 avril y.
   // La situation donne l'âge au début du contrat ; on le rapporte à l'année de début.
   const age = s.contrat.age_am;
@@ -150,10 +170,6 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       if (s.contrat.entretien_horaire != null && !A_ENTRETIEN_HORAIRE) {
         out.entretien = refus('A : montant horaire d’entretien non géré par cette version de A (tarif par jour seulement)');
       }
-      // T-042c, T-042f : A (T-044) verse la part certaine et met l'écart « à confirmer », hors du total (tarif par jour sur un
-      // jour d'une autre durée que le planning ; montant horaire quand la présence diffère du temps de travail, T-044b). La sortie est donc rendue comme un refus de A, avec le montant.
-      const entAConf = (b as any).entretienAConfirmer;
-      if (entAConf) out.entretien = refus(`A : ${entAConf} centimes d’entretien à confirmer (${s.contrat.entretien_horaire != null ? 'montant horaire : présence de l’enfant différente du temps de travail' : 'tarif par jour : jour d’une autre durée que le planning'} ; part certaine ${b.entretien})`);
       out.repas = ok(b.repas);
       out.km = ok(b.km);
       out.alertes = ok(b.alerts);
@@ -224,14 +240,8 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       out.maintien_cp = ok(i.maintien);
       out.dixieme_cp = ok(i.dixieme);
       out.jours_droit = ok(i.jours);
-      // T-076 (P-PV-5) : planning variable, lectures C1 et C2 du maintien ; valeur = part sûre (la plus petite lecture).
-      if (i.pv) {
-        const l1 = Math.max(i.dixieme, i.pv.c1), l2 = Math.max(i.dixieme, i.pv.c2);
-        out.indemnite_cp = i.pv.c2Complet ? { statut: 'ok', valeur: i.montant, lectures: [l1, l2] }
-          : refus(`A : maintien C2 incomplet (congés pas tous saisis) ; part sûre ${i.montant}`, [l1, l2]);
-        out.maintien_cp = i.pv.c2Complet ? { statut: 'ok', valeur: i.maintien, lectures: [i.pv.c1, i.pv.c2] }
-          : refus('A : maintien C2 incomplet (congés pas tous saisis)', [i.pv.c1, i.pv.c2]);
-      }
+      // T-103 (C13, tableau validé le 24/11/2026) : planning variable, une seule méthode du maintien (C1, heures prévues
+      // moyennes de la période) : A donne une valeur, sans lectures (i.pv.c2 n'est plus qu'une information interne).
       if (i.aConfirmer) {
         const note = `A : à confirmer (${i.aConfirmer.message})`;
         const lec = i.aConfirmer.montants.map((m: any) => ({ libelle: m.libelle, jours: m.jours, montant: m.montant }));
@@ -268,9 +278,10 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
           break;
         }
         const date = finSit?.date ?? k.notification ?? k.date ?? s.contrat.fin;
-        // Direction T-076 : la grille écrit « saisonnier » (CDD saisonnier ou d'usage) ; A l'appelle « saisonnier_usage ».
+        // T-107 (rapports/T-107-moteur-b.md) : A appelle désormais « saisonnier » la fin d'un CDD saisonnier ;
+        // « saisonnier_usage » n'est plus calculable (le CDD d'usage n'existe pas pour une AM, D1242-1).
         const fcBrut = finSit?.fin_cdd ?? k.fin_cdd;
-        const fc = fcBrut === 'saisonnier' ? 'saisonnier_usage' : fcBrut;
+        const fc = fcBrut;
         const f = (FinA as unknown as { finDeCdd: (...a: unknown[]) => ReturnType<typeof finDeContrat> }).finDeCdd(ctx, date, fc, enfants);
         const part = (p: { montant: number; lectures: number[] } | undefined, v: number, ordre: 'p3' | 'p4'): Sortie =>
           // P4 : [lecture 1 sans ICCP, lecture 2 avec] ; P3 : [lecture A comparaison, lecture B dixième seul] (rapport t076-cdd.md).
@@ -315,7 +326,9 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       const bruts = k.bulletins ? { total: k.bulletins.total, jusqua: k.bulletins.jusqua, parMois: k.bulletins.par_mois } : undefined;
       const f = (finDeContrat as (...a: unknown[]) => ReturnType<typeof finDeContrat>)(ctx, k.notification, k.motif as Motif, enfants, k.presentation, inex, bruts);
       out.preavis = ok(preavisNormalise(f.preavisLabel));
-      out.date_fin_preavis = ok(f.preavisFin);
+      // T-103 (F8) : décès, B nomme « date_fin_preavis » le dernier jour de la période égale au préavis ; A l'expose à part
+      // (periodeDecesFin), sa date de fin du contrat restant le jour du décès.
+      out.date_fin_preavis = ok(k.motif === 'deces' && (f as { periodeDecesFin?: string }).periodeDecesFin ? (f as { periodeDecesFin?: string }).periodeDecesFin : f.preavisFin);
       out.indemnite_rupture = ok(f.indemniteRupture);
       out.iccp = ok(f.cpIndemnite);
       const bloque = f.alertes.some((a) => a.startsWith('Régularisation non calculée'));
@@ -369,7 +382,9 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       out.minimum_entretien = ok(entretienPlancher(k.date, k.minutes));
       break;
     case 'minimum_conventionnel':
-      out.minimum_brut = ok(ratesAt(k.date).minConvBrut);
+      // T-103 (D3) : minimum de l'app = plus haut de la grille (annexe 5) et du minimum légal 0,281 × SMIC (CASF D423-9),
+      // arrondi au centime supérieur : la fonction que l'app utilise (minimumBrut), pas la seule grille.
+      out.minimum_brut = ok((RATES_A as any).minimumBrut ? (RATES_A as any).minimumBrut(k.date, (REGIONS_A as any).regionDe?.(ctx.c) ?? 'metropole').certain : ratesAt(k.date).minConvBrut);
       out.minimum_net = ok(ratesAt(k.date).minConvNet);
       // T-077 (R2) : repère net de la région.
       if ((RATES_A as any).ratesAtRegion) out.minimum_net = ok((RATES_A as any).ratesAtRegion(k.date, (REGIONS_A as any).regionDe(ctx.c)).minConvNet);
@@ -389,7 +404,9 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       break;
     // T-027
     case 'km_controle':
-      out.km_controle = ok(controleKm(k.cv, k.taux, k.date).niveau);
+      // T-103 (K2) : A nomme « a_completer » (question posée : km de l'année, moteur) ce que B nomme « a_verifier » (le
+      // résultat dépend de la tranche). Même sens : traduction du seul nom.
+      { const niv = controleKm(k.cv, k.taux, k.date).niveau; out.km_controle = ok(niv === 'a_completer' ? 'a_verifier' : niv); }
       break;
     case 'evt_duree': {
       const n = dureeEvenement(k.nature, k.date);

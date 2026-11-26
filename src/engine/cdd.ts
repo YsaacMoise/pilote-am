@@ -23,23 +23,16 @@ export function estCddSemainesSansAccueil(c: CddChamps): boolean {
   return c.yearType === 'incomplete' || (c.avenants ?? []).some((a) => a.changes.yearType === 'incomplete');
 }
 
-/** Le CDD a-t-il deux lectures de salaire (P1 ou P2) ? */
-export function cddDeuxLectures(c: CddChamps): boolean {
-  return estCddMoinsUnMois(c) || estCddSemainesSansAccueil(c);
-}
-
 export const CDD_A_COMPLETER =
   'CDD à compléter : ouvre le contrat et indique la date de fin prévue du CDD (ou, pour un remplacement sans date précise, la fin de la durée minimale). L’app ne calcule pas ce mois avant.';
-export const NON_GERE_CDD_P1_P2 =
-  'CDD de moins d’un mois avec des semaines sans accueil : non géré. Chacun de ces deux cas a deux façons de calculer le salaire, et l’app ne sait pas les combiner. Fais la paie sans l’app.';
-
 /**
  * T-076, décision D15 de la direction (regles/t076-decisions-direction.md, section 5 ; remplace D3) : CDD à horaires
  * variables refusé en entier au passage 1. Les deux lectures du CDD (P1, P2) ne sont pas définies avec un planning variable
  * (relecture R1 : heures prévues au-delà de la base payées deux fois en P1 ; R3 : congés de la période précédente).
  */
+/** T-104 : plus utilisé par le calcul (le CDD à horaires variables est calculé) ; texte gardé pour mémoire. */
 export const NON_GERE_CDD_PV =
-  'CDD avec des horaires qui changent d’une semaine à l’autre : non géré pour l’instant. Le salaire d’un CDD court ou avec des semaines sans accueil se calcule de deux façons, et l’app ne sait pas encore les combiner avec des horaires variables, ni la fin de ce CDD. Fais la paie sans l’app.';
+  'CDD avec des horaires qui changent d’une semaine à l’autre : non géré pour l’instant. L’app ne calcule pas encore la fin d’un CDD aux horaires variables. Fais la paie sans l’app.';
 /** D3 (section 4), gardé pour les écrans et tests qui le citent : même refus que D15 */
 export const NON_GERE_CDD_PV_P2 = NON_GERE_CDD_PV;
 
@@ -68,8 +61,10 @@ export function messageApresTerme(terme: string): string {
 export function nonGeresCdd(c: CddChamps): string[] {
   if (!c.cdd) return [];
   if (!c.cddTerme) return [CDD_A_COMPLETER];
-  if (estCddMoinsUnMois(c) && estCddSemainesSansAccueil(c)) return [NON_GERE_CDD_P1_P2];
-  if (c.planningVariable) return [NON_GERE_CDD_PV];
+  // T-104 (cas 4) : CDD à horaires variables calculé (regles/t104-horaires-variables.md). Depuis la T-103 (F11, F12), le
+  // salaire du CDD a une seule lecture, celle du CDI (CCN 108.1, L1242-14) : les deux lectures P1 et P2 qui rendaient le
+  // croisement indéfini (relecture T-076, R1 et R3) n'existent plus. Les congés déjà payés dans le salaire suivent le salaire
+  // mensualisé du planning variable (fin.ts, finDeCdd).
   return [];
 }
 
@@ -79,8 +74,8 @@ export function nonGeresCdd(c: CddChamps): string[] {
  * égale à six mois et d'un mois dans les autres cas. Lorsque le contrat ne comporte pas de terme précis, la période d'essai
  * est calculée par rapport à la durée minimale du contrat. » Durée : du début à `cddTerme` (terme ou fin de la durée
  * minimale) ; un renouvellement ne fait qu'allonger le terme, donc un terme à six mois ou moins prouve une durée initiale à
- * six mois ou moins. Aucun texte ne dit comment compter les semaines (R-CDD-12) : deux lectures, semaines entières
- * (`court`) ou semaines commencées (`long`). Jours comptés de date à date.
+ * six mois ou moins. Jours comptés de date à date. T-107 (cas 7) : le maximum légal est `court` (semaines entières : au plus
+ * un jour par semaine, essai en jours entiers ; regles/t107-essai-cdd.md). `long` (semaines commencées) n'est plus qu'un repère.
  */
 export function finEssaiCdd(c: CddChamps): { court: string; long: string } | undefined {
   if (!c.cdd || !c.start || !c.cddTerme) return undefined;
@@ -95,39 +90,37 @@ export function finEssaiCdd(c: CddChamps): { court: string; long: string } | und
   return { court: fin(Math.floor(jours / 7)), long: fin(Math.ceil(jours / 7)) };
 }
 
-/** Texte des deux lectures du salaire d'un mois (écran Mois), sans montant */
-export function libelleLecturesCdd(c: CddChamps): { l1: string; l2: string; pourquoi: string } {
-  if (estCddMoinsUnMois(c)) {
-    return {
-      l1: 'salaire mensualisé sur 12 mois, réduit pour les jours hors du CDD (convention, articles 108.1 et 111)',
-      l2: 'taux horaire × heures réellement faites (DREETS Occitanie, pour un CDD de moins d’un mois)',
-      pourquoi: 'Ton CDD dure moins d’un mois. Aucun texte ne dit quelle façon de calculer s’applique. La question est posée à la DDETS.',
-    };
-  }
-  return {
-    l1: 'semaines d’accueil du contrat sur 12 mois, avec une régularisation à la fin (convention, articles 109.2 et 124)',
-    l2: '52 semaines sur 12 mois, moins les semaines sans accueil (convention, article 111)',
-    pourquoi: 'Ton CDD a des semaines sans accueil. Aucun texte ne dit quelle façon de calculer s’applique. La question est posée à la DDETS.',
-  };
-}
-
 /** Messages du contrat CDD (écran Contrat et fin), tirés de regles/t076-cdd.md, partie 5.2 */
 export const MESSAGE_CDD_12_MOIS = 'Ton salaire est calculé sur 12 mois, même si ton CDD est plus court.';
 export const MESSAGE_CDD_DEVIENT_CDI = 'Si tu continues à garder l’enfant après la date de fin sans nouveau contrat, ton CDD devient un CDI.';
-export const MESSAGE_CDD_MOTIF_AUTRE = 'Pour une assistante maternelle, un CDD sert en principe à remplacer une collègue absente. Vérifie ton contrat.';
-export const MESSAGE_CDD_18_MOIS = 'Ton CDD dépasse les limites de la loi. Le juge pourrait le transformer en CDI. Renseigne-toi.';
+export const MESSAGE_CDD_MOTIF_AUTRE = 'Pour une assistante maternelle, le CDD sert à remplacer une assistante maternelle absente, ou qui part (code du travail, article L1242-2, 1° ; DREETS Occitanie, guide du CDD de novembre 2024). Sans ce motif écrit dans le contrat, le juge peut le transformer en CDI (articles L1242-12 et L1245-1).';
 
-/** R-CDD-14 : plus de 18 mois en terme précis (L1242-8-1) ; les renouvellements ne sont pas suivis par l'app */
-export function cddPlusDe18Mois(c: CddChamps): boolean {
-  return !!c.cdd && !!c.start && !!c.cddTerme && !c.cddTermeImprecis && c.cddTerme >= addMonthsToDate(c.start, 18);
+/**
+ * T-109 (comparateur, correction 12) : durée maximale d'un CDD à terme précis, renouvellements compris (C. trav. L1242-8-1) :
+ * 18 mois ; « neuf mois lorsque le contrat est conclu dans l'attente de l'entrée en service effective d'un salarié recruté par
+ * contrat à durée indéterminée » ; 24 mois « dans le cadre du départ définitif d'un salarié précédant la suppression de son
+ * poste de travail ». Avant : 18 mois pour tout terme précis.
+ */
+export function dureeMaxCddMois(c: Pick<Contract, 'cddMotif' | 'cddCasRemplacement'>): number {
+  if (c.cddMotif === 'remplacement' && c.cddCasRemplacement === 'attente_cdi') return 9;
+  if (c.cddMotif === 'remplacement' && c.cddCasRemplacement === 'depart_suppression') return 24;
+  return 18;
+}
+export const messageCddDureeMax = (mois: number): string => `Ton CDD dépasse la durée maximale de la loi pour ce motif : ${mois} mois, renouvellements compris (code du travail, article L1242-8-1). Le juge peut le transformer en CDI (article L1245-1).`;
+/** Gardé pour les écrans écrits avant T-109 : 18 mois */
+export const MESSAGE_CDD_18_MOIS = messageCddDureeMax(18);
+
+/** R-CDD-14, T-109 : terme précis au-delà de la durée maximale du motif (L1242-8-1) ; les renouvellements ne sont pas suivis */
+export function cddPlusDe18Mois(c: CddChamps & Partial<Pick<Contract, 'cddMotif' | 'cddCasRemplacement'>>): boolean {
+  return !!c.cdd && !!c.start && !!c.cddTerme && !c.cddTermeImprecis && c.cddTerme >= addMonthsToDate(c.start, dureeMaxCddMois(c));
 }
 
 /** Messages à afficher avec un CDD (contrôles sans montant) */
-export function messagesCdd(c: CddChamps & Partial<Pick<Contract, 'cddMotif'>>): string[] {
+export function messagesCdd(c: CddChamps & Partial<Pick<Contract, 'cddMotif' | 'cddCasRemplacement'>>): string[] {
   if (!c.cdd) return [];
   const out = [MESSAGE_CDD_12_MOIS, MESSAGE_CDD_DEVIENT_CDI];
   if (c.cddMotif === 'autre') out.push(MESSAGE_CDD_MOTIF_AUTRE);
-  if (cddPlusDe18Mois(c)) out.push(MESSAGE_CDD_18_MOIS);
+  if (cddPlusDe18Mois(c)) out.push(messageCddDureeMax(dureeMaxCddMois(c)));
   return out;
 }
 

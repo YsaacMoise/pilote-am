@@ -86,11 +86,14 @@ export const RATES: Rates[] = [
 ];
 
 /**
- * Réduction de cotisations salariales des heures complémentaires et majorées (CSS art. L241-17, décret 2019-40 :
- * 11,31 % de leur rémunération brute, dans la limite des cotisations d'assurance vieillesse).
- * NON VÉRIFIÉ à la source officielle (Légifrance et pages Pajemploi illisibles par un robot le 04/11/2026) : la
- * mécanique retenue (net déclaré et brut inchangés, réduction ajoutée à la somme versée) vient de sites spécialisés
- * et doit être confirmée sur un vrai bulletin Pajemploi avec des heures majorées (constat C-010).
+ * Réduction de cotisations salariales des heures complémentaires et majorées. T-109 (comparateur, correction 24) : textes relus
+ * dans la base LEGI de la DILA (version en vigueur le 25/11/2026). CSS L241-17, I, 7° : ouvrent droit à la réduction « les
+ * rémunérations versées aux assistants maternels [...] au titre des heures supplémentaires qu'ils accomplissent au delà d'une
+ * durée hebdomadaire de quarante-cinq heures, ainsi que les salaires qui leur sont versés au titre des heures complémentaires
+ * accomplies au sens de la convention collective » ; II : « produit d'un taux fixé par décret et des rémunérations », imputé
+ * sur les cotisations salariales. CSS D241-21 : taux égal à la somme des taux des cotisations d'assurance vieillesse à la charge
+ * du salarié, « dans la limite de 11,31 % » (6,90 + 0,40 + 3,15 + 0,86 = 11,31 %). Le net déclaré et le brut restent les
+ * mêmes ; la réduction baisse les cotisations retenues et s'ajoute à la somme versée à l'AM (totalAVerser).
  */
 export const REDUCTION_HS = 0.1131;
 
@@ -150,20 +153,20 @@ export function ratesConnus(d: ISODate): Rates {
  * être inférieure à 0,281 fois le montant du salaire minimum de croissance par enfant et par heure d'accueil ».
  * Annexe 5, art. 2 : la grille reste applicable « dès lors qu'elles sont au moins aussi favorables que les dispositions
  * légales et réglementaires relatives au salaire minimum statutaire ».
- * Aucun texte lu ne dit comment arrondir 0,281 × SMIC au centime. `certain` : le minimum arrondi au centime le plus
- * proche (un taux plus bas est sous le minimum dans toute lecture). `doute` : le centime supérieur, quand il dépasse
- * `certain` ; un taux entre les deux est « à confirmer ». `legal` : valeur exacte, en centimes non arrondis.
+ * T-103 (D3) : D423-9 dit « ne peut être inférieure à » 0,281 × SMIC. Un taux en centimes plus bas que la valeur exacte lui
+ * est inférieur : le minimum en centimes est la valeur exacte arrondie au centime supérieur (`certain`). `legal` : valeur
+ * exacte, en centimes non arrondis.
  */
-export interface MinimumBrut { certain: number; doute?: number; legal: number; conv: number; source: 'grille' | 'legal' }
+export interface MinimumBrut { certain: number; legal: number; conv: number; source: 'grille' | 'legal' }
 export function minimumBrut(d: ISODate, region: Region = 'metropole'): MinimumBrut | undefined {
   const r = ratesAt(d);
   if (!r) return undefined;
   // T-077 (R2) : CASF R544-2 XV, à Mayotte le minimum légal se calcule sur le « salaire minimum interprofessionnel en vigueur à Mayotte ».
   const smic = region === 'mayotte' ? smicMayotte(d) ?? r.smic : r.smic;
   const legal = (281 * smic) / 1000;
-  const certain = Math.max(r.minConvBrut, Math.round(legal));
   const haut = Math.ceil(legal - 1e-9);
-  return { certain, doute: haut > certain ? haut : undefined, legal, conv: r.minConvBrut, source: Math.round(legal) > r.minConvBrut ? 'legal' : 'grille' };
+  const certain = Math.max(r.minConvBrut, haut);
+  return { certain, legal, conv: r.minConvBrut, source: haut > r.minConvBrut ? 'legal' : 'grille' };
 }
 
 /** Libellé court du minimum brut, pour les écrans et les contrôles */
@@ -173,24 +176,30 @@ export function minimumBrut(d: ISODate, region: Region = 'metropole'): MinimumBr
  * l'assistant maternel est titulaire du titre « Assistant maternel - garde d'enfants ». » L'app ne demande pas si l'AM a
  * ce titre : ses contrôles du minimum ne comptent pas cette majoration, et le disent. Aucun montant n'en dépend.
  */
-export const MINIMUM_SANS_TITRE = 'Ce minimum ne compte pas la majoration de 4 % prévue quand l’assistante maternelle a le titre « Assistant maternel - garde d’enfants » (Urssaf). Si tu as ce titre, ton minimum est plus haut : vérifie ton taux.';
+// T-109 (comparateur, correction 22) : nom du titre dans l'avenant n° 10 à l'annexe 5 : « assistant maternel – assistant parental »
+// (AM-AP) ; avant : « garde d'enfants » (AM-GE).
+export const MINIMUM_SANS_TITRE = 'Ce minimum ne compte pas la majoration de 4 % prévue quand l’assistante maternelle a le titre « Assistant maternel – assistant parental » (ancien titre « garde d’enfants » ; convention, annexe 5). Si tu as ce titre, ton taux doit être d’au moins 4 % au-dessus de ce minimum.';
 
 export function libelleMinimumBrut(m: MinimumBrut): string {
   const exact = (m.legal / 100).toFixed(3).replace('.', ',');
   if (m.source === 'legal') {
-    return `${eurosCts(m.certain)} brut (minimum légal : 0,281 × SMIC = ${exact} €, au-dessus de la grille de la convention à ${eurosCts(m.conv)})${m.doute ? `, ${eurosCts(m.doute)} si l’on arrondit au centime supérieur` : ''}`;
+    return `${eurosCts(m.certain)} brut (minimum légal : 0,281 × SMIC = ${exact} €, arrondi au centime supérieur, au-dessus de la grille de la convention à ${eurosCts(m.conv)})`;
   }
-  return `${eurosCts(m.certain)} brut${m.doute ? ` (0,281 × SMIC = ${exact} € : ${eurosCts(m.doute)} si l’on arrondit au centime supérieur)` : ''}`;
+  return `${eurosCts(m.certain)} brut`;
 }
 function eurosCts(c: number): string {
   return `${(c / 100).toFixed(2).replace('.', ',')} €`;
 }
 
-/** Plancher d'entretien pour une journée de `min` minutes d'accueil : max(2,65 €, MG/10 par heure). `undefined` : période non gérée. */
+/**
+ * Plancher d'entretien pour une journée de `min` minutes d'accueil : max(2,65 €, MG/10 par heure). `undefined` : période non gérée.
+ * T-109 (comparateur, correction 3) : CCN 114.1, journée de 9 h : « sans pouvoir être inférieur à 90 % du minimum garanti »,
+ * au prorata au-delà : un plancher ne s'arrondit pas en dessous : centime supérieur (MG 4,35 € : 9 h 15 → 4,03 €).
+ */
 export function entretienPlancher(d: ISODate, min: number): number | undefined {
   const r = ratesAt(d);
   if (!r) return undefined;
-  return Math.max(r.entretienPlancherJour, Math.round((r.mg * min) / 600));
+  return Math.max(r.entretienPlancherJour, Math.ceil((r.mg * min) / 600 - 1e-9));
 }
 
 /** Brut estimé à partir du net */
@@ -210,12 +219,20 @@ export function netToBrut(net: number, d: ISODate, region: Region = 'metropole')
 export const BAREMES_VERIFIES_JUSQU_AU: ISODate = '2026-11-30';
 
 /** Vrai si un calcul à cette date repose sur des barèmes pas encore publiés */
-export function baremesProvisoires(d: ISODate): boolean {
+export function baremesAttendus(d: ISODate): boolean {
   return d > BAREMES_VERIFIES_JUSQU_AU;
 }
 
-export const MESSAGE_BAREMES_PROVISOIRES =
-  'Les barèmes officiels de cette période (SMIC, minimum garanti, cotisations, aide de la CAF) ne sont pas encore tous publiés. Ce calcul reprend les derniers barèmes connus : les montants pourront changer.';
+/**
+ * T-103 (D4) : un mois dont les barèmes ne sont pas publiés n'est pas affiché comme un calcul : l'écran dit que les barèmes
+ * sont attendus (le paquet du SMIC les ajoute à leur publication).
+ */
+export const messageBaremesAttendus = (moisLabel: string): string =>
+  `Barèmes de ${moisLabel} attendus : le SMIC, le minimum garanti et les cotisations de ce mois ne sont pas encore publiés. L’app calcule ce mois dès leur publication.`;
+
+/** Simulateur : les mois après la date des barèmes vérifiés reprennent les derniers barèmes publiés (prévision, dite telle quelle). */
+export const MESSAGE_BAREMES_PUBLIES =
+  `Les mois après le ${BAREMES_VERIFIES_JUSQU_AU.split('-').reverse().join('/')} reprennent les barèmes publiés à ce jour (SMIC, minimum garanti, cotisations, aide de la CAF) : leurs revalorisations ne sont pas encore publiées.`;
 
 /*
  * T-041 (R-2, relecture V4) : les textes des écrans qui citent un montant ou une date de barème les lisent ici,

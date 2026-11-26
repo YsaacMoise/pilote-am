@@ -23,10 +23,10 @@ const now = new Date(2026, 9, 31, 18, 5);
 describe('relevé du mois : données', () => {
   const ctx = makeCtx(contract(), recs, [], '2026-11-02');
   const d = releveDonnees(ctx, '2026-10', { amName: ' Sophie ', now, version: '1.0.0-test' });
-  it('en-tête : mois, enfant, famille, assistante maternelle, mois terminé donc pas provisoire', () => {
+  it('en-tête : mois, enfant, famille, assistante maternelle, mois terminé, pas le mois en cours', () => {
     expect(d.moisLabel).toBe('octobre 2026');
     expect(d.titre).toBe('Relevé du mois');
-    expect(d.provisoire).toBe(false);
+    expect(d.moisEnCours).toBe(false);
     expect([d.enfant, d.famille, d.am]).toEqual(['Léa', 'Martin', 'Sophie']);
     expect(d.nomFichier).toBe('Arvela-releve-Léa-2026-10.pdf');
     expect(d.fabrique).toBe('Fabriqué le 31/10/2026 à 18 h 05');
@@ -65,10 +65,11 @@ describe('relevé du mois : données', () => {
     expect(t).not.toMatch(/brut|cotisation|imposable|bulletin/i);
     expect(d.mention).toMatch(/Il ne remplace pas le bulletin de salaire Pajemploi, qui fait foi\./);
   });
-  it('mois en cours : titre « provisoire », jours à venir sans horaires réels', () => {
+  it('mois en cours : titre « en cours, au JJ/MM » (T-103), jours à venir sans horaires réels', () => {
     const p = releveDonnees(makeCtx(contract(), recs, [], '2026-10-15'), '2026-10', { amName: 'Sophie', now, version: 'x' });
-    expect(p.provisoire).toBe(true);
-    expect(p.titre).toBe('Relevé du mois, provisoire');
+    expect(p.moisEnCours).toBe(true);
+    expect(p.titre).toMatch(/^Relevé du mois en cours, au \d\d\/\d\d$/);
+    expect(p.titre).not.toMatch(/provisoire/);
     expect(p.lignes.find((l) => l.date === '2026-10-20')?.reel).toBe('');
     expect(p.totaux[1].label).toBe('Heures d’accueil à ce jour');
   });
@@ -79,10 +80,10 @@ describe('relevé du mois : données', () => {
 });
 
 describe('relevé du mois : cas limites (relecture contradictoire)', () => {
-  it('contrat terminé avant aujourd’hui : le mois de sortie n’est plus « provisoire »', () => {
+  it('contrat terminé avant aujourd’hui : le mois de sortie n’est plus le mois en cours', () => {
     const c = contract({ end: '2026-11-13' });
     const d = releveDonnees(makeCtx(c, [], [], '2026-11-20'), '2026-11', { amName: 'Sophie', now, version: 'x' });
-    expect(d.provisoire).toBe(false);
+    expect(d.moisEnCours).toBe(false);
     expect(d.lignes.at(-1)?.date).toBe('2026-11-13');
   });
   it('arrêt de l’assistante maternelle : les week-ends sans accueil prévu ne font pas de ligne', () => {

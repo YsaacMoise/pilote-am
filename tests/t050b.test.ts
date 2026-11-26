@@ -6,12 +6,11 @@
 // Une part « à confirmer » n'est ni ajoutée ni payée : le résultat qui en dépend est « à confirmer », avec la raison.
 // Les montants des fiches DDETS 31 sont dans tests/exemples-officiels.test.ts ([OCC52] p. 10, [OCC46] p. 11).
 import { describe, expect, it } from 'vitest';
-import type { AmLeave, Contract, Planning } from '../src/engine/model';
+import type { Contract, Planning } from '../src/engine/model';
 import { makeCtx, monthBase, monthBrut, type Ctx } from '../src/engine/payroll';
 import { baseDixieme, cpForMonth } from '../src/engine/conges';
 import { finDeContrat } from '../src/engine/fin';
 import { lastDay, monthOf, monthsBetween, type ISODate, type Month } from '../src/engine/dates';
-import { euros } from '../src/engine/money';
 import { netToBrut } from '../src/engine/rates';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
@@ -35,7 +34,6 @@ function contract(over: Partial<Contract> = {}): Contract {
     balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 0, ...over,
   };
 }
-const EVENEMENT: AmLeave = { id: 'e', type: 'evenement', from: '2026-03-10', to: '2026-03-11', joursEvenement: 0 }; // durée non gérée : jours « à confirmer »
 // Année complète depuis le 03/06/2024 (début d'une période de référence) : deux périodes de congés à la fin.
 const complete = () => contract({ start: '2024-06-03', trackedFrom: '2024-06-03', yearType: 'complete', weeks: 52, weeksOff: [] });
 
@@ -88,25 +86,20 @@ describe('T-050b, A-45 : ICCP des deux périodes dans l’assiette du 1/80 (ann�
   it('décès de l’enfant : même assiette (art. 119.4.2 renvoie au calcul de 121.1)', () => {
     const r = finDeContrat(ctx(), '2026-05-15', 'deces');
     expect(r.cpAConfirmer).toBeUndefined();
-    expect(r.totalBrut).toBe(salairesBruts(ctx(), '2026-05-15') + netToBrut(r.cpIndemnite, '2026-05-31'));
-  });
-  it('variantes de date de fin : chaque variante compte la même assiette (fin le 04/05 ou le 05/05/2026)', () => {
-    const r = finDeContrat(ctx(), '2026-04-05', 'retrait');
-    const lendemain = finDeContrat(ctx(), '2026-04-05', 'retrait', 0, '2026-04-06');
-    expect(lendemain.cpAConfirmer).toBeUndefined();
-    expect(r.ruptureVariantes).toContain(`Fin le 05/05/2026 : ${euros(lendemain.indemniteRupture)}`);
+    // T-103 (F13) : l'indemnité égale au préavis (CCN 119.4.2, soumise à cotisations) entre aussi dans l'assiette.
+    expect(r.indemnitePreavis).toBeGreaterThan(0);
+    expect(r.totalBrut).toBe(salairesBruts(ctx(), '2026-05-15') + netToBrut(r.cpIndemnite, '2026-05-31') + netToBrut(r.indemnitePreavis, '2026-05-31'));
   });
 });
 
-describe('T-050b, A-45 : une part « à confirmer » n’est pas ajoutée et rend l’indemnité « à confirmer »', () => {
-  it('ICCP à confirmer (A-23 : jours de la période en cours selon la lecture) : non ajoutée, raison dite', () => {
+describe('T-050b, A-45, revu par la T-103 : assiette complète, sans part « à confirmer »', () => {
+  it('fin en novembre (jours de la période en cours sûrs, C10) : ICCP ajoutée à l’assiette, indemnité comptée', () => {
     const ctx = () => makeCtx(complete(), [], [], '2026-12-31');
     const r = finDeContrat(ctx(), '2026-10-13', 'retrait');
-    expect(r.cpAConfirmer).toBeDefined();
-    expect(r.cpIndemnite).toBe(0);
-    expect(r.totalBrut).toBe(salairesBruts(ctx(), r.dernierJour));
-    expect(r.ruptureAConfirmer).toBe(true);
-    expect(r.alertes.join(' ')).toMatch(/elle ne compte pas encore l’indemnité de congés non pris à confirmer/);
+    expect(r.cpAConfirmer).toBeUndefined();
+    expect(r.cpIndemnite).toBeGreaterThan(0);
+    expect(r.totalBrut).toBe(salairesBruts(ctx(), r.dernierJour) + netToBrut(r.cpIndemnite, lastDay(monthOf(r.dernierJour))));
+    expect(r.ruptureAConfirmer).toBeFalsy();
   });
   it('régularisation sûre (année incomplète) : ajoutée à l’assiette', () => {
     const ctx = () => makeCtx(contract(), [], [], '2026-11-18');
@@ -114,15 +107,6 @@ describe('T-050b, A-45 : une part « à confirmer » n’est pas ajoutée et ren
     expect(r.regularisationAConfirmer).toBeUndefined();
     expect(r.regularisation).toBeGreaterThan(0);
     expect(r.totalBrut).toBe(salairesBruts(ctx(), r.dernierJour) + netToBrut(r.cpIndemnite + r.regularisation, lastDay(monthOf(r.dernierJour))));
-  });
-  it('régularisation à confirmer (jours d’événement familial à confirmer) : non ajoutée, raison dite', () => {
-    const ctx = () => makeCtx(contract(), [], [EVENEMENT], '2026-11-18');
-    const r = finDeContrat(ctx(), '2026-10-28', 'retrait');
-    expect(r.regularisationAConfirmer).toBeDefined();
-    expect(r.regularisation).toBe(0);
-    expect(r.totalBrut).toBe(salairesBruts(ctx(), r.dernierJour) + netToBrut(r.cpIndemnite, lastDay(monthOf(r.dernierJour))));
-    expect(r.ruptureAConfirmer).toBe(true);
-    expect(r.alertes.join(' ')).toMatch(/ni la régularisation de fin de contrat à confirmer/);
   });
 });
 
@@ -136,10 +120,12 @@ describe('T-050b, A-50 : régularisation dans la base du dixième des congés no
     expect(r.cpDixiemeEnCours).toBe(Math.round((base + r.regularisation) / 10));
     expect(r.cpDixiemeEnCours).toBeGreaterThan(Math.round(base / 10));
   });
-  it('sans régularisation (année complète) : dixième = base ÷ 10, sans prorata des jours pour enfants (point 1)', () => {
+  it('sans régularisation (année complète) : dixième = (base + indemnité de la période précédente payée à la fin) ÷ 10 (T-103, F7)', () => {
+    // CASF L423-6 et CCN 48.1.1.5 : l'indemnité de congés versée pendant la période entre dans la base du dixième.
     const ctx = makeCtx(complete(), [], [], '2026-12-31');
     const r = finDeContrat(ctx, '2026-04-16', 'retrait');
     const endCtx: Ctx = { ...ctx, c: { ...ctx.c, end: r.dernierJour }, cache: new Map(), finControlee: true };
-    expect(r.cpDixiemeEnCours).toBe(Math.round(baseDixieme(endCtx, 2025).base / 10));
+    expect(r.cpDixiemeEnCours).toBe(110273);
+    expect(r.cpDixiemeEnCours).toBeGreaterThan(Math.round(baseDixieme(endCtx, 2025).base / 10));
   });
 });

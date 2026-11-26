@@ -160,7 +160,7 @@ export async function genererRelevePdf(d: ReleveDonnees): Promise<Uint8Array> {
     ['Enfant', d.enfant],
     ['Famille', d.famille || '—'],
     ['Assistante maternelle', d.am || '—'],
-    ['Mois', d.moisLabel + (d.provisoire ? ' (en cours : chiffres provisoires)' : '')],
+    ['Mois', d.moisLabel + (d.moisEnCours ? ' (mois en cours, entretien et repas comptés à ce jour)' : '')],
   ];
   for (const [k, v] of infos) {
     txt(k, M, y, 9.5, f.texte);

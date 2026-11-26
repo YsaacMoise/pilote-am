@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { SIM_RESSOURCES } from './SimApercu';
 import { logUsage } from '../store';
 import { JOUR_NOMS, MOIS_NOMS, addDays, monthLabel, today } from '../engine/dates';
-import { BAREMES_VERIFIES_JUSQU_AU, MESSAGE_BAREMES_PROVISOIRES, MINIMUM_SANS_TITRE, baremesProvisoires, dateLongue, entretienHoraireMin, minConvDepuis, minimumTitreAmAp, ratesConnus } from '../engine/rates';
+import { BAREMES_VERIFIES_JUSQU_AU, MESSAGE_BAREMES_PUBLIES, MINIMUM_SANS_TITRE, baremesAttendus, dateLongue, entretienHoraireMin, minConvDepuis, minimumTitreAmAp, ratesConnus } from '../engine/rates';
 import type { Plage, Planning } from '../engine/model';
 import { euros, eurosTexte, hoursLabel } from '../engine/money';
 import {
@@ -221,7 +221,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
       <main class="sim-main">
         <div class="sim-form">
         <p class="hint">Pour une famille qui emploie une assistante maternelle. Tout est calculé sur ce téléphone : rien n’est envoyé.</p>
-        {baremesProvisoires(addDays(d, 365)) && <Banner tone="info">{MESSAGE_BAREMES_PROVISOIRES.replace('Ce calcul reprend', 'Les mois concernés reprennent')}</Banner>}
+        {baremesAttendus(addDays(d, 365)) && <Banner tone="info">{MESSAGE_BAREMES_PUBLIES}</Banner>}
         {connecte && <AideVideo id="simulateur" />}
 
         <section class="card">
@@ -271,7 +271,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
         <section class="card">
           <fieldset>
             <legend>Le tarif</legend>
-            <EuroInput label="Salaire horaire brut" hint={`Soit ${euros(r.tauxNet)} net. Minimum : ${euros(r.minimumBrut)} brut${minimumAmAp !== undefined ? ` (${euros(minimumAmAp)} avec le titre « Assistant maternel - garde d’enfants »)` : ''}.`} cents={i.tauxBrut} onChange={(v) => set({ tauxBrut: v ?? 0 })} />
+            <EuroInput label="Salaire horaire brut" hint={`Soit ${euros(r.tauxNet)} net. Minimum : ${euros(r.minimumBrut)} brut${minimumAmAp !== undefined ? ` (${euros(minimumAmAp)} avec le titre « Assistant maternel – assistant parental »)` : ''}.`} cents={i.tauxBrut} onChange={(v) => set({ tauxBrut: v ?? 0 })} />
             {r.sousMinimum && <Banner tone="warn">Ce taux est sous le minimum de la convention collective : {euros(r.minimumBrut)} brut de l’heure depuis le {dateLongue(minConvDepuis(d)!)}. {MINIMUM_SANS_TITRE}</Banner>}
             <Switch label="L’assistante maternelle travaille en Alsace-Moselle" hint="Bas-Rhin, Haut-Rhin ou Moselle : cotisation maladie du régime local en plus." checked={i.alsaceMoselle} onChange={(v) => set({ alsaceMoselle: v })} />
             <Seg label="Comment l’indemnité d’entretien est-elle fixée ?" value={i.entretienMode} options={[{ v: 'heure', l: 'Par heure d’accueil' }, { v: 'jour', l: 'Par jour d’accueil' }]} onChange={(v) => set({ entretienMode: v, entretien: 0 })} />
@@ -299,7 +299,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
                   <EuroInput label="Tarif par km" cents={i.kmTaux || undefined} allowEmpty onChange={(v) => set({ kmTaux: v ?? 0 })} />
                 </div>
                 <Stepper label="Puissance fiscale de la voiture" value={i.cv} min={3} max={8} unit={i.cv >= 8 ? 'CV et +' : 'CV'} onChange={(v) => set({ cv: v })} />
-                <p class="hint">Si l’assistante maternelle ne fait que ces {nf.format(kmAn)} km dans l’année : au moins {r.kmBornes.min !== null ? prixKm(r.kmBornes.min) : '(barème de l’administration à vérifier pour cette date)'} par km (barème de l’administration), au plus {r.kmBornes.max !== null ? prixKm(r.kmBornes.max) : '(barème fiscal à vérifier)'} (barème fiscal, voiture non électrique). Avec d’autres trajets dans l’année, la tranche peut changer.</p>
+                <p class="hint">Si l’assistante maternelle ne fait que ces {nf.format(kmAn)} km dans l’année : au moins {r.kmBornes.min !== null ? prixKm(r.kmBornes.min) : '(barème de l’administration inconnu de l’app avant 2022)'} par km (barème de l’administration), au plus {r.kmBornes.max !== null ? prixKm(r.kmBornes.max) : '(barème fiscal inconnu de l’app avant 2022)'} (barème fiscal, voiture non électrique). Avec d’autres trajets dans l’année, la tranche peut changer.</p>
                 {kmHorsBornes && <Banner tone="warn">Ce tarif sort de la fourchette légale pour ce kilométrage{r.kmBornes.min !== null && r.kmBornes.max !== null ? ` : entre ${prixKm(r.kmBornes.min)} et ${prixKm(r.kmBornes.max)} par km` : ''}.</Banner>}
               </>
             )}
@@ -416,11 +416,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
 
         </div>
         <div class="sim-result">
-        {/* T-077 (R7) : Alsace-Moselle calculée ; le Vendredi saint et le 26 décembre sont à confirmer (deux lectures). */}
         {<>
-        {r.feriesLocauxB && (
-          <Banner tone="info">Le Vendredi saint et le 26 décembre sont fériés en Alsace-Moselle, mais aucun texte ne dit s’ils le sont pour une assistante maternelle (question à poser à la DDETS). Cette simulation les compte comme fériés. Sans eux, le coût réel serait de {euros(r.feriesLocauxB.reel)} par mois{r.feriesLocauxB.reel !== r.reel ? `, soit ${euros(Math.abs(r.feriesLocauxB.reel - r.reel))} de ${r.feriesLocauxB.reel > r.reel ? 'plus' : 'moins'}` : ', le même montant'}.</Banner>
-        )}
         {/* Rappel du résultat collé en bas de l'écran pendant la saisie ; il s'efface quand le résultat complet est visible. */}
         <button type="button" class={`sim-sticky ${resultVisible ? 'is-hidden' : ''} ${connecte ? 'with-tabbar' : ''}`} aria-hidden={resultVisible} tabIndex={resultVisible ? -1 : 0}
           onClick={() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
@@ -431,14 +427,14 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
           <span class="summary-label" id="sim-t">Coût réel pour la famille, par mois</span>
           <span class="total">{euros(r.reel)}</span>
           <span class="summary-sub">après l’aide de la CAF{r.creditEligible ? ' et le crédit d’impôt réparti sur l’année' : ''}</span>
-          <span class="summary-note">Estimation</span>
+          <span class="summary-note">Simulation aux barèmes publiés</span>
         </section>
 
         <section class="card" aria-labelledby="sim-d">
           <h2 id="sim-d" style={{ marginBottom: '8px' }}>Le détail</h2>
           <div class="decl">
             <div class="decl-line"><span class="decl-label"><span>Salaire net mensualisé</span><span class="decl-hint">{hoursLabel(r.heuresMoisMin)} par mois</span></span><span class="decl-value">{euros(r.salaire)}</span></div>
-            {r.congesMois > 0 && <div class="decl-line"><span class="decl-label"><span>Congés payés</span><span class="decl-hint">environ {euros(r.congesAnnuels)} par an, répartis ici sur 12 mois</span></span><span class="decl-value">{euros(r.congesMois)}</span></div>}
+            {r.congesMois > 0 && <div class="decl-line"><span class="decl-label"><span>Congés payés</span><span class="decl-hint">{euros(r.congesAnnuels)} par an (le plus haut du dixième et du maintien, article 48.1.1.5), répartis ici sur 12 mois</span></span><span class="decl-value">{euros(r.congesMois)}</span></div>}
             {r.reductionHeuresMaj > 0 && <div class="decl-line"><span class="decl-label"><span>Réduction de cotisations des heures majorées</span><span class="decl-hint">{pourcent(cotis.reductionHeuresMajorees)} du brut des heures au-delà de 45 h, versés en plus du salaire</span></span><span class="decl-value">{euros(r.reductionHeuresMaj)}</span></div>}
             <div class="decl-line"><span class="decl-label"><span>Indemnités d’entretien</span><span class="decl-hint">{entretienMin === entretienMax ? euros(entretienMin) : `de ${euros(entretienMin)} à ${euros(entretienMax)}`} par jour × {r.joursAn} jours d’accueil par an ÷ 12{r.feriesAn > 0 ? `, ${Math.round(r.feriesAn)} jours fériés retirés` : ''}</span></span><span class="decl-value">{euros(r.entretien)}</span></div>
             {r.repas > 0 && <div class="decl-line"><span class="decl-label"><span>Repas</span><span class="decl-hint">{TYPES_REPAS.filter((t) => r.repasAn[t] > 0).map((t) => `${r.repasAn[t]} ${REPAS_NOMS[t].toLowerCase()}s`).join(', ')} par an ÷ 12</span></span><span class="decl-value">{euros(r.repas)}</span></div>}
@@ -460,12 +456,9 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
         {cal.mois.length > 0 && (
           <section class="card" aria-labelledby="sim-cal">
             <h2 id="sim-cal" style={{ marginBottom: '4px' }}>Mois par mois</h2>
-            <p class="hint">Ce que la famille paie chaque mois, après l’aide de la CAF, et le crédit d’impôt le mois où il arrive. {cal.moisAConfirmer.length
-              ? `${eurosRond(cal.total)} sur ${cal.mois.length - cal.moisAConfirmer.length} mois sûrs, plus ${eurosRond(cal.totalAConfirmer)} à confirmer (${cal.moisAConfirmer.map(monthLabel).join(', ')}), non compris.`
-              : `${eurosRond(cal.total)} sur ${cal.mois.length} mois.`}
-              {cal.moisCreditAConfirmer.length > 0 && ` Crédit d’impôt à confirmer : ${eurosRond(Math.abs(cal.creditAConfirmer))} ${cal.creditAConfirmer < 0 ? 'à rembourser' : 'à recevoir'} (${cal.moisCreditAConfirmer.map(monthLabel).join(', ')}), non compris.`}</p>
+            <p class="hint">Ce que la famille paie chaque mois, après l’aide de la CAF, et le crédit d’impôt le mois où il arrive. {`${eurosRond(cal.total)} sur ${cal.mois.length} mois.`}</p>
             {premierCredit && <Banner tone="info">Le premier crédit d’impôt n’arrive qu’en {monthLabel(premierCredit.mois)} : jusque-là, la famille paie sans lui.{premiereAvance ? ` En ${monthLabel(premiereAvance.mois)}, l’avance de 60 % se calcule sur la première année, souvent incomplète : elle est faible, le solde arrive l’été.` : ''}</Banner>}
-            {cal.mois.filter((m) => m.aConfirmer).map((m) => <Banner tone="warn">{m.aConfirmer}</Banner>)}
+            {cal.mois.filter((m) => m.note).map((m) => <Banner tone="info">{monthLabel(m.mois)} : {m.note}</Banner>)}
             <ol class="cal-list">
               {cal.mois.map((m) => (
                 <li class={`cal-row ${m.evenements.length ? 'is-event' : ''}`}>
@@ -475,9 +468,8 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
                     <b class="cal-net">{euros(m.net)}</b>
                   </div>
                   <span class="decl-hint">
-                    {`payé ${eurosRond(m.verse + m.cotisationsReste)}`}{m.cmg ? ` · CAF −${eurosRond(m.cmg)}` : ''}{m.autresAides ? ` · aides −${eurosRond(m.autresAides)}` : ''}{m.credit ? ` · crédit ${m.credit > 0 ? '−' : '+'}${eurosRond(Math.abs(m.credit))}` : ''}{m.creditAConfirmer ? ` · crédit à confirmer ${m.creditAConfirmer > 0 ? '−' : '+'}${eurosRond(Math.abs(m.creditAConfirmer))}` : ''}
+                    {`payé ${eurosRond(m.verse + m.cotisationsReste)}`}{m.cmg ? ` · CAF −${eurosRond(m.cmg)}` : ''}{m.autresAides ? ` · aides −${eurosRond(m.autresAides)}` : ''}{m.credit ? ` · crédit ${m.credit > 0 ? '−' : '+'}${eurosRond(Math.abs(m.credit))}` : ''}
                     {m.evenements.length > 0 && <> · <span class="cal-ev">{m.evenements.map((e) => EVENEMENTS[e]).join(', ')}{m.conges ? ` ${eurosRond(m.conges)}` : ''}</span></>}
-                    {m.aConfirmer && <> · <b>à confirmer</b></>}
                   </span>
                 </li>
               ))}
@@ -535,7 +527,7 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
               <dt>Ce que la famille paie par heure, après l’aide</dt><dd>{euros(r.resteHoraire)}</dd>
               {r.creditEligible && (<><dt>Dépenses retenues pour l’impôt</dt><dd>{euros(r.depensesAnnuelles)}</dd></>)}
             </dl>
-            <p class="hint">Crédit d’impôt : {pourcent(CREDIT_TAUX)} du salaire net de l’année, plus {eurosTexte(CREDIT_FORFAIT_ENTRETIEN_JOUR)} par jour d’accueil et les cotisations restées à la charge de la famille, moins l’aide de la CAF, dans la limite de {eurosTexte(CREDIT_PLAFOND_DEPENSES * CREDIT_TAUX)} par enfant. {baremesProvisoires(d) ? `Règles connues au ${dateLongue(BAREMES_VERIFIES_JUSQU_AU)}` : `Règles en vigueur le ${dateLongue(d)}`}. Le montant exact de l’aide est calculé chaque mois par la CAF à partir de la déclaration Pajemploi.</p>
+            <p class="hint">Crédit d’impôt : {pourcent(CREDIT_TAUX)} du salaire net de l’année, plus {eurosTexte(CREDIT_FORFAIT_ENTRETIEN_JOUR)} par jour d’accueil et les cotisations restées à la charge de la famille, moins l’aide de la CAF, dans la limite de {eurosTexte(CREDIT_PLAFOND_DEPENSES * CREDIT_TAUX)} par enfant. {baremesAttendus(d) ? `Règles connues au ${dateLongue(BAREMES_VERIFIES_JUSQU_AU)}` : `Règles en vigueur le ${dateLongue(d)}`}. Le montant exact de l’aide est calculé chaque mois par la CAF à partir de la déclaration Pajemploi.</p>
           </div>
         </details>
         </>}

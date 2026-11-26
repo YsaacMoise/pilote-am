@@ -113,7 +113,7 @@ describe('C-019 : heures complémentaires et majorées exonérées (CGI art. 81 
   it('plafond de 7 500 € tous employeurs réunis : l’excédent redevient imposable, au prorata', () => {
     const row = (cid: string, hsValeur: number): FiscalChild => ({
       cid, recu: 1000000, netImposable: 900000, hsValeur, hsExonere: hsValeur, hsImposable: 0, entretienRepas: 100000, km: 0,
-      repasParents: 0, jours: 200, joursCourts: 0, abattementBrut: 738600, abattement: 738600, imposable: 261400,
+      repasParents: 0, jours: 200, joursCourts: 0, abattementBrut: 738600, abattement: 738600, imposable: 261400, brutInconnu: false,
       smic: 1231, smics: [1231], facteur: 3, partiel: false, moisHistorique: 0,
     });
     // 5 000 € + 4 000 € = 9 000 € : 1 500 € au-delà, soit 833,33 € et 666,67 €.
@@ -152,11 +152,9 @@ describe('C-019 : heures complémentaires et majorées exonérées (CGI art. 81 
     const ok = controle({ id: 'b', cid: 'c1', month: '2026-10', net: r.netTotal + 1208, source: 'manuel' }, r, 350);
     expect(ok[0].level).toBe('ok');
     expect(ok[0].detail).toMatch(/12,08\s€ de réduction/);
-    // Rapport 90 % : incohérent sans réduction ; cohérent avec 90 € de réduction sur 1 000 € de brut (limite 91 %).
+    // T-103 (D1, D6) : sans taux horaire brut au contrat, le brut n'est pas contrôlé, l'app demande le taux.
     const sans = controle({ id: 'b', cid: 'c1', month: '2026-10', net: 90000, brut: 100000, source: 'manuel' }, { ...r, reductionHS: 0 }, 350);
-    expect(sans.some((x) => /incohérents/.test(x.title))).toBe(true);
-    const avec = controle({ id: 'b', cid: 'c1', month: '2026-10', net: 90000, brut: 100000, source: 'manuel' }, { ...r, reductionHS: 9000 }, 350);
-    expect(avec.some((x) => x.title === 'Net et brut cohérents' && /91,0 %/.test(x.detail))).toBe(true);
+    expect(sans.some((x) => x.title === 'Brut non contrôlé')).toBe(true);
   });
 });
 
@@ -196,11 +194,11 @@ describe('C-008 : brut estimé affiché comme une estimation, brut réel demand�
     // congés payés de la rupture entre dans l'assiette ; le lot 3 donnait 10 125,42 € avec elle. Ici, elle est « à
     // confirmer » (A-23, T-030 : 16 ou 15 jours en cours) : elle n'est pas encore ajoutée, le total reste 9 117,10 € et
     // l'indemnité de rupture est « à confirmer », avec cette raison. Le cas des congés non pris sûrs : tests/t050b.test.ts.
+    // T-103 (C10) : les congés non pris ne sont plus « à confirmer » : ils entrent dans l'assiette (A-45).
     expect(f.totalBrut).toBe(f0.totalBrut);
-    expect(f.cpAConfirmer).toBeDefined();
-    expect(f.ruptureAConfirmer).toBe(true);
-    expect(f.alertes.join(' ')).toMatch(/l’indemnité de congés non pris à confirmer/);
-    expect(f.totalBrut).toBe(911710);
+    expect(f.cpAConfirmer).toBeUndefined();
+    expect(f.ruptureAConfirmer).toBe(false);
+    expect(f.totalBrut).toBeGreaterThan(911710);
   });
   it('arrondi à l’euro : 1 234,50 € → « 1 235 € », 154,31 € → « 154 € »', () => {
     expect(eurosArrondis(123450)).toBe('1\u00a0235\u00a0€');

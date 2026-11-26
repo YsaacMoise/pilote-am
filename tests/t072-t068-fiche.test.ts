@@ -119,7 +119,8 @@ describe('T-068 : départ vide tant que son heure n’est pas passée', () => {
   });
   it('B-2 : la fiche vérifie avant d’écrire, seulement quand les heures sont visibles', () => {
     const src = readFileSync('src/screens/Today.tsx', 'utf8');
-    expect(src).toMatch(/const erreur = verifierFiche\(pres, di\.planned, abs === 'none' && !future\);\s*if \(erreur\) \{ setErr\(erreur\); return; \}/);
+    // T-109 (correction 20) : le jour même, l'heure de maintenant est passée pour refuser une heure à venir.
+    expect(src).toMatch(/const erreur = verifierFiche\(pres, di\.planned, abs === 'none' && !future, day === today\(\) \? nowHHMM\(\) : undefined\);\s*if \(erreur\) \{ setErr\(erreur\); return; \}/);
     expect(src).toContain("{abs === 'none' && !future && (");
   });
 });

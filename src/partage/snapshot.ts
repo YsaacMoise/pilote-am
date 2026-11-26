@@ -4,7 +4,8 @@
 // les présences, le carnet et les montants du mois.
 import { addDays, monthOf, addMonths, type ISODate, type Month } from '../engine/dates';
 import { dayInfo, inContract, type Ctx } from '../engine/payroll';
-import { computeMonth, declarationLines, partsAConfirmer } from '../engine/month';
+import { computeMonth, declarationLines, reductionVersee, totalAVerser } from '../engine/month';
+import { baremesAttendus } from '../engine/rates';
 import { CHILD_ABS_LABEL, type Journal, type Plage, type Presence } from '../engine/model';
 import { detailReveilOublie, reveilOublie } from '../engine/carnet';
 
@@ -37,12 +38,12 @@ export interface MoisParent {
   termine: boolean;
   total: number;
   net: number;
+  /** T-109 : réduction de cotisations des heures complémentaires et majorées, versée en plus du net (CSS L241-17) */
+  reduction?: number;
   entretien: number;
   repas: number;
   km: number;
   lignes: LigneDecl[];
-  /** T-025 C-5 : parts sorties du total, à confirmer (« une part du salaire », « les kilomètres »…). Absent : aucune. */
-  aConfirmer?: string[];
   /** T-031 : mois que l'app ne calcule pas (cas non géré) : aucun montant ni aucune case n'est envoyé */
   nonGere?: boolean;
   joursAccueil: number;
@@ -77,8 +78,7 @@ function jourParent(ctx: Ctx, d: ISODate, am: string): JourParent | null {
   switch (di.kind) {
     case 'hors': return pres.length ? { ...base, statut: 'parti' } : null;
     case 'am': return di.plannedMin ? { ...base, minutes: 0, statut: 'am', motif: motifAm(di.amLeave!, am) } : null;
-    // T-077 (R3) : férié local d'Alsace-Moselle ou de Mayotte, ou férié qui en dépend : à confirmer.
-    case 'ferie': return { ...base, minutes: 0, statut: 'ferie', motif: di.ferie ? `Jour férié (${di.ferie})${di.aConfirmer ? ', à confirmer' : ''}` : `Jour férié local (${di.ferieLocal}), à confirmer` };
+    case 'ferie': return { ...base, minutes: 0, statut: 'ferie', motif: `Jour férié (${di.ferie})${di.deducted ? ', non payé' : ''}` };
     case 'absent': return { ...base, minutes: 0, statut: 'absent', motif: CHILD_ABS_LABEL[di.rec!.abs!] };
     case 'present': return { ...base, statut: di.enCours ? 'present' : 'parti' };
     case 'prevu': return { ...base, statut: d < ctx.today ? 'prevu' : 'attendu', minutes: d < ctx.today ? di.plannedMin : 0 };
@@ -90,20 +90,21 @@ function moisParent(ctx: Ctx, m: Month, enfants: number): MoisParent | null {
   const r = computeMonth(ctx, m, enfants);
   if (!r.active || r.fromHistory) return null;
   const absences = [...ctx.days.values()].filter((x) => monthOf(x.date) === m && x.abs && inContract(ctx.c, x.date)).length;
-  if (r.nonGere.length) {
+  // T-103 (D4) : mois dont les barèmes ne sont pas publiés : rien n'est envoyé, comme un mois non calculé.
+  if (r.nonGere.length || baremesAttendus(`${m}-01`)) {
     return { month: m, termine: m < monthOf(ctx.today), total: 0, net: 0, entretien: 0, repas: 0, km: 0, lignes: [], nonGere: true, joursAccueil: r.presenceDays, absences };
   }
   return {
     month: m,
     termine: m < monthOf(ctx.today),
-    total: r.netTotal + r.entretien + r.repas + r.km,
+    total: totalAVerser(r),
     net: r.netTotal,
+    ...(reductionVersee(r) ? { reduction: reductionVersee(r) } : {}),
     entretien: r.entretien,
     repas: r.repas,
     km: r.km,
     // Décision du DG du 21/11/2026 : aucun motif d'absence de l'AM sur le lien (« pourParents »).
     lignes: declarationLines(ctx, r, true).map((l) => (l.hint ? { label: l.label, value: l.value, hint: l.hint } : { label: l.label, value: l.value })),
-    ...(partsAConfirmer(r, true).length ? { aConfirmer: partsAConfirmer(r, true) } : {}),
     joursAccueil: r.presenceDays,
     absences,
   };

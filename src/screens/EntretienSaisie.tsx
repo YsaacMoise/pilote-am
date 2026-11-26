@@ -23,7 +23,7 @@ export function EntretienSaisie({ t, set, hint, passe }: { t: Valeurs; set: (p: 
       <Choices label="Comment ton contrat fixe-t-il l’indemnité d’entretien ?" value={mode}
         options={[
           { v: 'heure', l: 'Par heure d’accueil', sub: 'Le montant suit la durée réelle de chaque journée, comme le prévoit la convention (article 114.1).' },
-          { v: 'jour', l: 'Par jour d’accueil', sub: 'Un montant fixe par journée. Si une journée est plus longue ou plus courte que le planning, une partie du montant reste « à confirmer ».' },
+          { v: 'jour', l: 'Par jour d’accueil', sub: 'Un montant fixe par journée, quelle que soit sa durée. L’app verse au moins le minimum de la convention pour la durée du jour (article 114.1).' },
         ]}
         onChange={(v) => set({ entretienMode: v, entretienJour: 0, entretienHeure: 0 })} />
       {mode === 'heure' && <EuroInput key="h" label="Montant par heure d’accueil" hint={hint} cents={t.entretienHeure || undefined} allowEmpty onChange={(v) => set({ entretienHeure: v ?? 0, entretienJour: 0 })} />}

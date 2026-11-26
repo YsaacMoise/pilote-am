@@ -25,11 +25,20 @@ export const NATURE_EVENEMENT_LABEL: Record<NatureEvenement, string> = {
 };
 
 /**
- * Premier jour géré : les deux lectures de l'entrée en vigueur de l'avenant n° 4 (16/10/2023 selon Légifrance,
- * 01/05/2024 selon son article 4 et le JORF du 03/04/2024) donnent la nouvelle version de 48.1.3.1.1 à partir
- * du 01/05/2024 (t021-convention.md 2.8). Avant : version applicable non tranchée.
+ * Premier jour géré. T-103 (C6) : l'avenant n° 4 du 16/10/2023 (art. 4, KALIARTI000048805330) « entre en vigueur au premier
+ * jour du mois qui suit celui au cours duquel l'avis d'extension le concernant est publié au Journal officiel » : le
+ * 01/05/2024. Avant : version de 2022 de l'art. 48.1.3.1.1 (KALIARTI000043942139), avec le minimum de L3142-4 à la date.
+ * Les durées de `dureeEvenement` suivent déjà les deux versions : la seule borne est la CCN 3239 (01/01/2022).
  */
-export const EVENEMENTS_GERES_DEPUIS: ISODate = '2024-05-01';
+export const EVENEMENTS_GERES_DEPUIS: ISODate = '2016-08-10';
+/**
+ * T-107 (cas 6, regles/t107-evenements-avant-2022.md) : avant le 01/01/2022, ancienne convention des assistants maternels
+ * (IDCC 2395, art. 13, base KALI, KALIARTI000005825497, en vigueur du 01/07/2004 au 01/01/2022) et C. trav. L3142-4 dans sa
+ * version à la date (base LEGI ; versions du 10/08/2016 au 01/07/2020, au 01/07/2021, au 19/12/2021, au 21/07/2023),
+ * applicable par CASF L423-2 ; la plus favorable (L2251-1). Avant le 10/08/2016, L3142-4 n'avait pas cette rédaction ; aucun
+ * jour d'une absence commencée avant ne tombe dans un mois que l'app calcule (barèmes depuis le 01/01/2022, rates.ts).
+ */
+const ANCIENNE_CCN_JUSQUA: ISODate = '2022-01-01';
 /** Dernier jour avant la nouvelle rédaction de L3142-4, 6° (loi n° 2026-492 du 12 juin 2026, art. 6) */
 const L3142_4_AVANT_2026 = '2026-06-13';
 
@@ -45,44 +54,86 @@ const L3142_4_DEPUIS_2023: ISODate = '2023-07-21';
 /** Premier jour de la CCN IDCC 3239 lue (étendue par arrêté du 6 octobre 2021, appliquée au 01/01/2022) ; avant : non lu */
 const CCN_3239_DEPUIS: ISODate = '2022-01-01';
 
-/** Durée en jours ouvrables à la date `d` : max(CCN 48.1.3.1.1, C. trav. L3142-4). `undefined` : non géré. */
+/**
+ * T-107 (cas 6) : avant 2022, max(ancienne CCN, art. 13 ; L3142-4 à la date). Ancienne CCN, art. 13 : mariage du salarié 4,
+ * mariage d'un enfant 1, « décès d'un enfant ou du conjoint ou du partenaire d'un Pacs » 2, « décès du père, de la mère, d'un
+ * grand-père ou d'une grand-mère » 1, naissance ou adoption 3, beau-père, belle-mère, frère, sœur 1 (3 mois d'ancienneté) ;
+ * jours ouvrables. L3142-4 (10/08/2016 au 30/06/2020) : 4, 1, 3, décès d'un enfant 5, proches 3, handicap 2 ; du 01/07/2020 :
+ * enfant de moins de 25 ans (ou parent, ou personne à charge) « sept jours ouvrés » ; du 19/12/2021 : handicap, pathologie
+ * chronique ou cancer 2. L3142-1-1 (depuis le 01/07/2020) : congé de deuil de huit jours. `undefined` : aucun congé pour cet
+ * événement à cette date (petit-enfant, et événements d'avant le 10/08/2016).
+ */
+function dureeAvant2022(nature: NatureEvenement, d: ISODate): number | undefined {
+  if (d < EVENEMENTS_GERES_DEPUIS) return undefined;
+  const depuis2020 = d >= '2020-07-01';
+  switch (nature) {
+    case 'mariage': return 4;
+    case 'mariage_enfant': return 1;
+    case 'naissance': return 3;
+    case 'deces_enfant': return 5; // L3142-4, 4° : 5 (CCN : 2)
+    case 'deces_enfant_14': return depuis2020 ? 7 : 5; // depuis le 01/07/2020 : 7 jours ouvrés (joursOuvres)
+    case 'deces_proche': return 3; // L3142-4, 5° (CCN : 1 ou 2)
+    case 'handicap_enfant': return 2; // L3142-4, 6° (pathologie chronique ou cancer : depuis le 19/12/2021 seulement)
+    case 'deces_descendant': return undefined; // ni l'ancienne CCN ni L3142-4
+    case 'deces_ascendant': return 1; // ancienne CCN : grand-père ou grand-mère seulement
+    case 'deuil': return depuis2020 ? 8 : undefined;
+  }
+}
+
+/** T-107 (cas 6) : la durée se compte en jours ouvrés (L3142-4, 4°, « sept jours ouvrés », avant 2022 dans l'app) */
+export function evenementEnJoursOuvres(nature: NatureEvenement, d: ISODate): boolean {
+  return nature === 'deces_enfant_14' && estPeriodeJoursOuvres(d);
+}
+/** Début du 01/07/2020 au 31/12/2021 : seule période où une durée de l'app se compte en jours ouvrés */
+export const estPeriodeJoursOuvres = (d: ISODate): boolean => d >= '2020-07-01' && d < ANCIENNE_CCN_JUSQUA;
+/**
+ * T-109 (troisième contrôle qualité de la n° 67) : sans aucun champ propre au cas, un événement se compte en jours ouvrés quand
+ * sa durée est de 7 jours et qu'il commence du 01/07/2020 au 31/12/2021. C'est le seul cas de la période qui donne 7 (tables
+ * ci-dessus : ancienne CCN 1, 2, 3, 4 ; L3142-4 : 1, 2, 3, 4, 5, 7 ouvrés ; deuil 8). Le nombre 7 et la date suffisent.
+ */
+export const dureeEnJoursOuvres = (l: Pick<AmLeave, 'from' | 'joursEvenement'>): boolean => l.joursEvenement === 7 && estPeriodeJoursOuvres(l.from);
+
+/** Durée en jours ouvrables à la date `d` : max(CCN 48.1.3.1.1, C. trav. L3142-4). `undefined` : aucun congé à cette date. */
 export function dureeEvenement(nature: NatureEvenement, d: ISODate): number | undefined {
-  if (d < CCN_3239_DEPUIS) return undefined; // textes applicables avant 2022 non lus
+  if (d < CCN_3239_DEPUIS) return dureeAvant2022(nature, d);
   const avant2023 = d < L3142_4_DEPUIS_2023;
   switch (nature) {
     case 'mariage': return 4; // CCN 4 ; L3142-4, 1° : 4 (toutes versions)
     case 'mariage_enfant': return 1; // CCN 1 (mariage ou PACS) ; L3142-4, 2° : 1 (mariage)
     case 'naissance': return 3; // CCN 3 ; L3142-4, 3° et 3° bis : 3
     case 'deces_enfant': return avant2023 ? 5 : 12; // CCN remplacée 5, L3142-4 (2021) 5 ; puis L3142-4 (2023) 12
-    // Avant le 21/07/2023 : CCN remplacée 9 jours ouvrables, loi « sept jours ouvrés ». Aucun texte ne dit comment
-    // comparer des jours ouvrés et des jours ouvrables : non géré (même refus que B, EVT-OUVRES-2021).
-    case 'deces_enfant_14': return avant2023 ? undefined : 14; // CCN et L3142-4, 4° : 14
+    // Avant le 21/07/2023 : CCN remplacée 9 jours ouvrables, loi « sept jours ouvrés ». T-103 : 9 jours ouvrables (lundi au
+    // samedi) contiennent toujours au moins 7 jours ouvrés (lundi au vendredi), quel que soit le premier jour : la CCN est
+    // la plus favorable (C. trav. L2251-1, applicable par CASF L423-2, 6°).
+    case 'deces_enfant_14': return avant2023 ? 9 : 14; // CCN et L3142-4, 4° : 14
     case 'deces_proche': return 3; // CCN et L3142-4, 5° : 3 (toutes versions)
     // CCN remplacée 2 (handicap seul) ; L3142-4 (2021) 2 (handicap, pathologie chronique, cancer) ; puis 5 ; puis 10
     case 'handicap_enfant': return avant2023 ? 2 : d <= L3142_4_AVANT_2026 ? 5 : 10;
     case 'deces_descendant': return 1; // CCN 1 (deux versions) ; rien dans L3142-4
     case 'deces_ascendant': return 1; // CCN 1 (deux versions) ; rien dans L3142-4
-    // Art. 48.1.3.1.2 : 8 jours ouvrables, indemnisés par la sécurité sociale (C. trav. L3142-2 renvoie à CSS L331-9).
-    // Art. 48.1.3.1.3 (maintien sous déduction des indemnités journalières) : non géré par l'app.
-    case 'deuil': return undefined;
+    // Art. 48.1.3.1.2 : 8 jours ouvrables. T-103 (C9) : art. 48.1.3.1.3, salaire maintenu « sous déduction des indemnités
+    // journalières versées » : montant des indemnités demandé à la saisie (AmLeave.ijSecu).
+    case 'deuil': return 8;
   }
 }
 
 /**
  * T-038 (AC-3, relecture V4) : texte de l'écran de saisie pour une nature d'événement commencé le `from`. Il suit
- * `statutJourEvenement` : rien n'est annoncé comme payé quand le moteur met les jours « à confirmer » ou « non géré ».
+ * `statutJourEvenement` : rien n'est annoncé comme payé quand le moteur met les jours « non géré ».
  */
 export function libelleDureeSaisie(nature: NatureEvenement, from: ISODate): string {
-  if (from < EVENEMENTS_GERES_DEPUIS) return 'Période non gérée (avant le 01/05/2024) : durée à vérifier avec les parents';
-  if (nature === 'deuil') return 'Non géré par l’app : indemnités de la Sécurité sociale, salaire maintenu en les déduisant ; à calculer avec les parents';
+  if (from < EVENEMENTS_GERES_DEPUIS) return 'Avant le 10/08/2016 : l’app ne calcule aucun mois de cette période (ses barèmes commencent en 2022)';
   const n = dureeEvenement(nature, from);
-  if (n === undefined) return 'Non géré par l’app : durée à vérifier avec les parents';
-  return `${n} jour${n > 1 ? 's' : ''} ouvrable${n > 1 ? 's' : ''} payé${n > 1 ? 's' : ''}`;
+  if (n === undefined) return from < CCN_3239_DEPUIS
+    ? 'Pas de congé pour cet événement avant 2022 (ancienne convention, article 13 ; code du travail, article L3142-4) : saisis l’absence en congé payé ou sans solde'
+    : 'Pas de congé pour cet événement à cette date';
+  if (nature === 'deuil') return '8 jours ouvrables, salaire maintenu moins les indemnités journalières de la CPAM (indique leur montant)';
+  if (evenementEnJoursOuvres(nature, from)) return '7 jours ouvrés payés (tes jours de travail prévus ; code du travail, article L3142-4)';
+  const avant = from < CCN_3239_DEPUIS && nature === 'deces_ascendant' ? ' (grand-parent ; arrière-grand-parent : pas de congé avant 2022)'
+    : from < '2021-12-19' && nature === 'handicap_enfant' ? ' (annonce d’un handicap ; pathologie chronique ou cancer : pas de congé avant le 19/12/2021)' : '';
+  return `${n} jour${n > 1 ? 's' : ''} ouvrable${n > 1 ? 's' : ''} payé${n > 1 ? 's' : ''}${avant}`;
 }
 
-/** Jour ouvrable : lundi → samedi, hors jours fériés (même règle que le décompte des congés payés, conges.ts) */
-const ouvrable = (d: ISODate) => weekday(d) <= 6 && !holidayName(d);
-const lundiSamedi = (d: ISODate) => weekday(d) <= 6;
 
 /**
  * T-025 C-1 : la durée se compte par événement, pas par absence saisie (CCN 48.1.3.1.1 : « 4 jours ouvrables pour son
@@ -169,62 +220,42 @@ function joursCouverts(chaine: AmLeave[], d: ISODate): ISODate[] {
 }
 
 /**
- * Statut d'un jour d'événement familial : payé comme événement, ou à confirmer avec la raison et ce qu'il faut faire.
- * `leaves` : toutes les absences de l'AM, pour relier les saisies d'un même événement (T-025 C-1).
+ * Statut d'un jour d'événement familial (T-103, C6 à C8 ; décision du DG du 24/11/2026 : plus aucun « à confirmer »).
+ * - Jours ouvrables (CCN 48, liminaire) : tous les jours sauf le repos hebdomadaire (CCN 46 : prévu au contrat, le dimanche
+ *   par défaut) et les fériés chômés. C. trav. L3142-4 (version du 14/06/2026) : « Les jours de congés mentionnés au présent
+ *   article sont des jours ouvrables. » Un férié pendant le congé ne compte pas : il est payé comme férié chômé (art. 47) et
+ *   le congé dure un jour de plus.
+ * - La suite d'un même événement (`suiteDe`) est dite par l'AM à la saisie (décision du DG du 21/11/2026) : la durée se
+ *   compte sur tout le groupe.
+ * - Au-delà de la durée : ce n'est plus un congé pour événement familial. L'absence n'est couverte par aucun congé payé
+ *   saisi : elle est retenue (CCN 111), avec la raison, jamais « ni payée ni retenue ».
+ * `nonGere` : saisie que l'app ne sait pas lire (avant 2022 ; ancienne saisie sans durée connue).
  */
-export function statutJourEvenement(l: AmLeave, d: ISODate, leaves: AmLeave[] = [l]): { paye: true } | { paye: false; raison: string } {
+export function statutJourEvenement(l: AmLeave, d: ISODate, leaves: AmLeave[] = [l], reposHebdo = 7, jourTravaille?: (x: ISODate) => boolean): { paye: true } | { paye: false; raison: string; nonGere?: boolean } {
   const qui = `Événement familial du ${jjmm(l.from)} au ${jjmm(l.to)}`;
-  // Décision du DG du 21/11/2026 (« Payer comme avant ») : absence saisie avec l'app en ligne (main, 87c37f3), sans
-  // nature ni durée : payée comme main la paie (jour payé, dans le diviseur des retenues), sans « à confirmer ».
+  // Décision du DG du 21/11/2026 (« Payer comme avant ») : absence saisie sans nature ni durée : payée.
   if (l.joursEvenement === undefined) return { paye: true };
   const chaine = chaineEvenement(l, leaves);
   const debut = chaine[0];
-  if (debut.from < EVENEMENTS_GERES_DEPUIS) {
-    return { paye: false, raison: `${qui} : période non gérée (avant le 01/05/2024, la version applicable de l’article 48.1.3.1.1 n’est pas tranchée). Vérifie la durée avec les parents.` };
-  }
-  // Durée prévue à la date du début de la chaîne : celle de sa première absence (calculée à la saisie à cette date).
   const duree = debut.joursEvenement ?? 0;
   if (duree === 0) {
-    return { paye: false, raison: `${qui} : durée non gérée par l’app pour cet événement (par exemple le congé de deuil, payé avec les indemnités de la Sécurité sociale, article 48.1.3.1.3). Calcule ces jours avec les parents.` };
+    // T-107 (cas 6) : saisie d'avant la T-107 (événement d'avant 2022, durée alors inconnue) : la durée dépend de l'événement,
+    // que l'app n'enregistre pas (décision du DG du 21/11/2026) : il est demandé une fois, en saisissant l'absence de nouveau.
+    return { paye: false, nonGere: true, raison: `${qui} : l’app ne connaît pas encore sa durée. Supprime cette absence et saisis-la de nouveau en choisissant l’événement : l’app donne alors la durée et calcule le mois.` };
   }
-  // T-025 C-4 : le texte ne dit pas si un férié tombant du lundi au samedi compte dans les jours ouvrables du congé.
-  // Lecture 1 (férié compté) : `nAvec` ; lecture 2 (férié non compté, payé comme férié chômé : art. 47.2 « sauf
-  // autorisation d'absence préalablement accordée », 47.1 pour le 1er Mai) : `nSans`. Un jour est payé s'il l'est dans
-  // les deux lectures (nAvec ≤ durée). Le férié pendant le congé est dû dans les deux. Le jour couvert dans la seule
-  // lecture 2 est « à confirmer ».
-  const couverts = joursCouverts(chaine, d);
-  const nAvec = couverts.filter(lundiSamedi).length;
-  const nSans = couverts.filter(ouvrable).length;
-  if (lundiSamedi(d) && nAvec <= duree) return { paye: true };
-  if (lundiSamedi(d) && nSans <= duree && (ouvrable(d) || nSans < duree)) {
-    return {
-      paye: false,
-      raison: `${qui} : un jour férié tombe pendant le congé. Le texte ne dit pas s’il compte dans les ${dureeLabel(duree)}. S’il compte, ce jour dépasse la durée ; sinon, il est dû. Vérifie avec les parents.`,
-    };
-  }
-  if (!lundiSamedi(d) && nSans < duree) {
-    return { paye: false, raison: `${qui} : un jour prévu au planning tombe un dimanche pendant le congé ; l’app ne sait pas s’il est couvert. Vérifie-le avec les parents.` };
-  }
-  const autres = chaine.slice(0, -1);
-  if (autres.length) {
-    // Lecture « autre événement » : la durée se compte depuis cette seule absence.
-    const dureeSeule = l.joursEvenement ?? 0;
-    const nSeule = eachDay(l.from, d).filter(ouvrable).length;
-    const dates = autres.map((x) => `du ${jjmm(x.from)} au ${jjmm(x.to)}`).join(', ');
-    if (ouvrable(d) && nSeule <= dureeSeule) {
-      return {
-        paye: false,
-        raison: `${qui} : elle est notée comme la suite de l’absence saisie ${dates}. Si c’est bien le même événement, ce jour dépasse les ${dureeLabel(duree)} prévus (convention, article 48.1.3.1.1) ; si c’est un autre événement, il est dû. Vérifie avec les parents. Si c’est le même, saisis ce jour en congé payé ou sans solde, selon votre accord.`,
-      };
-    }
-    return {
-      paye: false,
-      raison: `${qui} : ${dureeLabel(duree)} au plus pour cet événement (convention, article 48.1.3.1.1, et Code du travail L3142-4), en comptant l’absence saisie ${dates}. Les jours en plus ne sont pas payés comme événement : saisis-les en congé payé ou sans solde, selon votre accord.`,
-    };
-  }
+  // T-107 (cas 6), T-109 : « sept jours ouvrés » (L3142-4, 4°, du 01/07/2020) : jours de travail prévus au contrat, fériés exclus,
+  // comptés pour chaque contrat (jourTravaille : planning de ce contrat).
+  const ouvres = dureeEnJoursOuvres(debut) && !!jourTravaille;
+  const ouvrableC = ouvres
+    ? (x: ISODate) => jourTravaille!(x) && !holidayName(x)
+    : (x: ISODate) => weekday(x) !== reposHebdo && !holidayName(x);
+  if (!ouvrableC(d)) return { paye: true }; // férié chômé (payé, art. 47) ou jour de repos : ne compte pas dans la durée
+  const n = joursCouverts(chaine, d).filter(ouvrableC).length;
+  if (n <= duree) return { paye: true };
+  const suite = chaine.length > 1 ? `, en comptant l’absence saisie ${chaine.slice(0, -1).map((x) => `du ${jjmm(x.from)} au ${jjmm(x.to)}`).join(', ')}` : '';
   return {
     paye: false,
-    raison: `${qui} : ${dureeLabel(duree)} au plus pour cet événement (convention, article 48.1.3.1.1, et Code du travail L3142-4). Les jours en plus ne sont pas payés comme événement : saisis-les en congé payé ou sans solde, selon votre accord. Le jour en plus pour un déplacement de plus de 600 km aller-retour est non rémunéré : saisis-le en congé sans solde.`,
+    raison: `${qui} : ${ouvres ? `${duree} jours ouvrés` : dureeLabel(duree)} au plus pour cet événement (${debut.from < CCN_3239_DEPUIS ? 'ancienne convention, article 13' : 'convention, article 48.1.3.1.1'}, et code du travail, article L3142-4)${suite}. Le ${jjmm(d)} n’est plus un congé pour événement familial : il est retenu comme une absence non payée. Si c’était un congé payé, saisis-le en congé payé.`,
   };
 }
 

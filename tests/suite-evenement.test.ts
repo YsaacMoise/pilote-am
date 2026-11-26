@@ -1,6 +1,7 @@
 // Décision du DG du 21/11/2026 (« Demander à l'AM ») : deux absences « événement familial » sont reliées seulement si
 // l'AM dit que la seconde est la suite de la première (`suiteDe`). Cas A, B, C, F de la relecture de la n° 52.
-// Valeurs « avant » : calculées par le commit 9a078a7 (absences enregistrées avec leur nature).
+// Valeurs « avant » : calculées par le commit 9a078a7 (absences enregistrées avec leur nature) ; recapturées par la T-103
+// (jours en trop retenus au lieu de « à confirmer »).
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import type { AmLeave, Contract, NatureEvenement } from '../src/engine/model';
@@ -27,7 +28,8 @@ const CAS: Record<string, Cas> = {
   F: ['2026-03', [['deces_descendant', '2026-03-02', '2026-03-03'], ['deces_ascendant', '2026-03-06', '2026-03-06']]],
   G: ['2026-10', [['mariage', '2026-10-05', '2026-10-06'], ['mariage', '2026-10-08', '2026-10-09'], ['mariage', '2026-10-12', '2026-10-13']]],
 };
-const lire = (r: ReturnType<typeof computeMonth>) => ({ net: r.net, netTotal: r.netTotal, aConfirmer: r.evenementAConfirmer, jours: r.joursActivite, retenue: r.retenue, joursEvt: r.joursEvenementAConfirmer });
+// T-103 (24/11/2026) : plus de jours « à confirmer » ; les jours au-delà de la durée sont retenus (`joursEvt` : jours retenus).
+const lire = (r: ReturnType<typeof computeMonth>) => ({ net: r.net, netTotal: r.netTotal, aConfirmer: 0, jours: r.joursActivite, retenue: r.retenue, joursEvt: r.deductedDays });
 const calc = (m: string, ls: AmLeave[]) => lire(computeMonth(makeCtx(c, [], ls, '2026-12-31'), m));
 
 /** Saisie à l'écran, dans l'ordre, avec la même réponse à chaque question « C'est la suite de… ? » */
@@ -81,26 +83,26 @@ describe('cas A, B, C, F : réponse « oui » ou « non »', () => {
   for (const k of ['A', 'B', 'C', 'F']) {
     const [m, ls] = CAS[k];
     const sans = avant[`${k}-sans`];
-    it(`${k}, « non » : chaque événement payé selon sa propre durée, rien retenu`, () => {
+    it(`${k}, « non » : chaque événement payé selon sa propre durée`, () => {
       const r = calc(m, saisir(ls, false));
-      expect(r.retenue).toBe(0);
-      expect(r.net + r.aConfirmer).toBe(sans.net); // jamais payé en moins en silence
-      // Durée propre de chaque saisie (calculée seule) : même total à confirmer que la somme des absences seules.
-      const seules = ls.map(([n, from, to], i) => calc(m, [absenceSaisie('evenement', n, `s${i}`, from, to)!]).aConfirmer).reduce((a, b) => a + b, 0);
-      expect(r.aConfirmer).toBe(seules);
+      expect(r.aConfirmer).toBe(0);
+      expect(r.net + r.retenue).toBe(sans.net); // la retenue est dite, jamais en silence
+      // Durée propre de chaque saisie (calculée seule) : même retenue que la somme des absences seules.
+      const seules = ls.map(([n, from, to], i) => calc(m, [absenceSaisie('evenement', n, `s${i}`, from, to)!]).retenue).reduce((a, b) => a + b, 0);
+      expect(r.retenue).toBe(seules);
       // Natures différentes (B, C, F) : c'est ce que faisait 9a078a7.
       if (k !== 'A') expect(r).toEqual(avant[k]);
     });
-    it(`${k}, « oui » : durée de la première saisie, les jours en trop « à confirmer », jamais retenus`, () => {
+    it(`${k}, « oui » : durée de la première saisie, les jours en trop retenus (T-103)`, () => {
       const r = calc(m, saisir(ls, true));
-      expect(r.retenue).toBe(0);
-      expect(r.aConfirmer).toBeGreaterThan(0);
-      expect(r.net + r.aConfirmer).toBe(sans.net);
+      expect(r.aConfirmer).toBe(0);
+      expect(r.retenue).toBeGreaterThan(0);
+      expect(r.net + r.retenue).toBe(sans.net);
       // Même nature (A) : c'est ce que faisait 9a078a7.
       if (k === 'A') expect(r).toEqual(avant.A);
     });
   }
-  it('A, « oui » : 4 jours à confirmer (5 jours prévus au 10/06/2026, avant la loi du 12 juin 2026), comme 9a078a7', () => {
+  it('A, « oui » : 4 jours retenus (5 jours prévus au 10/06/2026, avant la loi du 12 juin 2026)', () => {
     expect(calc('2026-06', saisir(CAS.A[1], true)).joursEvt).toBe(4);
     expect(calc('2026-06', saisir(CAS.A[1], false)).joursEvt).toBe(0);
   });
@@ -140,7 +142,7 @@ describe('groupes : ressaisie, saisie au milieu, suppression', () => {
   const avecNature = (m: string, ls: [NatureEvenement, string, string][]) =>
     calc(m, normaliserAbsences(ls.map(([n, from, to], i) => ({ id: `n${i}`, type: 'evenement', from, to, nature: n }))));
 
-  it('N1 : naissance 05-06/10, 12-13/10 « oui », suppression du 05/10 puis ressaisie 06-07/10 : question posée, 1 jour à confirmer', () => {
+  it('N1 : naissance 05-06/10, 12-13/10 « oui », suppression du 05/10 puis ressaisie 06-07/10 : question posée, 1 jour retenu', () => {
     let ls = ajouter([], 'a', 'naissance', '2026-10-05', '2026-10-06');
     ls = ajouter(ls, 'b', 'naissance', '2026-10-12', '2026-10-13', true);
     ls = supprimer(ls, 'a');
@@ -149,8 +151,8 @@ describe('groupes : ressaisie, saisie au milieu, suppression', () => {
     const oui = ajouter(ls, 'c', 'naissance', '2026-10-06', '2026-10-07', true);
     const r = calc('2026-10', oui);
     expect(r.joursEvt).toBe(1);
-    expect(r.retenue).toBe(0);
-    expect(r.net + r.aConfirmer).toBe(sans('2026-10').net);
+    expect(r.aConfirmer).toBe(0);
+    expect(r.net + r.retenue).toBe(sans('2026-10').net);
     expect(r).toEqual(avecNature('2026-10', [['naissance', '2026-10-06', '2026-10-07'], ['naissance', '2026-10-12', '2026-10-13']]));
   });
 
@@ -160,8 +162,8 @@ describe('groupes : ressaisie, saisie au milieu, suppression', () => {
     ls = ajouter(ls, 'z', 'naissance', '2026-10-08', '2026-10-09', true);
     const r = calc('2026-10', ls);
     expect(r.joursEvt).toBeGreaterThan(0);
-    expect(r.retenue).toBe(0);
-    expect(r.net + r.aConfirmer).toBe(sans('2026-10').net);
+    expect(r.aConfirmer).toBe(0);
+    expect(r.net + r.retenue).toBe(sans('2026-10').net);
     expect(r).toEqual(avecNature('2026-10', [['naissance', '2026-10-05', '2026-10-05'], ['naissance', '2026-10-12', '2026-10-12'], ['naissance', '2026-10-08', '2026-10-09']]));
   });
 
@@ -174,7 +176,7 @@ describe('groupes : ressaisie, saisie au milieu, suppression', () => {
     const r = calc('2026-10', ls);
     expect(r).toEqual(avecNature('2026-10', [['naissance', '2026-10-05', '2026-10-06'], ['naissance', '2026-10-12', '2026-10-13']]));
     expect(r.joursEvt).toBe(1);
-    expect(r.net + r.aConfirmer).toBe(sans('2026-10').net);
+    expect(r.net + r.retenue).toBe(sans('2026-10').net);
   });
 
   it('suppression de la première : la suivante devient la première, les autres la désignent', () => {
@@ -213,14 +215,14 @@ describe('deux absences voisines, avant et après', () => {
     expect(reponsesCompletes(qs, ['oui', undefined])).toBe(true);
   });
 
-  it('« non » pour X, « oui » pour Z : Y rejoint Z, 1 jour à confirmer (5 jours pour 4), comme 9a078a7', () => {
+  it('« non » pour X, « oui » pour Z : Y rejoint Z, 1 jour retenu (5 jours pour 4)', () => {
     const ls = [X, Z, ...appliquerReponses(Y, qs, ['non', 'oui'] as Reponse[])];
     expect(ls.find((l) => l.id === 'Y')?.suiteDe).toBe('Z');
     expect(ls.find((l) => l.id === 'Z')?.suiteDe).toBeUndefined(); // le lien est posé sur la nouvelle absence
     const r = calc('2026-10', ls);
     expect(r.joursEvt).toBe(1);
-    expect(r.retenue).toBe(0);
-    expect(r.net + r.aConfirmer).toBe(sans.net);
+    expect(r.aConfirmer).toBe(0);
+    expect(r.net + r.retenue).toBe(sans.net);
     const avecNature = normaliserAbsences([
       { id: 'X', type: 'evenement', from: X.from, to: X.to, nature: 'naissance' },
       { id: 'Z', type: 'evenement', from: Z.from, to: Z.to, nature: 'mariage' },

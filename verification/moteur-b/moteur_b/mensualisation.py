@@ -52,7 +52,7 @@ def semaines_programmees(semaines_absence_employeur, semaines_repos_am, semaines
 
 
 def _mensualisation(semaines_accueil, heures_hebdo_minutes, taux_horaire_centimes,
-                    nature_taux="brut", horaires_variables=False, date_paie=None):
+                    nature_taux="brut", horaires_variables=False, date_paie=None, majoration_hm_pourcent=None):
     regles = ["R-MENS-01", "R-MENS-02", "R-MENS-03", "R-MENS-04", "R-SAL-06"]
     verifier_date_ccn(date_paie, regles)
     if nature_taux != "brut":
@@ -65,17 +65,26 @@ def _mensualisation(semaines_accueil, heures_hebdo_minutes, taux_horaire_centime
     ta = _type_annee(semaines_accueil)
     h = positif(heures_hebdo_minutes, "heures_hebdo_minutes")
     t = positif(taux_horaire_centimes, "taux_horaire_centimes")
-    if h > SEUIL_CONVENTIONNEL_MINUTES:
-        raise NonGere("A-13", regles + ["R-HC-03"], precision="Contrat de plus de 45 heures par semaine.")
-    # R-MENS-03 : heures x 52 / 12 ; R-MENS-04 : heures x semaines programmees / 12.
     minutes_mensualisees = h * semaines_accueil / 12
+    if h > SEUIL_CONVENTIONNEL_MINUTES:
+        # verif-1 (B-10, H5) : CCN 108.1 (salaire mensualise « quels que soient le nombre d'heures de travail par
+        # semaine ») et 110.1 (heures au-dela de 45 h majorees du taux du contrat, au moins 10 %) : les heures
+        # prevues au-dela de 45 h entrent majorees dans le salaire mensualise. Sans le taux : refus A-13.
+        if majoration_hm_pourcent is None:
+            raise NonGere("A-13", regles + ["R-HC-03"], precision="Contrat de plus de 45 heures par semaine.")
+        maj = positif(majoration_hm_pourcent, "majoration_hm_pourcent")
+        if maj < 10:
+            raise ErreurSaisie("Majoration des heures majorees inferieure a 10 % (CCN art. 110.1).", ["R-HC-03"])
+        sem_min = SEUIL_CONVENTIONNEL_MINUTES + (h - SEUIL_CONVENTIONNEL_MINUTES) * (1 + maj / 100)
+        return ta, minutes_mensualisees, sem_min * semaines_accueil / 12 / 60 * t
+    # R-MENS-03 : heures x 52 / 12 ; R-MENS-04 : heures x semaines programmees / 12.
     salaire_exact = minutes_mensualisees / 60 * t
     return ta, minutes_mensualisees, salaire_exact
 
 
 @api("R-MENS-01", "R-MENS-02", "R-MENS-03", "R-MENS-04", "R-SAL-06")
 def mensualisation(semaines_accueil, heures_hebdo_minutes, taux_horaire_centimes,
-                   nature_taux="brut", horaires_variables=False, date_paie=None):
+                   nature_taux="brut", horaires_variables=False, date_paie=None, majoration_hm_pourcent=None):
     """Salaire mensualise brut (R-MENS-03 annee complete, R-MENS-04 annee incomplete).
     Entrees : semaines_accueil (52, ou 1 a 46), heures_hebdo_minutes (entier ou
     chaine exacte), taux_horaire_centimes (brut), nature_taux (« brut » seulement),
@@ -83,7 +92,7 @@ def mensualisation(semaines_accueil, heures_hebdo_minutes, taux_horaire_centimes
     Sortie : type_annee, heures_mensualisees (fraction exacte en heures, jamais
     arrondie : A-03), salaire_mensualise_centimes."""
     ta, minutes, salaire = _mensualisation(semaines_accueil, heures_hebdo_minutes, taux_horaire_centimes,
-                                           nature_taux, horaires_variables, date_paie)
+                                           nature_taux, horaires_variables, date_paie, majoration_hm_pourcent)
     res = {
         "type_annee": ta,
         "heures_mensualisees": texte_fraction(minutes / 60),

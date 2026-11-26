@@ -2,21 +2,19 @@
 import { lastDay } from './dates';
 import type { Bulletin } from './model';
 import type { MonthResult } from './month';
-import { libelleMinimumBrut, MESSAGE_PERIODE_NON_GEREE, minimumBrut, minimumSansTitre, partNetBrut, ratesAtRegion, valeurDepuis } from './rates';
+import { libelleMinimumBrut, MESSAGE_PERIODE_NON_GEREE, minimumBrut, minimumSansTitre, ratesAtRegion, valeurDepuis } from './rates';
 import type { Region } from './regions';
 import { euros } from './money';
 
 export type Level = 'ok' | 'info' | 'warn';
 export interface Check { level: Level; title: string; detail: string }
 
-export function controle(b: Bulletin, r: MonthResult, rateNet: number, region: Region = 'metropole'): Check[] {
+export function controle(b: Bulletin, r: MonthResult, rateNet: number, region: Region = 'metropole', rateBrut?: number): Check[] {
   const out: Check[] = [];
   // T-077 (R1, R2) : repère net, part du net dans le brut et minimum légal de la région.
   const rates = ratesAtRegion(lastDay(b.month), region);
   const minB = minimumBrut(lastDay(b.month), region);
   const MINIMUM_SANS_TITRE = minimumSansTitre(region);
-  const part = partNetBrut(lastDay(b.month), region);
-  const attendu = `${Math.round(part * 100)} %`;
   const tol = 100; // 1 € d'écart toléré (arrondis)
 
   // C-019 : Pajemploi garde le net déclaré et le brut, et ajoute la réduction de cotisations des heures complémentaires
@@ -40,35 +38,24 @@ export function controle(b: Bulletin, r: MonthResult, rateNet: number, region: R
   }
   if (b.entretien != null) {
     const diff = b.entretien - r.entretien;
-    // T-044 : une part de l'entretien peut être à confirmer (tarif par jour) : tout montant entre les deux lectures est admis.
-    const haut = r.entretien + (r.entretienAConfirmer ?? 0);
-    if (r.entretienAConfirmer && b.entretien >= r.entretien - tol && b.entretien <= haut + tol) out.push({ level: 'info', title: 'Entretien dans la fourchette à confirmer', detail: `${euros(b.entretien)} déclarés, entre ${euros(r.entretien)} et ${euros(haut)} selon la lecture du tarif par jour.` });
-    else if (Math.abs(diff) <= tol) out.push({ level: 'ok', title: 'Entretien conforme', detail: euros(b.entretien) });
+    if (Math.abs(diff) <= tol) out.push({ level: 'ok', title: 'Entretien conforme', detail: euros(b.entretien) });
     else out.push({ level: diff < 0 ? 'warn' : 'info', title: 'Indemnités d’entretien différentes', detail: `${euros(b.entretien)} déclarés, ${euros(r.entretien)} calculés.` });
   }
 
-  if (b.brut != null && b.net != null && b.brut > 0) {
-    const ratio = b.net / b.brut;
-    const pct = (ratio * 100).toFixed(1).replace('.', ',');
-    // Avec la réduction de cotisations des heures complémentaires et majorées, le net versé peut dépasser 82 % du brut.
-    // Métropole : bornes d'avant T-077 (74 % et 82 %) ; ailleurs, 4 points autour de la part de la région.
-    const bas = region === 'metropole' ? 0.74 : part - 0.04;
-    const haut = (region === 'metropole' ? 0.82 : part + 0.04) + red / b.brut;
-    const avecHS = red > 0 ? ` ; jusqu’à ${(haut * 100).toFixed(1).replace('.', ',')} % si le net comprend les ${euros(red)} de réduction de cotisations des heures complémentaires et majorées` : '';
-    if (ratio < bas || ratio > haut) {
-      out.push({ level: 'warn', title: 'Net et brut incohérents', detail: `Le net représente ${pct} % du brut. Pour une assistante maternelle on attend environ ${attendu} (cotisations salariales d’environ ${100 - Math.round(part * 100)} %)${avecHS}.` });
+  // T-103 (D1, D6) : avec le taux horaire brut du contrat, le brut attendu est exact : brut calculé par l'app (r.brutEstime,
+  // net × brut ÷ net du contrat). Sans lui, le brut n'est pas contrôlé et l'app demande le taux.
+  if (b.brut != null && b.brut > 0) {
+    if (!r.brutConnu || !rateBrut) {
+      out.push({ level: 'info', title: 'Brut non contrôlé', detail: 'Indique ton salaire horaire brut dans le contrat (il est écrit à côté du net) : l’app contrôlera le brut du bulletin.' });
     } else {
-      out.push({ level: 'ok', title: 'Net et brut cohérents', detail: `Le net représente ${pct} % du brut (attendu : environ ${attendu}${avecHS}).` });
+      const diff = b.brut - r.brutEstime;
+      if (Math.abs(diff) <= tol) out.push({ level: 'ok', title: 'Salaire brut conforme', detail: `${euros(b.brut)} sur le bulletin, ${euros(r.brutEstime)} calculé avec le taux brut du contrat.` });
+      else out.push({ level: diff < 0 ? 'warn' : 'info', title: 'Salaire brut différent', detail: `${euros(b.brut)} sur le bulletin, ${euros(r.brutEstime)} calculé avec le taux brut du contrat (${euros(rateBrut)} de l’heure). Vérifie le taux déclaré à Pajemploi.` });
     }
-    if (b.heures && b.heures > 0 && minB) {
-      const brutHoraire = Math.round((b.brut - r.cpIndemnite / part - r.cpComplement / part) / (b.heures + r.complMin / 60 + (r.majContratMin + r.majMin) / 60));
-      // T-025 C-3 : minimum = le plus haut de la grille et de 0,281 × SMIC (CASF D423-9).
-      if (brutHoraire + 1 < minB.certain) {
-        out.push({ level: 'warn', title: 'Brut horaire sous le minimum', detail: `Environ ${euros(brutHoraire)} brut de l’heure, le minimum est ${libelleMinimumBrut(minB)}. ${MINIMUM_SANS_TITRE}` });
-      } else if (minB.doute && brutHoraire + 1 < minB.doute) {
-        out.push({ level: 'info', title: 'Minimum à confirmer', detail: `Environ ${euros(brutHoraire)} brut de l’heure. Minimum : ${libelleMinimumBrut(minB)}. L’arrondi n’est pas fixé par le texte : vérifie avec les parents. ${MINIMUM_SANS_TITRE}` });
-      }
-    }
+  }
+  // T-025 C-3 : minimum = le plus haut de la grille et de 0,281 × SMIC (CASF D423-9), comparé au taux brut du contrat.
+  if (rateBrut && minB && rateBrut < minB.certain) {
+    out.push({ level: 'warn', title: 'Brut horaire sous le minimum', detail: `${euros(rateBrut)} brut de l’heure au contrat, le minimum est ${libelleMinimumBrut(minB)}. ${MINIMUM_SANS_TITRE}` });
   }
   // T-023 : avant les barèmes vérifiés, aucun minimum n'est connu ; sans repère net lu à la source, contrôle sur le brut seulement.
   if (!rates) {

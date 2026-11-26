@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'preact/hooks';
 import { deleteContract, logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
 import { addMonthsToDate, deMois, firstDay, mondayOf, monthOf, shortDate, today, JOUR_NOMS, type Month } from '../engine/dates';
+import { dureeMoyenneContrat, erreursDureeContrat, SEUIL_ACCORD_MIN } from '../engine/durees';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, semainesSansAccueilAnnee, termsAt, weeklyMinutes } from '../engine/payroll';
 import { entretienPlancher, minimumSansTitre, ratesAtRegion, ratesConnus, repasAvantageAu } from '../engine/rates';
 import { regionDe } from '../engine/regions';
 import { soldesDeDepart } from '../engine/conges';
 import { euros, eurosTexte, hoursLabel } from '../engine/money';
-import type { Avenant, Contract, Plage, Planning, Terms } from '../engine/model';
+import type { AccueilOcc, Avenant, Contract, Plage, Planning, Terms } from '../engine/model';
+import { manquesOccasionnel } from '../engine/occasionnel';
 import { EntretienSaisie, libelleEntretien } from './EntretienSaisie';
 import { Banner, CHILD_COLORS, Choices, COLOR_NAMES, couleurLibre, couleursPrises, DateInput, EuroInput, Gommette, NumberInput, Seg, Switch, TextInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
@@ -14,7 +16,7 @@ import { BROUILLON_CONTRAT } from './Simulateur';
 import { PartageCard } from './PartageCard';
 import { de } from '../engine/texte';
 import { PAJEMPLOI_PLUS_AIDE } from '../legal';
-import { NON_GERE_47_51, nonGeresContrat, semaines4751 } from '../engine/nonGeres';
+import { MESSAGE_REPOS_HEBDO, NON_GERE_47_51, nonGeresContrat, planningAvecDimanche, semaines4751 } from '../engine/nonGeres';
 import { DEPARTEMENTS, libelleDepartement, reponseSaisie, trouverDepartement } from '../engine/departements';
 import { AIDE_ANNEE, AIDE_COMPLEMENTAIRES, AIDE_SEMAINES } from './textes-contrat';
 import { manquesPV } from '../engine/planningVariable';
@@ -99,7 +101,10 @@ export function Contrat({ id }: { id?: string }) {
     const errs: string[] = [];
     if (!c.child.trim()) errs.push('Indique le prénom de l’enfant.');
     if (!c.start) errs.push('Indique la date de début du contrat.');
-    if (!c.planningVariable && wk <= 0) errs.push('Le planning est vide : ajoute au moins un jour d’accueil.');
+    if (!c.planningVariable && !c.accueilOccasionnel && wk <= 0) errs.push('Le planning est vide : ajoute au moins un jour d’accueil.');
+    // T-104 (cas 2) : accueil occasionnel, périodes d'accueil (dates et horaires prévus au contrat, CCN 98.2).
+    for (const m of manquesOccasionnel(c)) errs.push(`Accueil occasionnel : indique ${m}.`);
+    if (c.accueilOccasionnel) for (const a of c.accueils ?? []) for (let d = 1; d <= 7; d++) for (const p of a.planning[d] ?? []) if (p.end <= p.start) errs.push(`${JOUR_NOMS[d - 1]} (accueil du ${shortDate(a.du)}) : l’heure de fin doit être après le début.`);
     for (let d = 1; d <= 7; d++) for (const p of c.planning[d] ?? []) if (p.end <= p.start) errs.push(`${JOUR_NOMS[d - 1]} : l’heure de fin doit être après le début.`);
     if (semaines4751(c.yearType, c.weeks)) errs.push(NON_GERE_47_51);
     else if (c.yearType === 'incomplete' && (c.weeks < 1 || c.weeks > 46)) errs.push('En année incomplète, le nombre de semaines va de 1 à 46.');
@@ -119,6 +124,8 @@ export function Contrat({ id }: { id?: string }) {
     if (c.cdd && !c.cddTerme) errs.push(c.cddTermeImprecis ? 'Indique la date de fin de la durée minimale du CDD.' : 'Indique la date de fin prévue du CDD.');
     if (c.cdd && c.cddTerme && c.cddTerme < c.start) errs.push('La date de fin prévue du CDD est avant le début.');
     if (c.cdd && !c.cddMotif) errs.push('Indique pourquoi le CDD a été signé.');
+    // T-109 (correction 9) : CASF L423-22, plus de 48 h par semaine en moyenne sans l'accord de l'AM, ou plus de 2 250 h par an.
+    errs.push(...erreursDureeContrat(c));
     // T-044b : choix explicite du mode de l'indemnité d'entretien sur un nouveau contrat.
     if (isNew && !c.entretienMode) errs.push('Indique si l’indemnité d’entretien est fixée par heure ou par jour.');
     setErrors(errs);
@@ -191,22 +198,23 @@ export function Contrat({ id }: { id?: string }) {
             <legend>Le contrat</legend>
             <DateInput label="Premier jour d’accueil" hint="Le vrai premier jour, même s’il remonte à plusieurs années" value={c.start} onChange={(v) => set({ start: v })} />
             {!isNew && <DateInput label="Date de fin du contrat" hint="Seulement si le contrat est terminé. Mieux : passe par l’écran Fin de contrat, qui note aussi la lettre et le préavis ; sans eux, les derniers mois ne sont pas calculés." value={c.end ?? ''} onChange={(v) => set({ end: v || undefined })} />}
-            <Seg label="Année complète ou incomplète ?" value={c.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(c.weeks, 46) || 46 })}
-              options={[{ v: 'complete', l: 'Année complète' }, { v: 'incomplete', l: 'Année incomplète' }]} />
-            <p class="hint">{AIDE_ANNEE}</p>
-            {c.yearType === 'incomplete' && (
+            {/* T-104 (cas 2) : l'accueil occasionnel n'est pas mensualisé (CCN 108.2) : pas d'année complète ou incomplète. */}
+            {!c.accueilOccasionnel && <Seg label="Année complète ou incomplète ?" value={c.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(c.weeks, 46) || 46 })}
+              options={[{ v: 'complete', l: 'Année complète' }, { v: 'incomplete', l: 'Année incomplète' }]} />}
+            {!c.accueilOccasionnel && <p class="hint">{AIDE_ANNEE}</p>}
+            {!c.accueilOccasionnel && c.yearType === 'incomplete' && (
               <>
                 <NumberInput label="Semaines d’accueil prévues au contrat" hint={c.cdd ? 'Pour un CDD : les semaines d’accueil prévues pendant le CDD, sur 12 mois au plus, sans compter tes congés payés' : AIDE_SEMAINES} value={c.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />
-                {semaines4751(c.yearType, c.weeks) && <Banner tone="warn">{NON_GERE_47_51}</Banner>}
+                {semaines4751(c.yearType, c.weeks) && <><Banner tone="warn">{NON_GERE_47_51}</Banner><button class="btn btn-secondary" onClick={() => set({ yearType: 'complete', weeks: 52, weeksOff: [] })}>Passer en année complète (52 semaines)</button></>}
                 <WeeksOff c={c} onChange={(w) => set({ weeksOff: w })} />
               </>
             )}
             {/* T-031 : cas que l'app ne gère pas. Une réponse est demandée : sans elle, l'app ne sait pas si ses montants valent. */}
             <ChoixDepartement c={c} set={set} />
-            <Choices label="Le planning est-il le même chaque semaine ?" value={ouiNon(c.planningVariable === undefined ? undefined : !c.planningVariable)} onChange={(v) => set({ planningVariable: v === 'non' })}
-              options={[{ v: 'oui', l: 'Oui, une semaine type qui se répète', sub: 'Les semaines sans accueil prévues au contrat ne comptent pas.' }, { v: 'non', l: 'Non, il change d’une semaine à l’autre', sub: 'Semaines A et B, ou planning remis par les parents.' }]} />
-            <Choices label="L’accueil est-il régulier ou occasionnel ?" value={ouiNon(c.accueilOccasionnel === undefined ? undefined : !c.accueilOccasionnel)} onChange={(v) => set({ accueilOccasionnel: v === 'non' })}
-              options={[{ v: 'oui', l: 'Régulier', sub: 'L’enfant vient selon le planning du contrat.' }, { v: 'non', l: 'Occasionnel', sub: 'Accueil court, sans rythme fixe (article 97.2 de la convention). Arvela ne calcule pas encore ce cas.' }]} />
+            {!c.accueilOccasionnel && <Choices label="Le planning est-il le même chaque semaine ?" value={ouiNon(c.planningVariable === undefined ? undefined : !c.planningVariable)} onChange={(v) => set({ planningVariable: v === 'non' })}
+              options={[{ v: 'oui', l: 'Oui, une semaine type qui se répète', sub: 'Les semaines sans accueil prévues au contrat ne comptent pas.' }, { v: 'non', l: 'Non, il change d’une semaine à l’autre', sub: 'Semaines A et B, ou planning remis par les parents.' }]} />}
+            <Choices label="L’accueil est-il régulier ou occasionnel ?" value={ouiNon(c.accueilOccasionnel === undefined ? undefined : !c.accueilOccasionnel)} onChange={(v) => set(v === 'non' ? { accueilOccasionnel: true, yearType: 'complete', weeks: 52, planningVariable: false } : { accueilOccasionnel: false })}
+              options={[{ v: 'oui', l: 'Régulier', sub: 'L’enfant vient selon le planning du contrat.' }, { v: 'non', l: 'Occasionnel', sub: 'Accueil court, sans rythme régulier (article 97.2 de la convention). Tu es payée pour tes heures d’accueil, et tes congés à la fin de chaque accueil.' }]} />
             <Choices label="CDI ou CDD ?" value={ouiNon(c.cdd)} onChange={(v) => set({ cdd: v === 'oui' })}
               options={[{ v: 'non', l: 'CDI', sub: 'Contrat à durée indéterminée : aucune date de fin n’est prévue.' }, { v: 'oui', l: 'CDD', sub: 'Contrat à durée déterminée : il finit à une date prévue au contrat, ou au retour de la personne remplacée.' }]} />
             {/* T-076 : le CDD est calculé (regles/t076-cdd.md, partie 5.1 : terme et motif). */}
@@ -215,18 +223,35 @@ export function Contrat({ id }: { id?: string }) {
                 <Choices label="Le CDD a-t-il une date de fin précise ?" value={c.cddTermeImprecis === undefined ? (c.cddTerme ? 'oui' : undefined) : c.cddTermeImprecis ? 'non' : 'oui'} onChange={(v) => set({ cddTermeImprecis: v === 'non' })}
                   options={[{ v: 'oui', l: 'Oui, une date de fin prévue' }, { v: 'non', l: 'Non, jusqu’au retour de la personne remplacée', sub: 'Le contrat donne alors une durée minimale' }]} />
                 <DateInput label={c.cddTermeImprecis ? 'Fin de la durée minimale' : 'Date de fin prévue'} hint={c.cddTermeImprecis ? 'Le dernier jour de la durée minimale écrite dans le contrat.' : 'Le dernier jour prévu dans le contrat. Si le CDD est renouvelé, mets la nouvelle date.'} value={c.cddTerme ?? ''} min={c.start} onChange={(v) => set({ cddTerme: v || undefined })} />
+                {/* T-103 (D10) : CCN 41.1, la durée de l'essai est écrite au contrat. */}
+                <DateInput label="Fin de la période d’essai" hint="Le dernier jour de l’essai écrit dans le contrat. Laisse vide s’il n’y en a pas." value={c.cddEssaiFin ?? ''} min={c.start} onChange={(v) => set({ cddEssaiFin: v || undefined })} />
                 <Choices label="Pourquoi ce CDD ?" value={c.cddMotif} onChange={(v) => set({ cddMotif: v })}
-                  options={[{ v: 'remplacement', l: 'Pour remplacer une assistante maternelle absente' }, { v: 'autre', l: 'Autre raison' }]} />
+                  options={[{ v: 'remplacement', l: 'Pour remplacer une assistante maternelle absente ou qui part' }, { v: 'autre', l: 'Autre raison' }]} />
+                {/* T-109 (correction 12) : le cas du remplacement fixe la durée maximale (C. trav. L1242-8-1). */}
+                {c.cddMotif === 'remplacement' && !c.cddTermeImprecis && (
+                  <Choices label="Quel remplacement ?" value={c.cddCasRemplacement} onChange={(v) => set({ cddCasRemplacement: v })} options={[
+                    { v: 'absence', l: 'Elle est absente (congé, maladie…)', sub: '18 mois au plus, renouvellements compris.' },
+                    { v: 'attente_cdi', l: 'J’attends l’arrivée d’une assistante maternelle embauchée en CDI', sub: '9 mois au plus.' },
+                    { v: 'depart_suppression', l: 'Elle part définitivement et son poste ne sera pas repris', sub: '24 mois au plus.' },
+                  ]} />
+                )}
                 {messagesCdd(c).map((t) => <Banner tone={t.startsWith('Ton salaire') || t.startsWith('Si tu continues') ? 'info' : 'warn'}>{t}</Banner>)}
               </>
             )}
-            {nonGeresContrat(c).filter((t) => t !== CDD_A_COMPLETER).map((t) => <Banner tone="warn">{t}</Banner>)}
+            {/* T-103 (C8) : CCN 46, le repos hebdomadaire est « prévu par le contrat de travail ». Demandé si le dimanche est travaillé. */}
+            {planningAvecDimanche(c) && (
+              <Choices label="Ton jour de repos de la semaine (écrit au contrat)" value={c.reposHebdo === undefined ? undefined : String(c.reposHebdo)} onChange={(v) => set({ reposHebdo: Number(v) })}
+                options={JOUR_NOMS.slice(0, 6).map((l, i) => ({ v: String(i + 1), l }))} />
+            )}
+            {nonGeresContrat(c).filter((t) => t !== CDD_A_COMPLETER && t !== MESSAGE_REPOS_HEBDO).map((t) => <Banner tone="warn">{t}</Banner>)}
           </fieldset>
         </section>
 
-        {c.planningVariable && <PlanningVariableSaisie c={c} set={set} />}
+        {c.planningVariable && !c.accueilOccasionnel && <PlanningVariableSaisie c={c} set={set} />}
 
-        {!c.planningVariable && <section class="card">
+        {c.accueilOccasionnel && <AccueilsOccasionnels c={c} set={set} />}
+
+        {!c.planningVariable && !c.accueilOccasionnel && <section class="card">
           <fieldset>
             <legend>Le planning type</legend>
             <p class="hint">Les journées se remplissent toutes seules avec ce planning. Tu ne noteras que les changements.</p>
@@ -241,12 +266,19 @@ export function Contrat({ id }: { id?: string }) {
           </fieldset>
         </section>}
 
+        {(dureeMoyenneContrat(c) ?? 0) > SEUIL_ACCORD_MIN && <section class="card">
+          <Switch label="J’ai donné mon accord écrit pour plus de 48 h par semaine" hint="Code de l’action sociale et des familles, article L423-22 : sans ton accord, pas plus de 48 h par semaine en moyenne sur quatre mois ; avec, pas plus de 2 250 h par an, tous contrats confondus." checked={!!c.accord48h} onChange={(v) => set({ accord48h: v })} />
+        </section>}
+
         <section class="card">
           <fieldset>
             <legend>La rémunération</legend>
             {!!c.avenants?.length && <p class="hint">Ce sont les conditions de départ. Les changements datés sont dans les avenants, plus bas.</p>}
             <EuroInput label="Taux horaire net" hint={rates.minConvNet !== undefined ? `Minimum conventionnel : ${euros(rates.minConvNet)} net (${euros(rates.minConvBrut)} brut)` : `Minimum conventionnel : ${euros(rates.minConvBrut)} brut`} cents={c.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
             {c.rateNet > 0 && rates.minConvNet !== undefined && c.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel. Vérifie le contrat.</Banner>}
+            {/* T-103 (D1) : CCN 41.1, le salaire horaire est au contrat ; CCN 107 et 109, le salaire se calcule sur le brut. */}
+            <EuroInput label="Taux horaire brut" hint="Écrit dans ton contrat, à côté du net. Il donne ton salaire brut exact (indemnité de rupture, impôts, contrôle du bulletin)." cents={c.rateBrut} allowEmpty onChange={(v) => set({ rateBrut: v ?? undefined })} />
+            {c.rateBrut != null && c.rateBrut > 0 && c.rateBrut < c.rateNet && <Banner tone="warn">Le brut ne peut pas être plus bas que le net. Vérifie le contrat.</Banner>}
             {rates.minConvNet !== undefined && <p class="hint">{MINIMUM_SANS_TITRE}</p>}
             {isNew
               ? <EntretienSaisie t={c} set={set} hint={`Si le montant est plus bas, l’app verse le minimum légal (${euros(entretienPlancher(today(), 540)!)} pour 9 h).`} />
@@ -272,6 +304,11 @@ export function Contrat({ id }: { id?: string }) {
             )}
             <EuroInput label="Indemnité kilométrique, par km" hint="Laisse 0 si tu ne transportes pas l’enfant en voiture." cents={c.kmTaux} onChange={(v) => set({ kmTaux: v ?? 0 })} />
             {c.kmTaux > 0 && <NumberInput label="Puissance fiscale de ta voiture (CV)" hint="Sur la carte grise (case P.6). L’app vérifie que ton tarif est compris entre le barème de l’administration et le barème fiscal (article 57 de la convention)." value={c.kmCv} min={1} max={30} onChange={(v) => set({ kmCv: v || undefined })} />}
+            {/* T-103 (K2) : CGI ann. IV art. 6 B, II, barème fiscal majoré de 20 % pour une voiture électrique. */}
+            {c.kmTaux > 0 && (
+              <Choices label="Ta voiture est-elle électrique ?" value={c.kmElectrique === undefined ? undefined : c.kmElectrique ? 'oui' : 'non'} onChange={(v) => set({ kmElectrique: v === 'oui' })}
+                options={[{ v: 'non', l: 'Non' }, { v: 'oui', l: 'Oui, électrique', sub: 'Le barème fiscal, plafond de ton tarif, est majoré de 20 %.' }]} />
+            )}
             <NumberInput label="Majoration des heures au-delà de 45 h par semaine (%)" hint="Le taux de ton contrat : 10 % au moins." value={c.majoration} min={10} max={100} onChange={(v) => set({ majoration: v ?? 10 })} />
             <NumberInput label="Majoration des heures complémentaires (%)" hint={AIDE_COMPLEMENTAIRES} value={c.majorationCompl ?? 0} min={0} max={100} onChange={(v) => set({ majorationCompl: v ?? 0 })} />
             {c.yearType === 'incomplete' && (
@@ -304,7 +341,17 @@ export function Contrat({ id }: { id?: string }) {
                   <NumberInput label="Congés en cours d’acquisition (jours)" hint="Acquis depuis le 1er juin, avant le suivi par l’app" value={c.balances.cpEnCours} step={0.5} max={30} onChange={(v) => set({ balances: { ...c.balances, cpEnCours: v ?? 0 } })} />
                 </>
               )}
-              <NumberInput label="Jours d’absence de l’enfant malade déjà déduits" hint="Avec certificat médical, retenus sur ton salaire depuis le début de l’année de contrat en cours" value={c.balances.maladieDeduits} max={14} onChange={(v) => set({ balances: { ...c.balances, maladieDeduits: v ?? 0 } })} />
+              <NumberInput label="Jours d’absence de l’enfant malade déjà déduits" hint="Avec certificat médical, retenus sur ton salaire depuis le début de l’année de contrat en cours" value={c.balances.maladieDeduits} max={14} onChange={(v) => set({ balances: { ...c.balances, maladieDeduits: v ?? 0, ...(v ? {} : { maladieDeduitsLongue: undefined }) } })} />
+              {/* T-103 (C5) : CCN 105, les 5 jours d'absences courtes et l'absence de 14 jours calendaires se comptent à part. */}
+              {c.balances.maladieDeduits > 0 && (
+                <Choices label="Ces jours déjà déduits venaient de :" value={c.balances.maladieDeduitsLongue === undefined ? undefined : c.balances.maladieDeduitsLongue ? 'longue' : 'courtes'}
+                  onChange={(v) => set({ balances: { ...c.balances, maladieDeduitsLongue: v === 'longue' } })}
+                  options={[{ v: 'courtes', l: 'Absences courtes', sub: 'Chaque absence a duré moins de 14 jours calendaires (5 jours déduits au plus).' }, { v: 'longue', l: 'Une absence de 14 jours calendaires ou plus', sub: 'Article 105 de la convention : elle se compte à part des 5 jours.' }]} />
+              )}
+              {/* T-103 (plancher L1242-16) : congés déjà payés pendant le CDD avant le suivi par l'app. */}
+              {c.cdd && (
+                <NumberInput label="Jours de congés payés pris pendant le CDD avant le suivi par l’app" hint="Du lundi au samedi, sans les jours fériés. 0 si tu n’en as pas pris. Sert au minimum du code du travail pour tes congés de fin de CDD (article L1242-16)." value={c.cddCpPrisAvantSuivi} step={1} max={60} onChange={(v) => set({ cddCpPrisAvantSuivi: v })} />
+              )}
               {!isNew && <a class="btn btn-outline" href={`#/historique/${c.id}`}><Icon name="file" />Bulletins passés ({c.history.length})</a>}
             </fieldset>
           </section>
@@ -353,6 +400,37 @@ function ChoixDepartement({ c, set }: { c: Contract; set: (p: Partial<Contract>)
       <datalist id="departements-liste">{DEPARTEMENTS.map((d) => <option value={`${d.code} – ${d.nom}`} />)}</datalist>
       <span class={inconnu ? 'err' : 'hint'} id="departement-h" aria-live="polite">{inconnu ? 'Choisis un département dans la liste.' : ancien ? 'Précise ton département quand tu peux. En attendant, le calcul garde ta réponse d’avant.' : 'Tape le numéro ou le nom, puis choisis dans la liste.'}</span>
     </div>
+  );
+}
+
+/**
+ * T-104 (cas 2) : périodes d'accueil occasionnel (CCN 98.2 : conditions fixées au contrat). Pour chacune : premier et dernier
+ * jour, horaires prévus de chaque jour de la semaine (vides si le contrat n'en fixe pas : les heures notées sont alors payées
+ * comme heures normales, sans heures complémentaires).
+ */
+function AccueilsOccasionnels({ c, set }: { c: Contract; set: (p: Partial<Contract>) => void }) {
+  const ls = c.accueils ?? [];
+  const maj = (i: number, p: Partial<AccueilOcc>) => set({ accueils: ls.map((a, k) => (k === i ? { ...a, ...p } : a)) });
+  return (
+    <section class="card">
+      <fieldset>
+        <legend>Les accueils prévus</legend>
+        <p class="hint">Ajoute chaque période d’accueil écrite dans le contrat, avec ses horaires. Tu es payée chaque mois pour les heures d’accueil du mois. Tes congés payés : 10 % des salaires de l’accueil, versés à la fin de l’accueil (convention, articles 109.3 et 102.1.2.3).</p>
+        {ls.map((a, i) => (
+          <div class="stack-sm" key={a.id}>
+            <div class="grid2">
+              <DateInput label="Premier jour" value={a.du} min={c.start} onChange={(v) => maj(i, { du: v, au: a.au && a.au >= v ? a.au : v })} />
+              <DateInput label="Dernier jour" value={a.au} min={a.du || c.start} onChange={(v) => maj(i, { au: v })} />
+            </div>
+            {[1, 2, 3, 4, 5, 6, 7].map((d) => <PlanDay d={d} plages={a.planning[d] ?? []} onChange={(p) => maj(i, { planning: { ...a.planning, [d]: p } })} />)}
+            <p class="hint">Sans horaires écrits au contrat, laisse les jours vides : les heures que tu noteras chaque jour seront payées.</p>
+            <button class="btn btn-outline" type="button" onClick={() => set({ accueils: ls.filter((_, k) => k !== i) })}>Retirer cet accueil</button>
+          </div>
+        ))}
+        <button class="btn btn-outline btn-block" type="button" onClick={() => set({ accueils: [...ls, { id: uid(), du: c.start, au: c.start, planning: {} }] })}><Icon name="plus" />Ajouter un accueil</button>
+        <p class="hint">La convention ne fixe pas de durée maximale. Si l’enfant vient de façon régulière, le contrat doit passer en accueil régulier.</p>
+      </fieldset>
+    </section>
   );
 }
 
@@ -417,6 +495,7 @@ function WeeksOff({ c, onChange }: { c: Contract; onChange: (w: string[]) => voi
 export function avenantSummary(before: Contract, ch: Partial<Terms>): string[] {
   const out: string[] = [];
   if (ch.rateNet != null && ch.rateNet !== before.rateNet) out.push(`Taux : ${euros(before.rateNet)} → ${euros(ch.rateNet)} net de l’heure`);
+  if (ch.rateBrut != null && ch.rateBrut !== before.rateBrut) out.push(`Taux brut : ${before.rateBrut ? euros(before.rateBrut) : 'non saisi'} → ${euros(ch.rateBrut)} brut de l’heure`);
   if (ch.planning) out.push(`Planning : ${hoursLabel(weeklyMinutes(before.planning))} → ${hoursLabel(weeklyMinutes(ch.planning))} par semaine`);
   // T-044 : tarif par jour ou par heure.
   if (ch.entretienJour != null || ch.entretienHeure != null || ch.entretienMode != null) {
@@ -432,6 +511,12 @@ export function avenantSummary(before: Contract, ch: Partial<Terms>): string[] {
   if (ch.yearType && ch.yearType !== before.yearType) out.push(ch.yearType === 'complete' ? 'Passage en année complète (52 semaines)' : `Passage en année incomplète (${ch.weeks ?? before.weeks} semaines)`);
   else if (ch.weeks != null && ch.weeks !== before.weeks) out.push(`Semaines d’accueil : ${before.weeks} → ${ch.weeks}`);
   if (ch.weeksOff) out.push('Semaines sans accueil modifiées');
+  // T-104 (cas 3) : horaires variables.
+  if (ch.planningVariable != null && ch.planningVariable !== !!before.planningVariable) out.push(ch.planningVariable ? 'Passage à des horaires qui changent d’une semaine à l’autre' : 'Retour à un planning qui se répète chaque semaine');
+  if (ch.pvForme != null && ch.pvForme !== before.pvForme) out.push(ch.pvForme === 'cycle' ? 'Horaires : cycle écrit au contrat' : 'Horaires : planning remis par les parents');
+  if (ch.cycle) out.push(`Cycle : ${ch.cycle.length} semaines (${ch.cycle.map((p) => hoursLabel(weeklyMinutes(p))).join(', ')})`);
+  if (ch.cycleAncre && ch.cycleAncre !== before.cycleAncre) out.push(`Semaine A : celle du ${shortDate(ch.cycleAncre)}`);
+  if (ch.heuresMensualisees != null && ch.heuresMensualisees !== before.heuresMensualisees) out.push(`Heures payées chaque mois : ${before.heuresMensualisees ?? '—'} → ${ch.heuresMensualisees}`);
   return out;
 }
 

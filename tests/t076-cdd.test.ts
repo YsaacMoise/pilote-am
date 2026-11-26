@@ -3,15 +3,15 @@
 // Les attendus sont calculés à la main dans les commentaires, d'après les formules du rapport, avec les conventions de l'app :
 // montants en centimes, arrondi au centime le plus proche, brut estimé = net × 10000 / 7810 (netToBrut), net estimé =
 // brut × 7810 / 10000. Notation : n2b(x) = arrondi(x × 10000 / 7810) ; b2n(x) = arrondi(x × 7810 / 10000).
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { AmLeave, Contract, DayRec, Planning } from '../src/engine/model';
 import { makeCtx, monthBase } from '../src/engine/payroll';
-import { computeMonth, declarationLines } from '../src/engine/month';
+import { computeMonth } from '../src/engine/month';
 import { finDeCdd, finDeContrat, MESSAGE_CDD_PAS_DE_PREAVIS, MESSAGES_FIN_CDD_NON_GEREE } from '../src/engine/fin';
 import { controleFinContrat } from '../src/engine/preavis';
 import { nonGeresContrat } from '../src/engine/nonGeres';
-import { CDD_A_COMPLETER, NON_GERE_CDD_P1_P2, estCddMoinsUnMois } from '../src/engine/cdd';
+import { CDD_A_COMPLETER, estCddMoinsUnMois } from '../src/engine/cdd';
 import { monthsBetween } from '../src/engine/dates';
 
 function week(start: string, end: string, days = [1, 2, 3, 4, 5]): Planning {
@@ -48,8 +48,6 @@ describe('R-CDD-04 : mensualisation du CDD comme un CDI (52 semaines sur 12 mois
     expect(computeMonth(ctx, '2026-04').netTotal).toBe(86667);
     // Janvier : 22 jours prévus au planning (8 h), dont 20 dans le CDD (à partir du 05/01) : 86667 × 160 / 176 = 78788,18 → 787,88 €.
     expect(computeMonth(ctx, '2026-01').netTotal).toBe(78788);
-    // Aucune seconde lecture pour ce CDD (ni P1 ni P2).
-    expect(computeMonth(ctx, '2026-01').cddAConfirmer).toBeUndefined();
   });
   it('plus de refus « non géré » pour un CDD qui a sa date de fin prévue', () => {
     expect(nonGeresContrat(cdd())).toEqual([]);
@@ -97,9 +95,9 @@ describe('R-CDD-07, R-CDD-09, R-CDD-10 : IFC puis ICCP, IFC dans la base du dixi
   // base du net »). Assiette nette = 78788 + 3 × 86667 = 338789 (3 387,89 €).
   // IFC nette = arrondi(10 % × 338789) = 33878,9 → 338,79 € (33879) ; brut affiché = n2b(33879) = 43379.
   // ICCP (dixième de la période, IFC comprise) : (338789 + 33879) / 10 = 372668 / 10 → 372,67 € (37267).
-  // Maintien : au plus 11 jours acquis (lecture la plus haute) × 200 € la semaine / 6 = 366,67 € < 372,67 € : pas d'écart P3.
+  // Maintien (T-103, F9 : le plus favorable est retenu) : 11 jours × 200 € la semaine / 6 = 366,67 € < 372,67 €.
   // Plancher L1242-16 (aucun congé pris) : 10 % × (salaires + IFC), même base : 372,67 €.
-  // P4, lecture 2 : arrondi(10 % × (338789 + 37267)) = 37605,6 → 376,06 € ; à confirmer 376,06 − 338,79 = 37,27 €.
+  // T-103 (F10, décision du DG) : IFC sans l'ICCP (circulaire DRT n° 18/90, § 4.2.3).
   it('fin au terme : montants du rapport', () => {
     const f = fin(cdd(), '2026-04-30', 'terme');
     expect(f.assietteNetteCdd).toBe(338789);
@@ -107,9 +105,6 @@ describe('R-CDD-07, R-CDD-09, R-CDD-10 : IFC puis ICCP, IFC dans la base du dixi
     expect(f.ifc).toBe(43379);
     expect(f.brutCdd).toBe(433789);
     expect(f.cpIndemnite).toBe(37267);
-    expect(f.cpPartAConfirmer).toBeUndefined();
-    expect(f.ifcPartAConfirmer?.montant).toBe(3727);
-    expect(f.ifcPartAConfirmer?.lectures).toEqual([37606, 33879]);
     expect(f.regularisation).toBe(0);
   });
   it('IFC nette calculée sur le net, pas reconvertie depuis le brut (direction T-076)', () => {
@@ -178,7 +173,8 @@ describe('R-CDD-08 : IFC selon la façon dont le CDD finit', () => {
   ];
   for (const [f, jour, ifc] of cas) {
     it(`${f} : IFC ${ifc}`, () => {
-      const r = fin(cdd(), jour, f);
+      // T-103 (D10) : la fin de l'essai écrite au contrat est demandée pour une fin pendant l'essai.
+      const r = fin(f === 'essai' ? cdd({ cddEssaiFin: '2026-01-18' }) : cdd(), jour, f);
       expect(r.nonGere).toBeUndefined();
       expect(r.ifcNet).toBe(ifc);
       expect(r.indemniteRupture).toBe(0);
@@ -198,14 +194,93 @@ describe('R-CDD-08 : IFC selon la façon dont le CDD finit', () => {
     // Refus de CDI au terme : (78788 + 3 × 86667) / 10 = 33878,9 → 338,79 €.
     expect(fin(cdd(), '2026-04-30', 'refus_cdi').cpIndemnite).toBe(33879);
   });
-  for (const f of ['force_majeure', 'inaptitude', 'jeune_vacances', 'saisonnier_usage', 'autre'] as const) {
-    it(`${f} : non géré, message précis, aucun montant`, () => {
+  // T-107 (cas 4, regles/t107-fins-cdd.md) : fins calculées. Attendus tirés de L1243-10 (IFC non due : 1° saisonnier, 2° jeune
+  // pendant ses vacances, 4° force majeure), L1243-8 (IFC due, inaptitude non exclue) et L1243-4, al. 2 (sinistre).
+  it('T-107 : CDD d’un jeune pendant ses vacances, au terme : pas d’IFC (L1243-10, 2°), congés comme un refus de CDI', () => {
+    const r = fin(cdd(), '2026-04-30', 'jeune_vacances');
+    expect(r.nonGere).toBeUndefined();
+    expect(r.ifcNet).toBe(0);
+    expect(r.ifcExplication).toMatch(/L1243-10, 2°/);
+    // ICCP : (78788 + 3 × 86667) / 10 = 33878,9 → 338,79 €, sans IFC dans la base.
+    expect(r.cpIndemnite).toBe(33879);
+    expect(r.declaration).toEqual([]);
+  });
+  it('T-107 : CDD saisonnier, au terme : pas d’IFC (L1243-10, 1°)', () => {
+    const r = fin(cdd(), '2026-04-30', 'saisonnier');
+    expect(r.nonGere).toBeUndefined();
+    expect(r.ifcNet).toBe(0);
+    expect(r.ifcExplication).toMatch(/L1243-10, 1°/);
+    expect(r.cpIndemnite).toBe(33879);
+  });
+  it('T-107 : jeune pendant ses vacances ou saisonnier avant la date de fin prévue : dates à revoir', () => {
+    for (const f of ['jeune_vacances', 'saisonnier'] as const) expect(fin(cdd(), '2026-03-31', f).nonGere?.join(' ')).toMatch(/avant la date de fin prévue/);
+  });
+  it('T-107 : inaptitude, fin le 31/03 : IFC due comme une rupture par le parent (252,12 €), sans dommages et intérêts', () => {
+    const r = fin(cdd(), '2026-03-31', 'inaptitude');
+    expect(r.nonGere).toBeUndefined();
+    expect(r.ifcNet).toBe(25212);
+    expect(r.cpIndemnite).toBe(fin(cdd(), '2026-03-31', 'employeur').cpIndemnite);
+    expect(r.alertes.join(' ')).toMatch(/L1243-1.*Pas de dommages et intérêts/);
+    expect(r.alertes.join(' ')).not.toMatch(/conseil \(relais/);
+  });
+  it('T-107 : force majeure sans réponse sur le sinistre : la question est posée, aucun montant', () => {
+    const r = fin(cdd(), '2026-03-31', 'force_majeure');
+    expect(r.nonGere?.join(' ')).toMatch(/sinistre/);
+    expect((r.ifc ?? 0) + r.cpIndemnite + r.regularisation).toBe(0);
+  });
+  it('T-107 : force majeure sans sinistre : pas d’IFC (L1243-10, 4°), congés comme une fin à la demande de l’AM', () => {
+    const r = finDeCdd(ctxDe(cdd()), '2026-03-31', 'force_majeure', 0, undefined, { sinistre: false });
+    expect(r.nonGere).toBeUndefined();
+    expect(r.ifcNet).toBe(0);
+    expect(r.ifcExplication).toMatch(/L1243-10, 4°/);
+    expect(r.cpIndemnite).toBe(fin(cdd(), '2026-03-31', 'initiative_am').cpIndemnite);
+    expect(r.indemniteSinistre).toBeUndefined();
+  });
+  it('T-107 : sinistre le 31/03 : indemnité égale au salaire d’avril, jusqu’au terme du 30/04 (L1243-4, al. 2) : 866,67 €', () => {
+    const r = finDeCdd(ctxDe(cdd()), '2026-03-31', 'force_majeure', 0, undefined, { sinistre: true });
+    expect(r.nonGere).toBeUndefined();
+    expect(r.ifcNet).toBe(0);
+    expect(r.indemniteSinistre).toEqual({ net: 86667, du: '2026-04-01', au: '2026-04-30' });
+    // Hors de la base des congés : même ICCP que sans sinistre (la période couverte suit la fin du contrat).
+    expect(r.cpIndemnite).toBe(finDeCdd(ctxDe(cdd()), '2026-03-31', 'force_majeure', 0, undefined, { sinistre: false }).cpIndemnite);
+  });
+  it('T-107 : sinistre le 15/04 : salaire du 16 au 30/04, proportion de l’art. 111 (11 jours de 8 h sur 22) : 433,34 €', () => {
+    // Avril 2026 : 22 jours du lundi au vendredi ; après le mercredi 15/04 : 16, 17, 20-24, 27-30 = 11 jours. 86667 × 88 ÷ 176.
+    const r = finDeCdd(ctxDe(cdd()), '2026-04-15', 'force_majeure', 0, undefined, { sinistre: true });
+    expect(r.indemniteSinistre?.net).toBe(Math.round(86667 * 88 / 176));
+  });
+  it('T-107 : sinistre, CDD de remplacement sans terme précis : la date du retour prévu est demandée, puis l’indemnité va jusqu’à elle', () => {
+    const c = cdd({ cddTermeImprecis: true });
+    expect(finDeCdd(ctxDe(c), '2026-03-31', 'force_majeure', 0, undefined, { sinistre: true }).nonGere?.join(' ')).toMatch(/personne remplacée devait revenir/);
+    const r = finDeCdd(ctxDe(c), '2026-03-31', 'force_majeure', 0, undefined, { sinistre: true, termeSinistre: '2026-05-31' });
+    expect(r.indemniteSinistre).toEqual({ net: 2 * 86667, du: '2026-04-01', au: '2026-05-31' });
+  });
+  it('T-107 : agrément retiré le 31/03, après trois mois d’emploi : pas d’IFC (CASF L423-24, al. 2), congés payés', () => {
+    // CDD du 01/12/2025 au 30/04/2026, fin le 31/03/2026 : 4 mois d'emploi (de date à date, jour de fin compris).
+    const c = cdd({ start: '2025-12-01', trackedFrom: '2025-12-01' });
+    const r = fin(c, '2026-03-31', 'agrement');
+    expect(r.nonGere).toBeUndefined();
+    expect(r.ifcNet).toBe(0);
+    expect(r.ifcExplication).toMatch(/L423-24/);
+    expect(r.cpIndemnite).toBeGreaterThan(0);
+    expect(r.cpIndemnite).toBe(fin(c, '2026-03-31', 'initiative_am').cpIndemnite);
+    expect(r.alertes.join(' ')).toMatch(/L421-1.*Pas de dommages et intérêts/);
+  });
+  it('T-107 : agrément retiré avant trois mois d’emploi : L423-24 ne s’applique pas, IFC due (L1243-8)', () => {
+    // CDD du 05/01 au 30/04/2026, fin le 27/03 : 2 mois pleins. IFC comme une rupture voulue par le parent au même jour.
+    const r = fin(cdd(), '2026-03-27', 'agrement');
+    expect(r.nonGere).toBeUndefined();
+    expect(r.ifcNet).toBe(fin(cdd(), '2026-03-27', 'employeur').ifcNet);
+    expect(r.ifcNet).toBeGreaterThan(0);
+  });
+  for (const f of ['saisonnier_usage', 'autre'] as const) {
+    it(`${f} (ancienne valeur, jamais enregistrée) : renvoi vers le bon choix, aucun montant`, () => {
       const r = fin(cdd(), '2026-03-31', f);
       expect(r.nonGere).toEqual([MESSAGES_FIN_CDD_NON_GEREE[f]]);
-      expect((r.ifc ?? 0) + r.cpIndemnite + r.regularisation + r.indemniteRupture).toBe(0);
-      expect(MESSAGES_FIN_CDD_NON_GEREE[f]).not.toMatch(/€/);
+      expect(MESSAGES_FIN_CDD_NON_GEREE[f]).not.toMatch(/non géré|sans l’app/);
     });
   }
+
   it('« terme atteint » avec un dernier jour avant la date prévue : refusé (l’IFC dépend de la vraie raison)', () => {
     expect(fin(cdd(), '2026-03-31', 'terme').nonGere?.[0]).toMatch(/avant la date de fin prévue/);
   });
@@ -230,89 +305,55 @@ describe('C-FIN-11 (Urssaf, Virginie) : 1 600 € brut, IFC 160 €', () => {
   });
 });
 
-describe('P1 : CDD à terme précis de moins d’un mois, deux lectures', () => {
+describe('P1, revu par la T-103 (F11) : CDD à terme précis de moins d’un mois, salaire mensualisé', () => {
   // Du lundi 09/03 au vendredi 27/03/2026 : 15 jours, 120 h. Mars 2026 : 22 jours prévus, 176 h.
-  // Lecture 1 (mensualisé puis art. 111) : 86667 × 120 / 176 = 59091,1 → 590,91 €.
-  // Lecture 2 (taux × heures réellement faites) : 120 h × 5,00 € = 600,00 €.
-  // Part sûre 590,91 € ; à confirmer 9,09 €.
+  // CCN 108.1 (mensualisé « quels que soient le nombre d'heures […] et le nombre de semaines ») ; L1242-14 : 86667 × 120 / 176
+  // = 59091,1 → 590,91 €. Décision du DG du 22/11/2026 (question n° 9 close).
   const c = cdd({ start: '2026-03-09', trackedFrom: '2026-03-09', cddTerme: '2026-03-27' });
   it('le cas est reconnu (moins d’un mois) ; un mois juste n’en est pas un', () => {
     expect(estCddMoinsUnMois(c)).toBe(true);
     expect(estCddMoinsUnMois({ ...c, cddTerme: '2026-04-08' })).toBe(false);
     expect(estCddMoinsUnMois({ ...c, cddTermeImprecis: true })).toBe(false);
   });
-  it('mois : part sûre, écart à confirmer hors du total', () => {
+  it('mois : une seule lecture, sans réserve', () => {
     const r = computeMonth(ctxDe({ ...c, end: '2026-03-27' }), '2026-03');
-    expect(r.cddLectures).toEqual([59091, 60000]);
     expect(r.netTotal).toBe(59091);
-    expect(r.cddAConfirmer).toBe(909);
-    expect(r.alerts.join(' ')).toMatch(/9,09\s€ à confirmer/);
-    expect(declarationLines(ctxDe({ ...c, end: '2026-03-27' }), r).find((l) => l.label === 'Salaire net')?.value).toMatch(/\+ 9,09\s€ de salaire du CDD à confirmer/);
+    expect(r.alerts.join(' ')).not.toMatch(/à confirmer/);
   });
-  it('fin : IFC et ICCP dans chaque lecture, part sûre = la plus basse', () => {
-    // IFC nette : lecture 1 = 10 % × 59091 → 59,09 € ; lecture 2 = 10 % × 60000 = 60,00 €.
-    // ICCP lecture 1 : (59091 + 5909) / 10 = 65,00 € ; lecture 2 : (60000 + 6000) / 10 = 66,00 €.
-    // Maintien (P3) : 2 jours au plus × 200 € / 6 = 66,67 €. ICCP : 65,00 € sûrs, 66,67 − 65,00 = 1,67 € à confirmer.
-    // P4, lecture 2 : arrondi(10 % × (60000 + 6667)) = 6666,7 → 66,67 €. IFC : 59,09 € sûrs, 7,58 € à confirmer.
+  it('fin : IFC 59,09 € ; ICCP = le plus favorable du dixième (65,00 €) et du maintien (66,67 €, F9)', () => {
     const f = fin(c, '2026-03-27', 'terme');
     expect(f.ifcNet).toBe(5909);
-    expect(f.ifcPartAConfirmer?.lectures).toEqual([6667, 5909]);
-    expect(f.ifcPartAConfirmer?.montant).toBe(758);
-    expect(f.cpIndemnite).toBe(6500);
-    expect(f.cpPartAConfirmer?.lectures).toEqual([6667, 6500]);
-    expect(f.cpPartAConfirmer?.montant).toBe(167);
-    // Point 1 (direction) : le total versé n'est jamais sous le plus petit des deux totaux. Mars versé : 590,91 € ;
-    // totaux : 590,91 € (lecture 1) et 600,00 € (lecture 2) : rien à compléter, 9,09 € à confirmer.
+    expect(f.cpIndemnite).toBe(6667);
     expect(f.regularisation).toBe(0);
-    expect(f.regularisationPartAConfirmer?.lectures).toEqual([909, 0]);
   });
 });
 
-describe('P2 : CDD avec semaines sans accueil, deux lectures', () => {
+describe('P2, revu par la T-103 (F12) : CDD avec semaines sans accueil, mode 46 semaines et régularisation', () => {
   // Même CDD, semaines sans accueil du 16/02 et du 06/04 ; contrat : 15 semaines d'accueil programmées (17 − 2).
-  // Lecture 1 (46 semaines ou moins, art. 109.2) : mensualisé = 40 h × 15 / 12 × 5,00 € = 250,00 € ; janvier (méthode des
-  //   jours) : 25000 × 20 / 22 = 22727,3 → 227,27 €.
-  // Lecture 2 (52 semaines, art. 111 sur les semaines sans accueil) : janvier 787,88 € ; février 86667 × 120 / 160 = 650,00 € ;
-  //   mars 866,67 € ; avril 86667 × 136 / 176 = 66970,0 → 669,70 €.
+  // CCN 97.1 et 109.2 ; L1242-14 : mensualisé = 40 h × 15 / 12 × 5,00 € = 250,00 € ; janvier (méthode des jours) :
+  // 25000 × 20 / 22 = 22727,3 → 227,27 €.
   const c = cdd({ yearType: 'incomplete', weeks: 15, weeksOff: ['2026-02-16', '2026-04-06'] });
-  it('mois : part sûre = lecture la plus basse, écart à confirmer', () => {
+  it('mois : une seule lecture', () => {
     const ctx = ctxDe({ ...c, end: '2026-04-30' });
-    const attendus: [string, number, number][] = [['2026-01', 22727, 78788], ['2026-02', 25000, 65000], ['2026-03', 25000, 86667], ['2026-04', 25000, 66970]];
-    for (const [m, l1, l2] of attendus) {
-      const r = computeMonth(ctx, m);
-      expect(r.cddLectures).toEqual([l1, l2]);
-      expect(r.netTotal).toBe(Math.min(l1, l2));
-      expect(r.cddAConfirmer).toBe(Math.abs(l2 - l1));
-    }
+    const attendus: [string, number][] = [['2026-01', 22727], ['2026-02', 25000], ['2026-03', 25000], ['2026-04', 25000]];
+    for (const [m, l1] of attendus) expect(computeMonth(ctx, m).netTotal).toBe(l1);
   });
-  it('fin : total versé = le plus petit des deux totaux ; IFC et ICCP de chaque lecture', () => {
-    // Régularisation (lecture 1) : jours dus = 20 + 15 + 22 + 17 = 74 jours × 8 h × 5,00 € = 2 960,00 € ; versé par la
-    //   mensualisation 227,27 + 3 × 250 = 977,27 € ; régularisation 1 982,73 €. Lecture 2 : aucune.
-    // Totaux du CDD : lecture 1 = 977,27 + 1 982,73 = 2 960,00 € ; lecture 2 = 787,88 + 650,00 + 866,67 + 669,70 = 2 974,25 €.
-    // Versé chaque mois (le plus bas) : 977,27 €. Reste dû à la fin : lecture 1 = 2 960,00 − 977,27 = 1 982,73 € ;
-    //   lecture 2 = 2 974,25 − 977,27 = 1 996,98 €. Part sûre 1 982,73 € ; à confirmer 14,25 €.
-    //   Total versé = 977,27 + 1 982,73 = 2 960,00 € = min(2 960,00 ; 2 974,25) (direction T-076, point bloquant).
-    // IFC nette : lecture 1 = 10 % × 296000 = 296,00 € ; lecture 2 = 10 % × 297425 = 29742,5 → 297,43 €. Part sûre 296,00 €.
-    // ICCP (dixième) lecture 1 : (296000 + 29600) / 10 = 325,60 € ; lecture 2 : (297425 + 29743) / 10 = 32716,8 → 327,17 €.
-    //   Maintien le plus haut (lecture 2, 11 jours) : 366,67 €. Part sûre 325,60 €, à confirmer 41,07 €.
-    // P4, lecture 2 la plus haute : arrondi(10 % × (297425 + 36667)) = 33409,2 → 334,09 €.
+  it('fin : régularisation 1 982,73 € (art. 124), IFC 296,00 €, ICCP 333,33 €', () => {
+    // Régularisation : jours dus = 20 + 15 + 22 + 17 = 74 jours × 8 h × 5,00 € = 2 960,00 € ; versé 977,27 € ; 1 982,73 €.
+    // IFC nette : 10 % × 296000 = 296,00 €. Dixième : (296000 + 29600) / 10 = 325,60 €. Jours acquis (T-103, C10 bis, semaines
+    // sans accueil : décompte le plus favorable) : journalier, 74 jours d'accueil ÷ 20 × 2,5 = 9,25 → 10 jours ; maintien
+    // 10 × 200 € / 6 = 333,33 €, plus haut que le dixième.
     const f = fin(c, '2026-04-30', 'terme');
     expect(f.regularisation).toBe(198273);
-    expect(f.regularisationPartAConfirmer?.lectures).toEqual([199698, 198273]);
-    expect(f.regularisationPartAConfirmer?.montant).toBe(1425);
-    expect(f.regularisationParLecture).toEqual([198273, 0]);
     const ctx = ctxDe({ ...c, end: '2026-04-30' });
     const verse = ['2026-01', '2026-02', '2026-03', '2026-04'].reduce((t, m) => t + computeMonth(ctx, m).netTotal, 0);
-    expect(verse).toBe(97727);
-    expect(verse + f.regularisation).toBe(Math.min(296000, 297425));
+    expect(verse + f.regularisation).toBe(296000);
     expect(f.ifcNet).toBe(29600);
-    expect(f.cpIndemnite).toBe(32560);
-    expect(f.cpPartAConfirmer?.lectures).toEqual([36667, 32560]);
-    expect(f.ifcPartAConfirmer?.lectures).toEqual([33409, 29600]);
+    expect(f.cpIndemnite).toBe(33333);
   });
-  it('P1 et P2 à la fois : non géré', () => {
+  it('P1 et P2 à la fois : calculé (une seule lecture pour chacun, T-103)', () => {
     const p = cdd({ start: '2026-03-09', trackedFrom: '2026-03-09', cddTerme: '2026-03-27', yearType: 'incomplete', weeks: 2, weeksOff: ['2026-03-16'] });
-    expect(nonGeresContrat(p)).toContain(NON_GERE_CDD_P1_P2);
+    expect(nonGeresContrat(p)).toEqual([]);
   });
 });
 
@@ -320,6 +361,9 @@ describe('Non-régression : un CDI donne exactement les mêmes sorties qu’avan
   // Sorties capturées sur le code d'avant T-076 (commit 4f85868), mêmes contrats et saisies (tests/fixtures/t076-cdi-avant.json).
   // Intégration T-078 (22/11/2026) : fixture recapturée sur integration 7bdc012 (avant la fusion de T-076), car T-072, T-074,
   // T-077, T-079 et T-078 (D1 à D4) ont changé des messages et des champs des CDI. Le test garde son sens : T-076 ne change rien.
+  // T-103 (24/11/2026) : fixture recapturée à chaque lot de la T-103 ; chaque écart est relu et noté dans rapports/T-103-execution.md.
+  // T-109 (25/11/2026) : recapturée après relecture des écarts : essai d'un CDI au-delà de 2 mois refusé (CCN 95.1), libellés de la
+  // faute grave, durée du préavis avec sa source (CCN 120) ; noté dans rapports/T-109-execution.md.
   const avant = JSON.parse(readFileSync(new URL('./fixtures/t076-cdi-avant.json', import.meta.url), 'utf8')) as Record<string, unknown>;
   const CDI: Record<string, Contract> = {
     complet: { id: 'c1', child: 'L', family: 'M', color: 0, start: '2025-09-01', yearType: 'complete', weeks: 52, weeksOff: [], planning: week('08:00', '17:00'), rateNet: 480, majoration: 10, entretienJour: 350, repasPrix: 300, repasParJour: 1, kmTaux: 40, cpMode: 'juin', majoreFiscal: false, trackedFrom: '2025-09-01', balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: 0, alsaceMoselle: false, planningVariable: false, accueilOccasionnel: false, cdd: false },
@@ -340,7 +384,14 @@ describe('Non-régression : un CDI donne exactement les mêmes sorties qu’avan
         apres[`${nom}|fin|${motif}`] = finDeContrat(makeCtx(c, recs, leaves, '2026-11-15'), '2026-09-14', motif, 0, '2026-09-16');
       }
     }
-    expect(JSON.parse(JSON.stringify(apres))).toEqual(avant);
+    // T-103 : champs retirés (parts « à confirmer », toutes à 0 dans la fixture) et champs nouveaux `brutConnu` (D1) et
+    // `periodeDecesFin` (F8, date de fin de la période indemnisée d'un décès, déjà dite dans l'explication), sans effet
+    // sur les montants : hors de la comparaison.
+    const HORS = new Set(['brutConnu', 'reductionHSManquante', 'periodeDecesFin', 'normalesPlusMin', 'normalesPlusAmount', 'evenementAConfirmer', 'ferieLocalAConfirmer', 'joursCpAConfirmer', 'joursEvenementAConfirmer', 'joursFerieLocalAConfirmer', 'joursMaintienAConfirmer', 'joursMaladieAConfirmer', 'kmAConfirmer']);
+    const filtre = (x: unknown) => JSON.parse(JSON.stringify(x, (k, v) => (HORS.has(k) ? undefined : v)));
+    // Recapture (T-103, après relecture des écarts) : T076_RECAPTURE=1 npx vitest run tests/t076-cdd.test.ts
+    if (process.env.T076_RECAPTURE === '1') writeFileSync(new URL('./fixtures/t076-cdi-avant.json', import.meta.url), JSON.stringify(apres));
+    expect(filtre(apres)).toEqual(filtre(avant));
   });
 });
 
@@ -355,33 +406,21 @@ describe('B1 / D8 : suite en CDI, rien n’est dû à la fin', () => {
     const c = cdd({ yearType: 'incomplete', weeks: 15, weeksOff: ['2026-02-16', '2026-04-06'] });
     const f = fin(c, '2026-04-30', 'suite_cdi');
     expect(f.regularisation).toBe(0);
-    expect(f.regularisationPartAConfirmer).toBeUndefined();
     expect(f.cpIndemnite).toBe(0);
     expect(f.ifcNet).toBe(0);
   });
 });
 
-describe('M1 / D7 : P1, lecture 2, les heures payées par un autre texte comptent', () => {
+describe('M1 / D7, revu par la T-103 (F11) : P1, salaire mensualisé seul', () => {
   // Du lundi 04/05 au vendredi 22/05/2026 : 15 jours prévus (dont les fériés chômés du 08/05 et du 14/05), 120 h.
-  // Mai 2026 : 21 jours prévus, 168 h. Lecture 1 : 86667 × 120 / 168 = 61904,98 → 619,05 €.
-  // Lecture 2 (D7) : fériés chômés payés (CCN 47) compris : 15 × 8 h × 5,00 € = 600,00 € (avant : 520,00 €).
+  // Mai 2026 : 21 jours prévus, 168 h. 86667 × 120 / 168 = 61904,98 → 619,05 €.
   const c = cdd({ start: '2026-05-04', trackedFrom: '2026-05-04', cddTerme: '2026-05-22' });
-  it('fériés chômés comptés', () => {
-    const r = computeMonth(ctxDe({ ...c, end: '2026-05-22' }), '2026-05');
-    expect(r.cddLectures).toEqual([61905, 60000]);
-    expect(r.netTotal).toBe(60000);
+  it('fériés chômés payés (art. 47), une seule lecture', () => {
+    expect(computeMonth(ctxDe({ ...c, end: '2026-05-22' }), '2026-05').netTotal).toBe(61905);
   });
-  it('absence de l’enfant à la demande des parents (payée, CCN 105) comptée', () => {
-    // Avant : 480,00 €. Le 12/05 reste payé : 600,00 €.
-    const recs: DayRec[] = [{ key: 'c1|2026-05-12', cid: 'c1', date: '2026-05-12', abs: 'parents' }];
-    const r = computeMonth(ctxDe({ ...c, end: '2026-05-22' }, recs), '2026-05');
-    expect(r.cddLectures).toEqual([61905, 60000]);
-  });
-  it('congé sans solde de l’AM retiré', () => {
-    // 13/05 sans solde : lecture 2 = 14 × 8 × 5 = 560,00 € ; lecture 1 = 86667 × (120 − 8) / 168 = 57778.
+  it('congé sans solde de l’AM retenu (art. 111) : 86667 × (120 − 8) / 168 = 577,78 €', () => {
     const leaves: AmLeave[] = [{ id: 's', type: 'sans_solde', from: '2026-05-13', to: '2026-05-13' }];
-    const r = computeMonth(ctxDe({ ...c, end: '2026-05-22' }, [], leaves), '2026-05');
-    expect(r.cddLectures).toEqual([57778, 56000]);
+    expect(computeMonth(ctxDe({ ...c, end: '2026-05-22' }, [], leaves), '2026-05').netTotal).toBe(57778);
   });
 });
 
@@ -394,8 +433,9 @@ describe('M2 / D9 : dates de fin face au terme précis', () => {
     });
   }
   it('revue 2 (r1, r2) : valeur de fin inconnue refusée ; report du terme sans exigence d’écrit (L1243-7)', () => {
-    const f = fin(cdd(), '2026-04-30', 'saisonnier' as never);
-    expect(f.nonGere?.[0]).toMatch(/Fin de CDD inconnue de l’app \(« saisonnier »\)/);
+    // T-107 : « saisonnier » est devenu une fin calculée ; la valeur inconnue du test est une autre.
+    const f = fin(cdd(), '2026-04-30', 'usage' as never);
+    expect(f.nonGere?.[0]).toMatch(/Fin de CDD inconnue de l’app \(« usage »\)/);
     expect((f.ifc ?? 0) + f.cpIndemnite).toBe(0);
     const apres = fin(cdd(), '2026-05-15', 'terme').nonGere?.[0] ?? '';
     expect(apres).not.toMatch(/par écrit, mets/);
@@ -413,55 +453,43 @@ describe('M2 / D9 : dates de fin face au terme précis', () => {
 
 describe('M3 / D10 : CDD à cheval sur le 1er juin, parts sûres de l’IFC et de l’ICCP', () => {
   // CDD du lundi 02/03 au vendredi 31/07/2026, 52 semaines, aucun congé pris. Mois complets : 5 × 866,67 € = 4 333,35 €.
-  // Le complément de juin (période de mars à mai) est à confirmer (nombre de jours) : il n'est pas versé.
   // IFC nette = arrondi(10 % × 433335) = 43333,5 → 433,34 €.
-  // ICCP : période en cours (juin, juillet) (173334 + 43334) / 10 = 21666,8 → 216,67 € ; période précédente : dixième
-  //   3 × 86667 / 10 = 26000,1 → 260,00 €, rien de versé : 260,00 €. Total 476,67 €.
-  //   Plancher L1242-16 : (433335 + 43334) / 10 = 47666,9 → 476,67 €. Avant la correction : ni IFC ni ICCP chiffrées.
+  // ICCP : période en cours (juin, juillet) (173334 + 43334) / 10 = 21666,8 → 216,67 € ; période précédente (mars à mai,
+  //   3 mois complets, 7,5 arrondis à 8 jours) : le plus favorable du dixième (260,00 €) et du maintien (8 ÷ 6 × 40 h × 5,00 €
+  //   = 266,67 €), rien de versé : 266,67 € (T-103, F9). Total 483,34 €, au-dessus du plancher L1242-16 (476,67 €).
   const c = cdd({ start: '2026-03-02', trackedFrom: '2026-03-02', cddTerme: '2026-07-31' });
   it('montants sûrs donnés', () => {
     const f = fin(c, '2026-07-31', 'terme');
     expect(f.ifcAConfirmer).toBeUndefined();
     expect(f.cpAConfirmer).toBeUndefined();
     expect(f.ifcNet).toBe(43334);
-    expect(f.cpIndemnite).toBe(47667);
+    expect(f.cpIndemnite).toBe(48334);
   });
 });
 
-describe('M4 : compteur fiscal, salaire du CDD à confirmer signalé', () => {
-  it('écart P2 de chaque mois et sommes de fin dites', () => {
+describe('M4, revu par la T-103 : compteur fiscal, sommes de fin du CDD dites', () => {
+  it('aucun salaire du CDD à confirmer ; sommes de fin dites', () => {
     const c = cdd({ yearType: 'incomplete', weeks: 15, weeksOff: ['2026-02-16', '2026-04-06'], end: '2026-04-30' });
     const t = fiscalYear(ctxDe(c), 2026).nonGere ?? '';
-    expect(t).toMatch(/Salaire du CDD à confirmer en janvier/);
+    expect(t).not.toMatch(/à confirmer/);
     expect(t).toMatch(/Fin du CDD en avril/);
   });
 });
 
-describe('m2 : P1 lecture 2, seuil de 45 h sur la semaine civile entière', () => {
-  it('semaine à cheval sur deux mois : heures au-delà de 45 h majorées dans le bon mois', () => {
-    // 10 h par jour du lundi au vendredi (50 h), du lundi 23/03 au vendredi 03/04/2026 (moins d'un mois).
-    // Semaine du 30/03 : lundi 30 et mardi 31 en mars (20 h), mercredi 1er à vendredi 3 en avril (30 h). Dans l'ordre des
-    // jours, les heures au-delà de 45 h sont les 5 dernières, le vendredi 03/04 : en avril.
-    // Avril, lecture 2 : 25 h × 5,00 + 5 h × 5,50 = 125,00 + 27,50 = 152,50 € (avant : 30 h × 5,00 = 150,00 €).
-    const c = cdd({ start: '2026-03-23', trackedFrom: '2026-03-23', cddTerme: '2026-04-03', planning: week('07:00', '17:00') });
-    const r = monthBase({ ...ctxDe({ ...c, end: '2026-04-03' }), lectureCdd: 2 }, '2026-04');
-    expect(r.base).toBe(15250);
-  });
-});
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Corrections après la relecture indépendante (rapports/T-076-relecture.md ; décisions D15, D17, D18, D19, section 5)
 // ---------------------------------------------------------------------------------------------------------------------
 import { NON_GERE_CDD_PV, messageApresTerme } from '../src/engine/cdd';
 
-describe('D15 (R1, R3) : CDD à planning variable refusé en entier', () => {
-  it('CDD de moins d’un mois à planning variable (scénario R1) : refusé, aucun montant', () => {
+// T-104 (cas 4) : D15 est levée, le CDD à planning variable est calculé (tests/t104-horaires-variables.test.ts, scénarios R1 et R3).
+describe('D15 levée par la T-104 : CDD à planning variable calculé', () => {
+  it('CDD de moins d’un mois à planning variable (scénario R1) : plus de refus', () => {
     // Cycle A 45 h / B 15 h ancré au 02/03/2026, 65 h payées par mois, CDD du 02/03 au 20/03/2026.
     const c = cdd({ start: '2026-03-02', trackedFrom: '2026-03-02', cddTerme: '2026-03-20', planningVariable: true, pvForme: 'cycle',
       cycle: [week('07:00', '16:00'), week('08:00', '11:00')], cycleAncre: '2026-03-02', heuresMensualisees: 65 } as Partial<Contract>);
-    expect(nonGeresContrat(c)).toContain(NON_GERE_CDD_PV);
-    expect(computeMonth(ctxDe({ ...c, end: '2026-03-20' }), '2026-03').nonGere).toContain(NON_GERE_CDD_PV);
-    expect(fin(c, '2026-03-20', 'terme').nonGere).toContain(NON_GERE_CDD_PV);
+    expect(nonGeresContrat(c)).not.toContain(NON_GERE_CDD_PV);
+    expect(computeMonth(ctxDe({ ...c, end: '2026-03-20' }), '2026-03').nonGere).toEqual([]);
   });
 });
 
@@ -483,7 +511,7 @@ describe('D18 (R5) : mois travaillés après le terme d’un CDD, sans fin enreg
 
 describe('D19 (R7) : fin pendant la période d’essai au-delà d’un mois, refusée', () => {
   it('CDD du 05/01 au 30/06/2026, fin « essai » le 15/05 : refusée ; le 09/01 : acceptée', () => {
-    const c = cdd({ cddTerme: '2026-06-30' });
+    const c = cdd({ cddTerme: '2026-06-30', cddEssaiFin: '2026-02-04' });
     expect(fin(c, '2026-05-15', 'essai').nonGere?.[0]).toMatch(/L1242-10/);
     expect(fin(c, '2026-02-05', 'essai').nonGere?.[0]).toMatch(/L1242-10/);
     expect(fin(c, '2026-01-09', 'essai').nonGere).toBeUndefined();
@@ -495,6 +523,7 @@ describe('D19 (R7) : fin pendant la période d’essai au-delà d’un mois, ref
 // ---------------------------------------------------------------------------------------------------------------------
 import { buildSnapshot } from '../src/partage/snapshot';
 import { finEssaiCdd, messageApresTerme as apresTerme, messageMoisApresTerme, messageTermeAVenir } from '../src/engine/cdd';
+import { MESSAGE_CDD_ESSAI_A_SAISIR } from '../src/engine/fin';
 
 describe('N1 : D19, limite de deux semaines pour un CDD de six mois ou moins', () => {
   it('CDD du 05/01 au 29/05/2026, fin « essai » le 30/01 (26e jour) : refusée (avant : IFC 0)', () => {
@@ -503,15 +532,28 @@ describe('N1 : D19, limite de deux semaines pour un CDD de six mois ou moins', (
     expect(fin(cdd({ cddTerme: '2026-05-29' }), '2026-01-30', 'essai').nonGere?.[0]).toMatch(/L1242-10/);
     // Sonde de la revue 3 : CDD du 05/01 au 30/04, fin « essai » le 23/01 (19e jour) : refusée.
     expect(fin(cdd(), '2026-01-23', 'essai').nonGere?.[0]).toMatch(/L1242-10/);
-    expect(fin(cdd(), '2026-01-18', 'essai').nonGere).toBeUndefined();
+    expect(fin(cdd({ cddEssaiFin: '2026-01-18' }), '2026-01-18', 'essai').nonGere).toBeUndefined();
   });
-  it('entre les deux façons de compter les semaines : refus avec message', () => {
-    // CDD du 05/01 au 14/02/2026 : 41 jours, 5 semaines entières (essai jusqu'au 09/01) ou 6 commencées (jusqu'au 10/01).
-    const c = cdd({ cddTerme: '2026-02-14' });
+  it('T-103 (D10) : fin de l’essai non saisie : demandée ; après l’essai écrit : refusée', () => {
+    expect(fin(cdd(), '2026-01-09', 'essai').nonGere?.[0]).toBe(MESSAGE_CDD_ESSAI_A_SAISIR);
+    expect(fin(cdd({ cddEssaiFin: '2026-01-08' }), '2026-01-09', 'essai').nonGere?.[0]).toMatch(/après la fin de la période d’essai écrite au contrat/);
+  });
+  it('T-107 (cas 7) : essai écrit plus long que le maximum légal, dernier jour dans la semaine commencée : hors essai, dit', () => {
+    // CDD du 05/01 au 14/02/2026 : 41 jours, soit 5 semaines et 6 jours. L1242-10 : au plus un jour par semaine, soit 41 ÷ 7 =
+    // 5,86 jours ; l'essai se compte en jours entiers (Cass. soc. 28/04/2011, n° 09-72.165) : 5 jours au plus, jusqu'au 09/01.
+    // Un essai écrit jusqu'au 10/01 ne vaut pas au-delà (Cass. soc. 11/06/1987, n° 84-41.299) ; une rupture le 10/01 n'est pas
+    // pendant l'essai (Cass. soc. 07/03/2000, n° 97-44.486).
+    const c = cdd({ cddTerme: '2026-02-14', cddEssaiFin: '2026-01-10' });
     expect(finEssaiCdd(c)).toEqual({ court: '2026-01-09', long: '2026-01-10' });
     expect(fin(c, '2026-01-09', 'essai').nonGere).toBeUndefined();
-    expect(fin(c, '2026-01-10', 'essai').nonGere?.[0]).toMatch(/à confirmer/);
+    const m = fin(c, '2026-01-10', 'essai').nonGere?.[0] ?? '';
+    expect(m).toMatch(/après la fin possible de la période d’essai \(au plus tard le 09\/01\/2026\)/);
+    expect(m).toMatch(/jusqu’au 10\/01\/2026 : la partie au-delà du 09\/01\/2026 ne vaut pas/);
+    expect(m).not.toMatch(/non géré|Aucun texte/);
     expect(fin(c, '2026-01-11', 'essai').nonGere?.[0]).toMatch(/après la fin possible/);
+    // La même fin, enregistrée comme voulue par le parent (hors essai) : calculée, IFC due (L1243-4, L1243-8).
+    expect(fin(c, '2026-01-10', 'employeur').nonGere).toBeUndefined();
+    expect(fin(c, '2026-01-10', 'employeur').ifcNet).toBeGreaterThan(0);
   });
   it('CDD de plus de six mois : un jour par semaine, au plus un mois', () => {
     // Du 05/01 au 31/12/2026 : 361 jours, 51 ou 52 semaines : limite d'un mois, jusqu'au 04/02.

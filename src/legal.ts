@@ -45,15 +45,20 @@ export const PAJEMPLOI_PLUS_AIDE =
 export const PAJEMPLOI_PLUS_RAPPEL =
   'Pajemploi+ n’est pas coché pour ce contrat. À partir du 1er septembre 2027, l’adhésion à Pajemploi+ sera la condition pour que les parents touchent l’aide de la CAF (CMG). Coche-le dans le contrat quand ils l’ont activé.';
 
-/** Cas que le moteur de paie ne calcule pas : à dire plutôt qu'à calculer faux (README, « Interprétations de paie ») */
-export const ABSENCES_NON_GEREES =
-  'Congé maternité, paternité, de naissance, accident du travail : choisis-les dans la liste, pas « Je suis malade ». L’app ne les calcule pas : elle bloque les mois concernés pour éviter un montant faux.';
-/** T-031 : affiché quand une absence non gérée est choisie */
-export const ABSENCE_NON_GEREE_CHOISIE =
-  'Non géré : l’app ne calculera pas les mois de cette absence, ni les congés et la fin de contrat qui en dépendent. Fais-les avec les parents, sans l’app.';
+/**
+ * T-104 : congé maternité, paternité, de naissance, accident du travail : calculés (regles/t104-absences-protegees.md). Aide
+ * affichée sous la liste, et ce que l'app garde (décision du DG du 22/11/2026 : la raison est enregistrée, rien d'autre).
+ */
+export const ABSENCES_PROTEGEES_AIDE =
+  'Congé maternité, paternité, de naissance, accident du travail : choisis-les dans la liste, pas « Maladie ». Leurs règles ne sont pas les mêmes pour tes congés, ton préavis et tes droits.';
+export const ABSENCES_PROTEGEES_DONNEES =
+  'L’app garde la raison et les dates de l’absence, rien d’autre : aucun arrêt de travail, aucun certificat, aucun détail médical. Les parents voient seulement « absente ».';
+/** Anciens noms, gardés pour les écrans et tests qui les citent */
+export const ABSENCES_NON_GEREES = ABSENCES_PROTEGEES_AIDE;
+export const ABSENCE_NON_GEREE_CHOISIE = ABSENCES_PROTEGEES_DONNEES;
 /** T-077 : l'Alsace-Moselle est calculée (regions.ts). Texte gardé pour les écrans qui le citent. */
 export const ALSACE_MOSELLE_NON_GEREE =
-  'Bas-Rhin, Haut-Rhin, Moselle : l’app compte la cotisation maladie du régime local. Les jours fériés locaux, le maintien de salaire et le préavis du droit local sont affichés à confirmer, avec l’écart.';
+  'Bas-Rhin, Haut-Rhin, Moselle : l’app compte la cotisation maladie du régime local, et le maintien de ton salaire en cas de maladie (code du travail, article L1226-23), moins tes indemnités journalières. Le Vendredi saint et le 26 décembre ne sont pas fériés pour une assistante maternelle (article L3134-1), ni le préavis local de six semaines.';
 
 export const AVERTISSEMENT_CALCUL =
   'Arvela est un outil d’aide au calcul, indépendant de l’Urssaf et de Pajemploi. Vérifie les montants avant de les déclarer : la déclaration Pajemploi et le bulletin de salaire font foi.';

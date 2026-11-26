@@ -39,38 +39,25 @@ const AN2 = ['2022-10-24', '2022-10-31', '2022-12-19', '2022-12-26', '2023-02-13
 const bertrand = () => contrat({ yearType: 'incomplete', weeks: 36, weeksOff: [...AN1, ...AN2] });
 const ctxB = () => makeCtx(bertrand(), [], [conge('am_malade', '2021-10-13', '2021-10-15'), conge('cp', '2022-08-01', '2022-08-13')], '2022-10-15', 2);
 
-describe('T-050d, B-1 : fiche Bertrand, la variante du lendemain ne recompte ni l’ICCP ni la régularisation', () => {
-  it('total des bulletins saisi jusqu’à septembre 2022 (9 000,00 €) : 112,50 € au 30/09, 130,24 € au 01/10 (B-1, T-072)', () => {
-    // À la main : 9 000,00 ÷ 80 = 112,50 €. Le 01/10/2022 est un samedi, sans accueil (lundi au vendredi) : aucun salaire
-    // en plus ; l'ICCP et la régularisation sont déjà dans le bulletin de septembre. La variante vaut donc 112,50 € aussi.
+describe('T-050d, B-1, revu par la T-103 (F1) : fiche Bertrand, une seule date de fin', () => {
+  it('total des bulletins saisi jusqu’à septembre 2022 (9 000,00 €) : 112,50 € au 30/09, sans variante', () => {
+    // À la main : 9 000,00 ÷ 80 = 112,50 €. L'ICCP et la régularisation sont sur le bulletin de septembre, déjà dans le total.
     const f = finDeContrat(ctxB(), '2022-09-01', 'retrait', 2, undefined, { total: 900000, jusqua: '2022-09' });
     expect(f.dernierJour).toBe('2022-09-30');
     expect(f.regularisation).toBeGreaterThan(0);
     expect(f.cpIndemnite).toBeGreaterThan(0);
     expect(f.totalBrut).toBe(900000);
     expect(f.indemniteRupture).toBe(11250);
-    // Relecture T-072 (B-1), décision de la direction du 22/11/2026 : fin le 01/10, l'ICCP (1 133,33 €) et la régularisation
-    // (285,71 €) seraient sur le bulletin d'octobre, hors du total saisi : (9 000,00 + 1 419,04) ÷ 80 = 130,24 €. Les deux
-    // montants sont donnés, l'indemnité est « à confirmer » (avant : 112,50 € sûr pour les deux dates).
-    expect(f.ruptureAConfirmer).toBe(true);
-    expect(f.ruptureVariantes).toContain('Fin le 30/09/2022 : 112,50');
-    expect(f.ruptureVariantes).toContain('Fin le 01/10/2022 : 130,24');
+    expect(f.ruptureAConfirmer).toBeFalsy();
   });
-  it('sans bulletins saisis : la variante du 01/10/2022 donne le même montant que la fin au 30/09/2022', () => {
-    // Le samedi 01/10/2022 n'ajoute aucun salaire : même assiette (salaires, régularisation et ICCP), même indemnité.
+  it('sans bulletins saisis : assiette = salaires + régularisation + ICCP de la fiche (748,57 €)', () => {
     const f = finDeContrat(ctxB(), '2022-09-01', 'retrait', 2);
-    const lendemain = finDeContrat(ctxB(), '2022-09-01', 'retrait', 2, '2022-09-02');
-    expect(lendemain.dernierJour).toBe('2022-10-01');
-    // Assiette : 7 714,29 € de salaires et 285,71 € de régularisation (fiche), plus 1 133,33 € d'ICCP (moteur, vérifiée par
-    // le relecteur, R-1) = 9 133,33 € ; 9 133,33 ÷ 80 = 114,17 €.
+    // Fiche DDETS 31 (Mme Bertrand) : 7 714,29 € de salaires, 400,00 € de congés versés en juin 2022, 285,71 € de
+    // régularisation, ICCP 748,57 € : assiette 9 148,57 €, comme la fiche.
     expect(f.regularisation).toBe(28571);
-    expect(f.cpIndemnite).toBe(113333);
-    expect(f.totalBrut).toBe(771429 + 28571 + 113333);
-    expect(f.indemniteRupture).toBe(11417);
-    expect(lendemain.totalBrut).toBe(f.totalBrut);
+    expect(f.cpIndemnite).toBe(74857);
+    expect(f.totalBrut).toBe(914857);
     expect(f.indemniteRupture).toBe(Math.round(f.totalBrut / 80));
-    expect(lendemain.indemniteRupture).toBe(f.indemniteRupture);
-    expect(f.ruptureVariantes).toBeUndefined();
     expect(f.ruptureAConfirmer).toBeFalsy();
   });
 });
@@ -86,23 +73,23 @@ const t038 = (weeksOff: string[]) => contrat({ start: '2025-09-01', trackedFrom:
 
 const f0 = () => finDeContrat(makeCtx(t038(SEMAINES_OFF.filter((w) => w !== '2026-10-19')), [], [], '2026-11-18'), '2026-10-28', 'retrait');
 
-describe('T-050d, C-1 : régularisation non calculée, l’ICCP et l’indemnité de rupture qui en dépendent sont « à confirmer »', () => {
+describe('T-050d, C-1, revu par la T-103 : régularisation non calculée, l’ICCP et l’indemnité de rupture attendent la donnée', () => {
   it('toutes les semaines sans accueil saisies : témoin, ICCP donnée et indemnité de rupture sûre', () => {
     const f = finDeContrat(makeCtx(t038(SEMAINES_OFF), [], [], '2026-11-18'), '2026-10-28', 'retrait');
     expect(f.cpAConfirmer).toBeUndefined();
     expect(f.cpIndemnite).toBeGreaterThan(0);
     expect(f.ruptureAConfirmer).toBeFalsy();
   });
-  it('la seule semaine sans accueil saisie de la 2e année (19/10/2026) manque, il en faut 16 : ICCP et rupture « à confirmer », raison dite', () => {
+  it('la seule semaine sans accueil saisie de la 2e année (19/10/2026) manque, il en faut 16 : rien n’est donné, la donnée est demandée', () => {
     const f = finDeContrat(makeCtx(t038(SEMAINES_OFF.filter((w) => w !== '2026-10-19')), [], [], '2026-11-18'), '2026-10-28', 'retrait');
     expect(f.regularisation).toBe(0);
-    expect(f.alertes.some((a) => a.startsWith('Régularisation non calculée : il manque 16 semaines sans accueil') && a.includes('L’indemnité de congés non pris en dépend : elle est à confirmer.'))).toBe(true);
+    expect(f.alertes.some((a) => a.startsWith('Régularisation non calculée : il manque 16 semaines sans accueil'))).toBe(true);
     expect(f.cpIndemnite).toBe(0);
     expect(f.cpAConfirmer).toContain('la régularisation de fin de contrat n’est pas calculée (il manque 16 semaines sans accueil)');
-    expect(f.cpExplication).toContain('À confirmer');
-    expect(f.indemniteRupture).toBeGreaterThan(0);
+    expect(f.indemniteRupture).toBe(0);
     expect(f.ruptureAConfirmer).toBe(true);
-    expect(f.alertes).toContain('Indemnité de rupture à confirmer : elle ne compte pas encore l’indemnité de congés non pris à confirmer, ni la régularisation de fin de contrat, qui n’est pas calculée : il manque des semaines sans accueil.');
+    expect(f.alertes.join(' ')).toMatch(/Indemnité de rupture non calculée : elle ne compte pas encore/);
+    expect(f.alertes.join(' ')).not.toMatch(/à confirmer/);
   });
   it('même cas, total des bulletins saisi jusqu’au dernier mois : ICCP « à confirmer », rupture sur les bulletins', () => {
     const f = finDeContrat(makeCtx(t038(SEMAINES_OFF.filter((w) => w !== '2026-10-19')), [], [], '2026-11-18'), '2026-10-28', 'retrait', 0, undefined, { total: 1000000, jusqua: f0().dernierJour.slice(0, 7) as `${number}-${number}` });
