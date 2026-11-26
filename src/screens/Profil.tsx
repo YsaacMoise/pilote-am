@@ -35,7 +35,7 @@ export function ProfilChamps() {
     <>
       <TextInput label="Ton prénom (facultatif)" value={s.settings.amName} onChange={(v) => saveSettings({ amName: v })} autoComplete="given-name" />
       <DepartementSaisie value={s.settings.departement} onChange={(d) => { if (d !== state.settings.departement) void saveSettings({ departement: d }); }} />
-      <Stepper label="Tes enfants à charge" value={s.settings.enfantsACharge} onChange={(v) => saveSettings({ enfantsACharge: v })} max={10} />
+      <Stepper label="Tes propres enfants à charge" value={s.settings.enfantsACharge} onChange={(v) => saveSettings({ enfantsACharge: v })} max={10} />
       <p class="hint">{AIDE_ENFANTS_A_CHARGE}</p>
     </>
   );
