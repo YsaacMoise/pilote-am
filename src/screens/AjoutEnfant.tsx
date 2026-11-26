@@ -31,6 +31,7 @@ import { TITRE_AM_AP } from './textes-contrat';
 import { SupprimerBrouillon } from './BrouillonSuppression';
 import { contratAEnregistrer, erreursContrat } from './contrat-validation';
 import { enregistrerBrouillon, lireBrouillon, nbEtapes, supprimerBrouillon, type Brouillon, type ReponsesAssistant } from '../brouillons';
+import { BoutonPaie, Montant } from '../ui/paie';
 
 export const NOMS_ETAPES = ['L’enfant et son employeur', 'Le contrat', 'Le planning', 'Le salaire', 'Les frais', 'Avant Arvela'];
 const SOUS_TITRES = ['Prénom, employeur, contact', 'Début, CDI ou CDD, semaines', 'Jours et horaires', 'Taux horaire, majorations', 'Entretien, repas, kilomètres', 'Congés pris, absences retenues'];
@@ -613,7 +614,8 @@ function Recap({ c, r, total, erreurs, modifier, creer }: { c: Contract; r: Repo
       <Topbar title={`Récapitulatif · ${c.child}`} back="#/plus" screen="ajout" />
       <main>
         {erreurs.length > 0 && <Banner tone="warn"><strong>À compléter avant de créer le contrat</strong><ul>{erreurs.map((e) => <li>{e}</li>)}</ul></Banner>}
-        {mensualise && <p>Mensualisation : <b>{hoursLabel(Math.round(mensuelMinutes(f)))}</b>, <b>{joursMensualises(f)} jours</b>, <b>{euros(salaireMensualise(f))}</b> net de salaire de base (hors indemnités et absences).</p>}
+        {mensualise && <p>Mensualisation : <b>{hoursLabel(Math.round(mensuelMinutes(f)))}</b>, <b>{joursMensualises(f)} jours</b>, <b><Montant v={euros(salaireMensualise(f))} /></b> net de salaire de base (hors indemnités et absences).</p>}
+        {mensualise && <BoutonPaie ecran="ajout" />}
         <Bloc n={1} titre={NOMS_ETAPES[0]} modifier={modifier}>
           <dt>Enfant</dt><dd>{c.child}</dd>
           <dt>Employeur</dt><dd>famille {c.family}</dd>

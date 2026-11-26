@@ -18,6 +18,7 @@ import { planningComplet } from './contrat-validation';
 import { TITRE_AM_AP } from './textes-contrat';
 import { PlanningVariableSaisie } from './PlanningVariableSaisie';
 import { manquesPV } from '../engine/planningVariable';
+import { BoutonPaie, Montant } from '../ui/paie';
 
 function pickTerms(c: Contract): Terms {
   const t = {} as Terms;
@@ -195,7 +196,8 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
                 <span class="b-ico"><Icon name="clock" /></span>
                 <div class="b-body">
                   <span><b>{hoursLabel(wk)}</b> par semaine sur {daysPerWeek(previewAff.planning)} jours</span>
-                  <span>Soit <b>{hoursLabel(Math.round(mensuelMinutes(previewAff)))}</b> et <b>{joursMensualises(previewAff)} jours</b> par mois, pour <b>{euros(salaireMensualise(previewAff))}</b> net.</span>
+                  <span>Soit <b>{hoursLabel(Math.round(mensuelMinutes(previewAff)))}</b> et <b>{joursMensualises(previewAff)} jours</b> par mois, pour <b><Montant v={euros(salaireMensualise(previewAff))} /></b> net.</span>
+                  <BoutonPaie ecran="avenant" />
                 </div>
               </div>}
             </fieldset>

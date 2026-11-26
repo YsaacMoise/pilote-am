@@ -11,6 +11,7 @@ import { avecPreavisMotif, FINS_CDD, FINS_CDD_NON_GEREES, type Contract, type Ru
 import { euros, hoursLabel } from '../engine/money';
 import { ligneIndemnitePreavis, ligneRegularisation } from './fin-lignes';
 import { Banner, Choices, DateInput, EuroInput, Gommette, Topbar } from '../ui/kit';
+import { BoutonPaie, Montant, TexteMontants } from '../ui/paie';
 
 /**
  * T-079 : choix de « Pourquoi le contrat s'arrête-t-il ? », du plus courant au plus rare, chacun dit qui agit.
@@ -223,26 +224,27 @@ export function Fin({ id }: { id?: string }) {
             {brutTotal != null && f.brutsEstimes.length > 0 && <p class="hint">Les mois suivants ({periode}) n’ont pas encore de bulletin : indique ton salaire horaire brut dans le contrat pour les calculer.</p>}
           </section>
         )}
-        {f.alertes.map((a) => <Banner tone="warn">{a} <a href={`#/historique/${c.id}`}>Ouvrir l’historique</a></Banner>)}
+        {f.alertes.map((a) => <Banner tone="warn"><TexteMontants t={a} /> <a href={`#/historique/${c.id}`}>Ouvrir l’historique</a></Banner>)}
         {f.cpAConfirmer && <Banner tone="warn">{f.cpAConfirmer}</Banner>}
         {estime && <Banner tone="warn">Indemnité de rupture non calculée : le brut de {periode} n’est pas connu. {MESSAGE_TAUX_BRUT} Tu peux aussi saisir le total brut de tes bulletins plus haut.</Banner>}
         <section class="card stack" aria-labelledby="fin-res" aria-live="polite">
           <h2 id="fin-res">Ce qui t’est dû</h2>
+          <BoutonPaie ecran="fin" />
           <dl class="kv">
             <dt>{avecLettre ? 'Ancienneté à l’envoi de la lettre' : 'Ancienneté'}</dt><dd>{f.ancienneteMois} mois</dd>
             <dt>Préavis</dt><dd>{f.preavisLabel}</dd>
             <dt>{f.dispense ? 'Fin du contrat (date prévue de fin du préavis)' : motif === 'deces' || motif === 'deces_am' || inexecution ? 'Dernier jour' : 'Dernier jour (préavis inclus)'}</dt><dd>{shortDate(f.dernierJour)}</dd>
           </dl>
           <div class="decl">
-            <div class="decl-line"><span class="decl-label"><span>Indemnité de rupture</span><span class="decl-hint">{f.ruptureExplication}</span></span><span class="decl-value">{ruptureNonCalculee ? 'non calculée' : euros(f.indemniteRupture)}</span></div>
-            {motif === 'deces' && <div class="decl-line"><span class="decl-label"><span>Indemnité égale au préavis</span><span class="decl-hint">{f.indemnitePreavisExplication}</span></span><span class="decl-value">{euros(f.indemnitePreavis)}</span></div>}
-            {f.indemniteDueParents && f.indemniteDueParents.net > 0 && <div class="decl-line"><span class="decl-label"><span>Ce que les parents peuvent te demander</span><span class="decl-hint">Salaire net du préavis non fait, du {shortDate(f.indemniteDueParents.du)} au {shortDate(f.indemniteDueParents.au)} (convention, article 64.2), en passant par le conseil de prud’hommes.{motif !== 'retrait' ? ' Si tu es enceinte, rien n’est dû (Code du travail, L1225-34).' : ''} Pas compté dans le total.</span></span><span class="decl-value">{euros(f.indemniteDueParents.net)}</span></div>}
-            {ligneDispense && <div class="decl-line"><span class="decl-label"><span>Indemnité de préavis</span><span class="decl-hint">{ligneDispense.hint}</span></span><span class="decl-value">{ligneDispense.valeur}</span></div>}
-            <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint">{ligneRegul.hint}</span></span><span class="decl-value">{ligneRegul.valeur}</span></div>
-            <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{f.cpAConfirmer ? 'non calculée' : euros(f.cpIndemnite)}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>Indemnité de rupture</span><span class="decl-hint"><TexteMontants t={f.ruptureExplication} /></span></span><span class="decl-value">{ruptureNonCalculee ? 'non calculée' : <Montant v={euros(f.indemniteRupture)} />}</span></div>
+            {motif === 'deces' && <div class="decl-line"><span class="decl-label"><span>Indemnité égale au préavis</span><span class="decl-hint"><TexteMontants t={f.indemnitePreavisExplication} /></span></span><span class="decl-value"><Montant v={euros(f.indemnitePreavis)} /></span></div>}
+            {f.indemniteDueParents && f.indemniteDueParents.net > 0 && <div class="decl-line"><span class="decl-label"><span>Ce que les parents peuvent te demander</span><span class="decl-hint">Salaire net du préavis non fait, du {shortDate(f.indemniteDueParents.du)} au {shortDate(f.indemniteDueParents.au)} (convention, article 64.2), en passant par le conseil de prud’hommes.{motif !== 'retrait' ? ' Si tu es enceinte, rien n’est dû (Code du travail, L1225-34).' : ''} Pas compté dans le total.</span></span><span class="decl-value"><Montant v={euros(f.indemniteDueParents.net)} /></span></div>}
+            {ligneDispense && <div class="decl-line"><span class="decl-label"><span>Indemnité de préavis</span><span class="decl-hint"><TexteMontants t={ligneDispense.hint} /></span></span><span class="decl-value"><TexteMontants t={ligneDispense.valeur} /></span></div>}
+            <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint"><TexteMontants t={ligneRegul.hint} /></span></span><span class="decl-value"><TexteMontants t={ligneRegul.valeur} /></span></div>
+            <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint"><TexteMontants t={f.cpExplication} /></span></span><span class="decl-value">{f.cpAConfirmer ? 'non calculée' : <Montant v={euros(f.cpIndemnite)} />}</span></div>
           </div>
-          <div class="spread"><b>{nonCalcule ? 'Total, hors salaire du dernier mois et sommes non calculées' : 'Total, hors salaire du dernier mois'}</b><span class="decl-value">{euros(total)}</span></div>
-          {surBrut && !ruptureNonCalculee && <p class="hint">L’indemnité de rupture est calculée sur {euros(f.totalBrut)} de salaires bruts, régularisation et indemnités de la fin comprises{finDansBulletins ? ' (elles sont dans tes bulletins)' : ''}. Elle n’est pas soumise aux cotisations.</p>}
+          <div class="spread"><b>{nonCalcule ? 'Total, hors salaire du dernier mois et sommes non calculées' : 'Total, hors salaire du dernier mois'}</b><span class="decl-value"><Montant v={euros(total)} /></span></div>
+          {surBrut && !ruptureNonCalculee && <p class="hint">L’indemnité de rupture est calculée sur <Montant v={euros(f.totalBrut)} /> de salaires bruts, régularisation et indemnités de la fin comprises{finDansBulletins ? ' (elles sont dans tes bulletins)' : ''}. Elle n’est pas soumise aux cotisations.</p>}
         </section>
         </>}
         <section class="card stack" aria-labelledby="fin-save">
@@ -326,29 +328,30 @@ function FinCddEcran({ c }: { c: Contract }) {
           <p class="hint">L’app ne donne aucun montant.</p>
         </section>
       ) : <>
-        {f.alertes.map((a) => <Banner tone="warn">{a}</Banner>)}
+        {f.alertes.map((a) => <Banner tone="warn"><TexteMontants t={a} /></Banner>)}
         {[f.ifcAConfirmer, f.regularisationAConfirmer, f.cpAConfirmer].filter(Boolean).map((t) => <Banner tone="warn">{t}</Banner>)}
         <section class="card stack" aria-labelledby="fincdd-res" aria-live="polite">
           <h2 id="fincdd-res">Ce qui t’est dû</h2>
+          <BoutonPaie ecran="fin" />
           <dl class="kv">
             <dt>Préavis</dt><dd>Aucun</dd>
             <dt>Dernier jour</dt><dd>{shortDate(f.dernierJour)}</dd>
           </dl>
           <div class="decl">
-            <div class="decl-line"><span class="decl-label"><span>Indemnité de fin de contrat</span><span class="decl-hint">{f.ifcExplication}</span></span><span class="decl-value">{f.ifcAConfirmer ? 'non calculée' : `${euros(ifcNet)} net`}</span></div>
-            <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint">{f.regularisationAConfirmer ? 'Non calculée : voir l’encadré plus haut' : f.finCdd === 'suite_cdi' ? 'Ton contrat continue en CDI : rien n’est dû maintenant' : termsAt(c, f.dernierJour).yearType === 'incomplete' ? (f.regulMinutes ? `${hoursLabel(f.regulMinutes)} accueillies mais non payées par la mensualisation` : 'Pas d’heures accueillies au-delà de ce qui a été payé') : 'Accueil toute l’année : pas de régularisation'}</span></span><span class="decl-value">{f.regularisationAConfirmer ? 'non calculée' : euros(f.regularisation)}</span></div>
-            <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint">{f.cpExplication}</span></span><span class="decl-value">{f.cpAConfirmer ? 'non calculée' : euros(f.cpIndemnite)}</span></div>
-            {f.indemniteSinistre && <div class="decl-line"><span class="decl-label"><span>Indemnité du sinistre</span><span class="decl-hint">Salaires que tu aurais touchés du {shortDate(f.indemniteSinistre.du)} au {shortDate(f.indemniteSinistre.au)} (code du travail, article L1243-4).</span></span><span class="decl-value">{euros(f.indemniteSinistre.net)}</span></div>}
+            <div class="decl-line"><span class="decl-label"><span>Indemnité de fin de contrat</span><span class="decl-hint"><TexteMontants t={f.ifcExplication} /></span></span><span class="decl-value">{f.ifcAConfirmer ? 'non calculée' : <><Montant v={euros(ifcNet)} /> net</>}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>Régularisation</span><span class="decl-hint">{f.regularisationAConfirmer ? 'Non calculée : voir l’encadré plus haut' : f.finCdd === 'suite_cdi' ? 'Ton contrat continue en CDI : rien n’est dû maintenant' : termsAt(c, f.dernierJour).yearType === 'incomplete' ? (f.regulMinutes ? `${hoursLabel(f.regulMinutes)} accueillies mais non payées par la mensualisation` : 'Pas d’heures accueillies au-delà de ce qui a été payé') : 'Accueil toute l’année : pas de régularisation'}</span></span><span class="decl-value">{f.regularisationAConfirmer ? 'non calculée' : <Montant v={euros(f.regularisation)} />}</span></div>
+            <div class="decl-line"><span class="decl-label"><span>Congés non pris</span><span class="decl-hint"><TexteMontants t={f.cpExplication} /></span></span><span class="decl-value">{f.cpAConfirmer ? 'non calculée' : <Montant v={euros(f.cpIndemnite)} />}</span></div>
+            {f.indemniteSinistre && <div class="decl-line"><span class="decl-label"><span>Indemnité du sinistre</span><span class="decl-hint">Salaires que tu aurais touchés du {shortDate(f.indemniteSinistre.du)} au {shortDate(f.indemniteSinistre.au)} (code du travail, article L1243-4).</span></span><span class="decl-value"><Montant v={euros(f.indemniteSinistre.net)} /></span></div>}
           </div>
-          <div class="spread"><b>{nonCalcule ? 'Total net, hors salaire du dernier mois et sommes non calculées' : 'Total net, hors salaire du dernier mois'}</b><span class="decl-value">{euros(total)}</span></div>
-          {ifcNet > 0 && <p class="hint">{MESSAGE_CDD_IFC} Elle est calculée sur {euros(f.assietteNetteCdd ?? 0)} de salaires nets : l’Urssaf la fait déclarer et payer en net.</p>}
+          <div class="spread"><b>{nonCalcule ? 'Total net, hors salaire du dernier mois et sommes non calculées' : 'Total net, hors salaire du dernier mois'}</b><span class="decl-value"><Montant v={euros(total)} /></span></div>
+          {ifcNet > 0 && <p class="hint">{MESSAGE_CDD_IFC} Elle est calculée sur <Montant v={euros(f.assietteNetteCdd ?? 0)} /> de salaires nets : l’Urssaf la fait déclarer et payer en net.</p>}
         </section>
         {!!f.declaration?.length && (
           <section class="card stack-sm" aria-labelledby="fincdd-decl">
             <h2 id="fincdd-decl">À déclarer à Pajemploi avec le dernier salaire</h2>
             <p class="hint">L’indemnité de congés non pris et la régularisation se déclarent aussi avec le dernier salaire.</p>
             <div class="decl">
-              {f.declaration.map((d) => <div class="decl-line"><span class="decl-label"><span>{d.libelle}</span><span class="decl-hint">{d.hint}</span></span><span class="decl-value">{euros(d.net)}</span></div>)}
+              {f.declaration.map((d) => <div class="decl-line"><span class="decl-label"><span>{d.libelle}</span><span class="decl-hint"><TexteMontants t={d.hint} /></span></span><span class="decl-value"><Montant v={euros(d.net)} /></span></div>)}
             </div>
           </section>
         )}

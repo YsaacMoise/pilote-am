@@ -6,6 +6,7 @@ import type { HistoryMonth } from '../engine/model';
 import { Banner, EuroInput, NumberInput, Sheet, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { ScanError, parseBulletin, pdfText, type Extracted } from '../pdf';
+import { BoutonPaie, Montant } from '../ui/paie';
 
 export function Historique({ id }: { id: string }) {
   useStore();
@@ -56,7 +57,8 @@ export function Historique({ id }: { id: string }) {
 
   return (
     <>
-      <Topbar title="Historique" sub={c.child} back={`#/contrat/${c.id}`} screen="historique" />
+      {/* T-135 : la fiche de l'enfant ouvre cet écran (« Bulletins d'avant Arvela ») : Retour y ramène, comme Contrat, Avenant et Fin. */}
+      <Topbar title="Historique" sub={c.child} back={`#/enfant/${c.id}`} screen="historique" />
       <main>
         {months.length === 0 ? (
           <Banner tone="ok">Ce contrat est suivi par l’app depuis son début : pas d’historique à reprendre.</Banner>
@@ -74,6 +76,7 @@ export function Historique({ id }: { id: string }) {
             </label>
             <p class="hint">Les PDF sont lus sur ton téléphone, rien n’est envoyé. Tu vérifies chaque montant avant d’enregistrer.</p>
             {err && <Banner tone="warn">{err}</Banner>}
+            {c.history.length > 0 && <BoutonPaie ecran="historique" />}
             <div class="list">
               {months.map((m) => {
                 const h = c.history.find((x) => x.month === m);
@@ -81,7 +84,7 @@ export function Historique({ id }: { id: string }) {
                   <button class="li" onClick={() => setEditing({ month: m, draft: h ? { ...h } : {}, source: h?.source ?? 'manuel' })}>
                     <span class="li-main">
                       <span class="li-title">{monthLabel(m).replace(/^./, (x) => x.toUpperCase())}</span>
-                      <span class="li-sub">{h ? `${euros(h.net)} net${h.source === 'pdf' ? ', importé du PDF' : ''}` : 'Manquant : touche pour saisir'}</span>
+                      <span class="li-sub">{h ? <><Montant v={euros(h.net)} /> net{h.source === 'pdf' ? ', importé du PDF' : ''}</> : 'Manquant : touche pour saisir'}</span>
                     </span>
                     <span class="li-end">{h ? <span class="tag ok">OK</span> : <span class="tag warn">À saisir</span>}</span>
                   </button>

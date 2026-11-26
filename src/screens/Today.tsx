@@ -1,10 +1,10 @@
 import { ABSENCES_PROTEGEES_AIDE, ABSENCES_PROTEGEES_DONNEES } from '../legal';
 import { useEffect, useState } from 'preact/hooks';
-import { activeContracts, ctxFor, logUsage, putLeave, state, toast, uid, updateDay, useStore } from '../store';
+import { activeContracts, ctxFor, deleteLeave, logUsage, putLeave, state, toast, uid, updateDay, useStore } from '../store';
 import { addDays, dayLabel, minutes, mondayOf, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NOMS, daysBetween } from '../engine/dates';
 import { dayInfo, libelleFerie, type Ctx, type DayInfo } from '../engine/payroll';
 import { alertesDurees, AMPLITUDE_MAX_MIN, messageAmplitude } from '../engine/durees';
-import { AM_ABS_LABEL, CHILD_ABS_LABEL, NATURE_ATMP_LABEL, type NatureAtMp, type ChildAbs, type Contract, type DayRec, type NatureEvenement, type Plage, type Presence } from '../engine/model';
+import { AM_ABS_LABEL, CHILD_ABS_LABEL, NATURE_ATMP_LABEL, type NatureAtMp, type ChildAbs, type Contract, type DayRec, type NatureEvenement, type Plage, type Presence, type AmLeave } from '../engine/model';
 import { regionDe } from '../engine/regions';
 import { estSuspension } from '../engine/suspensions';
 import { libelleDureeSaisie, NATURE_EVENEMENT_LABEL } from '../engine/evenements';
@@ -1156,11 +1156,13 @@ export function demandeIJ(type: ChoixAbsence, nature: NatureEvenement | undefine
   return undefined;
 }
 
-export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () => void }) {
+export function AmAbsenceSheet({ start, onClose, remplace }: { start: string; onClose: () => void; remplace?: AmLeave }) {
+  // T-135 : `remplace` : congés payés ouverts depuis le calendrier du Mois et modifiés ; l'ancienne absence est retirée à
+  // l'enregistrement (un seul « Annuler » remet tout).
   const [type, setType] = useState<ChoixAbsence>('cp');
   const [nature, setNature] = useState<NatureEvenement | undefined>(undefined);
-  const [from, setFrom] = useState(start);
-  const [to, setTo] = useState(start);
+  const [from, setFrom] = useState(remplace?.from ?? start);
+  const [to, setTo] = useState(remplace?.to ?? start);
   // Réponses liées à l'absence visée : remises à zéro quand une question change d'absence (dates changées).
   const [reponses, setReponses] = useState<Record<string, 'oui' | 'non'>>({});
   // T-103 (C9, R3) : indemnités journalières de la Sécurité sociale, en centimes nets (congé de deuil ; maladie en Alsace-Moselle).
@@ -1176,11 +1178,12 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
   const err = to < from ? 'La date de fin doit être après le début.' : '';
   useErreurAffichee('dates_absence', !!err);
   // Décision du DG du 21/11/2026 : une autre absence « événement familial » à 15 jours au plus : l'app demande à l'AM.
-  const questions = type === 'evenement' && !err ? questionsSuite(from, to, state.leaves) : [];
+  const autres = remplace ? state.leaves.filter((x) => x.id !== remplace.id) : state.leaves;
+  const questions = type === 'evenement' && !err ? questionsSuite(from, to, autres) : [];
   const reps: Reponse[] = questions.map((q) => reponses[`${q.sens}|${q.autre.id}`]);
   const visibles = questionsVisibles(questions, reps);
   return (
-    <Sheet title="Je serai absente" onClose={onClose}>
+    <Sheet title={remplace ? 'Modifier l’absence' : 'Je serai absente'} onClose={onClose}>
       <p class="muted">Pour tous les enfants. Pour une absence non payée, l’app fait seule la retenue sur le salaire.</p>
       <Choices label="Pourquoi seras-tu absente ?" value={type} options={AM_OPTIONS} onChange={setType} />
       {type === 'evenement' && (
@@ -1229,6 +1232,7 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
           if (l.type === 'remuneree') l.comptePourConges = congesPayee === 'oui';
           if (l.type === 'at_mp') { l.atmp = atmp; if (atmp !== 'maladie_pro') l.jourAccident = jourAccident === 'oui'; }
           const undos: (() => Promise<void>)[] = [];
+          if (remplace) undos.push(await deleteLeave(remplace.id));
           for (const x of appliquerReponses(l, questions, reps)) undos.push(await putLeave(x));
           const undo = async () => { for (const u of undos.reverse()) await u(); };
           logUsage('absence_am', 'aujourdhui');

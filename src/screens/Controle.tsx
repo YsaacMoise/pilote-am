@@ -11,6 +11,7 @@ import { Banner, EuroInput, Gommette, NumberInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { ScanError, parseBulletin, pdfText } from '../pdf';
 import { de } from '../engine/texte';
+import { BoutonPaie, Montant, TexteMontants } from '../ui/paie';
 
 export function Controle({ cid, month }: { cid?: string; month?: string }) {
   const s = useStore();
@@ -48,7 +49,8 @@ export function Controle({ cid, month }: { cid?: string; month?: string }) {
 
   return (
     <>
-      <Topbar title="Contrôler un bulletin" back="#/plus" screen="controle" />
+      {/* T-135 : ouvert depuis Mois (#/controle/<contrat>/<mois>), Retour ramène à ce mois ; depuis Plus, à Plus. */}
+      <Topbar title="Contrôler un bulletin" back={cid && month ? `#/mois/${month}/${cid}` : '#/plus'} screen="controle" />
       <main>
         {s.contracts.length > 1 && (
           <div class="chips" role="group" aria-label="Enfant">
@@ -69,7 +71,8 @@ export function Controle({ cid, month }: { cid?: string; month?: string }) {
             {r.nonGere.map((t) => <Banner tone="warn">{t}</Banner>)}
             <p class="muted">L’app ne calcule pas ce mois : elle ne peut pas contrôler le bulletin. Tu peux quand même le garder.</p>
           </>
-        ) : <p class="muted">Recopie les chiffres du bulletin Pajemploi {de(c.child)}, ou importe le PDF. L’app compare avec son calcul : {euros(r.netTotal)} net, {r.heuresNormales} h, {r.joursActivite} jours.</p>}
+        ) : <p class="muted">Recopie les chiffres du bulletin Pajemploi {de(c.child)}, ou importe le PDF. L’app compare avec son calcul : <Montant v={euros(r.netTotal)} /> net, {r.heuresNormales} h, {r.joursActivite} jours.</p>}
+        {!r.nonGere.length && <BoutonPaie ecran="controle" />}
         <label class="btn btn-outline btn-block">
           <Icon name="upload" />Importer le bulletin PDF
           <input type="file" accept="application/pdf,.pdf" class="sr-only" onChange={(e) => onPdf((e.target as HTMLInputElement).files?.[0])} />
@@ -95,7 +98,7 @@ export function Controle({ cid, month }: { cid?: string; month?: string }) {
             {checks.map((x) => (
               <div class="row" style={{ alignItems: 'flex-start' }}>
                 <span class={`check-${x.level}`}><Icon name={x.level === 'ok' ? 'check' : x.level === 'warn' ? 'alert' : 'info'} /></span>
-                <div class="stack-sm" style={{ gap: '2px' }}><b>{x.title}</b><span class="muted small">{x.detail}</span></div>
+                <div class="stack-sm" style={{ gap: '2px' }}><b><TexteMontants t={x.title} /></b><span class="muted small"><TexteMontants t={x.detail} /></span></div>
               </div>
             ))}
             <p class="hint">Le brut est contrôlé avec le taux horaire brut de ton contrat, et comparé au minimum conventionnel.</p>

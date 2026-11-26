@@ -228,7 +228,12 @@ describe('T-118 : carte « Ton mois »', async () => {
   });
   it('montant caché d’emblée, montré d’un geste, gardé jusqu’à la sortie de l’écran', () => {
     const src = readFileSync('src/screens/Mois.tsx', 'utf8');
-    expect(src).toContain('const [paieVue, setPaieVue] = useState(paieToujoursVisible());');
+    // T-135 (décision de la direction) : même état pour toute l'app (src/paie-visible.ts), parti du réglage et recaché à
+    // chaque changement d'écran : la règle T-118 « gardé jusqu'à la sortie de l'écran » est la même.
+    expect(src).toContain('const [paieVue, setPaieVue] = usePaieVue();');
+    const etat = readFileSync('src/paie-visible.ts', 'utf8');
+    expect(etat).toContain('return vue ?? paieToujoursVisible();');
+    expect(etat).toContain('if (e !== ecran) { ecran = e; vue = null; prevenir(); }');
     expect(src).toContain('Voir ma paie du mois');
     expect(src).toContain("inert={!vue}");
     const css = readFileSync('src/styles.css', 'utf8');

@@ -53,7 +53,7 @@ export function Reglages() {
             {s.contracts.length > 1 && <Seg label="Affichage des enfants" value={s.settings.compact ? 'liste' : 'cartes'} options={[{ v: 'cartes', l: 'Cartes' }, { v: 'liste', l: 'Liste' }]} onChange={(v) => { saveSettings({ compact: v === 'liste' }); logUsage(v === 'liste' ? 'vue_liste' : 'vue_cartes', 'aujourdhui'); }} />}
             <p class="hint">Jour par défaut. Automatique suit le réglage de ton téléphone : jour la journée, nuit le soir s’il est réglé ainsi.</p>
             {/* T-118 : la paie du mois est cachée d'emblée dans l'écran Mois ; ce choix est gardé sur ce téléphone. */}
-            <Switch label="Toujours afficher ma paie" hint="Dans l’écran Mois, la paie s’affiche directement, sans toucher « Voir ma paie du mois ». Gardé sur ce téléphone." checked={paie} onChange={(v) => { setPaieToujoursVisible(v); setPaie(v); }} />
+            <Switch label="Toujours afficher ma paie" hint="La paie s’affiche directement, sans toucher « Voir ma paie ». Gardé sur ce téléphone." checked={paie} onChange={(v) => { setPaieToujoursVisible(v); setPaie(v); }} />
           </fieldset>
         </section>
         <section class="card">

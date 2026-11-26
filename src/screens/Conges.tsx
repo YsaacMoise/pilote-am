@@ -9,11 +9,12 @@ import { euros } from '../engine/money';
 import { EVENEMENTS_GERES_DEPUIS } from '../engine/evenements';
 import { AM_ABS_LABEL, AM_SUSPENSIONS, NATURE_ATMP_LABEL, type AmLeave, type AmSuspension, type Contract, type NatureAtMp } from '../engine/model';
 import { donneeSuspensionManquante } from '../engine/suspensions';
-import { Banner, Choices, EuroInput, Gommette, Topbar } from '../ui/kit';
+import { Banner, Choices, EuroInput, Gommette, Sheet, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { AmAbsenceSheet, demandeIJ } from './Today';
 import type { ChoixAbsence } from '../engine/absences';
 import { de } from '../engine/texte';
+import { BoutonPaie, Montant } from '../ui/paie';
 
 export function Conges() {
   const s = useStore();
@@ -70,6 +71,28 @@ export function Conges() {
       </main>
       {add && <AmAbsenceSheet start={t} onClose={() => setAdd(false)} />}
     </>
+  );
+}
+
+/**
+ * T-135 (décision de la direction) : une absence de l'AM touchée dans le calendrier du Mois. Mêmes gestes que « Mes absences » :
+ * préciser, indemnités, supprimer ; et, pour des congés payés, modifier les dates (feuille « Je serai absente »).
+ */
+export function CongeSheet({ l, onClose }: { l: AmLeave; onClose: () => void }) {
+  const s = useStore();
+  const [modif, setModif] = useState(false);
+  if (modif) return <AmAbsenceSheet start={l.from} remplace={l} onClose={onClose} />;
+  const list = s.contracts.filter((c) => !c.end || c.end >= today());
+  return (
+    <Sheet title={AM_ABS_LABEL[l.type]} onClose={onClose}>
+      <p>{l.from === l.to ? dayLabel(l.from, true) : `Du ${shortDate(l.from)} au ${shortDate(l.to)}`}{l.type === 'cp' ? decompteTexte(l, list) : ''}</p>
+      {(l.type === 'evenement' ? l.ijSecu !== undefined : l.type !== 'non_gere' && !!demandeIJ(l.type as ChoixAbsence, undefined, l.from, l.to, s.contracts)) && <IjEdit l={l} />}
+      {donneeSuspensionManquante(l) && <PreciserAbsence l={l} />}
+      {l.type === 'cp' && <button class="btn btn-secondary btn-block" type="button" onClick={() => setModif(true)}>Modifier</button>}
+      <button class="btn btn-outline btn-block" type="button" onClick={async () => { const u = await deleteLeave(l.id); onClose(); toast('Absence supprimée', u); }}>
+        <Icon name="trash" size={20} />Supprimer
+      </button>
+    </Sheet>
   );
 }
 
@@ -226,10 +249,11 @@ function CongesContrat({ c, t, enfants, leaves }: { c: Contract; t: string; enfa
         <summary>Indemnité de cette période, si le contrat continue comme prévu</summary>
         <div class="more-body">
           {ind.aConfirmer ? <p>{ind.aConfirmer.message}</p> : ind.manquants.length > 0 ? <p class="err">Bulletins manquants dans l’historique : ajoute-les. Le dixième n’est pas calculé sans eux.</p> : <dl class="kv">
-            <dt>Règle du dixième</dt><dd>{euros(ind.dixieme)}</dd>
-            <dt>Maintien du salaire</dt><dd>{euros(ind.maintien)}</dd>
-            <dt>Le plus favorable</dt><dd>{euros(ind.montant)}</dd>
+            <dt>Règle du dixième</dt><dd><Montant v={euros(ind.dixieme)} /></dd>
+            <dt>Maintien du salaire</dt><dd><Montant v={euros(ind.maintien)} /></dd>
+            <dt>Le plus favorable</dt><dd><Montant v={euros(ind.montant)} /></dd>
           </dl>}
+          {!ind.aConfirmer && !ind.manquants.length && <BoutonPaie ecran="conges" />}
           <p class="muted small">
             {termsAt(c, today()).yearType === 'complete'
               ? 'Année complète : tes congés sont payés dans le salaire mensualisé ; si le dixième est plus favorable, la différence est versée en juin.'
