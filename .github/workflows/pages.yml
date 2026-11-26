@@ -89,7 +89,23 @@ jobs:
           service_account: github-publication@arvela-app.iam.gserviceaccount.com
       - name: Publier sur arvela.fr
         run: npx --no-install firebase deploy --only hosting --project arvela-app --non-interactive
+  # T-114 (26/11/2026) : le paquet de la page de redirection est déposé dans un travail à part, avant le dépôt sur Pages.
+  # Cause de l'échec du n° 79 : déposé et cherché dans le même travail, le paquet n'est pas encore visible
+  # (« Found 0 artifact(s) » 0,25 s après le dépôt ; problème connu actions/deploy-pages n° 451, toujours ouvert).
+  # Séparer les deux travaux est le contournement donné dans ce problème et la forme des modèles officiels de GitHub.
+  # Une relance du seul travail de dépôt réutilise alors le paquet déjà fait (pas de second paquet « github-pages »).
+  redirection-paquet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: pages-redirection
   redirection-github-pages:
+    needs: redirection-paquet
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -99,12 +115,5 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          ref: main
-          persist-credentials: false
-      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
-        with:
-          path: pages-redirection
       - id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
