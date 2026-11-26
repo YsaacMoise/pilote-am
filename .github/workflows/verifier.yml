@@ -42,3 +42,24 @@ jobs:
           cat regles.txt
           echo "::notice title=Matrice Firestore (code $code)::$(grep -E 'OK |ÉCHEC|conformes|Error|rror:' regles.txt | tail -40 | tr '\n' '|')"
           exit $code
+  fonction-stats:
+    # T-130 : la fonction des totaux de la nuit (T-127), ses tests simples puis le jeu connu sur les émulateurs Auth et Firestore.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm ci
+        working-directory: functions/stats
+      - run: npm test
+        working-directory: functions/stats
+      - name: Totaux sur les émulateurs Auth et Firestore (jeu connu, aucune écriture)
+        working-directory: functions/stats
+        run: |
+          # firebase-tools exige Java 21 ; les runners GitHub l'ont préinstallé à côté de Java 17.
+          export JAVA_HOME="${JAVA_HOME_21_X64:-$JAVA_HOME}"; export PATH="$JAVA_HOME/bin:$PATH"
+          npm run test:emulateurs
