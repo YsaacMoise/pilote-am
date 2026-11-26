@@ -8,6 +8,7 @@ import { euros, eurosArrondis, eurosTexte } from '../engine/money';
 import { plafondHS, repasAvantageParAnnee } from '../engine/rates';
 import { Banner, Gommette, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
+import { BoutonPaie, Montant } from '../ui/paie';
 
 export function Fiscal() {
   const s = useStore();
@@ -63,12 +64,13 @@ export function Fiscal() {
         ))}
         <section class="card stack" aria-labelledby="imp">
           <span class="muted" id="imp">Revenu imposable{year === cur ? ' à ce jour' : ''}</span>
-          <span class="total">{aDemander ? 'non calculé' : eurosArrondis(imposableAffiche)}</span>
+          <BoutonPaie ecran="fiscal" />
+          <span class="total">{aDemander ? 'non calculé' : <Montant v={eurosArrondis(imposableAffiche)} />}</span>
           <dl class="kv">
-            <dt>Sommes reçues (salaires, entretien, repas, kilomètres)</dt><dd>{eurosArrondis(tot.recu)}</dd>
-            <dt>Abattement spécifique</dt><dd>{caseInconnue.length ? 'non calculé' : `−${eurosArrondis(tot.abat)}`}</dd>
+            <dt>Sommes reçues (salaires, entretien, repas, kilomètres)</dt><dd><Montant v={eurosArrondis(tot.recu)} /></dd>
+            <dt>Abattement spécifique</dt><dd>{caseInconnue.length ? 'non calculé' : <>−<Montant v={eurosArrondis(tot.abat)} /></>}</dd>
           </dl>
-          {tot.hsExo > 0 && <p class="hint">Heures complémentaires et majorées exonérées d’impôt : {eurosArrondis(tot.hsExo)}, à part, sur la ligne des heures supplémentaires exonérées (case 1GH). Elles ne sont pas imposées mais comptent dans le revenu fiscal de référence.{tot.hsImp > 0 ? ` Le plafond de ${eurosArrondis(plafondHS(year))} est dépassé : ${eurosArrondis(tot.hsImp)} restent imposables.` : ''}</p>}
+          {tot.hsExo > 0 && <p class="hint">Heures complémentaires et majorées exonérées d’impôt : <Montant v={eurosArrondis(tot.hsExo)} />, à part, sur la ligne des heures supplémentaires exonérées (case 1GH). Elles ne sont pas imposées mais comptent dans le revenu fiscal de référence.{tot.hsImp > 0 ? <> Le plafond de {eurosArrondis(plafondHS(year))} est dépassé : <Montant v={eurosArrondis(tot.hsImp)} /> restent imposables.</> : ''}</p>}
           <p class="hint">Montants arrondis à l’euro, comme sur la déclaration.</p>
           <p class="hint">Avec le régime spécial des assistantes maternelles, tu déclares ce montant au lieu du salaire pré-rempli. Compare avec le pré-rempli : le plus favorable est à retenir.</p>
         </section>
@@ -80,15 +82,15 @@ export function Fiscal() {
           <section class="card stack" aria-label={`Impôts, ${c.child}`}>
             <div class="row"><Gommette name={c.child} color={c.color} size="sm" /><h2>{c.child}</h2></div>
             <dl class="kv">
-              <dt>Salaire net imposable</dt><dd>{f.brutInconnu ? 'non calculé' : eurosArrondis(f.netImposable)}</dd>
-              {f.hsValeur > 0 && (<><dt>Heures complémentaires et majorées exonérées (déjà retirées)</dt><dd>{eurosArrondis(f.hsExonere)}</dd></>)}
-              <dt>Entretien et repas</dt><dd>{eurosArrondis(f.entretienRepas)}</dd>
-              {f.km > 0 && (<><dt>Indemnités kilométriques</dt><dd>{eurosArrondis(f.km)}</dd></>)}
-              {f.repasParents > 0 && (<><dt>Repas fournis par les parents (avantage en nature)</dt><dd>{eurosArrondis(f.repasParents)}</dd></>)}
+              <dt>Salaire net imposable</dt><dd>{f.brutInconnu ? 'non calculé' : <Montant v={eurosArrondis(f.netImposable)} />}</dd>
+              {f.hsValeur > 0 && (<><dt>Heures complémentaires et majorées exonérées (déjà retirées)</dt><dd><Montant v={eurosArrondis(f.hsExonere)} /></dd></>)}
+              <dt>Entretien et repas</dt><dd><Montant v={eurosArrondis(f.entretienRepas)} /></dd>
+              {f.km > 0 && (<><dt>Indemnités kilométriques</dt><dd><Montant v={eurosArrondis(f.km)} /></dd></>)}
+              {f.repasParents > 0 && (<><dt>Repas fournis par les parents (avantage en nature)</dt><dd><Montant v={eurosArrondis(f.repasParents)} /></dd></>)}
               <dt>Jours d’accueil</dt><dd>{f.jours}{f.joursCourts ? ` (dont ${f.joursCourts} de moins de 8 h)` : ''}</dd>
               {typeof c.majoreFiscal !== 'boolean' ? (<><dt>Abattement</dt><dd>non calculé</dd></>) : (<>
-              <dt>Abattement ({f.facteur} × SMIC {f.smics.length > 1 ? f.smics.map(euros).join(' puis ') : euros(f.smic)} par jour)</dt><dd>−{eurosArrondis(f.abattement)}</dd>
-              <dt>Reste après abattement</dt><dd>{reste(f) < 0 ? `−${eurosArrondis(-reste(f))}` : eurosArrondis(reste(f))}</dd>
+              <dt>Abattement ({f.facteur} × SMIC {f.smics.length > 1 ? f.smics.map(euros).join(' puis ') : euros(f.smic)} par jour)</dt><dd><Montant v={`−${eurosArrondis(f.abattement)}`} /></dd>
+              <dt>Reste après abattement</dt><dd><Montant v={reste(f) < 0 ? `−${eurosArrondis(-reste(f))}` : eurosArrondis(reste(f))} /></dd>
               </>)}
             </dl>
             {(f.abattement < f.abattementBrut || (negatif && reste(f) < 0)) && <p class="hint">L’abattement est plafonné au total des sommes reçues pour tous les enfants, pas enfant par enfant : le reste d’un enfant peut être négatif, seul le total compte.</p>}

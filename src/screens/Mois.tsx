@@ -9,7 +9,7 @@ import { CongesDepart } from './CongesDepart';
 import { estInformation } from '../engine/alertes';
 import { euros, hoursLabel } from '../engine/money';
 import { baremesAttendus, messageBaremesAttendus } from '../engine/rates';
-import { CHILD_ABS_LABEL, AM_ABS_LABEL, type Contract } from '../engine/model';
+import { CHILD_ABS_LABEL, AM_ABS_LABEL, type AmLeave, type Contract } from '../engine/model';
 import { CHILD_COLORS, CHILD_INKS } from '../ui/kit';
 import { annulerDeclare, declareLe, marquerDeclare, texteDeclare } from '../declares';
 import { Banner, Gommette, Topbar } from '../ui/kit';
@@ -18,9 +18,11 @@ import { Icon } from '../ui/icons';
 import { shareText } from '../share';
 import { AideVideo } from '../ui/VideoGuide';
 import { AmAbsenceSheet, DaySheet } from './Today';
+import { CongeSheet } from './Conges';
 import { lignesDetail } from '../engine/detail';
 import { dureeTexte, etatDeclaration, lignesResume, montantFinDeMois, resumeTravail, texteMoisEnCours } from '../engine/resume';
 import { mouvementReduit, paieToujoursVisible, setPaieToujoursVisible } from '../paie-visible';
+import { masquerMontants, Montant, usePaieVue } from '../ui/paie';
 import { Switch } from '../ui/kit';
 import { releveDonnees } from '../releve/donnees';
 
@@ -62,9 +64,12 @@ export function Mois({ month: m0, cid: c0 }: { month?: string; cid?: string }) {
   const [edit, setEdit] = useState<string | null>(null);
   // T-135 : un jour touché dans la lunette de tous ouvre « Je serai absente » à ce jour.
   const [amJour, setAmJour] = useState<string | null>(null);
+  // T-135 : un jour d'absence de l'AM touché ouvre cette absence (modifier, supprimer).
+  const [conge, setConge] = useState<string | null>(null);
+  const congeOuvert = conge ? s.leaves.find((l) => l.id === conge) : undefined;
   // T-118 : paie du mois cachée d'emblée ; montrée d'un geste, elle reste visible jusqu'à la sortie de l'écran Mois
   // (changer de mois ou d'enfant ne la recache pas). « Toujours afficher ma paie » : gardé sur ce téléphone.
-  const [paieVue, setPaieVue] = useState(paieToujoursVisible());
+  const [paieVue, setPaieVue] = usePaieVue();
   // Vision 1.1 (T-126) : la page de l'enfant suit la vue d'ensemble, sur le même écran ; une carte la choisit et y descend.
   const enfantRef = useRef<HTMLElement>(null);
   const descendre = () => requestAnimationFrame(() => enfantRef.current?.scrollIntoView({ behavior: mouvementReduit() ? 'auto' : 'smooth', block: 'start' }));
@@ -91,7 +96,7 @@ export function Mois({ month: m0, cid: c0 }: { month?: string; cid?: string }) {
         </div>
         {list.length > 0 && <VueMois key={month} list={list} month={month} paieVue={paieVue} setPaieVue={setPaieVue} enfant={choisi} lunetteRef={lunetteRef}
           onChoisir={(id) => choisir(id === choisi?.id ? undefined : id)} onTous={() => choisir(undefined)}
-          onJour={(d) => (choisi ? setEdit(d) : setAmJour(d))} />}
+          onJour={(j) => (j.conge?.id ? setConge(j.conge.id) : choisi ? setEdit(j.d) : setAmJour(j.d))} />}
         {!c ? (
           <div class="card empty"><h2>Pas de contrat ce mois-ci</h2><p class="muted">Change de mois ou ajoute un enfant depuis « Plus ».</p></div>
         ) : (
@@ -116,6 +121,7 @@ export function Mois({ month: m0, cid: c0 }: { month?: string; cid?: string }) {
       </main>
       {edit && c && <DaySheet c={c} day={edit} onClose={() => setEdit(null)} />}
       {amJour && <AmAbsenceSheet start={amJour} onClose={() => setAmJour(null)} />}
+      {congeOuvert && <CongeSheet l={congeOuvert} onClose={() => setConge(null)} />}
     </>
   );
 }
@@ -132,28 +138,28 @@ export function valeurACopier(v: string): string {
   return v.replace(/[\u00a0\u202f]/g, ' ').replace(/\s*€$/, '').replace(/^(\d+) h$/, '$1').trim();
 }
 
-/** T-135 : paie cachée : un montant en euros ne se montre pas (le lecteur d'écran lit « Montant caché »). */
-export const MONTANT_CACHE = '•••• €';
-function Montant({ v, vu }: { v: string; vu: boolean }) {
-  return vu ? <>{v}</> : <span class="montant-cache"><span aria-hidden="true">{MONTANT_CACHE}</span><span class="sr-only">Montant caché</span></span>;
-}
-/** T-135 : montants d'un texte (alerte du mois) remplacés quand la paie est cachée ; le reste du texte ne change pas. */
-export function masquerMontants(t: string): string {
-  return t.replace(/−?\d[\d\u00a0\u202f ]*(?:,\d+)?[\u00a0\u202f ]?€/g, MONTANT_CACHE);
-}
+// T-135 : composants de la paie cachée, communs à toute l'app (src/ui/paie.tsx).
+export { MONTANT_CACHE, masquerMontants } from '../ui/paie';
 
-/** Jours de la lunette : un par jour où au moins un contrat prévoit un accueil, hors absence de l'AM (consigne T-126, 9.6). */
-export interface JourLunette { d: ISODate; ferie: boolean; absents: Contract[] }
-export function joursLunette(list: Contract[], month: Month, leaves: { from: string; to: string }[]): JourLunette[] {
+/**
+ * Jours de la lunette : un par jour où au moins un contrat prévoit un accueil (consigne T-126, 9.6). T-135 (décision de la
+ * direction) : un jour d'absence de l'AM reste dans le cercle, marqué (`conge`), et ne compte pas dans les jours prévus.
+ */
+export type CongeLunette = Partial<AmLeave> & { from: string; to: string };
+export interface JourLunette { d: ISODate; ferie: boolean; absents: Contract[]; conge?: CongeLunette }
+export function joursLunette(list: Contract[], month: Month, leaves: CongeLunette[]): JourLunette[] {
   const out: JourLunette[] = [];
   for (const d of eachDay(firstDay(month), lastDay(month))) {
-    if (leaves.some((l) => d >= l.from && d <= l.to)) continue;
+    const conge = leaves.find((l) => d >= l.from && d <= l.to);
     const infos = list.map((c) => ({ c, di: dayInfo(ctxFor(c), d) })).filter((x) => x.di.planned.length > 0);
     if (!infos.length) continue;
-    out.push({ d, ferie: infos.some((x) => !!x.di.ferie), absents: infos.filter((x) => x.di.kind === 'absent').map((x) => x.c) });
+    out.push(conge ? { d, ferie: infos.some((x) => !!x.di.ferie), absents: [], conge } : { d, ferie: infos.some((x) => !!x.di.ferie), absents: infos.filter((x) => x.di.kind === 'absent').map((x) => x.c) });
   }
   return out;
 }
+
+/** Jours d'accueil prévus du cercle : ni férié, ni absence de l'AM (absences des enfants comprises : elles étaient prévues). */
+export const joursPrevus = (jours: JourLunette[]) => jours.filter((j) => !j.ferie && !j.conge).length;
 
 /** Montant qui monte de 0 à sa valeur en 0,8 s après le geste « Voir ma paie » ; rien ne bouge si le téléphone demande un mouvement réduit. */
 function useMontantQuiMonte(total: number): [number, () => void] {
@@ -180,13 +186,16 @@ function useMontantQuiMonte(total: number): [number, () => void] {
 /** Vue d'ensemble du mois : lunette, enfants absents, « À déclarer sur Pajemploi », « Ta paie du mois » (total, puis la paie de chaque contrat). */
 function VueMois({ list, month, paieVue, setPaieVue, enfant, lunetteRef, onChoisir, onTous, onJour }: {
   list: Contract[]; month: Month; paieVue: boolean; setPaieVue: (v: boolean) => void; enfant?: Contract;
-  lunetteRef: preact.RefObject<HTMLDivElement>; onChoisir: (id: string) => void; onTous: () => void; onJour: (d: ISODate) => void;
+  lunetteRef: preact.RefObject<HTMLDivElement>; onChoisir: (id: string) => void; onTous: () => void; onJour: (j: JourLunette) => void;
 }) {
   const s = useStore();
   const t = today();
   // T-135 : enfant choisi : son calendrier (ses jours prévus, ses absences, fériés, aujourd'hui). Sinon : tous les contrats.
   const jours = joursLunette(enfant ? [enfant] : list, month, s.leaves);
-  const travailles = jours.filter((j) => !j.ferie).length;
+  // T-135 : le centre compte ce que dit son libellé : les jours d'accueil prévus du mois (calendrier), et non les jours
+  // d'activité déclarés à Pajemploi des cartes (jours mensualisés), ni les jours d'accueil déjà faits de « Ton mois ».
+  const prevus = joursPrevus(jours);
+  const conges = jours.some((j) => j.conge);
   const calculs = list.map((c) => ({ c, ...calcule(c, month) }));
   const nonCalcules = calculs.filter((x) => !x.ok);
   const total = nonCalcules.length ? 0 : calculs.reduce((n, x) => n + totalAVerser(x.r), 0);
@@ -205,8 +214,8 @@ function VueMois({ list, month, paieVue, setPaieVue, enfant, lunetteRef, onChois
   // Bouton d'un jour : aussi large que l'écart entre deux jours (13 % du cadre au plus).
   const taille = Math.min(13, ((2 * Math.PI * R) / n / 340) * 100);
   const Mois1 = monthLabel(month).replace(/^./, (x) => x.toUpperCase());
-  const label = `${enfant ? `Calendrier ${de(enfant.child)}, ` : ''}${Mois1} : ${travailles} jour${travailles > 1 ? 's' : ''} travaillé${travailles > 1 ? 's' : ''}.`;
-  const nomJour = (j: JourLunette) => `${dayLabel(j.d)}${j.ferie ? ', férié' : ''}${j.absents.length ? `, absence ${j.absents.map((c) => de(c.child)).join(', ')}` : ''}${j.d === t ? ', aujourd’hui' : ''}`;
+  const label = `${enfant ? `Calendrier ${de(enfant.child)}, ` : ''}${Mois1} : ${prevus} jour${prevus > 1 ? 's' : ''} d’accueil prévu${prevus > 1 ? 's' : ''}.`;
+  const nomJour = (j: JourLunette) => `${dayLabel(j.d)}${j.conge ? (j.conge.type === 'cp' || !j.conge.type ? ', congé' : ', absence') : ''}${j.ferie ? ', férié' : ''}${j.absents.length ? `, absence ${j.absents.map((c) => de(c.child)).join(', ')}` : ''}${j.d === t ? ', aujourd’hui' : ''}`;
   return (
     <section class="vue-mois" aria-label="Le mois en un coup d’œil">
       {enfant && (
@@ -223,23 +232,24 @@ function VueMois({ list, month, paieVue, setPaieVue, enfant, lunetteRef, onChois
             const a = (i / n) * 2 * Math.PI - Math.PI / 2 + Math.PI / n;
             const x = C + R * Math.cos(a), y = C + R * Math.sin(a);
             const abs = j.absents[0];
-            const cls = j.d === t ? 'ln-auj' : abs ? 'ln-abs' : j.ferie ? 'ln-ferie' : j.d < t ? 'ln-passe' : 'ln-avenir';
+            const cls = j.conge ? `ln-conge${j.d === t ? ' ln-conge-auj' : ''}` : j.d === t ? 'ln-auj' : abs ? 'ln-abs' : j.ferie ? 'ln-ferie' : j.d < t ? 'ln-passe' : 'ln-avenir';
             const k = abs ? abs.color % CHILD_COLORS.length : 0;
             return (
-              <button type="button" class={`ln ${cls}`} aria-label={nomJour(j)} onClick={() => onJour(j.d)}
+              <button type="button" class={`ln ${cls}`} aria-label={nomJour(j)} onClick={() => onJour(j)}
                 style={{ left: `${(x / 340) * 100}%`, top: `${(y / 340) * 100}%`, width: `${taille}%` }}>
                 <span class="ln-rond" style={abs && j.d !== t ? { background: CHILD_COLORS[k], color: CHILD_INKS[k] } : undefined}>{Number(j.d.slice(8))}</span>
               </button>
             );
           })}
           <div class="ln-centre" aria-hidden="true">
-            <span class="ln-total">{travailles}</span>
-            <span class="ln-total-label">jour{travailles > 1 ? 's' : ''} travaillé{travailles > 1 ? 's' : ''}</span>
+            <span class="ln-total">{prevus}</span>
+            <span class="ln-total-label">jour{prevus > 1 ? 's' : ''} d’accueil prévu{prevus > 1 ? 's' : ''}</span>
           </div>
         </div>
       </div>
-      {rappels.length > 0 && (
+      {(rappels.length > 0 || conges) && (
         <ul class="ln-rappels">
+          {conges && <li><span class="ln-hachure" aria-hidden="true" />congé</li>}
           {rappels.slice(0, 2).map((x) => <li><Gommette name={x.c.child} color={x.c.color} size="sm" />absence le {Number(x.d.slice(8))}</li>)}
           {rappels.length > 2 && <li class="ln-plus">+{rappels.length - 2}</li>}
         </ul>
@@ -322,7 +332,7 @@ function MonthView({ c, month, onEdit, paieVue, setPaieVue }: { c: Contract; mon
     return (
       <div class="card stack">
         <h2>Mois repris de l’historique</h2>
-        {r.missing ? <p>Aucun bulletin pour ce mois. Ajoute-le dans l’historique du contrat pour fiabiliser les congés et la fin de contrat.</p> : <p>Salaire net déclaré : <b><Montant v={euros(r.net)} vu={paieVue} /></b></p>}
+        {r.missing ? <p>Aucun bulletin pour ce mois. Ajoute-le dans l’historique du contrat pour fiabiliser les congés et la fin de contrat.</p> : <p>Salaire net déclaré : <b><Montant v={euros(r.net)} /></b></p>}
         <a class="btn btn-outline" href={`#/historique/${c.id}`}>Ouvrir l’historique</a>
       </div>
     );
@@ -411,7 +421,7 @@ function MonthView({ c, month, onEdit, paieVue, setPaieVue }: { c: Contract; mon
             <div class="decl-line">
               <span class="decl-label"><span id={`dl-${i}`}>{l.label}</span>{l.hint && <span class="decl-hint">{l.hint}</span>}</span>
               {/* T-135 : paie cachée : montant masqué ; « Copier » copie la vraie valeur. */}
-              <span class="decl-value" id={`dv-${i}`}>{/€$/.test(l.value) ? <Montant v={l.value} vu={paieVue} /> : l.value}</span>
+              <span class="decl-value" id={`dv-${i}`}>{/€$/.test(l.value) ? <Montant v={l.value} /> : l.value}</span>
               {/* Nom « Copier », case et valeur en description : le nom de la case reste celui de son champ ailleurs. */}
               <button class="btn decl-copier" type="button" onClick={() => void copier(l.value)} aria-describedby={`dl-${i} dv-${i}`}>Copier</button>
             </div>
@@ -503,13 +513,13 @@ function MonthView({ c, month, onEdit, paieVue, setPaieVue }: { c: Contract; mon
             {/* T-118 (D-23) : lignes qui font toujours le salaire net (prorata d'entrée, de sortie ou d'avenant compris). */}
             {!c.accueilOccasionnel && (<><dt>{termsAt(c, `${month}-01`).yearType === 'complete' ? 'Heures du planning type ce mois (art. 111)' : 'Jours du planning type ce mois (art. 111)'}</dt>
             <dd>{termsAt(c, `${month}-01`).yearType === 'complete' ? hoursLabel(r.divisorMin) : r.divisorDays}</dd></>)}
-            {lignesDetail(c, month, r).map((l) => <><dt>{l.total ? <b>{l.label}</b> : l.label}</dt><dd><Montant v={l.montant < 0 ? `−${euros(-l.montant)}` : euros(l.montant)} vu={paieVue} /></dd></>)}
-            {r.brutConnu && r.reductionHS > 0 && (<><dt>Réduction de cotisations des heures complémentaires et majorées</dt><dd><Montant v={euros(r.reductionHS)} vu={paieVue} /></dd></>)}
-            <dt>Entretien ({r.presenceDays} j)</dt><dd><Montant v={euros(r.entretien)} vu={paieVue} /></dd>
-            {r.repas > 0 && (<><dt>Repas</dt><dd><Montant v={euros(r.repas)} vu={paieVue} /></dd></>)}
-            {r.km > 0 && (<><dt>Kilomètres</dt><dd><Montant v={euros(r.km)} vu={paieVue} /></dd></>)}
+            {lignesDetail(c, month, r).map((l) => <><dt>{l.total ? <b>{l.label}</b> : l.label}</dt><dd><Montant v={l.montant < 0 ? `−${euros(-l.montant)}` : euros(l.montant)} /></dd></>)}
+            {r.brutConnu && r.reductionHS > 0 && (<><dt>Réduction de cotisations des heures complémentaires et majorées</dt><dd><Montant v={euros(r.reductionHS)} /></dd></>)}
+            <dt>Entretien ({r.presenceDays} j)</dt><dd><Montant v={euros(r.entretien)} /></dd>
+            {r.repas > 0 && (<><dt>Repas</dt><dd><Montant v={euros(r.repas)} /></dd></>)}
+            {r.km > 0 && (<><dt>Kilomètres</dt><dd><Montant v={euros(r.km)} /></dd></>)}
           </dl>
-          {r.brutConnu && r.reductionHS > 0 && <p class="muted small">Heures complémentaires et majorées : elles ouvrent une réduction de tes cotisations de <Montant v={euros(r.reductionHS)} vu={paieVue} /> (11,31 % de leur brut, code de la sécurité sociale, art. L241-17 et D241-21), comptée dans le total à verser. Ces heures sont aussi exonérées d’impôt, dans la limite de 7 500 € par an.</p>}
+          {r.brutConnu && r.reductionHS > 0 && <p class="muted small">Heures complémentaires et majorées : elles ouvrent une réduction de tes cotisations de <Montant v={euros(r.reductionHS)} /> (11,31 % de leur brut, code de la sécurité sociale, art. L241-17 et D241-21), comptée dans le total à verser. Ces heures sont aussi exonérées d’impôt, dans la limite de 7 500 € par an.</p>}
           {r.reductionHSManquante && <p class="muted small">{MESSAGE_REDUCTION_HS_BRUT}</p>}
           <p class="muted small">
             {c.accueilOccasionnel ? 'Accueil occasionnel : heures d’accueil du mois × taux horaire ; congés payés : 10 % des salaires de l’accueil, versés à sa fin (art. 109.3 et 102.1.2.3).' : termsAt(c, `${month}-01`).yearType === 'complete'

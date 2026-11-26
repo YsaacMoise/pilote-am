@@ -23,6 +23,7 @@ import { AIDE_ANNEE, AIDE_COMPLEMENTAIRES, AIDE_SEMAINES, TITRE_AM_AP } from './
 import { PlanningVariableSaisie } from './PlanningVariableSaisie';
 import { CDD_A_COMPLETER, messagesCdd } from '../engine/cdd';
 import { contratAEnregistrer, erreursContrat, planningComplet } from './contrat-validation';
+import { BoutonPaie, Montant } from '../ui/paie';
 
 const ouiNon = (b: boolean | undefined): 'oui' | 'non' | undefined => (b === undefined ? undefined : b ? 'oui' : 'non');
 
@@ -248,7 +249,8 @@ export function Contrat({ id, section }: { id?: string; section?: 'planning' }) 
               <span class="b-ico"><Icon name="clock" /></span>
               <div class="b-body">
                 <span><b>{hoursLabel(wk)}</b> par semaine sur {daysPerWeek(cc.planning)} jours</span>
-                <span>Soit <b>{hoursLabel(Math.round(mensuelMinutes(cc)))}</b> et <b>{joursMensualises(cc)} jours</b> par mois, pour <b>{euros(salaireMensualise(cc))}</b> net.</span>
+                <span>Soit <b>{hoursLabel(Math.round(mensuelMinutes(cc)))}</b> et <b>{joursMensualises(cc)} jours</b> par mois, pour <b><Montant v={euros(salaireMensualise(cc))} /></b> net.</span>
+                <BoutonPaie ecran="contrat" />
               </div>
             </div>
           </fieldset>

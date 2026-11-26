@@ -15,6 +15,7 @@ import { AmAbsenceSheet, DaySheet } from './Today';
 import { NOMS_ETAPES } from './AjoutEnfant';
 import { nbEtapes, useBrouillons } from '../brouillons';
 import { SupprimerBrouillon } from './BrouillonSuppression';
+import { BoutonPaie, Montant } from '../ui/paie';
 
 // Relecture m3 : jamais « -0 » (un reste nul s'affiche 0).
 const nb = (x: number | undefined) => (x === undefined ? '—' : (Math.abs(x) < 0.05 ? 0 : x).toLocaleString('fr-FR', { maximumFractionDigits: 1 }));
@@ -59,8 +60,9 @@ export function ContratCree({ id }: { id: string }) {
             <dt>Accueil prévu</dt><dd>{prevus.length} jour{prevus.length > 1 ? 's' : ''}, {hoursLabel(minPrevues)}</dd>
             {feries.length > 0 && <><dt>Jour{feries.length > 1 ? 's' : ''} férié{feries.length > 1 ? 's' : ''}</dt><dd>{feries.map((di) => `${Number(di.date.slice(8))} ${MOIS_NOMS[Number(di.date.slice(5, 7)) - 1]}`).join(', ')}</dd></>}
             {!c.accueilOccasionnel && <><dt>Mensualisation</dt><dd>{hoursLabel(Math.round(b.mensuelMin))}, {joursMensualises(termsAt(c, today()))} jours</dd></>}
-            {!c.accueilOccasionnel && <><dt>Salaire de base</dt><dd>{euros(b.salaireMens)} net</dd></>}
+            {!c.accueilOccasionnel && <><dt>Salaire de base</dt><dd><Montant v={euros(b.salaireMens)} /> net</dd></>}
           </dl>
+          {!c.accueilOccasionnel && <BoutonPaie ecran="contrat-cree" />}
           <a class="btn btn-primary btn-block" href={`#/mois/${m}/${c.id}`}>Voir {monthLabel(m)} dans Mois</a>
         </section>
         <h2 class="section-title">Ensuite</h2>
@@ -102,7 +104,7 @@ export function FicheEnfant({ id }: { id: string }) {
         <CadranContrat c={c} />
         <p class="fiche-contrat">{libelleContrat(c, t)}</p>
         <div class="list">
-          <div class="li"><span class="li-main"><span class="li-title">Net de l’heure</span></span><span class="li-end fiche-valeur">{euros(tc.rateNet)}</span></div>
+          <div class="li"><span class="li-main"><span class="li-title">Net de l’heure</span></span><span class="li-end fiche-valeur"><Montant v={euros(tc.rateNet)} /><BoutonPaie ecran="fiche" /></span></div>
           <ListLink href={`#/enfant/${c.id}/absences`} title="Absences et congés"
             end={<span class="fiche-valeur-sous">{cp ? `${nb(cp.reste)} j à poser` : '10 %'}</span>}
             sub={cp ? undefined : 'congés versés à chaque accueil'} />

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { joursLunette, masquerMontants, MONTANT_CACHE, valeurACopier } from '../src/screens/Mois';
+import { joursLunette, joursPrevus, masquerMontants, MONTANT_CACHE, valeurACopier } from '../src/screens/Mois';
+import { abonnerPaie, paieVue, setPaieVue } from '../src/paie-visible';
 import type { Contract, Planning } from '../src/engine/model';
 import { euros } from '../src/engine/money';
 
@@ -33,9 +34,16 @@ describe('Lunette : vue de tous et calendrier d’un enfant', () => {
     const j = joursLunette([lea], '2026-12', []);
     expect(j.find((x) => x.d === '2026-12-25')?.ferie).toBe(true);
   });
-  it('absence de l’AM : jours retirés, comme la vue de tous', () => {
-    const j = joursLunette([tom], '2026-12', [{ from: '2026-12-07', to: '2026-12-09' }]);
-    expect(j.some((x) => x.d >= '2026-12-07' && x.d <= '2026-12-09')).toBe(false);
+  it('absence de l’AM : jours gardés dans le cercle, marqués, hors des jours prévus (décision de la direction)', () => {
+    const conge = { id: 'l1', type: 'cp' as const, from: '2026-12-07', to: '2026-12-09' };
+    const j = joursLunette([tom], '2026-12', [conge]);
+    expect(j.filter((x) => x.conge).map((x) => x.d)).toEqual(['2026-12-07', '2026-12-09']);
+    expect(j.find((x) => x.d === '2026-12-07')?.conge?.id).toBe('l1');
+    expect(joursPrevus(j)).toBe(7);
+  });
+  it('jours prévus : ni férié, ni absence de l’AM ; absences de l’enfant comprises', () => {
+    const j = joursLunette([lea], '2026-12', []);
+    expect(joursPrevus(j)).toBe(22); // 23 jours du lundi au vendredi, moins le 25 décembre
   });
 });
 
@@ -54,5 +62,22 @@ describe('Paie cachée : montants masqués, valeur copiée intacte', () => {
   });
   it('« Copier » garde la vraie valeur, même cachée', () => {
     expect(valeurACopier(euros(71195))).toBe('711,95');
+  });
+});
+
+describe('Paie cachée : un seul état pour toute l’app', () => {
+  it('cachée d’emblée sans le réglage, montrée puis recachée d’un geste, abonnés prévenus', () => {
+    let n = 0;
+    const fin = abonnerPaie(() => { n++; });
+    expect(paieVue()).toBe(false);
+    setPaieVue(true);
+    expect(paieVue()).toBe(true);
+    setPaieVue(false);
+    expect(paieVue()).toBe(false);
+    expect(n).toBe(2);
+    fin();
+    setPaieVue(true);
+    expect(n).toBe(2);
+    setPaieVue(false);
   });
 });
