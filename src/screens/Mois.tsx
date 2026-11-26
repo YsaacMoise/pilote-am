@@ -1,7 +1,7 @@
 import { AVERTISSEMENT_CALCUL, PAJEMPLOI_PLUS_DATE, PAJEMPLOI_PLUS_RAPPEL } from '../legal';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { ctxFor, logUsage, toast, useStore, state } from '../store';
-import { addMonths, dayLabel, eachDay, firstDay, lastDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
+import { ctxFor, logUsage, putContract, toast, useStore, state } from '../store';
+import { addMonths, dayLabel, eachDay, firstDay, lastDay, monthLabel, monthOf, today, weekday, type ISODate, type Month } from '../engine/dates';
 import { computeMonth, declarationLines, declarationText, MESSAGE_REDUCTION_HS_BRUT, moisEnCoursAu, totalAVerser } from '../engine/month';
 import { dayInfo, PREFIXE_ENTRETIEN_SOUS_MIN, termsAt } from '../engine/payroll';
 import { MESSAGE_CONGES_DEPART, MESSAGE_SOLDE_CONGES } from '../engine/conges';
@@ -10,7 +10,10 @@ import { estInformation } from '../engine/alertes';
 import { euros, hoursLabel } from '../engine/money';
 import { baremesAttendus, messageBaremesAttendus } from '../engine/rates';
 import { CHILD_ABS_LABEL, AM_ABS_LABEL, type Contract } from '../engine/model';
+import { CHILD_COLORS, CHILD_INKS } from '../ui/kit';
+import { annulerDeclare, declareLe, marquerDeclare, texteDeclare } from '../declares';
 import { Banner, Gommette, Topbar } from '../ui/kit';
+import { de } from '../engine/texte';
 import { Icon } from '../ui/icons';
 import { shareText } from '../share';
 import { AideVideo } from '../ui/VideoGuide';
@@ -58,34 +61,150 @@ export function Mois({ month: m0, cid: c0 }: { month?: string; cid?: string }) {
   // T-118 : paie du mois cachée d'emblée ; montrée d'un geste, elle reste visible jusqu'à la sortie de l'écran Mois
   // (changer de mois ou d'enfant ne la recache pas). « Toujours afficher ma paie » : gardé sur ce téléphone.
   const [paieVue, setPaieVue] = useState(paieToujoursVisible());
+  // Vision 1.1 (T-126) : la page de l'enfant suit la vue d'ensemble, sur le même écran ; une carte la choisit et y descend.
+  const enfantRef = useRef<HTMLElement>(null);
+  const descendre = () => requestAnimationFrame(() => enfantRef.current?.scrollIntoView({ behavior: mouvementReduit() ? 'auto' : 'smooth', block: 'start' }));
+  const ouvrir = (id: string) => { setCid(id); descendre(); };
+  // Lien direct vers un mois et un enfant (#/mois/<mois>/<enfant>) : l'écran va à sa page.
+  useEffect(() => {
+    if (m0) setMonth(m0 as Month);
+    if (c0) { setCid(c0); descendre(); }
+  }, [m0, c0]);
 
   return (
     <>
       <Topbar title="Mois" sub="Déclaration Pajemploi" screen="mois" />
-      <main>
-        <AideVideo id="mois" />
+      <main class="mois">
         <div class="month-nav">
           <button class="icon-btn" aria-label="Mois précédent" onClick={() => setMonth(addMonths(month, -1))}><Icon name="left" /></button>
           <h2 aria-live="polite">{monthLabel(month).replace(/^./, (x) => x.toUpperCase())}</h2>
           <button class="icon-btn" aria-label="Mois suivant" disabled={month >= monthOf(today())} onClick={() => setMonth(addMonths(month, 1))}><Icon name="right" /></button>
         </div>
-        {list.length > 1 && (
-          <div class="chips" role="group" aria-label="Enfant">
-            {list.map((k) => (
-              <button class="chip" aria-pressed={k.id === c?.id} onClick={() => setCid(k.id)}>
-                <Gommette name={k.child} color={k.color} size="sm" />{k.child}
-              </button>
-            ))}
-          </div>
-        )}
+        {list.length > 0 && <VueMois key={month} list={list} month={month} paieVue={paieVue} setPaieVue={setPaieVue} onOuvrir={ouvrir} choisi={c?.id} />}
         {!c ? (
           <div class="card empty"><h2>Pas de contrat ce mois-ci</h2><p class="muted">Change de mois ou ajoute un enfant depuis « Plus ».</p></div>
         ) : (
-          <MonthView key={`${c.id}|${month}`} c={c} month={month} onEdit={setEdit} paieVue={paieVue} setPaieVue={setPaieVue} />
+          <section class="mois-enfant" ref={enfantRef} aria-labelledby="me-t">
+            <div class="me-tete">
+              <h2 id="me-t">{c.child}</h2>
+              <Gommette name={c.child} color={c.color} />
+            </div>
+            {list.length > 1 && (
+              <div class="chips" role="group" aria-label="Enfant">
+                {list.map((k) => (
+                  <button class="chip" aria-pressed={k.id === c?.id} onClick={() => setCid(k.id)}>
+                    <Gommette name={k.child} color={k.color} size="sm" />{k.child}
+                  </button>
+                ))}
+              </div>
+            )}
+            <MonthView key={`${c.id}|${month}`} c={c} month={month} onEdit={setEdit} paieVue={paieVue} setPaieVue={setPaieVue} />
+          </section>
         )}
+        <AideVideo id="mois" />
       </main>
       {edit && c && <DaySheet c={c} day={edit} onClose={() => setEdit(null)} />}
     </>
+  );
+}
+
+/** Un mois est calculé pour un contrat : ni repris de l'historique, ni barèmes attendus, ni cas à régler (T-031, T-103, T-116, T-119). */
+function calcule(c: Contract, month: Month) {
+  const r = computeMonth(ctxFor(c), month, state.settings.enfantsACharge);
+  const ok = !r.fromHistory && !baremesAttendus(firstDay(month)) && r.nonGere.length === 0;
+  return { r, ok };
+}
+
+/** Valeur d'une case Pajemploi à coller : sans « € » ni « h » (comme la page des parents). */
+export function valeurACopier(v: string): string {
+  return v.replace(/[\u00a0\u202f]/g, ' ').replace(/\s*€$/, '').replace(/^(\d+) h$/, '$1').trim();
+}
+
+/** Jours de la lunette : un par jour où au moins un contrat prévoit un accueil, hors absence de l'AM (consigne T-126, 9.6). */
+export interface JourLunette { d: ISODate; ferie: boolean; absents: Contract[] }
+export function joursLunette(list: Contract[], month: Month, leaves: { from: string; to: string }[]): JourLunette[] {
+  const out: JourLunette[] = [];
+  for (const d of eachDay(firstDay(month), lastDay(month))) {
+    if (leaves.some((l) => d >= l.from && d <= l.to)) continue;
+    const infos = list.map((c) => ({ c, di: dayInfo(ctxFor(c), d) })).filter((x) => x.di.planned.length > 0);
+    if (!infos.length) continue;
+    out.push({ d, ferie: infos.some((x) => !!x.di.ferie), absents: infos.filter((x) => x.di.kind === 'absent').map((x) => x.c) });
+  }
+  return out;
+}
+
+/** Vue d'ensemble du mois : lunette, enfants absents, « À déclarer sur Pajemploi », « Ta paie du mois ». */
+function VueMois({ list, month, paieVue, setPaieVue, onOuvrir, choisi }: { list: Contract[]; month: Month; paieVue: boolean; setPaieVue: (v: boolean) => void; onOuvrir: (id: string) => void; choisi?: string }) {
+  const s = useStore();
+  const t = today();
+  const jours = joursLunette(list, month, s.leaves);
+  const travailles = jours.filter((j) => !j.ferie).length;
+  const calculs = list.map((c) => ({ c, ...calcule(c, month) }));
+  const nonCalcules = calculs.filter((x) => !x.ok);
+  const total = nonCalcules.length ? 0 : calculs.reduce((n, x) => n + totalAVerser(x.r), 0);
+  const rappels = jours.flatMap((j) => j.absents.map((c) => ({ c, d: j.d })));
+  // Lunette : semaines séparées par un vide ; on tourne dans le sens des aiguilles d'une montre depuis midi.
+  const places: (JourLunette | null)[] = [];
+  jours.forEach((j, i) => {
+    if (i > 0 && (weekday(j.d) < weekday(jours[i - 1].d) || Number(j.d.slice(8)) - Number(jours[i - 1].d.slice(8)) >= 7)) places.push(null);
+    places.push(j);
+  });
+  if (places.length) places.push(null);
+  const n = Math.max(places.length, 1);
+  const R = 132, C = 170;
+  const label = `${monthLabel(month).replace(/^./, (x) => x.toUpperCase())} : ${travailles} jour${travailles > 1 ? 's' : ''} travaillé${travailles > 1 ? 's' : ''}. ${jours.map((j) => `${Number(j.d.slice(8))}${j.ferie ? ' férié' : ''}${j.absents.length ? `, absence ${j.absents.map((c) => de(c.child)).join(', ')}` : ''}${j.d === t ? ', aujourd’hui' : ''}`).join(' ; ')}.`;
+  return (
+    <section class="vue-mois" aria-label="Le mois en un coup d’œil">
+      <div class="lunette">
+        <svg viewBox="0 0 340 340" role="img" aria-label={label}>
+          {places.map((j, i) => {
+            if (!j) return null;
+            const a = (i / n) * 2 * Math.PI - Math.PI / 2 + Math.PI / n;
+            const x = C + R * Math.cos(a), y = C + R * Math.sin(a);
+            const abs = j.absents[0];
+            const cls = j.d === t ? 'ln-auj' : abs ? 'ln-abs' : j.ferie ? 'ln-ferie' : j.d < t ? 'ln-passe' : 'ln-avenir';
+            const k = abs ? abs.color % CHILD_COLORS.length : 0;
+            return (
+              <g class={`ln ${cls}`}>
+                <circle cx={x} cy={y} r="15" style={abs && j.d !== t ? { fill: CHILD_COLORS[k] } : undefined} />
+                <text x={x} y={y + 4.5} text-anchor="middle" style={abs && j.d !== t ? { fill: CHILD_INKS[k] } : undefined}>{Number(j.d.slice(8))}</text>
+              </g>
+            );
+          })}
+          <text x={C} y={C + 14} text-anchor="middle" class="ln-total">{travailles}</text>
+          <text x={C} y={C + 44} text-anchor="middle" class="ln-total-label">jour{travailles > 1 ? 's' : ''} travaillé{travailles > 1 ? 's' : ''}</text>
+        </svg>
+      </div>
+      {rappels.length > 0 && (
+        <ul class="ln-rappels">
+          {rappels.slice(0, 2).map((x) => <li><Gommette name={x.c.child} color={x.c.color} size="sm" />absence le {Number(x.d.slice(8))}</li>)}
+          {rappels.length > 2 && <li class="ln-plus">+{rappels.length - 2}</li>}
+        </ul>
+      )}
+      <p class="eyebrow mp-eyebrow">À déclarer sur Pajemploi</p>
+      <div class="mp-cartes">
+        {calculs.map(({ c, r, ok }) => {
+          const fait = c.declares?.[month];
+          return (
+            <button class="mp-carte" aria-pressed={c.id === choisi} onClick={() => onOuvrir(c.id)}>
+              <Gommette name={c.child} color={c.color} />
+              <b class="mp-nom">{c.child}</b>
+              <span class="mp-chiffres">{ok ? `${r.heuresNormales} h · ${r.joursActivite} j` : 'Non calculé'}</span>
+              {ok && (fait ? <span class="tag mp-etat"><Icon name="check" size={16} />Déclaré</span> : <span class="tag afaire mp-etat">À déclarer</span>)}
+            </button>
+          );
+        })}
+      </div>
+      <div class="card mp-paie">
+        <span class="mp-paie-txt">
+          <span class="mp-paie-label">Ta paie du mois</span>
+          {nonCalcules.length
+            ? <span class="mp-paie-non">Non calculé pour {nonCalcules.map((x) => x.c.child).join(', ')}</span>
+            : paieVue ? <b class="mp-total">{euros(total)}</b> : <b class="mp-total mp-cache"><span aria-hidden="true">•••• €</span><span class="sr-only">Montant caché</span></b>}
+        </span>
+        {!nonCalcules.length && !paieVue && <button class="btn btn-primary" type="button" onClick={() => { setPaieVue(true); logUsage('paie_vue', 'mois'); }}>Voir ma paie</button>}
+      </div>
+    </section>
   );
 }
 
@@ -185,9 +304,117 @@ function MonthView({ c, month, onEdit, paieVue, setPaieVue }: { c: Contract; mon
   const exceptions = eachDay(firstDay(month), lastDay(month))
     .map((d) => dayInfo(ctx, d))
     .filter((di) => di.rec || di.kind === 'am' || di.kind === 'ferie' || di.departOublie);
+  const fait = declareLe(c, month);
+  const annulerRef = useRef<HTMLButtonElement>(null);
+  const declarerRef = useRef<HTMLButtonElement>(null);
+  const focusDeclare = useRef(false);
+  useEffect(() => {
+    if (!focusDeclare.current) return;
+    focusDeclare.current = false;
+    (fait ? annulerRef : declarerRef).current?.focus();
+  }, [fait]);
+  // T-126 : « C'est déclaré » (contrat à jour lu dans l'état : rien d'autre ne change).
+  const noterDeclare = async (oui: boolean) => {
+    const actuel = state.contracts.find((x) => x.id === c.id) ?? c;
+    focusDeclare.current = true;
+    await putContract(oui ? marquerDeclare(actuel, month, today()) : annulerDeclare(actuel, month));
+  };
+  const copier = async (v: string) => {
+    try { await navigator.clipboard.writeText(valeurACopier(v)); toast('Copié'); } catch { /* presse-papiers refusé : rien n'est copié */ }
+  };
 
   return (
     <>
+      {!c.pajemploiPlus && (!c.end || c.end >= PAJEMPLOI_PLUS_DATE) && <Banner tone="info">{PAJEMPLOI_PLUS_RAPPEL}</Banner>}
+      {r.alerts.map((a) => a.startsWith(PREFIXE_ENTRETIEN_SOUS_MIN)
+        ? <Banner tone="warn"><span>{a}</span><a class="btn btn-outline" href={`#/avenant/${c.id}/nouveau`}>Faire l’avenant</a></Banner>
+        : <Banner tone={estInformation(a) ? 'info' : 'warn'}>{a}</Banner>)}
+      {r.cpNote && <Banner tone="info" icon="sun">{r.cpNote}</Banner>}
+
+      <section class="decl-carte" aria-labelledby="decl-t">
+        <h2 id="decl-t">À déclarer sur Pajemploi</h2>
+        <p class="hint">Une déclaration par enfant, faite par le parent entre le 25 et le 5 du mois suivant, dans cet ordre.</p>
+        <p class="hint">{AVERTISSEMENT_CALCUL}</p>
+        <div class="decl">
+          {lines.map((l, i) => (
+            <div class="decl-line">
+              <span class="decl-label"><span id={`dl-${i}`}>{l.label}</span>{l.hint && <span class="decl-hint">{l.hint}</span>}</span>
+              <span class="decl-value" id={`dv-${i}`}>{l.value}</span>
+              {/* Nom « Copier », case et valeur en description : le nom de la case reste celui de son champ ailleurs. */}
+              <button class="btn decl-copier" type="button" onClick={() => void copier(l.value)} aria-describedby={`dl-${i} dv-${i}`}>Copier</button>
+            </div>
+          ))}
+        </div>
+        {fait ? (
+          <div class="declare-fait" role="status">
+            <Icon name="check" size={20} /><span>{texteDeclare(fait)}</span>
+            <button ref={annulerRef} class="btn btn-ghost btn-sm" type="button" onClick={() => void noterDeclare(false)}>Annuler</button>
+          </div>
+        ) : (
+          <button ref={declarerRef} class="btn btn-primary declare-btn" type="button" onClick={() => void noterDeclare(true)}>C’est déclaré</button>
+        )}
+      </section>
+
+      <button
+        class="btn btn-secondary btn-block"
+        onClick={async () => {
+          const res = await shareText(declarationText(ctx, r, state.settings.amName));
+          logUsage('mois_partage', 'mois');
+          if (res === 'copied') toast('Texte copié : colle-le dans ton message au parent.');
+        }}
+      >
+        <Icon name="share" />Envoyer au parent
+      </button>
+
+      <div class="list mois-liens">
+        <details class="li-details">
+          <summary class="li">
+            <span class="li-main"><span class="li-title" id="exc-t">Ce qui a changé ce mois-ci</span></span>
+            <span class="li-end"><b class="li-nombre">{exceptions.length}</b><Icon name="right" /></span>
+          </summary>
+          {exceptions.length === 0 ? (
+            <p class="muted li-vide">Rien : tout s’est passé comme prévu au planning.</p>
+          ) : (
+            <div class="list li-sous" aria-labelledby="exc-t">
+              {exceptions.map((di) => {
+                let sub = '';
+                if (di.kind === 'am' && di.amLeave) sub = AM_ABS_LABEL[di.amLeave];
+                else if (di.kind === 'ferie') sub = `Férié : ${di.ferie}${di.deducted ? ', non payé' : ''}`;
+                else if (di.rec?.abs) sub = CHILD_ABS_LABEL[di.rec.abs] + (di.deducted ? ', retenu' : ', payé');
+                else if (di.departOublie) sub = 'Départ non pointé';
+                else if (di.extraMin) sub = `+${hoursLabel(di.extraMin)} en plus`;
+                else if (di.rec?.pres?.length) sub = 'Horaires pointés';
+                else sub = 'Modifié';
+                return (
+                  <button class="li" onClick={() => onEdit(di.date)}>
+                    <span class="li-main">
+                      <span class="li-title">{dayLabel(di.date)}</span>
+                      <span class="li-sub">{sub}</span>
+                    </span>
+                    <span class="li-end"><Icon name="edit" size={20} /></span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </details>
+        <a class="li" href={`#/controle/${c.id}/${month}`}><span class="li-main"><span class="li-title">Contrôler le bulletin</span></span><span class="li-end"><Icon name="right" /></span></a>
+        <button class="li" type="button" onClick={fabriquer} disabled={occupe} aria-busy={occupe}>
+          <span class="li-main"><span class="li-title">{occupe ? 'Fabrication du relevé…' : 'Relevé du mois (PDF)'}</span></span><span class="li-end"><Icon name="right" /></span>
+        </button>
+        {/* T-103 (M5) : un champ date vide s'affiche sur iPhone comme un cadre blanc. Ligne visible, champ date transparent par-dessus. */}
+        <span class="li pick-day">
+          <span class="li-main"><span class="li-title">Corriger un jour</span></span><span class="li-end"><Icon name="right" /></span>
+          <input id="other-day" aria-label="Choisir un jour à corriger" type="date" min={firstDay(month)} max={lastDay(month) < today() ? lastDay(month) : today()}
+            onChange={(e) => { const v = (e.target as HTMLInputElement).value; if (v) onEdit(v); (e.target as HTMLInputElement).value = ''; }} />
+        </span>
+      </div>
+      {pret && (
+        <Banner tone="info">
+          Le relevé est prêt. <button class="btn-link" type="button" disabled={partage} onClick={() => envoyer(pret)}>Partager le relevé</button>
+        </Banner>
+      )}
+
       <TonMois c={c} month={month} vue={paieVue} setVue={setPaieVue} total={totalVerse}
         titre={<span class="summary-label" id="tot">Ta paie de {monthLabel(month).split(' ')[0]} · à verser par la famille{c.family ? ` ${c.family}` : ''}</span>}>
         <span class="summary-sub">dont salaire net {euros(r.netTotal)}{r.brutConnu ? `, soit ${euros(r.brutEstime)} brut` : ''}</span>
@@ -196,48 +423,6 @@ function MonthView({ c, month, onEdit, paieVue, setPaieVue }: { c: Contract; mon
         {!r.brutConnu && <span class="summary-info"><Icon name="info" size={16} /><span>Brut non affiché : <a href={`#/contrat/${c.id}`}>indique ton taux horaire brut dans le contrat</a>.</span></span>}
         {enCours && <span class="summary-info"><Icon name="info" size={16} /><span>{texteMoisEnCours(month, finAttendue, !!c.accueilOccasionnel)}</span></span>}
       </TonMois>
-
-      {!c.pajemploiPlus && (!c.end || c.end >= PAJEMPLOI_PLUS_DATE) && <Banner tone="info">{PAJEMPLOI_PLUS_RAPPEL}</Banner>}
-      {r.alerts.map((a) => a.startsWith(PREFIXE_ENTRETIEN_SOUS_MIN)
-        ? <Banner tone="warn"><span>{a}</span><a class="btn btn-outline" href={`#/avenant/${c.id}/nouveau`}>Faire l’avenant</a></Banner>
-        : <Banner tone={estInformation(a) ? 'info' : 'warn'}>{a}</Banner>)}
-      {r.cpNote && <Banner tone="info" icon="sun">{r.cpNote}</Banner>}
-
-      <section class="card" aria-labelledby="decl-t">
-        <h2 id="decl-t" style={{ marginBottom: '4px' }}>À déclarer sur Pajemploi</h2>
-        <p class="muted small" style={{ marginBottom: '8px' }}>Une déclaration par enfant, faite par le parent entre le 25 et le 5 du mois suivant, dans cet ordre.</p>
-        <p class="hint" style={{ marginBottom: '8px' }}>{AVERTISSEMENT_CALCUL}</p>
-        <div class="decl">
-          {lines.map((l) => (
-            <div class="decl-line">
-              <span class="decl-label"><span>{l.label}</span>{l.hint && <span class="decl-hint">{l.hint}</span>}</span>
-              <span class="decl-value">{l.value}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <div class="btn-row">
-        <button
-          class="btn btn-primary btn-lg"
-          onClick={async () => {
-            const res = await shareText(declarationText(ctx, r, state.settings.amName));
-            logUsage('mois_partage', 'mois');
-            if (res === 'copied') toast('Texte copié : colle-le dans ton message au parent.');
-          }}
-        >
-          <Icon name="share" />Envoyer au parent
-        </button>
-        <button class="btn btn-outline btn-lg" type="button" onClick={fabriquer} disabled={occupe} aria-busy={occupe}>
-          <Icon name="file" />{occupe ? 'Fabrication du relevé…' : 'Relevé du mois (PDF)'}
-        </button>
-        <a class="btn btn-outline btn-lg" href={`#/controle/${c.id}/${month}`}><Icon name="receipt" />Contrôler le bulletin</a>
-      </div>
-      {pret && (
-        <Banner tone="info">
-          Le relevé est prêt. <button class="btn-link" type="button" disabled={partage} onClick={() => envoyer(pret)}>Partager le relevé</button>
-        </Banner>
-      )}
 
       <details class="more">
         <summary>Comment c’est calculé</summary>
@@ -261,44 +446,6 @@ function MonthView({ c, month, onEdit, paieVue, setPaieVue }: { c: Contract; mon
           </p>
         </div>
       </details>
-
-      <div class="row">
-        <span class="label" style={{ flex: 1 }}>Corriger un autre jour</span>
-        {/* T-103 (M5) : un champ date vide s'affiche sur iPhone comme un cadre blanc. Bouton visible, champ date transparent par-dessus. */}
-        <span class="btn btn-outline pick-day">
-          <Icon name="edit" size={18} />Choisir un jour
-          <input id="other-day" aria-label="Choisir un jour à corriger" type="date" min={firstDay(month)} max={lastDay(month) < today() ? lastDay(month) : today()}
-            onChange={(e) => { const v = (e.target as HTMLInputElement).value; if (v) onEdit(v); (e.target as HTMLInputElement).value = ''; }} />
-        </span>
-      </div>
-      <section class="stack-sm" aria-labelledby="exc-t">
-        <h2 id="exc-t" class="section-title">Ce qui a changé ce mois-ci</h2>
-        {exceptions.length === 0 ? (
-          <p class="muted">Rien : tout s’est passé comme prévu au planning.</p>
-        ) : (
-          <div class="list">
-            {exceptions.map((di) => {
-              let sub = '';
-              if (di.kind === 'am' && di.amLeave) sub = AM_ABS_LABEL[di.amLeave];
-              else if (di.kind === 'ferie') sub = `Férié : ${di.ferie}${di.deducted ? ', non payé' : ''}`;
-              else if (di.rec?.abs) sub = CHILD_ABS_LABEL[di.rec.abs] + (di.deducted ? ', retenu' : ', payé');
-              else if (di.departOublie) sub = 'Départ non pointé';
-              else if (di.extraMin) sub = `+${hoursLabel(di.extraMin)} en plus`;
-              else if (di.rec?.pres?.length) sub = 'Horaires pointés';
-              else sub = 'Modifié';
-              return (
-                <button class="li" onClick={() => onEdit(di.date)}>
-                  <span class="li-main">
-                    <span class="li-title">{dayLabel(di.date)}</span>
-                    <span class="li-sub">{sub}</span>
-                  </span>
-                  <span class="li-end"><Icon name="edit" size={20} /></span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </section>
     </>
   );
 }

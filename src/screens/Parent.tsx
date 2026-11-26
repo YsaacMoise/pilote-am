@@ -13,7 +13,7 @@ import { Gommette, Switch } from '../ui/kit';
 import { Logo } from '../ui/Logo';
 import { Icon } from '../ui/icons';
 import { AideVideo } from '../ui/VideoGuide';
-import { choseApporter, demandesApporter, estApporter, insecable } from '../engine/carnet';
+import { choseApporter, demandesApporter, dureeLabel, estApporter, insecable } from '../engine/carnet';
 
 const CODE_KEY = (id: string) => `pam-parent-code-${id}`;
 const KIND: Record<EntreeCarnet['kind'], string> = { repas: 'Repas', sieste: 'Sommeil', change: 'Change', humeur: 'Humeur', soin: 'Soin', note: 'Note' };
@@ -231,8 +231,23 @@ function Jour({ snap, jour }: { snap: ParentSnapshot; jour: string }) {
   // À apporter : demandé depuis la dernière arrivée de l'enfant. À l'arrivée suivante, c'est apporté : la demande disparaît.
   const arrivees = snap.jours.filter((j) => j.date <= jour).flatMap((j) => j.pres.filter((p) => p.a).map((p) => `${j.date} ${p.a}`)).sort();
   const demandes = demandesApporter(snap.carnet.filter((e) => e.date <= jour), arrivees.at(-1) ?? '');
+  // Vision 1.1 (T-126, 9.5) : compteurs de la journée (Repas, Sommeil, Changes, Humeur), puis la note du jour.
+  const carnetAuj = snap.carnet.filter((e) => e.date === jour && !estApporter(e));
+  const nb = (k: EntreeCarnet['kind']) => carnetAuj.filter((e) => e.kind === k).length;
+  const sommeil = carnetAuj.filter((e) => e.kind === 'sieste').reduce((n, e) => n + minutesDuDetail(e.detail), 0);
+  const humeur = [...carnetAuj].reverse().find((e) => e.kind === 'humeur')?.detail;
+  const note = [...carnetAuj].reverse().find((e) => e.kind === 'note')?.detail;
   return (
     <>
+      {carnetAuj.length > 0 && (
+        <section class="ph-compteurs" aria-label="La journée en bref">
+          <Compteur valeur={String(nb('repas'))} label="Repas" />
+          <Compteur valeur={sommeil ? dureeLabel(sommeil) : String(nb('sieste'))} label="Sommeil" />
+          <Compteur valeur={String(nb('change'))} label="Changes" />
+          <Compteur valeur={humeur ? insecable(humeur) : '–'} label="Humeur" or />
+        </section>
+      )}
+      {note && <p class="ph-note">{insecable(note)}</p>}
       {demandes.length > 0 && (
         <section class="card apporter" aria-labelledby="app-t">
           <Icon name="sac" size={28} />
@@ -287,6 +302,23 @@ function Jour({ snap, jour }: { snap: ParentSnapshot; jour: string }) {
         </section>
       )}
     </>
+  );
+}
+
+/** Minutes d'un sommeil terminé, lues dans son texte (« 12 h 40 à 14 h 20 (1 h 40) ») ; 0 sinon. */
+function minutesDuDetail(detail: string): number {
+  const m = /\((?:(\d+) h(?: (\d{2}))?|(\d+) min)\)$/.exec(detail.trim());
+  if (!m) return 0;
+  return m[3] ? Number(m[3]) : Number(m[1]) * 60 + Number(m[2] ?? 0);
+}
+
+/** Compteur rond de la page des parents (maquette « Carnet · parents ») */
+function Compteur({ valeur, label, or }: { valeur: string; label: string; or?: boolean }) {
+  return (
+    <div class={`ph-compteur${or ? ' or' : ''}`}>
+      <span class="ph-rond"><b>{valeur}</b></span>
+      <span class="ph-c-label">{label}</span>
+    </div>
   );
 }
 

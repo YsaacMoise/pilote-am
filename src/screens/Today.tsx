@@ -1,6 +1,6 @@
 import { ABSENCES_PROTEGEES_AIDE, ABSENCES_PROTEGEES_DONNEES } from '../legal';
 import { useEffect, useState } from 'preact/hooks';
-import { activeContracts, ctxFor, logUsage, putLeave, saveSettings, state, toast, uid, updateDay, useStore } from '../store';
+import { activeContracts, ctxFor, logUsage, putLeave, state, toast, uid, updateDay, useStore } from '../store';
 import { addDays, dayLabel, minutes, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NOMS, daysBetween } from '../engine/dates';
 import { dayInfo, libelleFerie, type Ctx, type DayInfo } from '../engine/payroll';
 import { alertesDurees, AMPLITUDE_MAX_MIN, messageAmplitude } from '../engine/durees';
@@ -10,7 +10,7 @@ import { estSuspension } from '../engine/suspensions';
 import { libelleDureeSaisie, NATURE_EVENEMENT_LABEL } from '../engine/evenements';
 import { absenceSaisie, appliquerReponses, questionsSuite, questionsVisibles, reponsesCompletes, texteQuestionSuite, type ChoixAbsence, type Reponse } from '../engine/absences';
 import { hoursLabel } from '../engine/money';
-import { Banner, CHILD_COLORS, Choices, DateInput, EuroInput, Gommette, Sheet, Stepper, Switch, Topbar, useErreurAffichee } from '../ui/kit';
+import { Banner, CHILD_COLORS, CHILD_INKS, Choices, DateInput, EuroInput, Gommette, Sheet, Stepper, Switch, Topbar, useErreurAffichee } from '../ui/kit';
 import { evAnnulation, evCorrections, evPointage, type GestePointage } from '../usage-events';
 import { AideVideo, BienvenueDemo } from '../ui/VideoGuide';
 import { isDemo } from '../db';
@@ -30,13 +30,13 @@ function planText(di: DayInfo): string {
   return 'Prévu ' + di.planned.map((p) => `${fmtH(p.start)} – ${fmtH(p.end)}`).join(' et ');
 }
 
-/** Ligne « Prévu » : les horaires en JetBrains Mono, reliés par une flèche, comme dans la charte (08h15 → 17h45). */
+/** Ligne « Prévu » : les horaires reliés par une flèche (Vision 1.1 : « Prévu 8 h 30 → 17 h »). */
 function PlanLine({ di }: { di: DayInfo }) {
   if (!di.planned.length) return <>Pas d’accueil prévu</>;
   return (
     <>
       <span class="sr-only">{planText(di)}</span>
-      <span aria-hidden="true">Prévu {di.planned.map((p, i) => <>{i > 0 && ' et '}<span class="hours">{p.start.replace(':', 'h')} → {p.end.replace(':', 'h')}</span></>)}</span>
+      <span aria-hidden="true">Prévu {di.planned.map((p, i) => <>{i > 0 && ' et '}<span class="hours">{heureLisible(p.start)} → {heureLisible(p.end)}</span></>)}</span>
     </>
   );
 }
@@ -104,62 +104,51 @@ export function Today() {
   });
   const amToday = s.leaves.find((l) => day >= l.from && day <= l.to);
 
+  // Vision 1.1 (T-126, 9.4) : carte « Maintenant », cadran, puis une ligne par autre enfant. Réglage « Liste » : lignes seules.
+  const compact = !!s.settings.compact && kids.length > 1;
+  const now = nowHHMM();
+  const iNow = !compact && day === t ? indexMaintenant(kids.map((c) => heureAction(c, day, sautesDe(c))), minutes(now)) : -1;
+  const titre = dayLabel(day).replace(/^./, (x) => x.toUpperCase());
+  const ecart = day === t ? undefined : day < t ? `il y a ${daysBetween(day, t)} jour${daysBetween(day, t) > 1 ? 's' : ''}` : `dans ${daysBetween(t, day)} jour${daysBetween(t, day) > 1 ? 's' : ''}`;
+
   return (
     <>
-      <Topbar title={day === t ? 'Aujourd’hui' : dayLabel(day).replace(/^./, (x) => x.toUpperCase())} sub={day === t ? dayLabel(day) : day < t ? `il y a ${daysBetween(day, t)} jour${daysBetween(day, t) > 1 ? 's' : ''}` : `dans ${daysBetween(t, day)} jour${daysBetween(t, day) > 1 ? 's' : ''}`} screen="aujourdhui" />
-      <main>
+      <Topbar grand title={titre} sub={ecart} screen="aujourdhui" apres={s.contracts.length > 0 && (
+        <button class="icon-btn absente-btn" aria-label="Je serai absente" onClick={() => setAmSheet(true)}><Icon name="absente" fin /></button>
+      )} />
+      <main class="today">
         {isDemo() && <BienvenueDemo />}
-        <AideVideo id="pointer" />
-        {day === t && <BrouillonsEnCours />}
-        <div class="daynav">
-          <button class="daynav-arrow" aria-label="Semaine précédente" disabled={!peutReculer(finBande, bornes)} onClick={() => semaine(-1)}><Icon name="left" /></button>
-          <span class="daynav-range" aria-live="polite">{libelleBande(days)}</span>
-          <button class="daynav-arrow" aria-label="Semaine suivante" disabled={!peutAvancer(finBande, bornes)} onClick={() => semaine(1)}><Icon name="right" /></button>
+        <div class="semaine">
+          <nav aria-label="Choisir le jour" class="daystrip">
+            {days.map((d) => {
+              const flag = s.contracts.some((c) => dayInfo(ctxFor(c), d).departOublie);
+              return (
+                <button aria-pressed={d === day} onClick={() => setDay(d)}>
+                  <span class="d-name">{d === t ? 'auj.' : JOUR_NOMS[weekday(d) - 1].slice(0, 3) + '.'}</span>{' '}
+                  <span class="d-num">{Number(d.slice(8))}</span>
+                  <span class="sr-only"> {MOIS_NOMS[Number(d.slice(5, 7)) - 1]}{flag ? ', départ non pointé' : ''}</span>
+                  <span class={`d-dot ${flag ? 'on' : ''}`} aria-hidden="true" />
+                </button>
+              );
+            })}
+          </nav>
+          {/* Flèches de semaine sous la bande : chaque jour garde 44 px de large au moins (consigne 3). */}
+          <div class="daynav">
+            <button class="daynav-arrow" aria-label="Semaine précédente" disabled={!peutReculer(finBande, bornes)} onClick={() => semaine(-1)}><Icon name="left" size={20} /></button>
+            <p class="daynav-range"><span aria-live="polite">{libelleBande(days)}</span>
+              {(day !== t || !days.includes(t)) && (
+                <button class="btn btn-ghost btn-sm" onClick={retourAujourdhui}><Icon name="undo" size={18} />Revenir à aujourd’hui</button>
+              )}
+            </p>
+            <button class="daynav-arrow" aria-label="Semaine suivante" disabled={!peutAvancer(finBande, bornes)} onClick={() => semaine(1)}><Icon name="right" size={20} /></button>
+          </div>
         </div>
-        <nav aria-label="Choisir le jour" class="daystrip">
-          {days.map((d) => {
-            const flag = s.contracts.some((c) => dayInfo(ctxFor(c), d).departOublie);
-            return (
-              <button aria-pressed={d === day} onClick={() => setDay(d)}>
-                <span class="d-name">{d === t ? 'auj.' : JOUR_NOMS[weekday(d) - 1].slice(0, 3)}</span>{' '}
-                <span class="d-num">{Number(d.slice(8))}</span>
-                <span class="sr-only"> {MOIS_NOMS[Number(d.slice(5, 7)) - 1]}{flag ? ', départ non pointé' : ''}</span>
-                <span class={`d-dot ${flag ? 'on' : ''}`} aria-hidden="true" />
-              </button>
-            );
-          })}
-        </nav>
-        {(day !== t || !days.includes(t)) && (
-          <p class="daynav-back"><button class="btn btn-ghost" onClick={retourAujourdhui}><Icon name="undo" />Revenir à aujourd’hui</button></p>
-        )}
 
         {amToday && (
           <Banner tone="info" icon="sun">
             <strong>{AM_ABS_LABEL[amToday.type]}</strong>
             <span>Du {dayLabel(amToday.from)} au {dayLabel(amToday.to)}, pour tous les enfants.</span>
           </Banner>
-        )}
-
-        {kids.length === 0 && (
-          <div class="card empty">
-            <h2>{s.contracts.length ? 'Aucun contrat ce jour-là' : 'Ajoute le premier enfant que tu accueilles'}</h2>
-            <p class="muted">Le planning du contrat remplit les journées tout seul. Tu n’auras qu’à noter ce qui change.</p>
-            {!s.contracts.length && <a class="btn btn-primary btn-lg" href="#/contrat/nouveau"><Icon name="plus" />Ajouter un enfant accueilli</a>}
-          </div>
-        )}
-
-        {kids.length > 1 && (
-          <div class="seg view-switch" role="radiogroup" aria-label="Affichage des enfants">
-            <button role="radio" aria-checked={!s.settings.compact} onClick={() => { saveSettings({ compact: false }); logUsage('vue_cartes', 'aujourdhui'); }}>Cartes</button>
-            <button role="radio" aria-checked={!!s.settings.compact} onClick={() => { saveSettings({ compact: true }); logUsage('vue_liste', 'aujourdhui'); }}>Liste</button>
-          </div>
-        )}
-        {s.settings.compact && kids.length > 1 ? (
-          <div class="kid-list">
-            {kids.map((c) => <KidCard key={c.id} c={c} day={day} sautees={sautesDe(c)} onNon={nonPour(c)} compact onEdit={() => setEdit(c)} />)}
-          </div>
-        ) : (
-          kids.map((c) => <KidCard key={c.id} c={c} day={day} sautees={sautesDe(c)} onNon={nonPour(c)} onEdit={() => setEdit(c)} />)
         )}
         {/* T-109 (correction 11) : repos de 11 h, 48 h en moyenne, 2 250 h par an (CASF L423-21, L423-22) : alerte, sans blocage. */}
         {alertesDurees(s.contracts.map((c) => ctxFor(c)), day).map((x) => <Banner tone="warn">{x}</Banner>)}
@@ -174,7 +163,38 @@ export function Today() {
             </div>
           </Banner>
         )}
+        {kids.length === 0 && s.contracts.length > 0 && (
+          <Banner tone="info" icon="calendar">
+            <strong>Aucun contrat ce jour-là</strong>
+            <span>Le planning du contrat remplit les journées tout seul. Tu n’auras qu’à noter ce qui change.</span>
+          </Banner>
+        )}
+        {kids.length === 0 && !s.contracts.length && (
+          <div class="card empty">
+            <h2>Ajoute le premier enfant que tu accueilles</h2>
+            <p class="muted">Le planning du contrat remplit les journées tout seul. Tu n’auras qu’à noter ce qui change.</p>
+            <a class="btn btn-primary btn-lg" href="#/contrat/nouveau"><Icon name="plus" />Ajouter un enfant accueilli</a>
+          </div>
+        )}
 
+        {compact ? (
+          <div class="kid-list">
+            {kids.map((c) => <KidCard key={c.id} c={c} day={day} sautees={sautesDe(c)} onNon={nonPour(c)} compact onEdit={() => setEdit(c)} />)}
+          </div>
+        ) : (
+          <>
+            {iNow >= 0 && <KidCard key={kids[iNow].id} c={kids[iNow]} day={day} sautees={sautesDe(kids[iNow])} onNon={nonPour(kids[iNow])} onEdit={() => setEdit(kids[iNow])} />}
+            {kids.length > 0 && kids.length <= 4 && <Cadran kids={kids} day={day} />}
+            {kids.some((_, i) => i !== iNow) && (
+              <div class="kid-lines">
+                {kids.map((c, i) => i === iNow ? null : <KidCard key={c.id} c={c} day={day} sautees={sautesDe(c)} onNon={nonPour(c)} ligne onEdit={() => setEdit(c)} />)}
+              </div>
+            )}
+          </>
+        )}
+
+        {day === t && <BrouillonsEnCours />}
+        <AideVideo id="pointer" />
         {day === t && cl.ouverture && (
           <Banner tone="warn" icon="shield">
             <strong>Demande de récupération par Arvela en cours</strong>
@@ -186,14 +206,14 @@ export function Today() {
             <strong>Protège ta clé de secours</strong>
             <div class="btn-row">
               <BoutonCleAcces mode="proteger" />
-              <a class="btn btn-ghost" href="#/compte">Autres moyens</a>
+              <a class="btn btn-outline" href="#/compte">Autres moyens</a>
             </div>
           </Banner>
         )}
         {day === t && rappel === 'cle-manquante' && (
           <Banner tone="warn" icon="shield">
             <strong>Entre ta clé de secours</strong>
-            <div class="btn-row"><BoutonCleAcces mode="ouvrir" /><a class="btn btn-outline" href="#/compte">Entrer ma clé</a><a class="btn btn-ghost" href="#/sauvegarde">Sauvegarder</a></div>
+            <div class="btn-row"><BoutonCleAcces mode="ouvrir" /><a class="btn btn-primary" href="#/compte">Entrer ma clé</a><a class="btn btn-ghost" href="#/sauvegarde">Sauvegarder</a></div>
           </Banner>
         )}
         {day === t && rappel === 'sauvegarde' && (
@@ -203,17 +223,138 @@ export function Today() {
             <div class="btn-row"><a class="btn btn-outline" href="#/sauvegarde">Sauvegarder</a></div>
           </Banner>
         )}
-
-
-        {s.contracts.length > 0 && (
-          <button class="btn btn-outline btn-block" onClick={() => setAmSheet(true)}>
-            <Icon name="calendar" />Je serai absente
-          </button>
-        )}
       </main>
       {edit && <DaySheet c={edit} day={day} onClose={() => setEdit(null)} />}
       {amSheet && <AmAbsenceSheet start={day} onClose={() => setAmSheet(false)} />}
     </>
+  );
+}
+
+// ---------- Vision 1.1 (T-126) : carte « Maintenant » et cadran de la journée ----------
+
+/** Heure prévue (minutes) de la prochaine action de l'enfant ce jour-là, ou null (pas d'action, ou action sans heure prévue). */
+function heureAction(c: Contract, day: string, sautees: readonly number[]): number | null {
+  const di = dayInfo(ctxFor(c), day);
+  if (!(di.kind === 'prevu' || di.kind === 'present' || (di.kind === 'hors' && !di.planned.length))) return null;
+  const na = nextAction(di, di.rec, sautees);
+  const p = na ? di.planned[na.idx] : undefined;
+  if (!na || !p) return null;
+  return minutes(na.kind === 'a' ? p.start : p.end);
+}
+
+/**
+ * Consigne T-126, 9.4 : l'enfant de la carte « Maintenant » est celui dont la prochaine action a l'heure prévue la plus proche
+ * de maintenant (avant ou après). À égalité, l'ordre des contrats. Rend l'index, ou -1 si aucun enfant n'a d'action prévue.
+ */
+export function indexMaintenant(heures: readonly (number | null)[], maintenant: number): number {
+  let best = -1;
+  for (let i = 0; i < heures.length; i++) {
+    const h = heures[i];
+    if (h === null) continue;
+    if (best < 0 || Math.abs(h - maintenant) < Math.abs(heures[best]! - maintenant)) best = i;
+  }
+  return best;
+}
+
+/**
+ * Bornes du cadran (minutes) : heure la plus tôt arrondie à l'heure en dessous, la plus tardive à l'heure au-dessus
+ * (heures prévues et pointées). null sans aucune heure.
+ */
+export function bornesCadran(heures: readonly number[]): { debut: number; fin: number } | null {
+  if (!heures.length) return null;
+  const debut = Math.floor(Math.min(...heures) / 60) * 60;
+  const fin = Math.max(debut + 60, Math.ceil(Math.max(...heures) / 60) * 60);
+  return { debut, fin };
+}
+
+const CX = 170, CY = 178;
+const RAYONS = [146, 126, 106, 86];
+
+/** Demi-cadran de la journée : un anneau par enfant (plein = présence pointée, clair = prévu), aiguille or = maintenant. */
+function Cadran({ kids, day }: { kids: Contract[]; day: string }) {
+  const t = today();
+  const auj = day === t;
+  const now = minutes(nowHHMM());
+  const anneaux = kids.map((c) => {
+    const di = dayInfo(ctxFor(c), day);
+    const absent = di.kind === 'absent' || di.kind === 'am';
+    const prevu: [number, number][] = absent ? [] : di.planned.map((p) => [minutes(p.start), minutes(p.end)]);
+    const faits: [number, number][] = [];
+    (di.rec?.pres ?? []).forEach((p, i) => {
+      if (!p.a) return;
+      const a = minutes(p.a);
+      // Présence en cours : jusqu'à maintenant le jour même ; un autre jour, jusqu'à la fin prévue (heure retenue).
+      const d = p.d ? minutes(p.d) : auj ? now : di.planned[i] ? minutes(di.planned[i].end) : a;
+      if (d > a) faits.push([a, d]);
+    });
+    const textes: string[] = [];
+    if (absent && di.rec?.abs) textes.push(CHILD_ABS_LABEL[di.rec.abs]);
+    else if (absent && di.amLeave) textes.push(AM_ABS_LABEL[di.amLeave]);
+    else textes.push(planText(di));
+    (di.rec?.pres ?? []).forEach((p) => { if (p.a) textes.push(`arrivée ${fmtH(p.a)}${p.d ? `, départ ${fmtH(p.d)}` : ''}`); });
+    return { c, prevu, faits, texte: `${c.child} : ${textes.join(', ')}` };
+  });
+  const toutes = anneaux.flatMap((x) => [...x.prevu, ...x.faits].flat());
+  const b = bornesCadran(toutes);
+  if (!b) return null;
+  const frac = (m: number) => Math.min(1, Math.max(0, (m - b.debut) / (b.fin - b.debut)));
+  const point = (r: number, m: number) => {
+    const a = Math.PI * (1 - frac(m));
+    return [CX + r * Math.cos(a), CY - r * Math.sin(a)];
+  };
+  const demi = (r: number) => `M${CX - r} ${CY} A${r} ${r} 0 0 1 ${CX + r} ${CY}`;
+  // Un arc = le demi-cercle en pointillé d'un seul trait : il glisse en douceur d'une minute à l'autre.
+  const arc = (r: number, [m1, m2]: [number, number], cls: string, g: string, k: string) => {
+    const L = Math.PI * r;
+    const a = frac(m1) * L, l = (frac(m2) - frac(m1)) * L;
+    if (l <= 0.5) return null;
+    return <path key={k} d={demi(r)} class={cls} style={{ '--g': g, strokeDasharray: `${l} ${2 * L}`, strokeDashoffset: -a } as any} />;
+  };
+  const heureTxt = heureLisible(nowHHMM());
+  const ticks: number[] = [];
+  for (let m = b.debut + 60; m < b.fin; m += 60) ticks.push(m);
+  const etiquettes = ticks.filter((m) => (m - b.debut) % 120 === 0 && frac(m) > 0.19 && frac(m) < 0.81);
+  const aiguille = auj && now >= b.debut && now <= b.fin;
+  const label = `Cadran de la journée, de ${heureLisible(String(b.debut / 60).padStart(2, '0') + ':00')} à ${heureLisible(String(b.fin / 60).padStart(2, '0') + ':00')}. ${anneaux.map((x) => x.texte).join('. ')}.${auj ? ` Il est ${heureTxt}.` : ''}`;
+  return (
+    <div class="cadran">
+      <svg viewBox="0 -18 340 222" role="img" aria-label={label}>
+        <g fill="none" stroke-linecap="round" stroke-width="13">
+          {anneaux.map((_, i) => <path d={demi(RAYONS[i])} class="cad-piste" />)}
+          {anneaux.map((x, i) => x.prevu.map((p, j) => arc(RAYONS[i], p, 'cad-prevu', CHILD_COLORS[x.c.color % CHILD_COLORS.length], `p${i}-${j}`)))}
+          {anneaux.map((x, i) => x.faits.map((p, j) => arc(RAYONS[i], p, 'cad-fait', CHILD_COLORS[x.c.color % CHILD_COLORS.length], `f${i}-${j}`)))}
+        </g>
+        <g class="cad-reperes" stroke-width="1.5" stroke-linecap="round">
+          {ticks.map((m) => { const [x1, y1] = point(160, m); const [x2, y2] = point(168, m); return <line x1={x1} y1={y1} x2={x2} y2={y2} />; })}
+        </g>
+        <g class="cad-heures" text-anchor="middle">
+          <text x={CX - 146} y="200">{b.debut / 60} h</text>
+          {etiquettes.map((m) => { const [x, y] = point(184, m); return <text x={x} y={y + 4}>{m / 60}</text>; })}
+          <text x={CX + 146} y="200">{b.fin / 60} h</text>
+        </g>
+        {aiguille && (
+          <g class="cad-aiguille" style={{ transform: `rotate(${frac(now) * 180}deg)` }}>
+            <line x1={CX} y1={CY} x2={CX - 158} y2={CY} stroke-width="2.5" stroke-linecap="round" />
+          </g>
+        )}
+        {aiguille && <circle cx={CX} cy={CY} r="6" class="cad-centre" />}
+        {auj && <text x={CX} y="150" text-anchor="middle" class="cad-maintenant">{heureTxt}</text>}
+        <g class="cad-initiales" text-anchor="middle">
+          {anneaux.map((x, i) => {
+            const debuts = [...x.prevu, ...x.faits].map((p) => p[0]);
+            if (!debuts.length) return null;
+            const [px, py] = point(RAYONS[i], Math.min(...debuts));
+            const k = x.c.color % CHILD_COLORS.length;
+            return (
+              <>
+                <circle cx={px} cy={py} r="10" fill={CHILD_COLORS[k]} class="cad-pastille" />
+                <text x={px} y={py + 4} fill={CHILD_INKS[k]}>{(x.c.child.trim()[0] ?? '?').toUpperCase()}</text>
+              </>
+            );
+          })}
+        </g>
+      </svg>
+    </div>
   );
 }
 
@@ -396,12 +537,14 @@ export function pointerPlagePrevue(r: DayRec, idx: number, plage: Plage, avecPla
   return { ...r, pres: p, extra: avecPlanning ? r.extra : true };
 }
 
-function KidCard({ c, day, onEdit, compact, sautees = [], onNon }: { c: Contract; day: string; onEdit: () => void; compact?: boolean; sautees?: number[]; onNon?: (idx: number) => void }) {
+function KidCard({ c, day, onEdit, compact, ligne, sautees = [], onNon }: { c: Contract; day: string; onEdit: () => void; compact?: boolean; ligne?: boolean; sautees?: number[]; onNon?: (idx: number) => void }) {
   // Heure lue à chaque rendu (l'écran se réévalue chaque minute, et après un appui).
   const maintenant = nowHHMM();
   const t = today();
   // T-048 : fiche ouverte : « choix » (vue en liste) ou « autre » (saisie de l'heure)
   const [fiche, setFiche] = useState<'choix' | 'autre' | null>(null);
+  // Vision 1.1 (9.4) : raccourci « Absente » (feuille des motifs) tant que l'enfant n'est pas arrivé.
+  const [absSheet, setAbsSheet] = useState(false);
   let choix: ChoixPointage | null = null;
   let pointer: ((heure: string, geste: GestePointage | null) => Promise<void>) | null = null;
   let arriveePlage: string | undefined;
@@ -527,32 +670,62 @@ function KidCard({ c, day, onEdit, compact, sautees = [], onNon }: { c: Contract
     );
   }
 
+  // Vision 1.1 : carte « Maintenant » (bouton principal en encre) ou ligne (bouton contour). Le crayon ouvre la feuille Journée.
+  const absente = day === t && di.kind === 'prevu' && di.planned.length > 0 && !pres.length;
+  const nomFiche = <a href={`#/enfant/${c.id}`} aria-label={`Fiche ${de(c.child)}`}>{c.child}</a>;
+  // Nom du crayon inchangé depuis la Vision 1.0 (« Modifier (X) » avec un pointage proposé, sinon « Modifier la journée (X) »).
+  const libelleModifier = `${action ? 'Modifier' : day > t ? 'Prévoir une absence' : 'Modifier la journée'} (${c.child})`;
+  const crayon = day > t
+    ? <button class="btn btn-ghost btn-sm kid-prevoir" onClick={onEdit} aria-label={libelleModifier}>Prévoir une absence</button>
+    : <button class="icon-btn kid-edit" onClick={onEdit} aria-label={libelleModifier}><Icon name="edit" size={22} /></button>;
+  const bouton = action && !choix && !question && (
+    <button class={action.quiet || ligne ? 'btn btn-outline' : 'btn btn-primary btn-lg btn-block'} onClick={action.run} aria-label={action.quiet ? `Accueil imprévu : arrivée ${de(c.child)}` : undefined}>
+      {!ligne && <Icon name={action.icon} />}{action.label}
+    </button>
+  );
+  const boutonAbsente = absente && <button class="btn btn-ghost btn-sm kid-absente" onClick={() => setAbsSheet(true)} aria-label={`Absente (${c.child})`} aria-haspopup="dialog">Absente</button>;
+  const etiquettes = tags.length > 0 && <div class="kid-status">{tags.map((x) => <span class={`tag ${x.tone}`}>{x.text}</span>)}</div>;
+  const feuilleAbsente = absSheet && <AbsenteSheet c={c} day={day} onClose={() => setAbsSheet(false)} />;
+
+  if (ligne) {
+    // Ligne d'un autre enfant : pastille, prénom (fiche), plan, étiquettes, crayon, bouton du moment, « Absente ».
+    const deux = !!bouton && !!boutonAbsente;
+    return (
+      <article class="kid kid-line" style={{ '--g': color } as any} aria-label={c.child}>
+        <div class="kl-main">
+          <Gommette name={c.child} color={c.color} />
+          <div class="kl-id">
+            <div class="kid-name">{nomFiche}</div>
+            <div class="kid-plan"><PlanLine di={di} /></div>
+          </div>
+          {crayon}
+          {!deux && (bouton || boutonAbsente)}
+        </div>
+        {deux && <div class="kl-actions">{boutonAbsente}{bouton}</div>}
+        {etiquettes}
+        {questionVue || choixVue}
+        {fiches}
+        {feuilleAbsente}
+      </article>
+    );
+  }
+
   return (
-    <article class="kid" style={{ '--g': color } as any} aria-label={c.child}>
+    <article class="kid kid-now" style={{ '--g': color } as any} aria-label={c.child}>
       <div class="kid-head">
         <Gommette name={c.child} color={c.color} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div class="kid-name"><a href={`#/enfant/${c.id}`} aria-label={`Fiche ${de(c.child)}`}>{c.child}</a></div>
+        <div class="kl-id">
+          <div class="kid-name">{nomFiche}</div>
           <div class="kid-plan"><PlanLine di={di} /></div>
         </div>
+        {crayon}
       </div>
-      {tags.length > 0 && (
-        <div class="kid-status">
-          {tags.map((x) => <span class={`tag ${x.tone}`}>{x.text}</span>)}
-        </div>
-      )}
+      {etiquettes}
       {questionVue || choixVue}
-      <div class="kid-actions" style={!action || choix || question ? { gridTemplateColumns: '1fr' } : undefined}>
-        {action && !choix && !question && (
-          <button class={action.quiet ? 'btn btn-outline' : 'btn btn-primary btn-lg'} onClick={action.run} aria-label={action.quiet ? `Accueil imprévu : arrivée ${de(c.child)}` : undefined}>
-            <Icon name={action.icon} />{action.label}
-          </button>
-        )}
-        <button class={`btn btn-edit ${action && !action.quiet && !choix && !question ? 'btn-secondary btn-lg' : 'btn-secondary'}`} onClick={onEdit} aria-label={`${action ? 'Modifier' : day > t ? 'Prévoir une absence' : 'Modifier la journée'} (${c.child})`}>
-          <Icon name="edit" />{action ? 'Modifier' : day > t ? 'Prévoir une absence' : 'Modifier la journée'}
-        </button>
-      </div>
+      {bouton}
+      {boutonAbsente}
       {fiches}
+      {feuilleAbsente}
     </article>
   );
 }
@@ -564,7 +737,7 @@ function QuestionPlageVue({ q, child, repondre }: { q: QuestionPlage; child: str
   const tx = texteQuestion(q);
   const plage = `plage de ${heureLisible(q.debut)} à ${heureLisible(q.fin)}`;
   return (
-    <div class="pointage-choix" role="group" aria-label={`${child} : ${tx}`}>
+    <div class="pointage-choix question" role="group" aria-label={`${child} : ${tx}`}>
       <p class="pointage-choix-titre">{tx}</p>
       <button class="btn btn-primary btn-lg btn-block" onClick={() => void repondre(true)} aria-label={`Oui, ${plage} comme prévu (${child})`}>Oui</button>
       <button class="btn btn-secondary btn-lg btn-block" onClick={() => void repondre(false)} aria-label={`Non, pas d’accueil sur la ${plage} (${child})`}>Non</button>
@@ -638,7 +811,7 @@ const CHILD_ABS_OPTIONS: { v: ChildAbs | 'none'; l: string; sub?: string }[] = [
   { v: 'none', l: 'Oui, comme prévu' },
   { v: 'malade_certif', l: 'Non, malade, avec certificat médical', sub: 'Certificat médical ou bulletin d’hospitalisation. Déduit du salaire : 5 jours par année de contrat au plus, plus une absence de 14 jours calendaires consécutifs.' },
   { v: 'malade', l: 'Non, malade, sans certificat', sub: 'Payé normalement.' },
-  { v: 'parents', l: 'Non, absent à la demande des parents', sub: 'Payé normalement.' },
+  { v: 'parents', l: 'Non, à la demande des parents', sub: 'Payé normalement.' },
 ];
 // T-035b : l'absence « sans solde » de l'enfant n'est plus proposée (CCN art. 105 : absence non prévue = payée). Elle reste
 // affichée seulement sur un jour déjà noté ainsi, pour pouvoir le corriger.
@@ -743,6 +916,45 @@ export function amplitudeFiche(pres: Presence[]): number {
   return Math.max(...a.map((p) => minutes(p.d!))) - Math.min(...a.map((p) => minutes(p.a!)));
 }
 
+/** Réponses de la feuille Journée (T-126 : écriture commune à la feuille et au raccourci « Absente »). */
+export interface FicheJournee {
+  abs: ChildAbs | 'none'; gardees: Presence[] | undefined; repas: number; km: number; kmPartage: boolean; kmEnfants: number;
+  ferieT: boolean; certifDu: string; certifAu: string;
+}
+
+/** Journée écrite par « Enregistrer » de la feuille Journée (règles inchangées depuis T-103, T-118). */
+export function journeeFiche(r: DayRec, f: FicheJournee, repasParJour: number, avecPlanning: boolean): DayRec {
+  const next: DayRec = { ...r };
+  if (f.abs !== 'none') { next.abs = f.abs; delete next.pres; }
+  else {
+    delete next.abs;
+    if (!f.gardees) delete next.pres;
+    else next.pres = f.gardees;
+    if (!avecPlanning && next.pres?.length) next.extra = true;
+  }
+  if (f.repas !== repasParJour) next.repas = f.repas; else delete next.repas;
+  if (f.km) next.km = f.km; else delete next.km;
+  if (f.km) next.kmPartage = f.kmPartage; else delete next.kmPartage;
+  if (f.km && f.kmPartage && f.kmEnfants >= 1) next.kmEnfants = f.kmEnfants; else delete next.kmEnfants;
+  if (f.ferieT) next.ferieTravaille = true; else delete next.ferieTravaille;
+  if (f.abs === 'malade_certif' && f.certifDu && f.certifAu) { next.certifDu = f.certifDu; next.certifAu = f.certifAu; } else { delete next.certifDu; delete next.certifAu; }
+  return next;
+}
+
+/**
+ * Valeurs de départ de la feuille Journée, lues dans la journée enregistrée (mêmes règles que DaySheet). Le raccourci
+ * « Absente » les reprend telles quelles : il n'écrit que le motif (et les dates du certificat), comme la feuille.
+ */
+export function ficheDepart(rec: DayRec | undefined, repasParJour: number): Omit<FicheJournee, 'abs' | 'gardees' | 'certifDu' | 'certifAu'> {
+  return {
+    repas: rec?.repas ?? repasParJour,
+    km: rec?.km ?? 0,
+    kmEnfants: rec?.kmEnfants ?? 0,
+    kmPartage: rec?.kmPartage ?? (rec?.kmEnfants !== undefined && rec.kmEnfants > 1),
+    ferieT: !!rec?.ferieTravaille,
+  };
+}
+
 export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClose: () => void }) {
   const di = dayInfo(ctxFor(c), day);
   const rec = di.rec;
@@ -750,12 +962,13 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
   const init = heuresInitiales(di.planned, rec?.pres, slots, day === today() ? nowHHMM() : undefined);
   const [pres, setPres] = useState<Presence[]>(init);
   const [abs, setAbs] = useState<ChildAbs | 'none'>(rec?.abs ?? 'none');
-  const [repas, setRepas] = useState<number>(rec?.repas ?? c.repasParJour);
-  const [km, setKm] = useState<number>(rec?.km ?? 0);
-  const [kmEnfants, setKmEnfants] = useState<number>(rec?.kmEnfants ?? 0);
-  // T-025 C-2 : saisie d'avant (champ absent) avec un seul enfant dans la voiture = une seule famille demandeuse.
-  const [kmPartage, setKmPartage] = useState<boolean>(rec?.kmPartage ?? (rec?.kmEnfants !== undefined && rec.kmEnfants > 1));
-  const [ferieT, setFerieT] = useState<boolean>(!!rec?.ferieTravaille);
+  // T-025 C-2 : saisie d'avant (champ absent) avec un seul enfant dans la voiture = une seule famille demandeuse (ficheDepart).
+  const depart = ficheDepart(rec, c.repasParJour);
+  const [repas, setRepas] = useState<number>(depart.repas);
+  const [km, setKm] = useState<number>(depart.km);
+  const [kmEnfants, setKmEnfants] = useState<number>(depart.kmEnfants);
+  const [kmPartage, setKmPartage] = useState<boolean>(depart.kmPartage);
+  const [ferieT, setFerieT] = useState<boolean>(depart.ferieT);
   // T-103 (C3) : dates du certificat médical (CCN 105 : « 14 jours calendaires consécutifs »).
   const [certifDu, setCertifDu] = useState<string>(rec?.certifDu ?? '');
   const [certifAu, setCertifAu] = useState<string>(rec?.certifAu ?? '');
@@ -771,23 +984,7 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
     const erreurT103 = verifierSaisieT103({ abs, km: abs === 'none' && !future && c.kmTaux > 0 ? km : 0, kmPartage, kmEnfants, certifDu, certifAu });
     if (erreurT103) { setErr(erreurT103); return; }
     const gardees = presencesAEnregistrer(di.planned, pres, future, day === today() ? nowHHMM() : undefined);
-    const undo = await updateDay(c.id, day, (r) => {
-      const next: DayRec = { ...r };
-      if (abs !== 'none') { next.abs = abs; delete next.pres; }
-      else {
-        delete next.abs;
-        if (!gardees) delete next.pres;
-        else next.pres = gardees;
-        if (!di.planned.length && next.pres?.length) next.extra = true;
-      }
-      if (repas !== c.repasParJour) next.repas = repas; else delete next.repas;
-      if (km) next.km = km; else delete next.km;
-      if (km) next.kmPartage = kmPartage; else delete next.kmPartage;
-      if (km && kmPartage && kmEnfants >= 1) next.kmEnfants = kmEnfants; else delete next.kmEnfants;
-      if (ferieT) next.ferieTravaille = true; else delete next.ferieTravaille;
-      if (abs === 'malade_certif' && certifDu && certifAu) { next.certifDu = certifDu; next.certifAu = certifAu; } else { delete next.certifDu; delete next.certifAu; }
-      return next;
-    });
+    const undo = await updateDay(c.id, day, (r) => journeeFiche(r, { abs, gardees, repas, km, kmPartage, kmEnfants, ferieT, certifDu, certifAu }, c.repasParJour, di.planned.length > 0));
     logUsage('journee_modifiee', 'aujourdhui');
     // C-101 : heure déjà pointée puis changée (le jour même ou après coup). Ni l'heure ni l'écart ne partent.
     // Heures effectives, plage par plage (sans filtrer, pour garder les index) : celles du formulaire, qui valent
@@ -849,6 +1046,49 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
         </>
       )}
       <button class="btn btn-primary btn-block btn-lg" onClick={save}>Enregistrer</button>
+    </Sheet>
+  );
+}
+
+/**
+ * Vision 1.1 (T-126, 9.4) : raccourci « Absente » d'un enfant pas encore arrivé. Motifs de la feuille Journée sans « Oui »,
+ * dates du certificat facultatives ; même écriture que « Enregistrer » de la feuille (absence posée, présence retirée),
+ * même message avec « Annuler ». Rien n'est choisi d'avance.
+ */
+function AbsenteSheet({ c, day, onClose }: { c: Contract; day: string; onClose: () => void }) {
+  const di = dayInfo(ctxFor(c), day);
+  const rec = di.rec;
+  const [abs, setAbs] = useState<ChildAbs | ''>('');
+  const [certifDu, setCertifDu] = useState('');
+  const [certifAu, setCertifAu] = useState('');
+  const [err, setErr] = useState('');
+  useErreurAffichee('saisie', !!err);
+  const options = (rec?.abs === 'sans_solde_enfant' ? [...CHILD_ABS_OPTIONS, OPTION_SANS_SOLDE_ENFANT] : CHILD_ABS_OPTIONS).filter((o) => o.v !== 'none') as { v: ChildAbs; l: string; sub?: string }[];
+  async function save() {
+    if (!abs) return;
+    const depart = ficheDepart(rec, c.repasParJour);
+    const e = verifierSaisieT103({ abs, km: 0, kmPartage: depart.kmPartage, kmEnfants: depart.kmEnfants, certifDu, certifAu });
+    if (e) { setErr(e); return; }
+    const undo = await updateDay(c.id, day, (r) => journeeFiche(r, { ...depart, abs, gardees: undefined, certifDu, certifAu }, c.repasParJour, di.planned.length > 0));
+    logUsage('journee_modifiee', 'aujourdhui');
+    for (const ev of evCorrections(day, today(), rec?.pres, [])) logUsage(ev, 'aujourdhui');
+    onClose();
+    toast(`Journée ${de(c.child)} enregistrée`, undo);
+  }
+  return (
+    <Sheet title={`Absence ${de(c.child)}`} onClose={onClose}>
+      <Choices label="L’enfant est-il accueilli ce jour-là ?" value={abs as ChildAbs} options={options} onChange={(v) => { setAbs(v); setErr(''); }} />
+      {abs === 'malade_certif' && (
+        <>
+          <div class="grid2">
+            <DateInput label="Certificat : premier jour" value={certifDu} onChange={(v) => { setCertifDu(v); setErr(''); }} />
+            <DateInput label="Certificat : dernier jour" value={certifAu} min={certifDu || undefined} onChange={(v) => { setCertifAu(v); setErr(''); }} />
+          </div>
+          <p class="hint">Les dates écrites sur le certificat médical ou le bulletin d’hospitalisation. La convention (article 105) compte une absence de 14 jours calendaires à part des 5 jours : l’app en a besoin quand l’absence approche 14 jours.</p>
+        </>
+      )}
+      {err && <p class="err" role="alert">{err}</p>}
+      <button class="btn btn-primary btn-block btn-lg" disabled={!abs} onClick={save}>Enregistrer</button>
     </Sheet>
   );
 }

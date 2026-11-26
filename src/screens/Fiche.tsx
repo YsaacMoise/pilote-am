@@ -8,7 +8,7 @@ import { compteursCP } from '../engine/compteurs-cp';
 import { euros, hoursLabel } from '../engine/money';
 import { AM_ABS_LABEL, CHILD_ABS_LABEL, type Contract } from '../engine/model';
 import { de } from '../engine/texte';
-import { Banner, DateInput, Gommette, ListLink, Sheet, TextInput, Topbar } from '../ui/kit';
+import { Banner, CHILD_COLORS, COLOR_NAMES, couleursPrises, DateInput, Gommette, ListLink, Sheet, TextInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { PartageCard } from './PartageCard';
 import { AmAbsenceSheet, DaySheet } from './Today';
@@ -74,10 +74,11 @@ export function ContratCree({ id }: { id: string }) {
   );
 }
 
-/** Écran 12 : fiche de l'enfant */
+/** Écran 12 : fiche de l'enfant (Vision 1.1, T-126 : en-tête, onglets-liens, cadran du contrat, lignes, couleur) */
 export function FicheEnfant({ id }: { id: string }) {
   const s = useStore();
   const c = s.contracts.find((x) => x.id === id);
+  const [couleur, setCouleur] = useState(false);
   if (!c) return <Introuvable titre="Fiche" />;
   const t = today();
   const tc = termsAt(c, t);
@@ -86,27 +87,127 @@ export function FicheEnfant({ id }: { id: string }) {
   const journee = s.journal.filter((j) => j.cid === c.id && j.date === t).length;
   return (
     <>
-      <Topbar title={c.child} sub={libelleDebut(c, t)} back="#/plus" screen="fiche" />
-      <main>
-        <div class="stat-grid">
-          <div><b class="num">{c.accueilOccasionnel ? '—' : tc.planningVariable ? 'Variable' : hoursLabel(weeklyMinutes(tc.planning))}</b><span>{c.accueilOccasionnel ? 'accueil occasionnel' : 'par semaine'}</span></div>
-          <div><b class="num">{euros(tc.rateNet)}</b><span>net de l’heure</span></div>
-          <div><b class="num">{cp ? nb(cp.reste) : '10 %'}</b><span>{cp ? 'jours de congés à poser' : 'congés versés à chaque accueil'}</span></div>
+      <Topbar title={c.child} back="#/plus" screen="fiche" />
+      <main class="fiche">
+        <div class="fiche-tete">
+          <Gommette name={c.child} color={c.color} size="lg" />
+          <span class="fiche-debut">{libelleDebut(c, t)}</span>
         </div>
+        <nav class="seg fiche-onglets" aria-label={`Contrat ${de(c.child)}`}>
+          {/* Noms lus : ceux des lignes de la Vision 1.0 (« Le contrat… », « Le planning… »), le mot visible y est compris. */}
+          <a href={`#/contrat/${c.id}`} aria-label={`Le contrat : ${libelleContrat(c, t)}`}>Contrat</a>
+          {!c.accueilOccasionnel && <a href={`#/contrat/${c.id}`} aria-label={`Le planning : ${tc.planningVariable ? 'horaires qui changent' : `${hoursLabel(weeklyMinutes(tc.planning))} par semaine`}`}>Planning</a>}
+          <a href={`#/enfant/${c.id}/parents`}>Parents</a>
+        </nav>
+        <CadranContrat c={c} />
+        <p class="fiche-contrat">{libelleContrat(c, t)}</p>
         <div class="list">
-          <ListLink href={`#/contrat/${c.id}`} icon="file" title="Le contrat" sub={libelleContrat(c, t)} />
-          {!c.accueilOccasionnel && <ListLink href={`#/contrat/${c.id}`} icon="clock" title="Le planning" sub={tc.planningVariable ? 'Horaires qui changent' : `${hoursLabel(weeklyMinutes(tc.planning))} par semaine`} />}
-          <ListLink href={`#/enfant/${c.id}/parents`} icon="users" title="Les parents et leur lien" sub={c.partage ? 'Lien actif' : 'Lien pas encore créé'} end={c.partage ? undefined : <span class="tag">À faire</span>} />
-          <ListLink href={`#/enfant/${c.id}/absences`} icon="sun" title="Absences et congés" />
-          <ListLink href="#/carnet" icon="book" title="Son carnet" sub={journee ? `${journee} note${journee > 1 ? 's' : ''} aujourd’hui` : 'Aucune note aujourd’hui'} />
-          {avant && <ListLink href={`#/historique/${c.id}`} icon="receipt" title="Bulletins d’avant Arvela (facultatif)" sub={`Avant le ${shortDate(c.trackedFrom)} · ${c.history.length} saisi${c.history.length > 1 ? 's' : ''}`} />}
+          <div class="li"><span class="li-main"><span class="li-title">Net de l’heure</span></span><span class="li-end fiche-valeur">{euros(tc.rateNet)}</span></div>
+          <ListLink href={`#/enfant/${c.id}/absences`} title="Absences et congés"
+            end={<span class="fiche-valeur-sous">{cp ? `${nb(cp.reste)} j à poser` : '10 %'}</span>}
+            sub={cp ? undefined : 'congés versés à chaque accueil'} />
+          <ListLink href={`#/enfant/${c.id}/parents`} title="Les parents et leur lien" sub={c.partage ? 'Lien actif' : 'Lien pas encore créé'} end={c.partage ? undefined : <span class="tag afaire">À faire</span>} />
+          <ListLink href="#/carnet" title="Son carnet" sub={journee ? `${journee} note${journee > 1 ? 's' : ''} aujourd’hui` : 'Aucune note aujourd’hui'} />
+          {/* 9.8 : « Historique » et « Bulletins d'avant Arvela » sont le même écran : une seule ligne. */}
+          {avant && <ListLink href={`#/historique/${c.id}`} title="Bulletins d’avant Arvela" end={<span>Facultatif</span>} sub={`Avant le ${shortDate(c.trackedFrom)} · ${c.history.length} saisi${c.history.length > 1 ? 's' : ''}`} />}
+          <ListLink title="Couleur" onClick={() => setCouleur(true)} end={<Gommette name={c.child} color={c.color} size="sm" />} />
         </div>
-        <div class="list">
-          <ListLink href={`#/avenant/${c.id}/nouveau`} icon="plus" title="Changer le contrat (avenant)" sub={c.avenants?.length ? `${c.avenants.length} avenant${c.avenants.length > 1 ? 's' : ''} déjà enregistré${c.avenants.length > 1 ? 's' : ''}` : undefined} />
-          <ListLink href={`#/fin/${c.id}`} icon="door" title="Fin du contrat" sub={c.end ? `Dernier jour : ${shortDate(c.end)}` : undefined} />
+        <div class="fiche-actions">
+          <a class="btn btn-outline" href={`#/avenant/${c.id}/nouveau`}><span class="sr-only">Changer le contrat (</span>Avenant<span class="sr-only">)</span></a>
+          <a class="btn btn-ghost" href={`#/fin/${c.id}`}>Fin du contrat</a>
         </div>
+        {(c.avenants?.length || c.end) && (
+          <p class="hint fiche-notes">
+            {c.avenants?.length ? `${c.avenants.length} avenant${c.avenants.length > 1 ? 's' : ''} déjà enregistré${c.avenants.length > 1 ? 's' : ''}` : ''}
+            {c.avenants?.length && c.end ? ' · ' : ''}
+            {c.end ? `Dernier jour : ${shortDate(c.end)}` : ''}
+          </p>
+        )}
       </main>
+      {couleur && <CouleurSheet c={c} onClose={() => setCouleur(false)} />}
     </>
+  );
+}
+
+/**
+ * Cadran du contrat (consigne T-126, 4 et 9.8) : une graduation par semaine de l'année du contrat en cours, semaines sans
+ * accueil (`weeksOff` du contrat et de ses avenants) claires, semaine en cours en or, heures par semaine au centre.
+ * Graphique : il double les textes de la fiche ; son aria-label dit tout.
+ */
+export function semainesContrat(c: Contract, t: string): { lundis: string[]; sansAccueil: Set<string>; courante: string } {
+  const lundi = (d: string) => addDays(d, -((new Date(d + 'T12:00:00Z').getUTCDay() + 6) % 7));
+  // Année du contrat en cours : du dernier anniversaire du début du contrat, 52 semaines.
+  const y = Number(t.slice(0, 4));
+  let debut = `${y}${c.start.slice(4)}`;
+  if (debut > t) debut = `${y - 1}${c.start.slice(4)}`;
+  if (debut < c.start) debut = c.start;
+  const premier = lundi(debut);
+  const lundis = Array.from({ length: 52 }, (_, i) => addDays(premier, i * 7));
+  const sansAccueil = new Set<string>([...(c.weeksOff ?? []), ...(c.avenants ?? []).flatMap((a) => a.changes.weeksOff ?? [])].map(lundi));
+  return { lundis, sansAccueil, courante: lundi(t) };
+}
+
+function CadranContrat({ c }: { c: Contract }) {
+  const t = today();
+  const tc = termsAt(c, t);
+  if (c.accueilOccasionnel) return <p class="fiche-occasionnel">Accueil occasionnel</p>;
+  const { lundis, sansAccueil, courante } = semainesContrat(c, t);
+  const heures = tc.planningVariable ? 'Variable' : hoursLabel(weeklyMinutes(tc.planning));
+  const semaines = tc.yearType === 'complete' ? 52 : tc.weeks;
+  const off = lundis.filter((l) => sansAccueil.has(l));
+  const label = `${heures === 'Variable' ? 'Horaires qui changent' : `${heures} par semaine`}, ${semaines} semaines d’accueil par an.${off.length ? ` Semaines sans accueil cette année : ${off.map((l) => `celle du ${shortDate(l)}`).join(', ')}.` : ''} Semaine en cours : celle du ${shortDate(courante)}.`;
+  const C = 80, R1 = 62, R2 = 74;
+  return (
+    <div class="cadran-contrat">
+      <svg viewBox="0 0 160 160" role="img" aria-label={label}>
+        {lundis.map((l, i) => {
+          const a = (i / 52) * 2 * Math.PI - Math.PI / 2;
+          const cls = l === courante ? 'cc-courante' : sansAccueil.has(l) ? 'cc-off' : 'cc-sem';
+          return <line x1={C + R1 * Math.cos(a)} y1={C + R1 * Math.sin(a)} x2={C + R2 * Math.cos(a)} y2={C + R2 * Math.sin(a)} class={cls} />;
+        })}
+        <text x={C} y={C + 6} text-anchor="middle" class="cc-heures">{heures}</text>
+        <text x={C} y={C + 26} text-anchor="middle" class="cc-semaines">{semaines} semaines</text>
+      </svg>
+    </div>
+  );
+}
+
+/**
+ * Couleur de l'enfant en feuille du bas (Vision 1.1) : même règle que l'écran Contrat (`Contrat.tsx`) : couleurs des autres
+ * enfants en cours grisées avec leur prénom ; toutes prises : choix libre. Le numéro de couleur est le seul champ écrit.
+ */
+function CouleurSheet({ c, onClose }: { c: Contract; onClose: () => void }) {
+  const s = useStore();
+  const [color, setColor] = useState(c.color % CHILD_COLORS.length);
+  const prises = couleursPrises(s.contracts, c.id, today());
+  return (
+    <Sheet title={`Couleur ${de(c.child)}`} onClose={onClose}>
+      <div class="couleurs couleurs-feuille" role="radiogroup" aria-label="Sa couleur">
+        {CHILD_COLORS.map((_, i) => {
+          // Toutes prises (plus de 8 enfants en cours) : on laisse choisir librement.
+          const par = prises.size < CHILD_COLORS.length ? prises.get(i) : undefined;
+          return (
+            <span class="couleur-case">
+              <button class="couleur" role="radio" aria-checked={color === i} disabled={!!par && color !== i} onClick={() => setColor(i)} aria-label={par ? `${COLOR_NAMES[i]}, déjà prise par ${par}` : COLOR_NAMES[i]}>
+                <Gommette name={par ?? (c.child || '?')} color={i} />
+              </button>
+              <span class="couleur-nom" aria-hidden="true">{par ?? COLOR_NAMES[i]}</span>
+            </span>
+          );
+        })}
+      </div>
+      <span class="hint">
+        <b>{COLOR_NAMES[color]}</b>
+        {prises.size > 0 && prises.size < CHILD_COLORS.length && ` · grisées : déjà prises par ${[...new Set(prises.values())].join(', ')}`}
+      </span>
+      {prises.get(color) && prises.size < CHILD_COLORS.length && (
+        <span class="hint warn">Même couleur que {prises.get(color)} : choisis-en une libre pour les distinguer d’un coup d’œil.</span>
+      )}
+      <button class="btn btn-primary btn-block btn-lg" onClick={async () => {
+        if (color !== c.color % CHILD_COLORS.length) await putContract({ ...(s.contracts.find((x) => x.id === c.id) ?? c), color });
+        onClose();
+      }}>Enregistrer</button>
+    </Sheet>
   );
 }
 

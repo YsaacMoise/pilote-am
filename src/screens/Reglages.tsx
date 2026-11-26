@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { saveSettings, useStore } from '../store';
+import { logUsage, saveSettings, useStore } from '../store';
 import { mesureActive, setMesure } from '../analytics';
 import { isDemo } from '../db';
 import { NumberInput, Seg, Switch, Topbar } from '../ui/kit';
@@ -49,6 +49,8 @@ export function Reglages() {
           <fieldset>
             <legend>Apparence</legend>
             <Seg label="Couleurs de l’app" value={theme} options={[{ v: 'light', l: 'Jour' }, { v: 'dark', l: 'Nuit' }, { v: 'auto', l: 'Automatique' }]} onChange={(v) => { setTheme(v); setT(v); }} />
+            {/* T-126 (Vision 1.1) : choix venu d'Aujourd'hui. Cartes = cadran, carte « Maintenant » et lignes ; Liste = une ligne par enfant. */}
+            {s.contracts.length > 1 && <Seg label="Affichage des enfants" value={s.settings.compact ? 'liste' : 'cartes'} options={[{ v: 'cartes', l: 'Cartes' }, { v: 'liste', l: 'Liste' }]} onChange={(v) => { saveSettings({ compact: v === 'liste' }); logUsage(v === 'liste' ? 'vue_liste' : 'vue_cartes', 'aujourdhui'); }} />}
             <p class="hint">Jour par défaut. Automatique suit le réglage de ton téléphone : jour la journée, nuit le soir s’il est réglé ainsi.</p>
             {/* T-118 : la paie du mois est cachée d'emblée dans l'écran Mois ; ce choix est gardé sur ce téléphone. */}
             <Switch label="Toujours afficher ma paie" hint="Dans l’écran Mois, la paie s’affiche directement, sans toucher « Voir ma paie du mois ». Gardé sur ce téléphone." checked={paie} onChange={(v) => { setPaieToujoursVisible(v); setPaie(v); }} />

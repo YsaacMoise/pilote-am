@@ -79,9 +79,9 @@ function useHash(): string {
 }
 
 const TABS: { href: string; label: string; icon: IconName; match: (p: string) => boolean }[] = [
-  { href: '#/', label: 'Aujourd’hui', icon: 'today', match: (p) => p === '' },
-  { href: '#/carnet', label: 'Carnet', icon: 'book', match: (p) => p === 'carnet' },
-  { href: '#/mois', label: 'Mois', icon: 'calendar', match: (p) => p === 'mois' || p === 'controle' },
+  { href: '#/', label: 'Aujourd’hui', icon: 'cadran', match: (p) => p === '' },
+  { href: '#/carnet', label: 'Carnet', icon: 'carnet', match: (p) => p === 'carnet' },
+  { href: '#/mois', label: 'Mois', icon: 'lunette', match: (p) => p === 'mois' || p === 'controle' },
   { href: '#/plus', label: 'Plus', icon: 'more', match: (p) => !['', 'carnet', 'mois', 'controle'].includes(p) },
 ];
 
@@ -174,7 +174,7 @@ export function App() {
         {!assistant && <nav class="tabbar" aria-label="Navigation principale">
           {TABS.map((t) => (
             <a href={t.href} aria-current={t.match(p) ? 'page' : undefined}>
-              <span class="tab-ico"><Icon name={t.icon} /></span>
+              <span class="tab-ico"><Icon name={t.icon} fin /></span>
               {t.label}
             </a>
           ))}
