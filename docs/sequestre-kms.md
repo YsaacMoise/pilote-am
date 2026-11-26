@@ -35,9 +35,12 @@ Le compte de service des fonctions de 2e génération est par défaut `<numéro 
 Activer les journaux d'audit « Data Access » de Cloud KMS (IAM › Journaux d'audit) : chaque déchiffrement y est tracé en plus de `sequestre-journal`.
 
 ## 4. E-mails
-Installer l'extension Firebase « Trigger Email from Firestore » (collection `mail`, un serveur d'envoi SMTP à fournir : nouveau sous-traitant à nommer au registre). **Obligatoire avant d'activer** (avant de coller la clé publique) : sans elle, aucun e-mail ne part et l'AM ne serait pas prévenue d'une demande. Les fonctions refusent tout compte sans adresse confirmée ; elles ne peuvent pas vérifier que l'extension tourne : faire une demande d'essai et vérifier l'e-mail reçu.
+Installer l'extension Firebase « Trigger Email from Firestore » (collection `mail`). Serveur d'envoi : Brevo (registre, A4), `smtp-relay.brevo.com`, port 587, identifiant = adresse du compte Brevo, mot de passe = clé SMTP de Brevo (collée par le DG, jamais écrite ailleurs). Expéditeur `Arvela <noreply@arvela.fr>`, domaine authentifié dans Brevo (enregistrements DKIM et code Brevo chez OVHcloud ; DMARC est en quarantaine). **Obligatoire avant d'activer** : sans elle, aucun e-mail ne part et l'AM ne serait pas prévenue d'une demande. Les fonctions refusent tout compte sans adresse confirmée ; elles ne peuvent pas vérifier que l'extension tourne : faire une demande d'essai et vérifier l'e-mail reçu.
+
+Effacement : chaque document `mail` porte `expireAt` (7 jours). Créer une fois la règle TTL : `gcloud firestore fields ttls update expireAt --collection-group=mail --enable-ttl --project arvela-app`.
 
 ## 5. Déployer
+**Avant la fusion de la demande qui colle la clé publique** : déployer les fonctions et les règles depuis la branche de cette demande. Sinon l'AM verrait « Copie Arvela : oui » et un bouton « Récupérer par Arvela » qui échoue. Le compte qui déploie doit pouvoir agir au nom de `sequestre@` (rôle `iam.serviceAccountUser`, inclus dans « Propriétaire »).
 ```
 cd functions && npm install && cd ..
 firebase deploy --only functions:sequestre --project arvela-app

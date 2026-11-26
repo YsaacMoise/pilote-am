@@ -31,7 +31,7 @@ Arvela a deux rôles (répartition retenue, à faire valider : voir docs/points-
 | Google (Firebase et Google Cloud). Entité contractante à relever dans la console (Google Ireland Limited selon les mentions légales) | Base Firestore et ses sauvegardes ; Firebase Authentication ; Firebase Hosting ; envoi des e-mails de compte | Firestore et sauvegardes : Paris (europe-west9). Authentication : États-Unis (page « Privacy and Security in Firebase »). Hosting : service mondial | Conditions de traitement des données Google (Firebase et Google Cloud) acceptées. Transferts : certification de Google LLC au cadre UE–États-Unis (Data Privacy Framework) et clauses contractuelles types des conditions Google | A1, A4, A6, B1, B2, B3 |
 | Google (reCAPTCHA Enterprise, via Firebase App Check) | Évaluation anti-robots | Infrastructure Google, hors UE possible | Google agit comme sous-traitant pour reCAPTCHA depuis le 2 avril 2026 (conditions Google Cloud) | A3 |
 | PostHog (PostHog Inc., hébergement UE) | Mesure d’usage | Francfort (région UE) | Accord de traitement signé ; il intègre les clauses contractuelles types (décision 2021/914, module 2) et mentionne l’adhésion de PostHog Inc. au Data Privacy Framework ; réutilisation pour l’entraînement d’IA refusée | A2 |
-| Brevo (Sendinblue SAS, Paris) | Envoi des e-mails de la copie scellée (demande, annulation, ouverture, changement d'adresse), par l'extension Firebase « Trigger Email from Firestore » | Union européenne : serveurs de Brevo et Google Cloud (page d'aide Brevo « Data storage location », lue le 26/11/2026) | Accord de traitement de Brevo, accepté à la création du compte | B1 bis (copie scellée) |
+| Brevo (Sendinblue SAS, Paris) | Envoi des e-mails de la copie scellée (demande, annulation, ouverture, changement d'adresse), par l'extension Firebase « Trigger Email from Firestore » | Union européenne : serveurs de Brevo et Google Cloud (page d'aide Brevo « Data storage location », lue le 26/11/2026) | Accord de traitement de Brevo, accepté à la création du compte | A4 |
 | OVHcloud | Nom de domaine arvela.fr, DNS ; redirection de contact@arvela.fr (à créer, action YKM) | France / UE | Accord de traitement intégré au contrat OVHcloud | A5 (courriels reçus sur contact@), aucun accès aux données de l’app |
 | Anthropic (assistant Claude) | Résumé hebdomadaire de la mesure d’usage, lancé par l’éditeur (annoncé dans la politique de confidentialité) | États-Unis | Lit **seulement des statistiques agrégées**, jamais d’événements individuels ni d’identifiants (règle inscrite dans la tâche planifiée le 04/11/2026). Cadre contractuel **non établi** : Anthropic n’agit comme sous-traitant, avec un accord de traitement, que sous ses conditions commerciales ; sous une offre grand public, ce cadre n’existe pas ; l’offre utilisée n’est pas notée ici. Mesure en place : aucune donnée personnelle n’est transmise (statistiques agrégées seulement). Voir la mesure 7 de l’analyse d’impact | A2 |
 
@@ -108,13 +108,13 @@ Constatées dans le code et la configuration le 4 novembre 2026.
 
 | Rubrique | Contenu |
 |---|---|
-| Finalité | Envoyer les e-mails de confirmation d’adresse et de nouveau mot de passe, et traiter le lien reçu (src/auth-action.ts : le code est lu une fois puis retiré de l’adresse) |
+| Finalité | Envoyer les e-mails de confirmation d’adresse et de nouveau mot de passe, et traiter le lien reçu (src/auth-action.ts : le code est lu une fois puis retiré de l’adresse). T-125 : prévenir l’AM à chaque demande, annulation et ouverture de la copie scellée, et l’ancienne adresse quand celle du compte change (functions/sequestre.js) |
 | Base légale | Exécution du contrat (article 6.1.b) |
 | Personnes concernées | Utilisatrices |
-| Données | Adresse e-mail ; lien à usage unique ; journaux d’envoi de Google |
-| Destinataires | Google (Firebase Authentication envoie les e-mails, expéditeur noreply@arvela.fr) ; OVHcloud pour les enregistrements DNS d’authentification du domaine |
-| Transferts hors UE | Oui (Firebase Authentication, États-Unis). Mêmes garanties qu’en A1 |
-| Durées | Liens à durée de vie courte fixée par Firebase ; journaux selon Google. Aucune liste d’envoi, aucun e-mail commercial |
+| Données | Adresse e-mail ; lien à usage unique ; journaux d’envoi de Google. Copie scellée : adresse du compte (et l’ancienne si elle change), texte fixe de l’e-mail (date d’ouverture possible), journaux d’envoi de Brevo |
+| Destinataires | Google (Firebase Authentication envoie les e-mails, expéditeur noreply@arvela.fr) ; Brevo pour les e-mails de la copie scellée (extension « Trigger Email from Firestore », collection `mail`, fermée aux clients) ; OVHcloud pour les enregistrements DNS d’authentification du domaine |
+| Transferts hors UE | Oui (Firebase Authentication, États-Unis). Mêmes garanties qu’en A1. Brevo : aucun (Union européenne) |
+| Durées | Liens à durée de vie courte fixée par Firebase ; journaux selon Google. Documents `mail` effacés 7 jours après leur création (règle TTL de Firestore sur `expireAt`) ; journaux d’envoi selon Brevo. Aucune liste d’envoi, aucun e-mail commercial |
 | Sécurité | DMARC en quarantaine ; code retiré de l’adresse après lecture, donc absent de l’historique et de la mesure d’usage |
 
 ## A5. Retours du test et contact
