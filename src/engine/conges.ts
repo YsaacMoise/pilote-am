@@ -692,8 +692,11 @@ function congesDeDepartBrut(c: Contract, trackedFrom: ISODate, r: ReponsesDepart
   return out;
 }
 
-/** T-119 : contrats dont les soldes de départ viennent du calcul de l'app (non confirmés par l'AM). Jamais enregistré. */
-const soldesCalcules = new WeakSet<Contract>();
+/**
+ * T-119 : soldes de départ venus du calcul de l'app (non confirmés par l'AM). Jamais enregistré. Relecture T-119 (M1) : la
+ * marque est posée sur l'objet des soldes, que les copies du contrat ({ ...c, end }) gardent, et non sur le contrat.
+ */
+const soldesCalcules = new WeakSet<object>();
 const memoDepart = new WeakMap<Contract, Map<string, Contract>>();
 /** T-119 : soldes de départ calculés par l'app (0 jour pris, sans absence) pour un contrat dont les soldes ne sont pas donnés */
 export function avecSoldesCalcules(c: Contract, enfants = 0, amMoins21Jusqu?: number): Contract {
@@ -705,12 +708,12 @@ export function avecSoldesCalcules(c: Contract, enfants = 0, amMoins21Jusqu?: nu
   if (deja) return deja;
   const d = congesDeDepart(c, c.trackedFrom, {}, enfants, amMoins21Jusqu);
   const cn = d.aConfirmer ? c : { ...c, balances: { ...c.balances, cpRestants: d.cpRestants, cpEnCours: d.cpEnCours } };
-  if (!d.aConfirmer) soldesCalcules.add(cn);
+  if (!d.aConfirmer) soldesCalcules.add(cn.balances);
   m.set(k, cn);
   return cn;
 }
 /** T-119 : les soldes de départ de ce contrat (normalisé par makeCtx) sont calculés par l'app et attendent la réponse de l'AM */
-export const soldesDepartAConfirmer = (c: Contract): boolean => soldesCalcules.has(c);
+export const soldesDepartAConfirmer = (c: Contract): boolean => soldesCalcules.has(c.balances);
 /** T-119 : la question posée dans le mois, une seule fois, en un geste */
 export const MESSAGE_CONGES_DEPART = 'Congés pris avant l’app : Arvela a calculé tes congés depuis le début du contrat. Dis combien de jours tu as déjà pris depuis le 1er juin (0 proposé), puis valide.';
 

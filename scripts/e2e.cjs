@@ -80,16 +80,29 @@ async function run(scheme) {
   await p.getByRole('radio', { name: /^Par jour d’accueil/ }).click();
   await p.getByText('Reprise d’un contrat en cours').waitFor();
   // T-119 : contrat commencé avant l'app : Arvela calcule les congés de départ ; l'AM ne donne que les jours déjà pris (0 proposé).
+  // Début au 01/09/2025 (droits de la période précédente) : la question est posée, 0 proposé.
+  await p.getByLabel('Premier jour d’accueil').fill('2025-09-01');
   const prisAvant = p.getByLabel('Jours de congés déjà pris depuis le 1er juin 2026');
+  await prisAvant.waitFor();
   assert((await prisAvant.inputValue()) === '0', 'congés de départ : 0 jour pris proposé d’office');
   await p.getByText('Comment c’est calculé').waitFor();
   assert(true, 'congés de départ : calcul montré (acquis, pris, reste)');
+  // Début au 01/09/2026 (après le 1er juin) : aucun droit à prendre, la question n'est pas posée.
+  await p.getByLabel('Premier jour d’accueil').fill('2026-09-01');
+  await p.getByText('le contrat a commencé après le 1er juin 2026', { exact: false }).waitFor();
+  assert(!(await prisAvant.isVisible()), 'congés de départ : pas de question quand aucun droit n’est à prendre');
   await shot('01-contrat');
-  await p.getByRole('button', { name: 'Enregistrer et reprendre l’historique' }).click();
+  // T-119 : la carte des congés de départ allonge l'écran : le bouton est centré avant le clic (sinon sous la barre d'onglets).
+  const enregistrer = p.getByRole('button', { name: 'Enregistrer et reprendre l’historique' });
+  // Le message de la mesure d'usage (affiché à la création du compte) couvre le bas de l'écran : il part seul, on l'attend.
+  await p.locator('.toast', { hasText: 'Pour s’améliorer' }).waitFor({ state: 'hidden', timeout: 20000 }).catch(() => {});
+  await enregistrer.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await enregistrer.click();
   await p.getByText('Indique qui fournit les repas de l’enfant.').waitFor();
   assert(true, 'contrat : choix des repas obligatoire');
   await p.getByRole('radio', { name: /^Les parents/ }).click();
-  await p.getByRole('button', { name: 'Enregistrer et reprendre l’historique' }).click();
+  await enregistrer.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await enregistrer.click();
   await p.getByText('1 mois sans bulletin').waitFor();
   assert(true, 'contrat créé, historique demandé');
 

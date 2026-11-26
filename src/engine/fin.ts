@@ -11,7 +11,7 @@ import {
   addDays, addMonthsToDate, cpPeriod, cpPeriodStartYear, fullMonthsBetween, lastDay, monthOf, monthsBetween, shortDate,
   type ISODate, type Month,
 } from './dates';
-import { acquisition, baseDixieme, compteur, cpForMonth, cpPrisEntre, indemnite, maintien, verseDansSalairePV } from './conges';
+import { acquisition, baseDixieme, compteur, cpForMonth, cpPrisEntre, indemnite, maintien, MESSAGE_CONGES_DEPART, soldesDepartAConfirmer, verseDansSalairePV } from './conges';
 import { makeCtx, monthBase, planningBrutMin, monthBrut, regulStart, semainesSansAccueilAnnee, semainesSansAccueilManquantes, termsAt, type Ctx, regularisation, brutConnu, brutDuNet } from './payroll';
 import { regionDe } from './regions';
 
@@ -641,7 +641,10 @@ export function finDeContrat(ctx: Ctx, notif: ISODate, motif: Motif, enfants = 0
 
   // T-031 : un cas non géré pendant le contrat fausse les salaires de référence, l'ancienneté retenue ou les congés : aucun
   // montant. T-074 (D1) : contrat avec la fin et la réponse sur le préavis de ce calcul.
-  const nonGere = [...refusFin, ...nonGeresPeriode(endCtx.c, ctx.leaves, c.start, dernierJour, 'non')];
+  // Relecture T-119 (M1) : congés de départ calculés par l'app et pas encore confirmés : la fin (congés non pris, 1/80) en
+  // dépend ; elle attend la réponse de l'AM (un geste, carte de l'écran Fin), jamais un calcul sur des soldes supposés.
+  // Un CDD a sa propre question (jours pris avant le suivi, plancher L1242-16, T-078) : pas de seconde question.
+  const nonGere = [...refusFin, ...(soldesDepartAConfirmer(endCtx.c) && !endCtx.c.cdd ? [MESSAGE_CONGES_DEPART] : []), ...nonGeresPeriode(endCtx.c, ctx.leaves, c.start, dernierJour, 'non')];
   if (nonGere.length) {
     return {
       ancienneteMois: anc, preavisLabel, preavisFin, dernierJour, indemniteRupture: 0, ruptureExplication: 'Non calculée : cas non géré.',
@@ -986,7 +989,7 @@ export function finDeCdd(ctx: Ctx, dernierJour: ISODate, finCdd: FinCdd | FinCdd
     }
   }
   const endCtx: Ctx = { ...ctx, c: { ...c, end: dernierJour }, cache: new Map(), finControlee: true };
-  const nonGere = nonGeresPeriode(endCtx.c, ctx.leaves, c.start, dernierJour, 'non');
+  const nonGere = [...(soldesDepartAConfirmer(endCtx.c) && !endCtx.c.cdd ? [MESSAGE_CONGES_DEPART] : []), ...nonGeresPeriode(endCtx.c, ctx.leaves, c.start, dernierJour, 'non')];
   if (nonGere.length) return vide(nonGere);
 
   // T-103 (F11, F12) : une seule lecture du salaire du CDD : mensualisé (CCN 108.1, L1242-14) et mode 46 semaines avec la
