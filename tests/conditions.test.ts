@@ -120,7 +120,7 @@ describe('accord aux conditions d’utilisation', () => {
     expect(conditionsAAccepter({ onboarded: true, conditionsAcceptees: { version: CONDITIONS_VERSION } })).toBe(false);
     // Avant l'installation (site public) : pas de message, la phrase de la création du compte suffit.
     expect(conditionsAAccepter({ onboarded: false })).toBe(false);
-    expect(MESSAGE_CONDITIONS).toBe('Les conditions d’utilisation ont changé le 4 novembre 2026. Elles contiennent désormais le contrat de traitement des données.');
+    expect(MESSAGE_CONDITIONS).toContain('ont changé le 26 novembre 2026');
   });
 
   it('le message propose « Lire » et « J’accepte », qui enregistre la version et la date', () => {

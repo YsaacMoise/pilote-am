@@ -100,6 +100,23 @@ Ce que le nombre de jours peut laisser deviner (durées de src/engine/evenements
 
 **Ce qui reste.** Le nombre de jours d’un événement familial reste nécessaire à la paie et peut, pour certaines durées, laisser deviner la nature : la minimisation est donc partielle. Une absence enregistrée avec sa nature avant le 21/11/2026 peut rester jusqu’à 98 jours dans les sauvegardes de la base, et dans les copies automatiques du téléphone jusqu’à leur remplacement ; elle n’est plus lue avec sa nature. Le texte que l’AM copie pour l’envoyer aux parents (écran Mois) et la ligne de salaire du relevé du mois utilisent la même formulation que le lien, sans motif (depuis la T-103, plus aucune part laissée en attente). Le relevé, document que l’AM garde ou envoie, montre encore pour chaque jour le type d’absence de l’AM (« Événement familial », « Absence non gérée par l’app »…), comme sur main.
 
+### 2 ter. Chiffrement de bout en bout des données de santé (T-121, option b, 26 novembre 2026)
+
+Décision du DG : données de santé en ligne, chiffrées de bout en bout, sans hébergeur certifié HDS (lecture retenue : le carnet d’une AM est hors du champ de l’article L1111-8 du code de la santé publique ; point « soins » non tranché, regles/t123-hds.md ; risque si un contrôle juge l’inverse : L1115-1). Le chiffrement ne fait pas sortir du RGPD : il est une mesure de sécurité (art. 32.1.a) et, en cas de fuite, peut dispenser de prévenir chaque famille (art. 34.3.a) ; la CNIL reste notifiée (art. 33).
+
+| Donnée | Avant | Depuis la T-121 |
+|---|---|---|
+| Carnet (genre, texte, température, biberon, sommeil, notes libres) | Copie en ligne en clair | Chiffré sur le téléphone ; en ligne restent l’enfant, la date et l’heure |
+| Case « handicap ou maladie » | En clair | Chiffrée |
+| Secret et code du lien parent | En clair dans le compte de l’AM | Chiffrés : le lien devient vraiment chiffré de bout en bout |
+| Motifs utiles à la paie (malade, certificat, absences de l’AM, inaptitude, jours d’événement) | En clair | Inchangé, lisible par l’app de l’AM : un appareil resté sur une ancienne version calculerait faux sans eux |
+| Durée | Tant que le compte existe | Carnet et case effacés 5 ans après la fin du dernier contrat de l’enfant (C. civ. 2224) ; CNIL : 3 ans pour les crèches |
+| Base légale du carnet de santé | Accord écrit demandé par l’AM, non noté | Consentement explicite des parents (9.2.a), confirmé et daté dans l’app ; retrait : notes de santé effacées |
+
+Clé : secret de 128 bits tiré au hasard sur le téléphone, montré à l’AM comme « clé de secours » (26 caractères) ; HKDF-SHA-256 en dérive la clé AES-GCM 256 bits et une empreinte publique. Le secret reste sur les appareils de l’AM (stockage du navigateur) ; jamais en ligne. Données déjà en ligne en clair : chiffrées par le téléphone de l’AM à partir de leur propre version en ligne, déchiffrées et comparées avant l’écriture, relues après.
+
+Effets sur les risques : risque 1 (accès illégitime) fortement réduit pour ces données : un accès à la base, y compris par l’éditeur ou Google, ne les révèle plus, sauf dans les sauvegardes faites avant le chiffrement (98 jours au plus ; Google : 180 jours au plus). Risque 3 (disparition) : nouveau cas, la perte de la clé de secours et de tous les appareils rend ces données illisibles ; mesure : invite à garder la clé tant qu’elle ne l’est pas, fichier et affichage dans Compte, texte clair sur la conséquence. Risque résiduel : un appareil resté sur une ancienne version perd la case handicap et peut abîmer le lien des parents jusqu’à sa mise à jour ; mesure : repère d’appareil et message « mets à jour ».
+
 ---
 
 ## 3. Risques
@@ -207,4 +224,5 @@ Ce que le nombre de jours peut laisser deviner (durées de src/engine/evenements
 
 Modèle remis par le sous-traitant, que chaque AM peut reprendre à son compte.
 | 25 novembre 2026 | T-104 : raison des quatre absences protégées de l’AM enregistrée (décision du DG du 22/11/2026), avec la nature de l’accident du travail ; périodes d’accueil de l’accueil occasionnel ; avenant d’un contrat à horaires variables (forme, cycle, heures payées chaque mois). Base 9.2.b ; pas d’hébergement certifié (CSP L1111-8). Rien de nouveau vers les parents. |
+| 26 novembre 2026 | T-121, option b : chiffrement de bout en bout du carnet, de la case handicap et du secret du lien (section 2 ter) ; consentement explicite des parents daté ; effacement à 5 ans ; risques 1 et 3 revus |
 | 26 novembre 2026 | T-115 et T-116 : brut calculé depuis le net sur le téléphone (aucun calcul en ligne) ; champ oui ou non `balances.cpSaisi` (solde de congés de départ donné), sans donnée nouvelle sur la personne. Aucun risque nouveau ; rien de nouveau vers les parents. |

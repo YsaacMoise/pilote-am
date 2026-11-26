@@ -1,11 +1,11 @@
 import { useState } from 'preact/hooks';
-import { activeContracts, addJournal, deleteJournal, logUsage, toast, uid, updateJournal, useStore, ctxFor } from '../store';
+import { activeContracts, addJournal, deleteJournal, logUsage, putContract, state, toast, uid, updateJournal, useStore, ctxFor } from '../store';
 import { addDays, dayLabel, minutes, nowHHMM, today, type ISODate } from '../engine/dates';
 import { dayInfo } from '../engine/payroll';
 import type { Contract, Journal } from '../engine/model';
 import {
   A_APPORTER, KIND_LABEL, choseApporter, detailApporter, detailReveilOublie, estApporter, dureeLabel, insecable, reveilOublie, detailBiberon, detailSieste, detailTemperature, estFievre, hh, parseMl, parseTemperature, resumeJour,
-  premierJourCarnet, siesteEnCours, temperatureLabel, type Kind,
+  premierJourCarnet, siesteEnCours, temperatureLabel, estNoteSante, type Kind,
 } from '../engine/carnet';
 import { Gommette, Sheet, Topbar } from '../ui/kit';
 import { Icon, type IconName } from '../ui/icons';
@@ -212,7 +212,7 @@ export function Carnet() {
                       <button
                         class="tl-body ph-no-capture"
                         aria-label={`Modifier la note de ${hh(e.time)}`}
-                        onClick={() => setSheet({ kind: defDe(e), edit: e })}
+                        onClick={() => ('sante' in e ? toast('Cette note est chiffrée : entre ta clé de secours dans Plus › Compte pour la lire.', undefined, 'warn') : setSheet({ kind: defDe(e), edit: e }))}
                       >
                         <b>{estApporter(e) ? 'À apporter' : KIND_LABEL[e.kind]}</b> · <span class="ph-no-capture" data-ph-mask="">{insecable(estApporter(e) ? choseApporter(e) : reveilOublie(e, t) ? detailReveilOublie(e.time) : e.temp !== undefined && estFievre(e.temp) ? e.detail.replace(' (fièvre)', '') : e.detail)}</span>
                         {e.temp !== undefined && estFievre(e.temp) && <span class="tag warn tl-tag">Fièvre</span>}
@@ -294,6 +294,21 @@ function EntrySheet({ cs, kind, date, edit, ouverte, onClose }: {
   const [temp, setTemp] = useState(edit?.temp !== undefined ? temperatureLabel(edit.temp).replace(' °C', '') : '');
   const [text, setText] = useState(edit && texteLibre ? (kind.apporter ? choseApporter(edit) : edit.detail) : '');
 
+  // T-121 : enfants dont les parents n'ont pas encore donné leur accord écrit pour noter sa santé
+  const sansAccord = cs.filter((c) => !(state.contracts.find((x) => x.id === c.id) ?? c).accordSante);
+  const [besoinAccord, setBesoinAccord] = useState(false);
+  const [refusAccord, setRefusAccord] = useState(false);
+  const demandeAccord = sansAccord.length > 0 && ((kind.k === 'soin' && !edit) || besoinAccord);
+  async function donnerAccord() {
+    const jour = today();
+    for (const c of sansAccord) {
+      const cur = state.contracts.find((x) => x.id === c.id) ?? c;
+      await putContract({ ...cur, accordSante: jour });
+    }
+    logUsage('accord_sante_parents', 'carnet');
+    setBesoinAccord(false);
+  }
+
   const finInvalide = !!fin && fin <= time;
   const passeInvalide = !!debutPasse && !!finPasse && finPasse <= debutPasse;
   const reveilInvalide = !!ouverte && heureReveil <= ouverte.time;
@@ -309,6 +324,8 @@ function EntrySheet({ cs, kind, date, edit, ouverte, onClose }: {
   const tempOk = parseTemperature(temp);
 
   async function save(saisie: Saisie, usage: string) {
+    // T-121 : une note de santé demande l'accord écrit des parents de chaque enfant concerné (RGPD art. 9.2.a).
+    if (estNoteSante({ kind: kind.k, ...saisie }) && sansAccord.length) { setBesoinAccord(true); return; }
     return saveAt(time, saisie, usage);
   }
 
@@ -380,6 +397,29 @@ function EntrySheet({ cs, kind, date, edit, ouverte, onClose }: {
   );
 
   const names = cs.map((c) => c.child).join(', ');
+  if (demandeAccord) {
+    const qui = de(sansAccord.map((c) => c.child).join(', '));
+    return (
+      <Sheet title={`Santé ${qui}`} onClose={onClose}>
+        <div class="stack">
+          <p>Les soins, les températures et les symptômes touchent à la santé {qui}. Pour les noter dans Arvela, il te faut l’accord écrit de ses parents.</p>
+          <p class="hint">Avec leur accord, ces notes sont copiées dans ton compte chiffrées de bout en bout : seuls tes appareils (avec ta clé de secours) et le lien des parents peuvent les lire, pas Arvela. Elles sont effacées 5 ans après la fin du dernier contrat de l’enfant. Les parents peuvent retirer leur accord à tout moment.</p>
+          {refusAccord ? (
+            <>
+              <p role="status">Sans leur accord, n’en note rien ici. Le message prêt à leur envoyer est dans la <a href="#/confidentialite">politique de confidentialité</a>.</p>
+              <button class="btn btn-outline btn-block" onClick={onClose}>Fermer</button>
+            </>
+          ) : (
+            <>
+              <button class="btn btn-primary btn-lg btn-block" onClick={() => void donnerAccord()}>Oui, j’ai leur accord écrit</button>
+              <button class="btn btn-outline btn-block" onClick={() => setRefusAccord(true)}>Pas encore</button>
+            </>
+          )}
+        </div>
+      </Sheet>
+    );
+  }
+
   return (
     <Sheet title={edit ? `Modifier : ${(kind.apporter ? kind.l : KIND_LABEL[kind.k]).toLowerCase()}, ${names}` : `${kind.l}, ${names}`} onClose={onClose}>
       {ouverte ? (

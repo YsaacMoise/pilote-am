@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
-import { cloudInfo, statusLine, useCloud, type CloudStatus } from '../cloud-state';
-import { toast, useStore } from '../store';
+import { appareilsAnciens, cleLocale, cloudInfo, statusLine, useCloud, type CloudStatus } from '../cloud-state';
+import { saveSettings, state, toast, useStore } from '../store';
+import { shareFile } from '../share';
+import { today } from '../engine/dates';
 import { Banner, Sheet, TextInput, Topbar, useErreurAffichee } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { PasswordRules } from '../ui/PasswordRules';
@@ -139,6 +141,9 @@ export function Compte() {
               <Banner tone={c.refus ? 'warn' : TONE[c.status]} icon={c.status === 'synced' && !c.refus ? 'cloud' : undefined}>{statusLine(c)}</Banner>
               {c.status !== 'choice' && <p class="hint">Chaque changement est rangé sur le téléphone puis copié dans ton compte dès qu’il y a du réseau. Sur un autre appareil, connecte-toi avec la même adresse pour tout retrouver.</p>}
             </section>
+            {appareilsAnciens() > 0 && <Banner tone="warn">{appareilsAnciens() === 1 ? 'Un autre appareil utilise' : `${appareilsAnciens()} autres appareils utilisent`} une ancienne version d’Arvela. Ouvre l’app dessus et touche « Mettre à jour » : une ancienne version ne lit pas ce qui est chiffré (carnet, case handicap, lien des parents), et peut afficher « envoi refusé » jusqu’à sa mise à jour.</Banner>}
+            {c.cleManquante && <EntrerCle />}
+            {c.cleOk && <CleSecours />}
             {c.verified === false && <ConfirmAddress email={c.email!} />}
             {c.status === 'choice' && <LinkChoice />}
             <div class="stack">
@@ -224,5 +229,61 @@ function DeleteSheet({ onClose }: { onClose: () => void }) {
         <button class="btn btn-danger btn-block" type="submit" disabled={busy || !pw}>{busy ? 'Suppression…' : 'Supprimer définitivement'}</button>
       </form>
     </Sheet>
+  );
+}
+
+/**
+ * T-121 (option b) : clé de secours. Elle protège le carnet (soins, températures, notes), la case « handicap ou maladie » et
+ * le code du lien des parents, chiffrés de bout en bout dans le compte. Elle reste sur les appareils de l'AM.
+ */
+function CleSecours() {
+  useStore();
+  const [voir, setVoir] = useState(false);
+  const code = cleLocale();
+  if (!code) return null;
+  const gardee = state.settings.cleGardee;
+  return (
+    <section class="card stack-sm" aria-labelledby="cle-t">
+      <h2 id="cle-t" class="row"><Icon name="lock" />Ta clé de secours</h2>
+      <p>Le carnet (soins, températures, notes), la case « handicap ou maladie » et le code du lien des parents sont chiffrés avant de partir : ni Arvela ni personne d’autre ne peut les lire en ligne. La clé reste sur tes appareils.</p>
+      <p>Garde-la hors de ce téléphone (papier, autre appareil, gestionnaire de mots de passe). Elle sert à tout retrouver sur un nouveau téléphone.</p>
+      <p class="hint warn"><b>Si tu perds cette clé et tous tes appareils, ces données ne peuvent plus être lues, par personne.</b> Le reste (contrats, journées, montants) se retrouve avec ton compte.</p>
+      {voir ? <p class="share-code" style={{ fontSize: '1.1rem', wordBreak: 'break-all' }} aria-label="Clé de secours">{code}</p> : <button class="btn btn-outline btn-block" onClick={() => setVoir(true)}>Afficher la clé</button>}
+      <button class="btn btn-outline btn-block" onClick={async () => {
+        const r = await shareFile(new File([`Clé de secours Arvela (données de santé chiffrées)\n${code}\nGarde ce fichier hors de ton téléphone. Sans lui ni aucun de tes appareils, ces données ne peuvent plus être lues.\n`], 'cle-de-secours-arvela.txt', { type: 'text/plain' }));
+        if (r === 'downloaded' || r === 'shared') toast('Fichier de la clé enregistré. Garde-le hors de ce téléphone.');
+      }}>Enregistrer la clé dans un fichier</button>
+      {gardee
+        ? <p class="hint">Tu as dit l’avoir gardée le {gardee.split('-').reverse().join('/')}.</p>
+        : <button class="btn btn-primary btn-block" onClick={() => void saveSettings({ cleGardee: today() })}>Je l’ai gardée</button>}
+    </section>
+  );
+}
+
+/** T-121 : ce téléphone n'a pas la clé de secours du compte : il la demande (tapée, collée ou lue dans un fichier). */
+function EntrerCle() {
+  const [texte, setTexte] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const essayer = async (t: string) => {
+    setBusy(true); setError('');
+    try { await (await cloud()).entrerCle(t); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <section class="card stack-sm" aria-labelledby="entrer-cle-t">
+      <h2 id="entrer-cle-t" class="row"><Icon name="lock" />Entre ta clé de secours</h2>
+      <p>Ton compte garde le carnet, la case « handicap ou maladie » et le code du lien des parents chiffrés. Ce téléphone ne peut pas les lire sans ta clé de secours (26 lettres et chiffres, par groupes de 4). Tes contrats, journées et montants, eux, sont déjà là. Tant que la clé manque, les notes du carnet que tu ajoutes ici restent sur ce téléphone, sans copie dans ton compte.</p>
+      <TextInput label="Clé de secours" value={texte} onChange={setTexte} placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XX" />
+      {error && <p class="hint warn" role="alert">{error}</p>}
+      <button class="btn btn-primary btn-block" disabled={busy || !texte.trim()} onClick={() => void essayer(texte)}>{busy ? 'Vérification…' : 'Ouvrir mes données'}</button>
+      <label class="btn btn-outline btn-block">
+        Ouvrir le fichier de la clé
+        <input type="file" accept=".txt,text/plain" style={{ display: 'none' }} onChange={async (e) => {
+          const f = (e.target as HTMLInputElement).files?.[0];
+          if (f) await essayer(await f.text());
+        }} />
+      </label>
+      <p class="hint">Tu ne l’as plus ? Elle s’affiche dans Compte sur un autre appareil où tu es connectée. Sans elle ni aucun appareil, le carnet et la case ne peuvent plus être lus ; tout le reste marche.</p>
+    </section>
   );
 }
