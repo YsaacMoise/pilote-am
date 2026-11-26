@@ -207,3 +207,4 @@ Ce que le nombre de jours peut laisser deviner (durées de src/engine/evenements
 
 Modèle remis par le sous-traitant, que chaque AM peut reprendre à son compte.
 | 25 novembre 2026 | T-104 : raison des quatre absences protégées de l’AM enregistrée (décision du DG du 22/11/2026), avec la nature de l’accident du travail ; périodes d’accueil de l’accueil occasionnel ; avenant d’un contrat à horaires variables (forme, cycle, heures payées chaque mois). Base 9.2.b ; pas d’hébergement certifié (CSP L1111-8). Rien de nouveau vers les parents. |
+| 26 novembre 2026 | T-115 et T-116 : brut calculé depuis le net sur le téléphone (aucun calcul en ligne) ; champ oui ou non `balances.cpSaisi` (solde de congés de départ donné), sans donnée nouvelle sur la personne. Aucun risque nouveau ; rien de nouveau vers les parents. |
