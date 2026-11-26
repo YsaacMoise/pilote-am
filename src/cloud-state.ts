@@ -32,6 +32,8 @@ export interface CloudInfo {
   cleOk?: boolean;
   /** T-121 : identifiant du compte connecté (pour trouver sa clé sur ce téléphone) */
   uid?: string;
+  /** T-125 : nombre de clés d'accès (Face ID, empreinte) qui protègent la clé de secours du compte */
+  paquets?: number;
 }
 
 /** Message du bandeau quand le serveur refuse un envoi (code d'erreur Firebase ou du faux serveur) */

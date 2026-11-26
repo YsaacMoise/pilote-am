@@ -17,8 +17,9 @@ import { isDemo } from '../db';
 import { Icon } from '../ui/icons';
 import { bornesBande, decaler, finParDefaut, finPourJour, joursBande, libelleBande, peutAvancer, peutReculer } from '../ui/bandeJours';
 import { de } from '../engine/texte';
-import { hasCloudAccount, LS, lsGet, lsSet, useCloud } from '../cloud-state';
-import { copieAJour, rappelDuJour } from '../rappels';
+import { hasCloudAccount, useCloud } from '../cloud-state';
+import { aUnFilet, copieAJour, rappelDuJour } from '../rappels';
+import { BoutonCleAcces } from '../ui/CleAcces';
 
 const fmtH = (t: string) => t.replace(/^0(\d)/, '$1').replace(':', ' h ');
 
@@ -93,12 +94,11 @@ export function Today() {
   const lastBackup = s.settings.lastBackup;
   // T-121 : avec un compte et une copie à jour, plus de rappel chaque semaine (src/rappels.ts).
   const cl = useCloud();
-  const [, setEcartee] = useState(0);
   const compte = !isDemo() && hasCloudAccount() && !!cl.email;
   const rappel = rappelDuJour({
     contrats: s.contracts.length, maintenant: Date.now(), derniereSauvegarde: lastBackup,
     compte, copieAJour: copieAJour(cl), cleOk: !!cl.cleOk, cleManquante: !!cl.cleManquante,
-    cleGardee: s.settings.cleGardee, inviteEcartee: Number(lsGet(LS.inviteCle) ?? 0) || undefined,
+    filet: aUnFilet({ paquets: cl.paquets, cleGardee: s.settings.cleGardee, filets: s.settings.filets }),
   });
   const amToday = s.leaves.find((l) => day >= l.from && day <= l.to);
 
@@ -174,11 +174,11 @@ export function Today() {
 
         {day === t && rappel === 'cle' && (
           <Banner tone="info" icon="shield">
-            <strong>Garde ta clé de secours</strong>
-            <span>Tes données sont copiées dans ton compte : plus besoin de sauvegarde chaque semaine. Le carnet et la case handicap ou maladie y sont chiffrés : sans ta clé de secours, un nouveau téléphone ne pourra pas les lire.</span>
+            <strong>Protège ta clé de secours</strong>
+            <span>Plus besoin de sauvegarde chaque semaine : tout est copié dans ton compte. Le carnet y est chiffré avec ta clé de secours ; mets-la à l’abri pour ne jamais le perdre, même avec ton téléphone.</span>
             <div class="btn-row">
-              <a class="btn btn-outline" href="#/compte">Voir ma clé</a>
-              <button class="btn btn-ghost" onClick={() => { lsSet(LS.inviteCle, String(Date.now())); setEcartee(Date.now()); }}>Plus tard</button>
+              <BoutonCleAcces mode="proteger" />
+              <a class="btn btn-ghost" href="#/compte">Autres moyens</a>
             </div>
           </Banner>
         )}
@@ -186,7 +186,7 @@ export function Today() {
           <Banner tone="warn" icon="shield">
             <strong>Entre ta clé de secours</strong>
             <span>Sans elle, ce téléphone ne lit pas le carnet ni la case handicap, et ses nouvelles notes du carnet attendent sur lui sans partir dans ton compte. Entre-la vite, ou fais une sauvegarde dans Fichiers.</span>
-            <div class="btn-row"><a class="btn btn-outline" href="#/compte">Entrer ma clé</a><a class="btn btn-ghost" href="#/sauvegarde">Sauvegarder</a></div>
+            <div class="btn-row"><BoutonCleAcces mode="ouvrir" /><a class="btn btn-outline" href="#/compte">Entrer ma clé</a><a class="btn btn-ghost" href="#/sauvegarde">Sauvegarder</a></div>
           </Banner>
         )}
         {day === t && rappel === 'sauvegarde' && (

@@ -45,6 +45,15 @@ export interface Backend {
    * transaction. Rend le nombre de documents écrits. Il faut du réseau.
    */
   remplacerSi(uid: string, docs: Array<{ s: RemoteDoc['s']; k: string; v: string; t: number }>): Promise<number>;
+  /**
+   * T-125 : copie scellée chez Arvela (sync/sequestre.ts). Clé publique KMS (PEM) ; null tant que le DG ne l'a pas créée.
+   * Puis demande d'ouverture (rend l'heure où elle sera possible), état, annulation, ouverture (contenu déchiffré par KMS).
+   */
+  sequestreClePublique(): Promise<string | null>;
+  sequestreDemander(): Promise<number>;
+  sequestreEtat(): Promise<number | null>;
+  sequestreAnnuler(): Promise<void>;
+  sequestreOuvrir(): Promise<{ s: string; u: string; c: string }>;
   /** Écoute les documents modifiés après `since` (ms). Les échos des écritures de ce téléphone sont filtrés. */
   listen(uid: string, since: number, cb: (docs: RemoteDoc[], meta: ListenMeta) => void, onError: (e: unknown) => void): () => void;
   /**

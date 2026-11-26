@@ -986,3 +986,12 @@ h1.h-card { font-size: 25px; }
 .summary-info { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; line-height: 1.4; opacity: 0.88; }
 .summary-info svg { flex: none; margin-top: 2px; }
 .summary-info a { color: inherit; text-decoration: underline; }
+
+/* T-125 : feuille de la clé de secours, seule imprimée (écran Compte, « Imprimer ma clé ») */
+.feuille-cle { display: none; }
+@media print {
+  body.impression-cle * { visibility: hidden !important; }
+  body.impression-cle .feuille-cle, body.impression-cle .feuille-cle * { visibility: visible !important; }
+  body.impression-cle .feuille-cle { display: block; position: fixed; inset: 0; padding: 2cm; background: #fff; color: #000; font-size: 14pt; }
+  body.impression-cle .feuille-code { font-family: monospace; font-size: 22pt; letter-spacing: .05em; margin: 1cm 0; word-break: break-all; }
+}

@@ -63,6 +63,10 @@ const cas = [
   ['26 ter. T-121 : Alice remplace son coffre : refusé', () => assertFails(setDoc(doc(alice, 'users/alice/data/kv~coffre'), { s: 'kv', k: 'coffre', v: '{"k":"coffre","v":{"id":"b"}}', t: serverTimestamp() }))],
   ['26 quater. T-121 : Alice marque son coffre supprimé : refusé', () => assertFails(setDoc(doc(alice, 'users/alice/data/kv~coffre'), { s: 'kv', k: 'coffre', v: null, t: serverTimestamp() }))],
   ['26 quinquies. T-121 : Alice efface son coffre (suppression du compte)', () => assertSucceeds(deleteDoc(doc(alice, 'users/alice/data/kv~coffre')))],
+  ['26 sexies. T-125 : Alice range un paquet de clé d’accès (document à part, kv~coffre intact)', () => assertSucceeds(setDoc(doc(alice, 'users/alice/data/kv~cleacces-AbC_d-1'), { s: 'kv', k: 'cleacces-AbC_d-1', v: '{"k":"cleacces-AbC_d-1","v":{"version":1}}', t: serverTimestamp(), d: 'appareil-1' }))],
+  ['26 septies. T-125 : Alice réécrit son paquet (renvoi par la synchronisation)', () => assertSucceeds(setDoc(doc(alice, 'users/alice/data/kv~cleacces-AbC_d-1'), { s: 'kv', k: 'cleacces-AbC_d-1', v: '{"k":"cleacces-AbC_d-1","v":{"version":1}}', t: serverTimestamp() }))],
+  ['26 octies. T-125 : Alice retire un paquet', () => assertSucceeds(deleteDoc(doc(alice, 'users/alice/data/kv~cleacces-AbC_d-1')))],
+  ['26 nonies. T-125 : Bob range un paquet chez Alice : refusé', () => assertFails(setDoc(doc(bob, 'users/alice/data/kv~cleacces-X'), { s: 'kv', k: 'cleacces-X', v: '{}', t: serverTimestamp() }))],
   ['27. Écriture ailleurs que sous users/{uid}/data : refusée', () => assertFails(setDoc(doc(alice, 'autre/alice'), { a: 1 }))],
   // Lien parent
   ['28. Anonyme lit un lien dont il a l’identifiant', () => assertSucceeds(getDoc(doc(anon, `partages/${P0}`)))],

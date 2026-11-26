@@ -10,6 +10,7 @@ import { autoCopy, ctxFor, load, logErreur, logUsage, putContract, saveSettings,
 import { buildSnapshot } from './partage/snapshot';
 import { newShare, open as openShare, seal } from './partage/crypto';
 import { clesLocales, cloudInfo, deviceId, garderCleLocale, oublierClesLocales, LS, lsGet, lsSet, messageRefus, setCloud, type EtatChiffrement } from './cloud-state';
+import { creerCleAcces, ouvrirAvecCleAcces, paquetsDe, PREFIXE as PAQUET, type Paquet } from './sync/cleacces';
 import { aChiffrer, chiffrer, CHIFFRES, cleDuBloc, separer, codeDeSecours, COFFRE, dechiffrer, estScelle, lireCode, nouveauSecret, ouvrirCle, type Cle } from './sync/coffre';
 import { errCode, type Backend, type CloudUser } from './sync/backend';
 import { applyRemote, docId, forRemote, needsChoice, nextSince, planMerge, RESUME_MARGIN_MS, stable, type LocalRecord, type MergeMode, type RemoteDoc } from './sync/plan';
@@ -307,6 +308,7 @@ async function etablirCoffre(u: CloudUser, remote?: RemoteDoc[]): Promise<void> 
     id = garde.v.id;
   }
   choisirCle(id);
+  await compterPaquets();
 }
 
 /** Ce qui attendait la clé (file d'attente) repart, chiffré. Mis dans la file d'envoi avant d'être retiré de l'attente. */
@@ -353,6 +355,43 @@ async function ouvrirLocal(): Promise<number> {
 }
 
 /** Écran Compte : la clé de secours tapée ou lue dans un fichier. Vérifiée contre l'empreinte du compte. */
+// ---------- Clés d'accès (T-125) ----------
+
+async function paquetsLocaux(): Promise<Paquet[]> {
+  return paquetsDe(await db.getAll<{ k: string; v?: unknown }>('kv'), await idCoffreLocal());
+}
+
+/** Compte les clés d'accès qui protègent la clé de secours du compte (état des filets, écrans Compte et Aujourd'hui). */
+async function compterPaquets() {
+  setCloud({ paquets: (await paquetsLocaux()).length });
+}
+
+/**
+ * « Protéger avec Face ID » : crée une clé d'accès et range son paquet dans le compte (un document par clé d'accès,
+ * kv/cleacces-<identifiant> ; kv/coffre n'est jamais touché). Lève PrfAbsent si le navigateur ne le permet pas.
+ */
+export async function protegerParCleAcces(): Promise<void> {
+  if (!user || !cle) throw new Error('Il faut ton compte et ta clé sur ce téléphone.');
+  const code = clesLocales(user.uid)[0];
+  const coffre = await idCoffreLocal();
+  if (!code || !coffre || cle.id !== coffre) throw new Error('Clé de secours introuvable sur ce téléphone.');
+  const existants = (await paquetsLocaux()).map((p) => p.cred);
+  const paquet = await creerCleAcces({ uid: user.uid, email: user.email ?? '', code, coffre, existants, jour: new Date().toISOString().slice(0, 10) });
+  await db.put('kv', { k: PAQUET + paquet.cred, v: paquet });
+  logUsage('cle_acces_creee');
+  await compterPaquets();
+}
+
+/** Nouveau téléphone : Face ID ou empreinte sur une clé d'accès du compte, puis ouverture comme avec la clé tapée. */
+export async function ouvrirParCleAcces(): Promise<void> {
+  const paquets = await paquetsLocaux();
+  if (!paquets.length) throw new Error('Aucune clé d’accès n’est enregistrée pour ce compte.');
+  const code = await ouvrirAvecCleAcces(paquets);
+  if (!code) throw new Error('Cette clé d’accès n’ouvre pas ce compte. Entre ta clé de secours.');
+  logUsage('cle_acces_ouverture');
+  await entrerCle(code);
+}
+
 export async function entrerCle(texte: string): Promise<void> {
   if (!user || !be) throw new Error('Connecte-toi d’abord à ton compte.');
   const sec = lireCode(texte.trim().split(/\s+/).find((m) => lireCode(m)) ?? texte);
@@ -561,7 +600,7 @@ const mirror: db.Mirror = {
         enqueueValue(s, k, value);
       }
       // T-121 : une restauration ne retire jamais le coffre ni les repères d'appareils du compte (relecture de l'option b, B1).
-      for (const k of oldKeys.get(s) ?? []) if (!now.has(k) && !(s === 'kv' && (k === COFFRE || k.startsWith(REPERE)))) enqueue(s, k, null);
+      for (const k of oldKeys.get(s) ?? []) if (!now.has(k) && !(s === 'kv' && (k === COFFRE || k.startsWith(REPERE) || k.startsWith(PAQUET)))) enqueue(s, k, null);
     }
   },
 };
@@ -631,6 +670,7 @@ async function receive(recus: RemoteDoc[]) {
   // T-121 : une donnée de santé reçue en clair (appareil resté sur une ancienne version) est rechiffrée dans le compte ; et le
   // lien des parents est rechiffré, au cas où cet appareil l'aurait abîmé.
   noterAppareils(recus);
+  if (recus.some((d) => d.s === 'kv' && d.k.startsWith(PAQUET))) setTimeout(() => { void compterPaquets(); }, 500);
   if (cle && user && recus.some((d) => d.v !== null && aRechiffrer(d.s, JSON.parse(d.v)))) {
     const u = user;
     setTimeout(() => { void chiffrerEnLigne(u, true); sentShares.clear(); scheduleShares(0); }, 1000);
