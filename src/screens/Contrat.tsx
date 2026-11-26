@@ -5,7 +5,8 @@ import { dureeMoyenneContrat, erreursDureeContrat, informationsDurees, SEUIL_ACC
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, semainesSansAccueilAnnee, termsAt, weeklyMinutes } from '../engine/payroll';
 import { entretienPlancher, minimumSansTitre, ratesAtRegion, ratesConnus, repasAvantageAu } from '../engine/rates';
 import { regionDe } from '../engine/regions';
-import { MESSAGE_SOLDE_CONGES, soldeCongesInconnu, soldesDeDepart } from '../engine/conges';
+import { congesDeDepart, MESSAGE_SOLDE_CONGES, soldeCongesInconnu } from '../engine/conges';
+import { CongesDepart } from './CongesDepart';
 import { euros, eurosTexte, hoursLabel } from '../engine/money';
 import type { AccueilOcc, Avenant, Contract, Plage, Planning, Terms } from '../engine/model';
 import { manquesOccasionnel } from '../engine/occasionnel';
@@ -87,13 +88,12 @@ export function Contrat({ id }: { id?: string }) {
     requestAnimationFrame(() => document.getElementById('partage-t')?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
   }, [existing?.id]);
   // Saisie simplifiée des congés à la reprise : seulement les jours déjà pris depuis le 1er juin (nouveaux contrats).
-  const [cpManuel, setCpManuel] = useState(!isNew);
+  // T-119 : congés de départ calculés par l'app (CongesDepart) ; saisie à la main pour des soldes déjà donnés, ou sur demande.
+  const [cpManuel, setCpManuel] = useState(!isNew && !!existing && !soldeCongesInconnu(existing));
   const infos48h = isNew ? [] : informationsDurees(state.contracts.map((x) => ctxFor(x)), today());
-  const [prisDepuisJuin, setPris] = useState(0);
   const suiviDepuis = isNew ? (reprise ? curMonthStart : c.start) : c.trackedFrom;
-  const soldes = c.start && suiviDepuis > c.start && wk > 0 ? soldesDeDepart(c, suiviDepuis, prisDepuisJuin, state.settings.enfantsACharge, state.settings.amMoins21Jusqu) : undefined;
-  // T-019 : année incomplète, l'app ne propose pas de soldes calculés (méthode d'acquisition non tranchée, SUS-11).
-  const soldesProposes = soldes && !soldes.aConfirmer ? soldes : undefined;
+  const depart = c.start && suiviDepuis > c.start && wk > 0 ? congesDeDepart({ ...c, trackedFrom: suiviDepuis }, suiviDepuis, {}, state.settings.enfantsACharge, state.settings.amMoins21Jusqu) : undefined;
+  const departCalculable = !!depart && !depart.aConfirmer;
 
   function setDay(d: number, plages: Plage[]) {
     set({ planning: { ...c.planning, [d]: plages } });
@@ -136,8 +136,8 @@ export function Contrat({ id }: { id?: string }) {
     if (errs.length) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const toSave: Contract = {
       ...c,
-      // T-116 (A2) : soldes proposés par l'app et vus par l'AM à la création : solde donné.
-      balances: !cpManuel && soldesProposes ? { ...c.balances, cpRestants: soldesProposes.cpRestants, cpEnCours: soldesProposes.cpEnCours, cpSaisi: true } : c.balances,
+      // T-119 : les soldes calculés par l'app (CongesDepart, mode formulaire) sont déjà dans c.balances, case cochée.
+      balances: c.balances,
       child: c.child.trim(),
       family: c.family.trim(),
       weeks: c.yearType === 'complete' ? 52 : c.weeks,
@@ -334,15 +334,14 @@ export function Contrat({ id }: { id?: string }) {
             <fieldset>
               <legend>Reprise d’un contrat en cours</legend>
               <p class="hint">Le contrat a commencé avant l’app. L’app calcule à partir du {shortDate(isNew ? curMonthStart : c.trackedFrom)} ; pour le passé, reprends tes compteurs et tes bulletins.</p>
-              {!cpManuel && soldesProposes ? (
+              {!cpManuel && departCalculable ? (
                 <>
-                  <NumberInput label={`Jours de congés déjà pris depuis le ${shortDate(soldesProposes.depuis)}`} hint="Compte les jours du lundi au samedi, sans les jours fériés : une semaine de congés = 6 jours. 0 si tu n’en as pas pris." value={prisDepuisJuin} step={1} max={60} onChange={(v) => setPris(v ?? 0)} />
-                  <p class="hint">Calculé par l’app à partir du début du contrat : {soldesProposes.droitsAnDernier} jours de droits de l’an dernier, donc <b>{soldesProposes.cpRestants} jours restants</b> ; et {soldesProposes.cpEnCours.toLocaleString('fr-FR')} jours gagnés depuis le {shortDate(soldesProposes.depuis)}.</p>
-                  <button type="button" class="btn btn-ghost" onClick={() => { set({ balances: { ...c.balances, cpRestants: soldesProposes.cpRestants, cpEnCours: soldesProposes.cpEnCours, cpSaisi: true } }); setCpManuel(true); }}>Ces chiffres sont faux : les saisir moi-même</button>
+                  <CongesDepart c={{ ...c, trackedFrom: suiviDepuis }} mode="formulaire" onSoldes={(b) => set({ balances: b })} />
+                  <button type="button" class="btn btn-ghost" onClick={() => setCpManuel(true)}>Ces chiffres sont faux : les saisir moi-même</button>
                 </>
               ) : (
                 <>
-                  {soldes?.aConfirmer && <p class="hint">{soldes.aConfirmer}</p>}
+                  {depart?.aConfirmer && <p class="hint">{depart.aConfirmer}</p>}
                   <NumberInput label="Congés restants de l’an dernier (jours)" hint="Acquis avant le dernier 1er juin et pas encore pris" value={c.balances.cpRestants} step={0.5} max={60} onChange={(v) => set({ balances: { ...c.balances, cpRestants: v ?? 0, cpSaisi: true } })} />
                   <NumberInput label="Congés en cours d’acquisition (jours)" hint="Acquis depuis le 1er juin, avant le suivi par l’app" value={c.balances.cpEnCours} step={0.5} max={30} onChange={(v) => set({ balances: { ...c.balances, cpEnCours: v ?? 0, cpSaisi: true } })} />
                   {soldeCongesInconnu(c) && (
@@ -351,6 +350,7 @@ export function Contrat({ id }: { id?: string }) {
                       <button type="button" class="btn btn-outline" onClick={() => set({ balances: { ...c.balances, cpSaisi: true } })}>Je n’ai aucun congé de départ</button>
                     </>
                   )}
+                  {departCalculable && <button type="button" class="btn btn-ghost" onClick={() => setCpManuel(false)}>Revenir au calcul d’Arvela</button>}
                 </>
               )}
               <NumberInput label="Jours d’absence de l’enfant malade déjà déduits" hint="Avec certificat médical, retenus sur ton salaire depuis le début de l’année de contrat en cours" value={c.balances.maladieDeduits} max={14} onChange={(v) => set({ balances: { ...c.balances, maladieDeduits: v ?? 0, ...(v ? {} : { maladieDeduitsLongue: undefined }) } })} />

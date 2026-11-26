@@ -1,6 +1,8 @@
 import { MESSAGE_TAUX_BRUT, termsAt } from '../engine/payroll';
 import { useState } from 'preact/hooks';
 import { ctxFor, putContract, toast, useStore } from '../store';
+import { MESSAGE_CONGES_DEPART, soldesDepartAConfirmer } from '../engine/conges';
+import { CongesDepart } from './CongesDepart';
 import { addDays, addMonths, monthLabel, monthOf, shortDate, today, type Month } from '../engine/dates';
 import { FIN_CDD_LABEL, finDeContrat, finDeCdd, MESSAGE_CDD_IFC, MESSAGE_CDD_PAS_DE_PREAVIS, QUESTION_SINISTRE, type DemandeurInexecution, type FinCdd, type FinCddNonGere, type Motif } from '../engine/fin';
 import { cumulCpADemander, finEssaiMaxCdi, QUESTION_ESSAI_AUTRE_ENFANT } from '../engine/preavis';
@@ -166,10 +168,12 @@ export function Fin({ id }: { id?: string }) {
             )}
           </fieldset>
         </section>
+        {/* T-119 : congés de départ calculés par l'app, en attente de la réponse de l'AM (un geste) : la fin en dépend. */}
+        {soldesDepartAConfirmer(ctxFor(c).c) && <section class="card stack" aria-labelledby="fin-depart"><h2 id="fin-depart">Tes congés au début du suivi</h2><CongesDepart c={c} /></section>}
         {f.nonGere ? (
           <section class="card stack" aria-labelledby="fin-ng" aria-live="polite">
             <h2 id="fin-ng">Fin de contrat non calculée</h2>
-            {f.nonGere.map((t) => <Banner tone="warn">{t}</Banner>)}
+            {f.nonGere.filter((t) => t !== MESSAGE_CONGES_DEPART).map((t) => <Banner tone="warn">{t}</Banner>)}
             <p class="hint">L’app ne donne aucun montant : préavis, indemnités et congés non pris en dépendent. Fais le calcul avec les parents, sans l’app.</p>
           </section>
         ) : <>
@@ -271,7 +275,7 @@ function FinCddEcran({ c }: { c: Contract }) {
       {f.nonGere ? (
         <section class="card stack" aria-labelledby="fincdd-ng" aria-live="polite">
           <h2 id="fincdd-ng">Fin du CDD non calculée</h2>
-          {f.nonGere.map((t) => <Banner tone="warn">{t}</Banner>)}
+          {f.nonGere.filter((t) => t !== MESSAGE_CONGES_DEPART).map((t) => <Banner tone="warn">{t}</Banner>)}
           <p class="hint">L’app ne donne aucun montant.</p>
         </section>
       ) : <>

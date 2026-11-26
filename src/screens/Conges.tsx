@@ -2,7 +2,8 @@ import { termsAt } from '../engine/payroll';
 import { useState } from 'preact/hooks';
 import { ctxFor, deleteLeave, putLeave, toast, useStore, state } from '../store';
 import { cpPeriodStartYear, dayLabel, today, shortDate } from '../engine/dates';
-import { compteur, decompteConge, indemnite, MESSAGE_SOLDE_CONGES, soldeCongesInconnu } from '../engine/conges';
+import { compteur, decompteConge, indemnite, MESSAGE_SOLDE_CONGES, soldeCongesInconnu, soldesDepartAConfirmer } from '../engine/conges';
+import { CongesDepart } from './CongesDepart';
 import { euros } from '../engine/money';
 import { EVENEMENTS_GERES_DEPUIS } from '../engine/evenements';
 import { AM_ABS_LABEL, AM_SUSPENSIONS, NATURE_ATMP_LABEL, type AmLeave, type AmSuspension, type Contract, type NatureAtMp } from '../engine/model';
@@ -38,6 +39,8 @@ export function Conges() {
           return (
             <section class="card stack" aria-label={`Congés, contrat ${de(c.child)}`}>
               <div class="row"><Gommette name={c.child} color={c.color} size="sm" /><h2>{c.child}</h2></div>
+              {/* T-119 : congés de départ calculés par l'app, en attente de la réponse de l'AM (un geste). */}
+              {soldesDepartAConfirmer(ctx.c) && <details class="more" open style={{ boxShadow: 'none', border: '1px solid var(--line)' }}><summary>Tes congés au début du suivi</summary><div class="more-body"><CongesDepart c={c} /></div></details>}
               <div class="stat-grid">
                 {/* T-103 : un nombre qui dépend d'une donnée à saisir n'est pas affiché ; la donnée est demandée plus bas. */}
                 <div><b class="num">{k.aPrendreAConfirmer ? '—' : k.aPrendre}</b><span>jours à prendre d’ici le 31 mai</span></div>
@@ -50,7 +53,7 @@ export function Conges() {
               {[...new Set([k.enCours.aConfirmer?.message, k.aPrendreAConfirmer?.message, ...k.decompteAConfirmer].filter(Boolean))].map((m) => <Banner tone="warn">{m}</Banner>)}
               {k.fractionnementNonGere && <Banner tone="warn">{k.fractionnementNonGere}</Banner>}
               {/* T-116 (A2) : solde de départ jamais donné : une invite, pas d'alerte de retenue. */}
-              {k.depassement && (soldeCongesInconnu(c)
+              {k.depassement && !soldesDepartAConfirmer(ctx.c) && (soldeCongesInconnu(ctx.c)
                 ? <Banner tone="info"><span>{MESSAGE_SOLDE_CONGES}</span><a class="btn btn-outline" href={`#/contrat/${c.id}`}>Indiquer mon solde</a></Banner>
                 : <Banner tone="warn">Tu as pris plus de jours que tes droits : les jours en trop sont normalement sans solde.</Banner>)}
               <details class="more" style={{ boxShadow: 'none', border: '1px solid var(--line)' }}>

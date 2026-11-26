@@ -4,7 +4,8 @@ import { ctxFor, logUsage, toast, useStore, state } from '../store';
 import { addMonths, dayLabel, eachDay, firstDay, lastDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
 import { computeMonth, declarationLines, declarationText, MESSAGE_REDUCTION_HS_BRUT, moisEnCoursAu, totalAVerser } from '../engine/month';
 import { dayInfo, PREFIXE_ENTRETIEN_SOUS_MIN, termsAt } from '../engine/payroll';
-import { MESSAGE_SOLDE_CONGES } from '../engine/conges';
+import { MESSAGE_CONGES_DEPART, MESSAGE_SOLDE_CONGES } from '../engine/conges';
+import { CongesDepart } from './CongesDepart';
 import { estInformation } from '../engine/alertes';
 import { euros, hoursLabel } from '../engine/money';
 import { baremesAttendus, messageBaremesAttendus } from '../engine/rates';
@@ -136,7 +137,16 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
     );
   }
 
-  // T-116 (A2) : seul le solde de congés manque : une invite, pas une alerte.
+  // T-119 : congés de départ calculés par l'app, la seule question est celle des jours déjà pris : elle se pose ici, en un geste.
+  if (r.nonGere.length === 1 && r.nonGere[0] === MESSAGE_CONGES_DEPART) {
+    return (
+      <section class="card stack" aria-labelledby="depart-t">
+        <h2 id="depart-t">Tes congés au début du suivi</h2>
+        <CongesDepart c={c} />
+      </section>
+    );
+  }
+  // T-116 (A2) : calcul impossible (rien n'est deviné), le solde est demandé : une invite, pas une alerte.
   if (r.nonGere.length === 1 && r.nonGere[0] === MESSAGE_SOLDE_CONGES) {
     return (
       <section class="card stack" aria-labelledby="solde-t">
