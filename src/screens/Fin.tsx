@@ -170,7 +170,10 @@ export function Fin({ id }: { id?: string }) {
         </section>
         {/* T-119 : congés de départ calculés par l'app, en attente de la réponse de l'AM (un geste) : la fin en dépend. */}
         {soldesDepartAConfirmer(ctxFor(c).c) && <section class="card stack" aria-labelledby="fin-depart"><h2 id="fin-depart">Tes congés au début du suivi</h2><CongesDepart c={c} /></section>}
-        {f.nonGere ? (
+        {f.nonGere && f.nonGere.every((t) => t === MESSAGE_CONGES_DEPART) ? (
+          // Relecture T-119 (N1) : seule la confirmation des congés de départ manque : un geste (carte ci-dessus), pas un refus.
+          <p class="hint" aria-live="polite">Confirme tes congés au début du suivi, juste au-dessus : la fin de contrat se calcule aussitôt.</p>
+        ) : f.nonGere ? (
           <section class="card stack" aria-labelledby="fin-ng" aria-live="polite">
             <h2 id="fin-ng">Fin de contrat non calculée</h2>
             {f.nonGere.filter((t) => t !== MESSAGE_CONGES_DEPART).map((t) => <Banner tone="warn">{t}</Banner>)}
@@ -273,7 +276,9 @@ function FinCddEcran({ c }: { c: Contract }) {
         </fieldset>
       </section>
       {soldesDepartAConfirmer(ctxFor(c).c) && <section class="card stack" aria-labelledby="cdd-depart"><h2 id="cdd-depart">Tes congés au début du suivi</h2><CongesDepart c={c} /></section>}
-      {f.nonGere ? (
+      {f.nonGere && f.nonGere.every((t) => t === MESSAGE_CONGES_DEPART) ? (
+        <p class="hint" aria-live="polite">Confirme tes congés au début du suivi, juste au-dessus : la fin du CDD se calcule aussitôt.</p>
+      ) : f.nonGere ? (
         <section class="card stack" aria-labelledby="fincdd-ng" aria-live="polite">
           <h2 id="fincdd-ng">Fin du CDD non calculée</h2>
           {f.nonGere.filter((t) => t !== MESSAGE_CONGES_DEPART).map((t) => <Banner tone="warn">{t}</Banner>)}

@@ -282,3 +282,27 @@ describe('T-119 : congés de départ calculés par Arvela (calculateur-arvela, r
     expect(makeCtx(c, [], [], '2026-12-31').c.balances.cpRestants).toBe(18);
   });
 });
+
+import { finDeContrat } from '../src/engine/fin';
+import { soldesDepartAConfirmer } from '../src/engine/conges';
+
+describe('Relecture T-119 (M1, N2) : la fin de contrat attend la confirmation des congés de départ', () => {
+  const T = '2026-11-01';
+  const sans = { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 };
+  it('soldes calculés non confirmés : la marque survit aux copies du contrat, la fin attend le geste', () => {
+    const ctx = makeCtx(ct({ start: '2025-09-01', trackedFrom: T, balances: sans }), [], [], '2026-12-31');
+    expect(soldesDepartAConfirmer(ctx.c)).toBe(true);
+    expect(soldesDepartAConfirmer({ ...ctx.c, end: '2026-12-31' })).toBe(true);
+    const f = finDeContrat(ctx, '2026-11-16', 'retrait');
+    expect(f.nonGere).toEqual([MESSAGE_CONGES_DEPART]);
+  });
+  it('confirmés (case cochée) : la fin se calcule ; 20 jours pris de plus baissent l’indemnité de congés', () => {
+    const c0 = ct({ start: '2025-09-01', trackedFrom: T, balances: { cpRestants: 23, cpEnCours: 12.5, maladieDeduits: 0, cpSaisi: true } });
+    const c20 = ct({ start: '2025-09-01', trackedFrom: T, balances: { cpRestants: 3, cpEnCours: 12.5, maladieDeduits: 0, cpSaisi: true } });
+    const f0 = finDeContrat(makeCtx(c0, [], [], '2026-12-31'), '2026-11-16', 'retrait');
+    const f20 = finDeContrat(makeCtx(c20, [], [], '2026-12-31'), '2026-11-16', 'retrait');
+    expect(f0.nonGere).toBeUndefined();
+    expect(f20.nonGere).toBeUndefined();
+    expect(f20.cpIndemnite).toBeLessThan(f0.cpIndemnite);
+  });
+});
