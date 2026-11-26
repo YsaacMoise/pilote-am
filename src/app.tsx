@@ -127,7 +127,7 @@ export function App() {
     case 'mois': screen = <Mois month={parts[1]} cid={parts[2]} />; break;
     case 'plus': screen = <Plus />; break;
     // T-122 : un nouveau contrat passe par l'assistant ; l'écran Contrat sert à corriger un contrat existant.
-    case 'contrat': screen = parts[1] === 'nouveau' || !parts[1] ? <AjoutEnfant key={hash} /> : <Contrat key={parts[1]} id={parts[1]} />; break;
+    case 'contrat': screen = parts[1] === 'nouveau' || !parts[1] ? <AjoutEnfant key={hash} /> : <Contrat key={parts[1]} id={parts[1]} section={parts[2] === 'planning' ? 'planning' : undefined} />; break;
     case 'ajout': screen = <AjoutEnfant key={hash} id={parts[1]} />; break;
     case 'contrat-cree': screen = <ContratCree id={parts[1]} />; break;
     case 'enfant': screen = parts[2] === 'parents' ? <ParentsEnfant key={hash} id={parts[1]} /> : parts[2] === 'absences' ? <AbsencesEnfant id={parts[1]} /> : <FicheEnfant id={parts[1]} />; break;

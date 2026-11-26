@@ -66,7 +66,7 @@ function blank(): Contract {
   };
 }
 
-export function Contrat({ id }: { id?: string }) {
+export function Contrat({ id, section }: { id?: string; section?: 'planning' }) {
   useStore();
   const existing = id ? state.contracts.find((c) => c.id === id) : undefined;
   const [c, setC] = useState<Contract>(() => (existing ? structuredClone(existing) : blank()));
@@ -98,6 +98,21 @@ export function Contrat({ id }: { id?: string }) {
   // Contrôle qualité de la n° 72 (R1) : les soldes de la carte restent hors du contrat pendant la saisie ; ils ne sont écrits,
   // case cochée, qu'à l'enregistrement (aucune écriture différée dans le formulaire, aucune case cochée à la seule ouverture).
   const [soldesDepart, setSoldesDepart] = useState<{ cpRestants: number; cpEnCours: number } | undefined>(undefined);
+
+  // T-135 : #/contrat/<id>/planning ouvre l'écran sur le planning (planning type, variable ou accueils), focus sur son titre.
+  // Deux images plus tard : après le focus du titre de l'écran (app.tsx) et la remise en haut de page.
+  useEffect(() => {
+    if (section !== 'planning') return;
+    let r2 = 0;
+    const r1 = requestAnimationFrame(() => { r2 = requestAnimationFrame(() => {
+      const titre = document.querySelector<HTMLElement>('#planning legend');
+      if (!titre) return;
+      titre.tabIndex = -1;
+      document.getElementById('planning')?.scrollIntoView({ block: 'start' });
+      titre.focus({ preventScroll: true });
+    }); });
+    return () => { cancelAnimationFrame(r1); cancelAnimationFrame(r2); };
+  }, [section, id]);
 
   function setDay(d: number, plages: Plage[]) {
     set({ planning: { ...c.planning, [d]: plages } });
@@ -219,6 +234,7 @@ export function Contrat({ id }: { id?: string }) {
           </fieldset>
         </section>
 
+        <div id="planning" class="ancre-planning">
         {c.planningVariable && !c.accueilOccasionnel && <PlanningVariableSaisie c={c} set={set} />}
 
         {c.accueilOccasionnel && <AccueilsOccasionnels c={c} set={set} />}
@@ -237,6 +253,7 @@ export function Contrat({ id }: { id?: string }) {
             </div>
           </fieldset>
         </section>}
+        </div>
 
         {/* T-116 (A3) : dépassement qui n'existe que tous parents réunis : dit une fois, ici, à côté de l'accord écrit
             (regles/t116-48h.md), pas chaque jour sur « Aujourd'hui ». */}

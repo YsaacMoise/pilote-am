@@ -96,7 +96,7 @@ export function FicheEnfant({ id }: { id: string }) {
         <nav class="seg fiche-onglets" aria-label={`Contrat ${de(c.child)}`}>
           {/* Noms lus : ceux des lignes de la Vision 1.0 (« Le contrat… », « Le planning… »), le mot visible y est compris. */}
           <a href={`#/contrat/${c.id}`} aria-label={`Le contrat : ${libelleContrat(c, t)}`}>Contrat</a>
-          {!c.accueilOccasionnel && <a href={`#/contrat/${c.id}`} aria-label={`Le planning : ${tc.planningVariable ? 'horaires qui changent' : `${hoursLabel(weeklyMinutes(tc.planning))} par semaine`}`}>Planning</a>}
+          {!c.accueilOccasionnel && <a href={`#/contrat/${c.id}/planning`} aria-label={`Le planning : ${tc.planningVariable ? 'horaires qui changent' : `${hoursLabel(weeklyMinutes(tc.planning))} par semaine`}`}>Planning</a>}
           <a href={`#/enfant/${c.id}/parents`}>Parents</a>
         </nav>
         <CadranContrat c={c} />
