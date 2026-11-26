@@ -2090,7 +2090,7 @@ def situations_t118():
     S = []
     variantes = {
         "C52": (contrat_grille("C52", "H40", "T420", debut="2024-09-02"), {}),
-        "I46": (contrat_grille("I46", "H40", "T420", debut="2024-09-02"), {}),
+        "I46": (contrat_grille("I46", "H40", "T420"), {}),
         "C52-ENTREE": (contrat_grille("C52", "H32", "T420", debut="2025-09-15"), {}),
         "C52-MALADIE": (contrat_grille("C52", "H40", "T420", debut="2024-09-02"),
                         {"absences_am": [{"type": "am_malade", "du": "2025-10-06", "au": "2025-11-14"}]}),
