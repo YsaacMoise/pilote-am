@@ -67,9 +67,9 @@ async function run(scheme) {
   await p.getByRole('radio', { name: /^Oui, une semaine type qui se répète/ }).click();
   await p.getByRole('radio', { name: /^Régulier/ }).click();
   await p.getByRole('radio', { name: /^CDI/ }).click();
-  await p.getByLabel('Taux horaire net').fill('3,50');
   // T-115 (R3) : le brut se calcule seul depuis le net (F2 : 4,49 € redonne 3,50 € net, cotisation par cotisation) ;
   // un lien ouvre le champ brut pour écrire celui du contrat, un autre revient au brut calculé.
+  await p.getByLabel('Taux horaire net').fill('3,50');
   await p.locator('.brut-calcule', { hasText: /Soit 4,49\s€ brut/ }).waitFor();
   assert(true, 'contrat : net 3,50 € saisi, brut 4,49 € affiché sans saisie');
   await p.getByRole('button', { name: 'Mon contrat indique un autre brut' }).click();
@@ -79,12 +79,30 @@ async function run(scheme) {
   assert(true, 'contrat : champ brut ouvert puis refermé (brut calculé gardé)');
   await p.getByRole('radio', { name: /^Par jour d’accueil/ }).click();
   await p.getByText('Reprise d’un contrat en cours').waitFor();
+  // T-119 : contrat commencé avant l'app : Arvela calcule les congés de départ ; l'AM ne donne que les jours déjà pris (0 proposé).
+  // Début au 01/09/2025 (droits de la période précédente) : la question est posée, 0 proposé.
+  await p.getByLabel('Premier jour d’accueil').fill('2025-09-01');
+  const prisAvant = p.getByLabel('Jours de congés déjà pris depuis le 1er juin 2026');
+  await prisAvant.waitFor();
+  assert((await prisAvant.inputValue()) === '0', 'congés de départ : 0 jour pris proposé d’office');
+  await p.getByText('Comment c’est calculé').waitFor();
+  assert(true, 'congés de départ : calcul montré (acquis, pris, reste)');
+  // Début au 01/09/2026 (après le 1er juin) : aucun droit à prendre, la question n'est pas posée.
+  await p.getByLabel('Premier jour d’accueil').fill('2026-09-01');
+  await p.getByText('le contrat a commencé après le 1er juin 2026', { exact: false }).waitFor();
+  assert(!(await prisAvant.isVisible()), 'congés de départ : pas de question quand aucun droit n’est à prendre');
   await shot('01-contrat');
-  await p.getByRole('button', { name: 'Enregistrer et reprendre l’historique' }).click();
+  // T-119 : la carte des congés de départ allonge l'écran : le bouton est centré avant le clic (sinon sous la barre d'onglets).
+  const enregistrer = p.getByRole('button', { name: 'Enregistrer et reprendre l’historique' });
+  // Le message de la mesure d'usage (affiché à la création du compte) peut couvrir le bas de l'écran : le bouton est activé
+  // au clavier (focus puis Entrée), comme le ferait une AM qui utilise le clavier.
+  await enregistrer.focus();
+  await p.keyboard.press('Enter');
   await p.getByText('Indique qui fournit les repas de l’enfant.').waitFor();
   assert(true, 'contrat : choix des repas obligatoire');
   await p.getByRole('radio', { name: /^Les parents/ }).click();
-  await p.getByRole('button', { name: 'Enregistrer et reprendre l’historique' }).click();
+  await enregistrer.focus();
+  await p.keyboard.press('Enter');
   await p.getByText('1 mois sans bulletin').waitFor();
   assert(true, 'contrat créé, historique demandé');
 
@@ -98,6 +116,11 @@ async function run(scheme) {
   await p.getByRole('button', { name: 'Enregistrer ce mois' }).click();
   await p.getByText('Historique complet.').waitFor();
   assert(true, 'historique complet après import');
+
+  // T-119 : le mois d'octobre du contrat repris a son montant (plus de mois bloqué faute de solde de congés).
+  await p.goto(base + '#/mois');
+  await p.locator('.summary .total').first().waitFor();
+  assert(!(await p.getByText('Ce mois n’est pas calculé').isVisible()) && !(await p.getByText('Indique ton solde de congés').isVisible()), 'congés de départ : montant du mois affiché, aucune demande de solde');
 
   // Pointage en un geste + annulation
   await p.goto(base + '#/');

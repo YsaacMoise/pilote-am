@@ -274,3 +274,13 @@ Spécification : calculateur-arvela, rapports/T-103-inventaire.md (validé le 24
 - H1 à H4, H6 (`heures.py`) : `heures_en_plus_semaine_t103(contrat_semaine, effectuees, taux, maj_hm, maj_hc, minutes_conges_payes, minutes_1er_mai_chome)` : CP et 1er mai comptés, autres jours non effectués non comptés, base de la semaine coupée au prorata, retenue à part (A-09 levé ; A-13 gardé). Planning variable : mêmes règles dans `heures_en_plus_semaine_planning_variable` (PV-L2-ABSENCE-HC et A-09 levés ; D4 : prorata seul ; `minutes_payees_non_travaillees` n'est plus compté). H5 non codé (voir le rapport).
 - R1, R4 (`calendrier.jours_feries(annee, region)`, `regions.feries_locaux` vide) : Alsace-Moselle sans Vendredi saint ni 26/12 ; 27 avril férié à Mayotte. Refus A77-FERIE-LOCAL, A77-FERIE-LOCAL-TRAVAILLE, A77-FERIE-VOISIN, A77-DECOMPTE-CP levés. R3 : `qualifier_absence` (Alsace-Moselle, maladie de l'AM ou de son enfant) non déductible ; `maintien_droit_local(ij)` (refus R3-IJ-MANQUANTES) ; A77-MAINTIEN-LOCAL levé. R5 : A77-TITRE-MAYOTTE levé. D3 : minimum légal 0,281 × SMIC au centime supérieur.
 - C15 à C17 : `decompte_jours_cp(..., jours_arret_maladie, date_fin_contrat)` ; `absence_retenue_du_jour(types)` (arrêt maladie l'emporte sur le CP ; autre double saisie : refus C17-SAISIE-CONTRADICTOIRE).
+
+## T-119 (26/11/2026) : congés de départ
+
+Spécification : `regles/t119-conges-depart.md` (calculateur-arvela). Rapport : `T-119-MB.md`. Tests : `tests/test_t119.py`.
+
+| Fonction (`conges_depart.py`) | Sortie | Règles |
+|---|---|---|
+| `conges_de_depart(contrat, suivi_depuis, pris_depuis_juin=0, absence_prec=0, absence_cours=0, enfants_a_charge=0, age_am_au_30_avril=None)` | `droits_prec` (D), `cp_restants`, `cp_en_cours` (exact), `cp_en_cours_centiemes`, dates des absences placées | T119-3.1 à 3.5 ; acquisition par `acquisition_cp_periode` |
+
+Refus : T119-SEMAINES-SANS-ACCUEIL, T119-NON-GERE, et ceux de `acquisition_cp_periode`.

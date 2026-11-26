@@ -9,6 +9,7 @@
 //   T-077, lecture B : préavis local de six semaines en Alsace-Moselle (C. trav. L1234-16). La fin de ce préavis est une date
 //   de fin possible de plus.
 import { describe, expect, it } from 'vitest';
+import { MESSAGE_CONGES_DEPART } from '../src/engine/conges';
 import type { AmLeave, Contract, Planning } from '../src/engine/model';
 import { makeCtx } from '../src/engine/payroll';
 import { finDeCdd, finDeContrat } from '../src/engine/fin';
@@ -37,11 +38,16 @@ describe('T-078 R1, revu par la T-103 : plancher L1242-16, congés déjà payés
     expect(f.cpIndemnite).toBe(41115);
   });
   it('suivi à partir du 01/07/2026 : les jours pris avant le suivi sont demandés (B)', () => {
-    const f = fin(cdd({ trackedFrom: '2026-07-01', history: historique }));
+    // T-119 (relecture N2) : sans confirmation des congés de départ, la fin attend d'abord ce geste ; le cas de ce test (plancher
+    // L1242-16) suppose ces congés confirmés (case cochée, soldes à 0 comme avant).
+    const sansConfirmation = fin(cdd({ trackedFrom: '2026-07-01', history: historique }));
+    expect(sansConfirmation.nonGere).toEqual([MESSAGE_CONGES_DEPART]);
+    const confirme = { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0, cpSaisi: true };
+    const f = fin(cdd({ trackedFrom: '2026-07-01', history: historique, balances: confirme }));
     expect(f.nonGere).toBeUndefined();
     expect(f.cpIndemnite).toBe(0);
     expect(f.cpAConfirmer).toMatch(/jours de congés payés pris pendant le CDD avant cette date/);
-    expect(fin(cdd({ trackedFrom: '2026-07-01', history: historique, cddCpPrisAvantSuivi: 0 })).cpIndemnite).toBe(128700);
+    expect(fin(cdd({ trackedFrom: '2026-07-01', history: historique, cddCpPrisAvantSuivi: 0, balances: confirme })).cpIndemnite).toBe(128700);
   });
   it('suivi dès le début, aucun congé pris : ICCP + complément de juin = plancher (1 287,00 €)', () => {
     const f = fin(cdd());

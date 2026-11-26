@@ -619,6 +619,104 @@ export function soldesDeDepart(c: Contract, trackedFrom: ISODate, prisDepuisJuin
   };
 }
 
+/**
+ * T-119 (calculateur-arvela, regles/t119-conges-depart.md) : congés de départ d'un contrat commencé avant le suivi, calculés
+ * par l'app depuis la date de début, avec les règles d'acquisition en place (joursAcquis, acquisition : T-103, T-113).
+ * L'AM ne donne que les jours pris depuis le 1er juin (0 d'office) et une éventuelle longue absence non payée (jours d'accueil
+ * prévus non travaillés, par fenêtre), placée sur les premiers jours d'accueil prévus de la fenêtre (point 3.4 de la règle).
+ */
+export interface CongesDepart {
+  /** Jours acquis la période précédente (D), à prendre à partir du 1er juin */
+  droitsPrec: number;
+  /** Début de la période précédente comptée (max(début du contrat, 1er juin y-1)) ; absent si D = 0 faute de période */
+  precDu?: ISODate;
+  precAu?: ISODate;
+  /** Reste à prendre au début du suivi : max(0, D − jours pris) */
+  cpRestants: number;
+  /** Jours acquis du max(début, 1er juin y) au début du suivi − 1, au centième */
+  cpEnCours: number;
+  /** 1er juin y et dernier jour avant le suivi */
+  depuis: ISODate;
+  jusqua: ISODate;
+  /** Calcul impossible (rien n'est deviné) : raison ; les chiffres sont alors à saisir */
+  aConfirmer?: string;
+}
+export interface ReponsesDepart { pris?: number; absencePrec?: number; absenceCours?: number }
+
+/** Premiers `n` jours d'accueil prévus de [a, b] (heures au planning, hors férié, hors semaine sans accueil) */
+function premiersJoursAccueil(c: Contract, a: ISODate, b: ISODate, n: number): ISODate[] {
+  const out: ISODate[] = [];
+  if (n <= 0 || b < a) return out;
+  const off = toutesSemainesSansAccueil(c);
+  for (const d of eachDay(a, b)) {
+    if (out.length >= n) break;
+    if (planningBrutMin(termsAt(c, d), d) <= 0 || ferieDe(regionDe(c), d) || off.has(mondayOf(d))) continue;
+    out.push(d);
+  }
+  return out;
+}
+
+export function congesDeDepart(c: Contract, trackedFrom: ISODate, r: ReponsesDepart = {}, enfants = 0, amMoins21Jusqu?: number): CongesDepart {
+  const avec = congesDeDepartBrut(c, trackedFrom, r, enfants, amMoins21Jusqu);
+  if (!(r.absencePrec ?? 0) && !(r.absenceCours ?? 0)) return avec;
+  // Règle T-119, point 3.4 (plafond) : une absence non payée ne donne jamais plus de jours qu'aucune absence (le décompte le
+  // plus favorable, qui ne joue qu'avec une absence, peut dépasser le décompte mensuel d'une période sans absence).
+  const sans = congesDeDepartBrut(c, trackedFrom, { pris: r.pris }, enfants, amMoins21Jusqu);
+  const droitsPrec = Math.min(avec.droitsPrec, sans.droitsPrec);
+  return { ...avec, droitsPrec, cpRestants: Math.max(0, droitsPrec - Math.max(0, r.pris ?? 0)), cpEnCours: Math.min(avec.cpEnCours, sans.cpEnCours) };
+}
+
+function congesDeDepartBrut(c: Contract, trackedFrom: ISODate, r: ReponsesDepart, enfants: number, amMoins21Jusqu?: number): CongesDepart {
+  const y = cpPeriodStartYear(trackedFrom);
+  const p = cpPeriod(y), pp = cpPeriod(y - 1);
+  const jusqua = addDays(trackedFrom, -1);
+  const precDu = c.start > pp.from ? c.start : pp.from;
+  const coursDu = c.start > p.from ? c.start : p.from;
+  const absence: AmLeave[] = [
+    ...(c.start < p.from ? premiersJoursAccueil(c, precDu, pp.to, Math.round(r.absencePrec ?? 0)) : []),
+    ...premiersJoursAccueil(c, coursDu, jusqua, Math.round(r.absenceCours ?? 0)),
+  ].map((d) => ({ id: `t119-${d}`, type: 'sans_solde', from: d, to: d }) as AmLeave);
+  const ctx = makeCtx({ ...c, trackedFrom: c.start, end: undefined }, [], absence, trackedFrom, enfants, amMoins21Jusqu);
+  const prec = c.start < p.from ? acquisition(ctx, y - 1, enfants) : undefined;
+  const droitsPrec = prec ? prec.jours : 0;
+  // Au centième, demi vers le haut (règle T-119, 3.3) : 11,875 → 11,88 (le petit ajout corrige l'écriture binaire du nombre).
+  const cpEnCours = jusqua >= coursDu ? Math.round(joursAcquis(ctx, coursDu, jusqua) * 100 + 1e-6) / 100 : 0;
+  const out: CongesDepart = {
+    droitsPrec, ...(prec ? { precDu, precAu: pp.to } : {}),
+    cpRestants: Math.max(0, droitsPrec - Math.max(0, r.pris ?? 0)), cpEnCours, depuis: p.from, jusqua,
+  };
+  const ng = nonGeresContrat(c);
+  const cours = acquisition(ctx, y, enfants);
+  const raison = ng.length ? ng.join(' ') : prec?.aConfirmer?.message ?? cours.aConfirmer?.message;
+  if (raison) out.aConfirmer = `${raison} L’app ne calcule pas tes jours de congés de départ : saisis-les toi-même, à partir de tes bulletins.`;
+  return out;
+}
+
+/**
+ * T-119 : soldes de départ venus du calcul de l'app (non confirmés par l'AM). Jamais enregistré. Relecture T-119 (M1) : la
+ * marque est posée sur l'objet des soldes, que les copies du contrat ({ ...c, end }) gardent, et non sur le contrat.
+ */
+const soldesCalcules = new WeakSet<object>();
+const memoDepart = new WeakMap<Contract, Map<string, Contract>>();
+/** T-119 : soldes de départ calculés par l'app (0 jour pris, sans absence) pour un contrat dont les soldes ne sont pas donnés */
+export function avecSoldesCalcules(c: Contract, enfants = 0, amMoins21Jusqu?: number): Contract {
+  if (!soldeCongesInconnu(c)) return c;
+  const k = `${enfants}|${amMoins21Jusqu ?? ''}`;
+  let m = memoDepart.get(c);
+  if (!m) { m = new Map(); memoDepart.set(c, m); }
+  const deja = m.get(k);
+  if (deja) return deja;
+  const d = congesDeDepart(c, c.trackedFrom, {}, enfants, amMoins21Jusqu);
+  const cn = d.aConfirmer ? c : { ...c, balances: { ...c.balances, cpRestants: d.cpRestants, cpEnCours: d.cpEnCours } };
+  if (!d.aConfirmer) soldesCalcules.add(cn.balances);
+  m.set(k, cn);
+  return cn;
+}
+/** T-119 : les soldes de départ de ce contrat (normalisé par makeCtx) sont calculés par l'app et attendent la réponse de l'AM */
+export const soldesDepartAConfirmer = (c: Contract): boolean => soldesCalcules.has(c.balances);
+/** T-119 : la question posée dans le mois, une seule fois, en un geste */
+export const MESSAGE_CONGES_DEPART = 'Congés pris avant l’app : Arvela a calculé tes congés depuis le début du contrat. Dis combien de jours tu as déjà pris depuis le 1er juin (0 proposé), puis valide.';
+
 export interface Compteur {
   /** Période en cours */
   enCours: Acquisition;

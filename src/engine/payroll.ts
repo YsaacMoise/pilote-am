@@ -2,6 +2,7 @@
 import {
   addDays, eachDay, firstDay, monthsBetween, lastDay, minutes, monthOf, mondayOf, daysBetween, addMonthsToDate,
   type ISODate, type Month,
+  cpPeriodStartYear,
 } from './dates';
 import { isMayDay } from './holidays';
 import { entretienPlancher, MESSAGE_PERIODE_NON_GEREE, netToBrut } from './rates';
@@ -9,7 +10,7 @@ import { statutJourEvenement } from './evenements';
 import { controleKm, indemniteKmJour } from './km';
 import { euros } from './money';
 import { partNette } from './brut';
-import { cpDemandesEntre, cpDroitsInconnus, cpExces, MESSAGE_SOLDE_CONGES, soldeCongesInconnu } from './conges';
+import { avecSoldesCalcules, cpDemandesEntre, cpDroitsInconnus, cpExces, MESSAGE_CONGES_DEPART, MESSAGE_SOLDE_CONGES, soldeCongesInconnu, soldesDepartAConfirmer } from './conges';
 import { nonGeresPeriode } from './nonGeres';
 import { ferieDe, MESSAGE_IJ_MAINTIEN_LOCAL, MESSAGE_IJ_MAINTIEN_LOCAL_SUSPENSION, MESSAGE_MAINTIEN_LOCAL, MESSAGE_MAINTIEN_LOCAL_SUSPENSION, regionDe } from './regions';
 import { jourDispense } from './preavis';
@@ -74,7 +75,9 @@ export function termsAt(c: Contract, d: ISODate): Contract {
   return out;
 }
 
-export function makeCtx(c: Contract, recs: DayRec[], leaves: AmLeave[], today: ISODate, enfants = 0, amMoins21Jusqu?: number): Ctx {
+export function makeCtx(c0: Contract, recs: DayRec[], leaves: AmLeave[], today: ISODate, enfants = 0, amMoins21Jusqu?: number): Ctx {
+  // T-119 : contrat commencé avant le suivi, soldes de départ jamais donnés : l'app les calcule depuis le début du contrat.
+  const c = avecSoldesCalcules(c0, enfants, amMoins21Jusqu);
   const days = new Map<ISODate, DayRec>();
   for (const r of recs) if (r.cid === c.id) days.set(r.date, r);
   return { c, days, leaves, today, enfants, amMoins21Jusqu, cache: new Map() };
@@ -286,6 +289,11 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
         // par le dixième versé au terme de l'accueil (CCN 102.1.2.3).
         info.inDivisor = true;
         info.deducted = true;
+      } else if (amLeave === 'cp' && soldesDepartAConfirmer(c) && cpPeriodStartYear(d) - cpPeriodStartYear(c.trackedFrom) <= 1) {
+        // T-119 : soldes de départ calculés par l'app (0 jour pris proposé) : un jour de congé des périodes qui en dépendent
+        // attend la réponse de l'AM (un geste, dans le mois), jamais une retenue sur une donnée supposée.
+        info.inDivisor = true;
+        info.donneeManquante = MESSAGE_CONGES_DEPART;
       } else if (amLeave === 'cp' && termsAt(c, d).yearType === 'complete' && cpExces(ctx).has(d) && soldeCongesInconnu(c)) {
         // T-116 (A2) : solde de départ jamais donné, lu 0 par défaut : pas de congé sans solde ; une seule invite, le mois attend.
         info.inDivisor = true;

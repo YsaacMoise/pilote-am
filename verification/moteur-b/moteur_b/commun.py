@@ -151,6 +151,9 @@ CODES = {
     # T-115 (R3) : regles/t115-net-brut.md (depot calculateur-arvela).
     "T115-AVANT-2024": "Brut horaire depuis le net (F2) ou net ligne par ligne avant le 01/01/2024 : taux salariaux de 2022 et 2023 non relus (T-115, § 2.5, A5). Saisir le brut ecrit au contrat.",
     "T115-MAYOTTE": "Brut horaire depuis le net (F2) ou net ligne par ligne a Mayotte : l'Urssaf n'applique pas la meme methode sur ses deux tableaux, aucun brut n'est sur au centime (T-115, A4). Saisir le brut ecrit au contrat.",
+    # T-119 : regles/t119-conges-depart.md (depot calculateur-arvela), § 3.5.
+    "T119-NON-GERE": "Conges de depart (T-119, § 3.5) : periode touchee par un cas que le calcul ne gere pas (avenant, planning variable, CDD). Saisir les soldes a la main.",
+    "T119-SEMAINES-SANS-ACCUEIL": "Conges de depart (T-119, § 3.5) : annee incomplete sans les semaines sans accueil au contrat. Saisir les soldes a la main.",
     "EXCLU-OCCASIONNEL": "Accueil occasionnel exclu de la version 0.",
     "EXCLU-ALTERNEES": "Semaines alternees exclues de la version 0.",
     "EXCLU-MATERNITE": "Maternite, paternite, adoption et conges de naissance exclus de la version 0.",
