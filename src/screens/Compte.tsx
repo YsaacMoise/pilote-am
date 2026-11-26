@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { cloudInfo, statusLine, useCloud, type CloudStatus } from '../cloud-state';
+import { cloudInfo, etatRetraitSante, statusLine, useCloud, type CloudStatus } from '../cloud-state';
 import { toast, useStore } from '../store';
 import { Banner, Sheet, TextInput, Topbar, useErreurAffichee } from '../ui/kit';
 import { Icon } from '../ui/icons';
@@ -137,7 +137,12 @@ export function Compte() {
             <section class="card stack-sm">
               <p class="row"><Icon name="user" /><strong>{c.email}</strong></p>
               <Banner tone={c.refus ? 'warn' : TONE[c.status]} icon={c.status === 'synced' && !c.refus ? 'cloud' : undefined}>{statusLine(c)}</Banner>
-              {c.status !== 'choice' && <p class="hint">Chaque changement est rangé sur le téléphone puis copié dans ton compte dès qu’il y a du réseau. Sur un autre appareil, connecte-toi avec la même adresse pour tout retrouver.</p>}
+              {c.status !== 'choice' && <p class="hint">Chaque changement est rangé sur le téléphone puis copié dans ton compte dès qu’il y a du réseau. Sur un autre appareil, connecte-toi avec la même adresse pour tout retrouver, sauf ce qui touche à la santé (voir plus bas).</p>}
+              {(() => {
+                // T-121 : données de santé d'une ancienne version restées en ligne faute de copie identique sur ce téléphone.
+                const r = etatRetraitSante();
+                return r && r.gardes > 0 && <p class="hint">{r.gardes === 1 ? 'Une donnée de santé copiée par une ancienne version reste' : `${r.gardes} données de santé copiées par une ancienne version restent`} dans ton compte : ce téléphone n’en a pas la même copie, donc rien n’est retiré sans elle. Ouvre l’app sur l’appareil où tu les as notées : il les retirera.</p>;
+              })()}
             </section>
             {c.verified === false && <ConfirmAddress email={c.email!} />}
             {c.status === 'choice' && <LinkChoice />}
@@ -150,7 +155,8 @@ export function Compte() {
         <section class="card stack-sm">
           <h2 class="row"><Icon name="lock" />Où vont tes données</h2>
           <p>La copie de tes données est rangée chez Google Firebase, sur des serveurs à Paris. Ton adresse e-mail et ton mot de passe, haché (transformé de façon irréversible), sont gérés par Google hors de France. Dans l’app, seul ton compte donne accès à tes données. Comme pour tout service en ligne, l’éditeur d’Arvela peut techniquement y accéder ; il s’engage à ne le faire qu’avec ton accord.</p>
-          <p class="hint">Les sauvegardes dans Fichiers restent utiles : elles ne dépendent d’aucun compte.</p>
+          <p>Ce qui touche à la santé reste sur ce téléphone et ne va pas dans ton compte : les soins et les températures du carnet, les selles liquides, et la case « Enfant en situation de handicap ou de maladie » d’un contrat. Sur un autre appareil, tu ne les retrouves pas : recoche la case dans le contrat.</p>
+          <p class="hint">Les sauvegardes dans Fichiers restent utiles : elles ne dépendent d’aucun compte, et elles gardent aussi ce qui touche à la santé.</p>
         </section>
       </main>
       {confirmOut && (

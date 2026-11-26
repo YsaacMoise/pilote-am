@@ -6,6 +6,7 @@
 
 import { SYNCED, type SyncedStore } from '../db';
 import { absenceEnLigne, normaliserAbsence, ruptureSansSante, type AbsenceLue } from '../engine/absences';
+import { avecSanteLocale, CHAMPS_SANTE_CONTRAT, contratSansSante, estNoteSante, resteSurTelephone } from './sante';
 
 export interface RemoteDoc {
   s: SyncedStore;
@@ -46,8 +47,16 @@ const DEVICE_SETTINGS = ['lastAutoCopy', 'persisted', 'lastBackup'];
 /**
  * Version envoyée en ligne d'un enregistrement : les champs propres à l'appareil sont retirés des réglages,
  * pour qu'un téléphone ne réécrive jamais le prénom ou les autres réglages avec une version périmée.
+ * T-121 : un contrat part sans ses champs de santé (sante.ts). Une note de santé du carnet ne part pas du tout : chaque
+ * envoi passe par `resteSurTelephone` (cloud.ts, `envoyer`), qui la retire du compte au lieu de l'écrire.
  */
 export function forRemote(s: string, k: string, value: unknown): unknown {
+  const v = formeT109(s, k, value);
+  return s === 'contracts' ? contratSansSante(v) : v;
+}
+
+/** Forme en ligne d'avant la T-121 (T-109 et réglages) : sert aussi à savoir si une version en ligne doit être corrigée tout de suite. */
+function formeT109(s: string, k: string, value: unknown): unknown {
   // Décision du DG du 21/11/2026 : jamais de nature d'événement ni de cas non géré envoyé en ligne (absences.ts).
   if (s === 'leaves' && value && typeof value === 'object') return absenceEnLigne(normaliserAbsence(value as AbsenceLue));
   // T-109 (décision de la direction du 26/11/2026) : la rupture part sans rien sur la grossesse.
@@ -108,6 +117,9 @@ export function planMerge(local: LocalRecord[], remote: RemoteDoc[], opts: { mod
   for (const r of local) {
     const id = docId(r.s, r.k);
     seen.add(id);
+    // T-121 : une note de santé du téléphone n'est ni envoyée, ni remplacée, ni effacée par la réunion. Sa copie en ligne
+    // éventuelle (ancienne version de l'app) est retirée à part, après vérification (planRetraitSante).
+    if (resteSurTelephone(r.s, r.value)) continue;
     const d = rem.get(id);
     const localFirst = mode === 'phone' || (mode === 'merge' && wins.has(id));
     if (r.s === 'kv' && r.k === 'settings') {
@@ -128,7 +140,8 @@ export function planMerge(local: LocalRecord[], remote: RemoteDoc[], opts: { mod
     // téléphone (examen de grossesse envoyé en « absence payée ») : pas de conflit, le téléphone garde son motif. Une version en
     // ligne qui contient encore une donnée qui ne doit pas y être est corrigée en ligne, sans rien perdre sur le téléphone.
     const rvSain = forRemote(r.s, r.k, rv);
-    const aCorriger = stable(rvSain) !== stable(rv);
+    // T-121 : un champ de santé encore en ligne n'est pas corrigé ici, mais par planRetraitSante, après vérification du téléphone.
+    const aCorriger = stable(formeT109(r.s, r.k, rv)) !== stable(rv);
     if (stable(rvSain) === stable(r.value) || stable(rvSain) === stable(forRemote(r.s, r.k, r.value))) {
       if (aCorriger) plan.toRemote.push(r);
       continue;
@@ -136,7 +149,8 @@ export function planMerge(local: LocalRecord[], remote: RemoteDoc[], opts: { mod
     plan.conflicts++;
     if (localFirst) plan.toRemote.push(r);
     else {
-      plan.toLocal.push({ s: r.s, k: r.k, value: rvSain });
+      // T-121 : la version du compte gagne, sauf pour les champs de santé du téléphone, qu'elle n'a pas.
+      plan.toLocal.push({ s: r.s, k: r.k, value: avecSanteLocale(r.s, rvSain, r.value, rv) });
       if (aCorriger) plan.toRemote.push({ s: r.s, k: r.k, value: rvSain });
     }
   }
@@ -146,8 +160,10 @@ export function planMerge(local: LocalRecord[], remote: RemoteDoc[], opts: { mod
     // T-109 : une donnée qui ne doit pas être en ligne (ancien examen de grossesse) est retirée au chargement, puis corrigée en ligne.
     const rv: unknown = JSON.parse(d.v);
     const rvSain = forRemote(d.s, d.k, rv);
-    plan.toLocal.push({ s: d.s, k: d.k, value: rvSain });
-    if (stable(rvSain) !== stable(rv)) plan.toRemote.push({ s: d.s, k: d.k, value: rvSain });
+    // T-121 : une donnée de santé encore en ligne (ancienne version de l'app) arrive d'abord sur le téléphone ; elle n'est
+    // retirée du compte qu'ensuite, quand le téléphone en a la même copie (planRetraitSante).
+    plan.toLocal.push({ s: d.s, k: d.k, value: avecSanteLocale(d.s, rvSain, undefined, rv) });
+    if (stable(formeT109(d.s, d.k, rv)) !== stable(rv)) plan.toRemote.push({ s: d.s, k: d.k, value: rvSain });
   }
   return plan;
 }
@@ -165,6 +181,8 @@ export function needsChoice(local: LocalRecord[], remote: RemoteDoc[]): boolean 
 
 /** Ce que l'appareil doit faire d'un document reçu en direct d'un autre appareil. */
 export function applyRemote(localValue: unknown, d: RemoteDoc): { op: 'put'; value: unknown } | { op: 'del' } | { op: 'none' } {
+  // T-121 : une note de santé du téléphone n'est jamais remplacée ni effacée par le compte (elle n'y est plus).
+  if (localValue !== undefined && resteSurTelephone(d.s, localValue)) return { op: 'none' };
   if (d.v === null) return localValue === undefined ? { op: 'none' } : { op: 'del' };
   const rv: unknown = JSON.parse(d.v);
   if (d.s === 'kv' && d.k === 'settings') {
@@ -175,7 +193,49 @@ export function applyRemote(localValue: unknown, d: RemoteDoc): { op: 'put'; val
   // forme complète du même enregistrement la garde.
   const sain = forRemote(d.s, d.k, rv);
   if (localValue !== undefined && stable(sain) === stable(forRemote(d.s, d.k, localValue))) return { op: 'none' };
-  return stable(sain) === stable(localValue) ? { op: 'none' } : { op: 'put', value: sain };
+  // T-121 : les champs de santé du téléphone sont gardés sur la version reçue.
+  const value = avecSanteLocale(d.s, sain, localValue, rv);
+  return stable(value) === stable(localValue) ? { op: 'none' } : { op: 'put', value };
+}
+
+/**
+ * T-121, point 3 de la consigne : retrait des données de santé déjà en ligne, décidé sur le téléphone de l'AM.
+ * Pour chaque document en ligne qui en contient :
+ * - note de santé du carnet : retirée du compte (document effacé, sans pierre tombale : les autres appareils gardent leur
+ *   copie) seulement si le téléphone en a une copie identique ;
+ * - contrat : réécrit sans ses champs de santé (le reste tel qu'en ligne) seulement si le téléphone a ce contrat avec les
+ *   mêmes valeurs pour ces champs.
+ * Copie du téléphone absente ou différente : rien n'est retiré, le document est noté dans `gardes`.
+ */
+export interface PlanRetrait {
+  retirer: Array<{ s: SyncedStore; k: string }>;
+  corriger: LocalRecord[];
+  gardes: Array<{ s: SyncedStore; k: string; raison: 'manque' | 'differe' }>;
+}
+
+export function planRetraitSante(remote: RemoteDoc[], local: Map<string, unknown>): PlanRetrait {
+  const out: PlanRetrait = { retirer: [], corriger: [], gardes: [] };
+  for (const d of remote) {
+    if (!isSyncedStore(d.s) || d.v === null) continue;
+    if (d.s !== 'journal' && d.s !== 'contracts') continue;
+    let rv: unknown;
+    try { rv = JSON.parse(d.v); } catch { continue; }
+    const loc = local.get(docId(d.s, d.k));
+    if (d.s === 'journal') {
+      if (!estNoteSante(rv)) continue;
+      if (loc === undefined) out.gardes.push({ s: d.s, k: d.k, raison: 'manque' });
+      else if (stable(loc) !== stable(rv)) out.gardes.push({ s: d.s, k: d.k, raison: 'differe' });
+      else out.retirer.push({ s: d.s, k: d.k });
+      continue;
+    }
+    const enLigne = rv as Record<string, unknown>;
+    if (!enLigne || typeof enLigne !== 'object' || !CHAMPS_SANTE_CONTRAT.some((f) => f in enLigne)) continue;
+    const l = loc as Record<string, unknown> | undefined;
+    if (!l || typeof l !== 'object') out.gardes.push({ s: d.s, k: d.k, raison: 'manque' });
+    else if (CHAMPS_SANTE_CONTRAT.some((f) => !(f in l) || stable(l[f]) !== stable(enLigne[f]))) out.gardes.push({ s: d.s, k: d.k, raison: 'differe' });
+    else out.corriger.push({ s: d.s, k: d.k, value: contratSansSante(enLigne) });
+  }
+  return out;
 }
 
 /** Marge de recouvrement pour reprendre l'écoute : on relit la dernière minute, sans risque (l'application est idempotente). */

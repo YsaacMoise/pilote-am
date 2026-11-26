@@ -152,6 +152,17 @@ export const backend: Backend = {
       track(p);
     }
   },
+  async retirer(uid, keys) {
+    for (let i = 0; i < keys.length; i += BATCH) {
+      const b = writeBatch(fs);
+      const lot = keys.slice(i, i + BATCH);
+      for (const d of lot) b.delete(doc(col(uid), docId(d.s, d.k)));
+      // Comme write : hors ligne, la file de Firestore garde l'effacement jusqu'au retour du réseau.
+      const p = b.commit();
+      p.catch((e) => rejected(e, lot));
+      track(p);
+    }
+  },
   listen(uid, since, cb, onError) {
     const me = deviceId();
     const q = query(col(uid), where('t', '>', Timestamp.fromMillis(since)));

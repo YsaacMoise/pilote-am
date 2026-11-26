@@ -328,7 +328,7 @@ export function Contrat({ id }: { id?: string }) {
             {c.yearType === 'incomplete' && (
               <p class="hint">Comme écrit au contrat : en une fois en juin, lors de la prise du congé principal, ou au fur et à mesure des congés pris.</p>
             )}
-            <Switch label="Enfant en situation de handicap ou de maladie" hint="Pour tes impôts : abattement majoré de 4 SMIC horaires par jour d’accueil, au lieu de 3." checked={c.majoreFiscal} onChange={(v) => set({ majoreFiscal: v })} />
+            <Switch label="Enfant en situation de handicap ou de maladie" hint="Pour tes impôts : abattement majoré de 4 SMIC horaires par jour d’accueil, au lieu de 3. Reste sur ce téléphone, jamais dans ton compte en ligne : sur un autre appareil, recoche-la." checked={c.majoreFiscal} onChange={(v) => set({ majoreFiscal: v })} />
             <Switch label="Les parents ont adhéré à Pajemploi+" hint={PAJEMPLOI_PLUS_AIDE} checked={!!c.pajemploiPlus} onChange={(v) => set({ pajemploiPlus: v })} />
           </fieldset>
         </section>

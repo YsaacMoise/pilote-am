@@ -38,7 +38,7 @@ export function PartageCard({ cid }: { cid: string }) {
           <p class="hint">Ils verront :</p>
           <ul class="what">
             <li>les arrivées, départs et absences des 7 derniers jours</li>
-            <li>le carnet (repas, sieste, change, tes notes)</li>
+            <li>le carnet (repas, sieste, change, tes notes), sans les soins ni les températures : ils restent sur ton téléphone ; dis-les aux parents avec le résumé du jour</li>
             <li>les montants du mois et les cases Pajemploi</li>
           </ul>
           <p class="hint">Ils ne peuvent rien modifier. Le nom de la famille n’est pas sur la page.</p>

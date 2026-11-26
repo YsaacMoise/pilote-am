@@ -9,9 +9,10 @@ import { acceptationConditions } from './legal';
 import { autoCopy, ctxFor, load, logErreur, logUsage, putContract, saveSettings, state, subscribe, toast } from './store';
 import { buildSnapshot } from './partage/snapshot';
 import { newShare, seal } from './partage/crypto';
-import { cloudInfo, LS, lsGet, lsSet, messageRefus, setCloud } from './cloud-state';
+import { cloudInfo, etatRetraitSante, LS, lsGet, lsSet, messageRefus, setCloud, type EtatRetraitSante } from './cloud-state';
 import { errCode, type Backend, type CloudUser } from './sync/backend';
-import { applyRemote, docId, forRemote, needsChoice, nextSince, planMerge, RESUME_MARGIN_MS, stable, type LocalRecord, type MergeMode, type RemoteDoc } from './sync/plan';
+import { applyRemote, docId, forRemote, needsChoice, nextSince, planMerge, planRetraitSante, RESUME_MARGIN_MS, stable, type LocalRecord, type MergeMode, type RemoteDoc } from './sync/plan';
+import { resteSurTelephone } from './sync/sante';
 
 let be: Backend | null = null;
 let starting: Promise<Backend> | null = null;
@@ -149,7 +150,7 @@ async function doLink(u: CloudUser, mode?: MergeMode) {
   if (plan.toLocal.length + plan.deleteLocal.length > 0 && localHasData()) await autoCopy(true);
   for (const r of plan.toLocal) await db.putRaw(r.s, r.value);
   for (const r of plan.deleteLocal) await db.delRaw(r.s, r.k);
-  await b.write(u.uid, [
+  await envoyer(b, u.uid, [
     ...plan.toRemote.map((r) => ({ s: r.s, k: r.k, v: stable(forRemote(r.s, r.k, r.value)) })),
     ...plan.deleteRemote.map((r) => ({ s: r.s, k: r.k, v: null })),
   ]);
@@ -223,6 +224,59 @@ export async function retryRejected(): Promise<boolean> {
 
 // ---------- Copie en direct ----------
 
+/**
+ * Seul chemin d'envoi vers le compte. T-121 : une note de santé du carnet n'est jamais écrite en ligne ; à la place, sa copie
+ * en ligne éventuelle est retirée (effacée sans pierre tombale). Le téléphone vient de l'enregistrer : sa copie existe.
+ */
+function envoyer(b: Backend, uid: string, docs: Array<{ s: db.SyncedStore; k: string; v: string | null }>): Promise<void> {
+  const ecrire: typeof docs = [];
+  const retirer: Array<{ s: db.SyncedStore; k: string }> = [];
+  for (const d of docs) {
+    if (d.s === 'journal' && d.v !== null && resteSurTelephone(d.s, JSON.parse(d.v))) retirer.push({ s: d.s, k: d.k });
+    else ecrire.push(d);
+  }
+  const p: Promise<void>[] = [];
+  if (ecrire.length) p.push(b.write(uid, ecrire));
+  if (retirer.length) p.push(b.retirer(uid, retirer));
+  return Promise.all(p).then(() => {});
+}
+
+/**
+ * T-121, point 3 : données de santé déjà en ligne (versions d'avant), retirées par ce téléphone. Il lit tout le compte sur le
+ * serveur, compare chaque donnée de santé à sa copie sur le téléphone (planRetraitSante) : copie identique, retrait ; copie
+ * absente ou différente, rien n'est retiré et c'est noté (LS.sante, des nombres seulement). Puis il relit le compte pour
+ * vérifier. Une fois par jour au plus tant que tout n'est pas retiré et vérifié ; plus jamais ensuite pour ce compte.
+ */
+let retraitEnCours: Promise<void> | null = null;
+
+function retirerSante(u: CloudUser): Promise<void> {
+  retraitEnCours ??= (async () => {
+    const b = be;
+    if (!b) return;
+    const avant = etatRetraitSante();
+    const jour = new Date().toISOString().slice(0, 10);
+    if (avant?.uid === u.uid && ((avant.verifie && avant.gardes === 0) || avant.jour === jour)) return;
+    // Ce que le téléphone a changé doit être en ligne avant la comparaison.
+    await b.waitPending(10000);
+    const lire = async () => {
+      const remote = await b.fetchAll(u.uid);
+      const local = new Map<string, unknown>();
+      for (const r of await localRecords()) local.set(docId(r.s, r.k), r.value);
+      return planRetraitSante(remote, local);
+    };
+    const p = await lire();
+    if (user?.uid !== u.uid) return;
+    if (p.retirer.length) await b.retirer(u.uid, p.retirer);
+    if (p.corriger.length) await envoyer(b, u.uid, p.corriger.map((r) => ({ s: r.s, k: r.k, v: stable(forRemote(r.s, r.k, r.value)) })));
+    const envoye = await b.waitPending(20000);
+    // Vérification : relu sur le serveur, il ne doit plus rester que les données gardées faute de copie identique.
+    const apres = envoye ? await lire() : null;
+    const verifie = !!apres && apres.retirer.length === 0 && apres.corriger.length === 0;
+    lsSet(LS.sante, JSON.stringify({ uid: u.uid, jour, retires: p.retirer.length + p.corriger.length, gardes: (apres ?? p).gardes.length, verifie } satisfies EtatRetraitSante));
+  })().catch((e) => console.warn('retrait santé', e)).finally(() => { retraitEnCours = null; });
+  return retraitEnCours;
+}
+
 let queue = new Map<string, { s: db.SyncedStore; k: string; v: string | null }>();
 let flushScheduled = false;
 /** Dernière version partagée connue des réglages : un changement des seuls repères de l'appareil n'est pas envoyé. */
@@ -243,7 +297,7 @@ function enqueue(s: db.SyncedStore, k: string, v: string | null) {
       flushScheduled = false;
       const docs = [...queue.values()];
       queue = new Map();
-      if (user && be && docs.length) void be.write(user.uid, docs).catch((e) => console.warn(e));
+      if (user && be && docs.length) void envoyer(be, user.uid, docs).catch((e) => console.warn(e));
     });
   }
 }
@@ -301,6 +355,8 @@ function attach(u: CloudUser): Promise<void> {
   unsubShares = subscribe(() => scheduleShares());
   reconciled = false;
   scheduleShares(500);
+  // T-121 : après l'envoi de la file, retrait des données de santé restées en ligne (versions d'avant).
+  void renvoi.then(() => retirerSante(u));
   return renvoi;
 }
 

@@ -47,7 +47,19 @@ export const LS = {
   /** Heure serveur du dernier changement reçu */
   since: 'pam-cloud-since',
   device: 'pam-device',
+  /**
+   * T-121 : dernier passage du retrait des données de santé déjà en ligne (JSON : compte, jour, nombres retirés et gardés,
+   * vérifié). Aucun contenu : seulement des nombres.
+   */
+  sante: 'pam-sante-retrait',
 } as const;
+
+/** T-121 : résultat du dernier retrait des données de santé déjà en ligne (cloud.ts, retirerSante). */
+export interface EtatRetraitSante { uid: string; jour: string; retires: number; gardes: number; verifie: boolean }
+
+export function etatRetraitSante(): EtatRetraitSante | null {
+  try { return JSON.parse(lsGet(LS.sante) ?? 'null') as EtatRetraitSante | null; } catch { return null; }
+}
 
 export function lsGet(k: string): string | null {
   try { return localStorage.getItem(k); } catch { return null; }
