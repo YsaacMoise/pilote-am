@@ -22,7 +22,7 @@ const contrat = {
   accueilOccasionnel: false, cdd: false, reposHebdo: 7, trackedFrom: '2026-09-01',
   balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0, cpSaisi: true }, history: [], createdAt: 1,
 };
-const reglages = { k: 'settings', v: { amName: 'Sonia', enfantsACharge: 0, onboarded: true, conditionsAcceptees: { version: '2026-11-04', date: today } } };
+const reglages = { k: 'settings', v: { amName: 'Sonia', enfantsACharge: 0, onboarded: true, conditionsAcceptees: { version: process.env.CGU || '2026-11-26', date: today } } };
 
 (async () => {
   await post('/reset-all', {});
@@ -55,17 +55,21 @@ const reglages = { k: 'settings', v: { amName: 'Sonia', enfantsACharge: 0, onboa
       await p.waitForTimeout(900);
       await p.screenshot({ path: path.join(out, `${tag}-${n}-${theme === 'light' ? 'clair' : 'sombre'}.png`) });
     };
-    await p.goto(base + '#/compte');
+    await p.goto(base + '#/');
     await p.reload();
+    await p.waitForTimeout(2500);
+    await shot('aujourdhui');
+    await p.goto(base + '#/compte');
     await p.getByRole('heading', { name: 'Où vont tes données' }).waitFor();
-    await shot('compte', p.getByRole('heading', { name: 'Où vont tes données' }));
+    await p.waitForTimeout(1500);
+    await shot('compte');
+    if (await p.getByRole('heading', { name: 'Ta clé de secours' }).isVisible().catch(() => false)) await shot('compte-cle', p.getByRole('heading', { name: 'Ta clé de secours' }));
     await p.goto(base + '#/contrat/c1');
     await p.getByText('Enfant en situation de handicap ou de maladie').waitFor();
-    await shot('contrat-case', p.getByText('Enfant en situation de handicap ou de maladie'));
-    await shot('contrat-lien', p.getByText(/^le carnet \(repas/));
+    await shot('contrat-lien', (await p.getByText(/^Santé :/).count()) ? p.getByText(/^Santé :/) : p.getByText(/^le carnet \(repas/));
     await p.goto(base + '#/carnet');
     await p.getByRole('region', { name: 'Ajouter au carnet de Lou' }).getByRole('button', { name: 'Soin' }).click();
-    await shot('carnet-soin', p.getByText(/Un médicament se note aussi/));
+    await shot('carnet-soin');
     await ctx.close();
   }
   await b.close();

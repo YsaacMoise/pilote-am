@@ -8,7 +8,7 @@ import {
 } from 'firebase/auth';
 import {
   collection, doc, getDocsFromServer, setDoc, initializeFirestore, onSnapshot, memoryLocalCache, persistentLocalCache, persistentMultipleTabManager,
-  query, serverTimestamp, Timestamp, waitForPendingWrites, where, writeBatch, type DocumentData,
+  query, runTransaction, serverTimestamp, Timestamp, waitForPendingWrites, where, writeBatch, type DocumentData,
 } from 'firebase/firestore';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import { appCheckActif, firebaseConfig, RECAPTCHA_SITE_KEY } from '../firebase-config';
@@ -151,6 +151,37 @@ export const backend: Backend = {
       });
       track(p);
     }
+  },
+  async creerCoffre(uid, v) {
+    const ref = doc(col(uid), docId('kv', 'coffre'));
+    return runTransaction(fs, async (tx) => {
+      const cur = await tx.get(ref);
+      const enLigne = cur.exists() ? cur.data().v : null;
+      if (typeof enLigne === 'string') return enLigne;
+      tx.set(ref, { s: 'kv', k: 'coffre', v, t: serverTimestamp(), d: deviceId() });
+      return v;
+    });
+  },
+  async remplacerSi(uid, docs) {
+    let n = 0;
+    // Par lots de 100 (une transaction lit chaque document puis écrit ceux qui n'ont pas changé).
+    for (let i = 0; i < docs.length; i += 100) {
+      const lot = docs.slice(i, i + 100);
+      n += await runTransaction(fs, async (tx) => {
+        const refs = lot.map((d) => doc(col(uid), docId(d.s, d.k)));
+        const curs = await Promise.all(refs.map((r) => tx.get(r)));
+        let k = 0;
+        lot.forEach((d, j) => {
+          const t = curs[j].data()?.t;
+          const lu = t instanceof Timestamp ? t.toMillis() : 0;
+          if (!curs[j].exists() || lu !== d.t) return;
+          tx.set(refs[j], { s: d.s, k: d.k, v: d.v, t: serverTimestamp(), d: deviceId() });
+          k++;
+        });
+        return k;
+      });
+    }
+    return n;
   },
   listen(uid, since, cb, onError) {
     const me = deviceId();

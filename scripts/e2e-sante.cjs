@@ -117,7 +117,7 @@ const lireLocal = (p, s, k) => p.evaluate(async ({ s, k }) => {
   const cEnLigne = valeur(apres, 'contracts', 'c1');
   assert(cEnLigne.sante && cEnLigne.rateNet === 400 && cEnLigne.child === 'Lou' && cEnLigne.partage.id === contrat.partage.id, 'contrat : santé et secret du lien chiffrés, le reste lisible (paie)');
   const coffre = valeur(apres, 'kv', 'coffre');
-  const code = await a.evaluate(() => JSON.parse(localStorage.getItem('pam-coffre')).code);
+  const code = await a.evaluate((u) => JSON.parse(localStorage.getItem('pam-coffre'))[u][0], uid);
   assert(coffre.v.id && !stable(coffre).includes(code.replace(/-/g, '')) && !stable(apres).includes(code), 'en ligne : l’empreinte de la clé seulement, jamais la clé');
   assert(etat.chiffres === 4 && etat.gardes === 0 && etat.verifie === true, 'migration : 4 documents chiffrés, vérifiés par relecture, 0 gardé');
   const aJ1 = await lireLocal(a, 'journal', 'j1');
@@ -193,6 +193,19 @@ const lireLocal = (p, s, k) => p.evaluate(async ({ s, k }) => {
   await attendreQue(async () => { const d = enLigne(await dump(uid), 'journal', 'j7'); return d && JSON.parse(d.v).sante; }, 30000, 'note rechiffrée');
   assert(true, 'la note en clair de l’ancien appareil est chiffrée à sa réception');
   assert((await lireLocal(bb, 'journal', 'j7'))?.detail === 'Lavage de nez', 'et elle est lisible sur B');
+
+  console.log('\n== Ancien appareil : case cochée en clair à côté du bloc chiffré (relecture B2) ==');
+  const scelle = valeur(await dump(uid), 'contracts', 'c1');
+  await post('/write', { uid, d: 'ancien-telephone', docs: [{ s: 'contracts', k: 'c1', v: stable({ ...scelle, majoreFiscal: false }) }] });
+  await attendreQue(async () => { const v = valeur(await dump(uid), 'contracts', 'c1'); return v.sante && !('majoreFiscal' in v); }, 30000, 'contrat rechiffré');
+  await bb.waitForTimeout(1500);
+  const bC1c = await lireLocal(bb, 'contracts', 'c1');
+  assert(bC1c.majoreFiscal === false && bC1c.partage.code === '4827' && bC1c.partage.secret === contrat.partage.secret, 'rechiffré sans rien perdre : nouvelle réponse gardée, secret et code du lien intacts');
+
+  console.log('\n== Deux appareils créent un coffre en même temps (relecture B1) ==');
+  const premier = await post('/creer-coffre', { uid: 'test-coffre', v: 'premier', d: 'x' });
+  const second = await post('/creer-coffre', { uid: 'test-coffre', v: 'second', d: 'y' });
+  assert(premier.v === 'premier' && second.v === 'premier', 'le second reçoit le coffre du premier : une seule clé par compte');
 
   console.log('\n== Sans compte : rappel de la semaine ==');
   const c = await telephone(b, 'C');

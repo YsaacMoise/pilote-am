@@ -54,6 +54,8 @@ export function PartageCard({ cid }: { cid: string }) {
           <Banner tone="info">Le lien passe par ton compte en ligne. Branche-le d’abord, c’est gratuit.</Banner>
           <a class="btn btn-outline btn-block" href="#/compte"><Icon name="user" />Brancher mon compte</a>
         </>
+      ) : !k && cl.cleManquante ? (
+        <Banner tone="info">Entre d’abord ta clé de secours (Plus › Compte) : le lien est chiffré avec elle.</Banner>
       ) : !k ? (
         <button class="btn btn-primary btn-lg btn-block" disabled={busy} onClick={() => run(async () => {
           await (await cloud()).createShare(cid);
@@ -104,6 +106,7 @@ function Accord({ cid }: { cid: string }) {
   const [retirer, setRetirer] = useState(false);
   if (!c) return null;
   const notes = state.journal.filter((j) => j.cid === cid && estNoteSante(j));
+  const verrou = state.journal.some((j) => j.cid === cid && 'sante' in j);
   return (
     <div class="stack-sm">
       {c.accordSante ? (
@@ -112,12 +115,14 @@ function Accord({ cid }: { cid: string }) {
         <p class="hint">Santé : pas d’accord écrit des parents noté. Les soins et températures ne sont ni notés ni montrés.</p>
       )}
       {c.accordSante
-        ? <button class="btn btn-ghost btn-block" onClick={() => setRetirer(true)}>Retirer l’accord des parents</button>
+        ? (verrou
+          ? <p class="hint">Pour retirer l’accord, entre d’abord ta clé de secours (Plus › Compte) : certaines notes sont encore chiffrées sur ce téléphone.</p>
+          : <button class="btn btn-ghost btn-block" onClick={() => setRetirer(true)}>Retirer l’accord des parents</button>)
         : <button class="btn btn-outline btn-block" onClick={async () => { await putContract({ ...c, accordSante: today() }); logUsage('accord_sante_parents', 'contrat'); }}>Les parents ont donné leur accord écrit</button>}
       {retirer && (
         <Sheet title="Retirer l’accord des parents ?" onClose={() => setRetirer(false)}>
           <div class="stack">
-            <p>{notes.length ? `Les ${notes.length} notes de santé ${de(c.child)} seront effacées, sur ce téléphone et dans ton compte.` : `Aucune note de santé ${de(c.child)} n’est enregistrée.`} Tu ne pourras plus en noter tant que les parents ne redonnent pas leur accord.</p>
+            <p>{notes.length ? `Les ${notes.length} notes de soin, de température ou de selles liquides ${de(c.child)} seront effacées, sur ce téléphone et dans ton compte.` : `Aucune note de soin ni de température ${de(c.child)} n’est enregistrée.`} Tu ne pourras plus en noter tant que les parents ne redonnent pas leur accord. Relis aussi tes notes libres : efface celles qui parlent de sa santé.</p>
             <button class="btn btn-danger btn-block" onClick={async () => {
               for (const j of notes) await deleteJournal(j.id);
               const { accordSante: _a, ...sans } = state.contracts.find((x) => x.id === cid) ?? c;

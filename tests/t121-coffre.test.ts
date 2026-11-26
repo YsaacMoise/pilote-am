@@ -95,11 +95,31 @@ describe('T-121 : forme chiffrée dans le compte', () => {
     expect(await chiffrer('days', jour, c)).toBe(jour);
     expect(separer('leaves', { id: 'l1' })).toBeNull();
   });
-  it('déchiffrer garde la case répondue sur ce téléphone si elle y est déjà (plus récente)', async () => {
+  it('ancien appareil : case cochée en clair à côté de l’ancien bloc ; rien du bloc ne se perd (relecture B2)', async () => {
     const c = await ouvrirCle(nouveauSecret());
-    const out = await chiffrer('contracts', contrat, c);
-    const dec = await dechiffrer('contracts', out, c, { ...contrat, majoreFiscal: false });
-    expect(dec!.majoreFiscal).toBe(false);
+    const out = (await chiffrer('contracts', contrat, c)) as Record<string, unknown>;
+    const mixte = { ...out, majoreFiscal: false };
+    const dec = (await dechiffrer('contracts', mixte, c))!;
+    expect(dec.majoreFiscal).toBe(false);
+    expect((dec.partage as Record<string, unknown>).secret).toBe('BBBBBBBBBBBBBBBBBBBBBB');
+    expect((dec.partage as Record<string, unknown>).code).toBe('1234');
+    // Note scellée dont l'ancien appareil a changé le texte : la température du bloc reste, le texte modifié l'emporte.
+    const n = (await chiffrer('journal', soin, c)) as Record<string, unknown>;
+    const d2 = (await dechiffrer('journal', { ...n, detail: 'Fièvre passée' }, c))!;
+    expect(d2.temp).toBe(38.4);
+    expect(d2.detail).toBe('Fièvre passée');
+    // Le texte de remplacement seul ne change rien.
+    expect(await dechiffrer('journal', n, c)).toEqual(soin);
+  });
+  it('un bloc déplacé vers un autre document ne se déchiffre pas (données associées)', async () => {
+    const c = await ouvrirCle(nouveauSecret());
+    const n = (await chiffrer('journal', soin, c)) as Record<string, unknown>;
+    expect(await dechiffrer('journal', { ...n, id: 'autre' }, c)).toBeNull();
+  });
+  it('plusieurs clés sur le téléphone : la bonne est choisie par son empreinte', async () => {
+    const a = await ouvrirCle(nouveauSecret()), b = await ouvrirCle(nouveauSecret());
+    const n = await chiffrer('journal', soin, a);
+    expect(await dechiffrer('journal', n, [b, a])).toEqual(soin);
   });
 });
 
@@ -138,6 +158,9 @@ describe('T-121 : conservation de 5 ans', () => {
   it('5 ans après la fin du dernier contrat de l’enfant, pas avant', () => {
     expect(contratsEchus([k('a', 'Léo', '2021-06-30')], '2026-06-30')).toEqual([]);
     expect(contratsEchus([k('a', 'Léo', '2021-06-30')], '2026-07-01')).toEqual(['a']);
+  });
+  it('fin avant le début (faute de frappe) : rien n’est effacé', () => {
+    expect(contratsEchus([{ id: 'a', child: 'Léo', family: 'Martin', start: '2026-09-01', end: '2016-09-30' }], '2026-11-26')).toEqual([]);
   });
   it('un contrat en cours ou plus récent pour le même enfant garde tout', () => {
     expect(contratsEchus([k('a', 'Léo', '2019-06-30'), k('b', 'Léo')], '2026-11-26')).toEqual([]);

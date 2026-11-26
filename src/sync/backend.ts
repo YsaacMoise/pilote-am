@@ -35,6 +35,16 @@ export interface Backend {
   fetchAll(uid: string): Promise<RemoteDoc[]>;
   /** Écrit (ou marque supprimés, v = null) des documents ; l'heure est posée par le serveur */
   write(uid: string, docs: Array<Omit<RemoteDoc, 't'>>): Promise<void>;
+  /**
+   * T-121 : crée le coffre du compte (kv/coffre, contenu `v`) seulement s'il n'existe pas (transaction). Rend le contenu du
+   * coffre en ligne après coup : le sien, ou celui qu'un autre appareil a créé avant. Il faut du réseau.
+   */
+  creerCoffre(uid: string, v: string): Promise<string>;
+  /**
+   * T-121 : remplace des documents seulement s'ils n'ont pas changé en ligne depuis la lecture (`t` = heure serveur lue) ;
+   * transaction. Rend le nombre de documents écrits. Il faut du réseau.
+   */
+  remplacerSi(uid: string, docs: Array<{ s: RemoteDoc['s']; k: string; v: string; t: number }>): Promise<number>;
   /** Écoute les documents modifiés après `since` (ms). Les échos des écritures de ce téléphone sont filtrés. */
   listen(uid: string, since: number, cb: (docs: RemoteDoc[], meta: ListenMeta) => void, onError: (e: unknown) => void): () => void;
   /**

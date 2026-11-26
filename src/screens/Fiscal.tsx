@@ -1,5 +1,6 @@
 import { useState } from 'preact/hooks';
 import { ctxFor, putContract, useStore } from '../store';
+import { estScelle } from '../sync/coffre';
 import { monthOf, today } from '../engine/dates';
 import { fiscalYears } from '../engine/fiscal';
 import { MESSAGE_TAUX_BRUT } from '../engine/payroll';
@@ -43,11 +44,21 @@ export function Fiscal() {
         {caseInconnue.map((c) => (
           <section class="card stack-sm" aria-label={`Abattement majoré, ${c.child}`}>
             <p><b>{c.child}</b> est-il en situation de handicap ou de maladie (abattement majoré de 4 SMIC horaires par jour au lieu de 3) ?</p>
-            <p class="hint">Cette réponse reste sur ce téléphone, jamais dans ton compte en ligne : elle n’est donc pas encore connue ici.</p>
-            <div class="row">
-              <button class="btn btn-secondary" onClick={() => void putContract({ ...c, majoreFiscal: true })}>Oui</button>
-              <button class="btn btn-secondary" onClick={() => void putContract({ ...c, majoreFiscal: false })}>Non</button>
-            </div>
+            {estScelle(c) ? (
+              // T-121 (relecture de l'option b, M4) : la réponse est chiffrée dans le compte ; sans la clé, ne pas la redemander.
+              <>
+                <p class="hint">La réponse est gardée chiffrée dans ton compte. Entre ta clé de secours pour la retrouver sur ce téléphone.</p>
+                <a class="btn btn-outline" href="#/compte">Entrer ma clé</a>
+              </>
+            ) : (
+              <>
+                <p class="hint">La réponse n’est pas connue sur cet appareil (par exemple après une ancienne version de l’app). Elle part chiffrée dans ton compte.</p>
+                <div class="row">
+                  <button class="btn btn-secondary" onClick={() => void putContract({ ...c, majoreFiscal: true })}>Oui</button>
+                  <button class="btn btn-secondary" onClick={() => void putContract({ ...c, majoreFiscal: false })}>Non</button>
+                </div>
+              </>
+            )}
           </section>
         ))}
         <section class="card stack" aria-labelledby="imp">

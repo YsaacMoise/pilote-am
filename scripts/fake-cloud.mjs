@@ -98,6 +98,26 @@ createServer(async (req, res) => {
       for (const d of body.docs) m.set(`${d.s}~${d.k}`, { ...d, t: ++clock, d: body.d });
       return send(res, 200, {});
     }
+    // T-121 : coffre créé seulement s'il n'existe pas ; remplacement seulement si le document n'a pas changé
+    case '/creer-coffre': {
+      const m = data.get(body.uid) ?? new Map();
+      data.set(body.uid, m);
+      const cur = m.get('kv~coffre');
+      if (cur && cur.v) return send(res, 200, { v: cur.v });
+      m.set('kv~coffre', { s: 'kv', k: 'coffre', v: body.v, t: ++clock, d: body.d });
+      return send(res, 200, { v: body.v });
+    }
+    case '/remplacer-si': {
+      const m = data.get(body.uid) ?? new Map();
+      let n = 0;
+      for (const d of body.docs) {
+        const cur = m.get(`${d.s}~${d.k}`);
+        if (!cur || cur.t !== d.t) continue;
+        m.set(`${d.s}~${d.k}`, { s: d.s, k: d.k, v: d.v, t: ++clock, d: body.d });
+        n++;
+      }
+      return send(res, 200, { n });
+    }
     // Pour les tests : contenu d'un compte, tel qu'il est en ligne
     case '/dump': return send(res, 200, { docs: [...(data.get(url.searchParams.get('uid')) ?? new Map()).values()] });
     case '/docs': {

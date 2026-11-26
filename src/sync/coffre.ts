@@ -77,14 +77,22 @@ export async function ouvrirCle(secret: Uint8Array<ArrayBuffer>): Promise<Cle> {
   return { cle, id: b64(new Uint8Array(bits)) };
 }
 
-async function sceller(c: Cle, data: unknown): Promise<Blob> {
+/**
+ * Données associées (AAD) : le magasin et l'identifiant de l'enregistrement. Un bloc déplacé vers un autre document ne se
+ * déchiffre plus (relecture de l'option b, m2).
+ */
+function aad(s: string, id: unknown): Uint8Array<ArrayBuffer> {
+  return new TextEncoder().encode(`${s}|${String(id)}`);
+}
+
+async function sceller(c: Cle, data: unknown, ad: Uint8Array<ArrayBuffer>): Promise<Blob> {
   const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, c.cle, new TextEncoder().encode(JSON.stringify(data)));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: ad }, c.cle, new TextEncoder().encode(JSON.stringify(data)));
   return { v: 1, k: c.id, iv: b64(iv), c: b64(new Uint8Array(ct)) };
 }
 
-async function desceller(c: Cle, b: Blob): Promise<unknown> {
-  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(b.iv) }, c.cle, unb64(b.c));
+async function desceller(c: Cle, b: Blob, ad: Uint8Array<ArrayBuffer>): Promise<unknown> {
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(b.iv), additionalData: ad }, c.cle, unb64(b.c));
   return JSON.parse(new TextDecoder().decode(pt));
 }
 
@@ -149,33 +157,58 @@ export async function chiffrer(s: string, value: unknown, c: Cle | null): Promis
   const p = separer(s, value);
   if (!p || Object.keys(p.secret).length === 0) return value;
   if (!c) return null;
-  const sante = await sceller(c, p.secret);
+  const sante = await sceller(c, p.secret, aad(s, (value as Obj).id));
   const lisible = s === 'journal' ? { ...p.lisible, kind: 'note', detail: NOTE_CHIFFREE } : p.lisible;
   return { ...lisible, sante };
 }
 
-/** Remet ensemble partie lisible et partie déchiffrée (`garderLocal` : champs déjà en clair sur ce téléphone, plus récents) */
-export function reunir(s: string, lisible: Obj, secret: Obj, garderLocal?: Obj): Obj {
-  const { sante: _s, ...base } = lisible;
+/**
+ * Remet ensemble la partie déchiffrée et ce qui est en clair à côté. Un champ de santé présent en clair à côté du bloc vient
+ * d'un appareil resté sur une ancienne version, qui l'a changé : il l'emporte, sauf le texte de remplacement d'une note
+ * chiffrée. Rien du bloc n'est perdu (relecture de l'option b, B2).
+ */
+export function reunir(s: string, value: Obj, secret: Obj): Obj {
+  const { sante: _s, ...clair } = value;
   if (s === 'journal') {
-    const { kind: _k, detail: _d, ...b } = base;
-    return { ...b, ...secret };
+    const out: Obj = {};
+    for (const k of CARNET_LISIBLE) if (k in clair) out[k] = clair[k];
+    Object.assign(out, secret);
+    const remplacement = clair.detail === NOTE_CHIFFREE;
+    for (const [k, v] of Object.entries(clair)) {
+      if (CARNET_LISIBLE.includes(k)) continue;
+      if (remplacement && (k === 'kind' || k === 'detail')) continue;
+      out[k] = v;
+    }
+    return out;
   }
-  const out: Obj = { ...base };
-  if ('majoreFiscal' in secret) out.majoreFiscal = garderLocal && 'majoreFiscal' in garderLocal && typeof garderLocal.majoreFiscal === 'boolean' ? garderLocal.majoreFiscal : secret.majoreFiscal;
-  if (objet(secret.partage) && objet(base.partage)) out.partage = { ...base.partage, ...secret.partage };
+  const out: Obj = { ...clair };
+  if ('majoreFiscal' in secret && typeof clair.majoreFiscal !== 'boolean') out.majoreFiscal = secret.majoreFiscal;
+  if (objet(secret.partage) && objet(clair.partage)) {
+    const p: Obj = { ...clair.partage };
+    for (const [k, v] of Object.entries(secret.partage)) if (p[k] === undefined) p[k] = v;
+    out.partage = p;
+  }
   return out;
 }
 
-/** Déchiffre la partie `sante` d'un enregistrement. Sans la bonne clé (ou blob abîmé) : null, l'enregistrement reste scellé. */
-export async function dechiffrer(s: string, value: unknown, c: Cle | null, garderLocal?: unknown): Promise<Obj | null> {
-  if (!objet(value) || !objet(value.sante) || !c) return null;
+/** Clé qui a scellé ce bloc (empreinte), ou null */
+export function cleDuBloc(value: unknown): string | null {
+  return objet(value) && objet(value.sante) && typeof value.sante.k === 'string' ? value.sante.k : null;
+}
+
+/**
+ * Déchiffre la partie `sante` avec celle des clés de ce téléphone qui l'a scellée (clé du compte, ou ancienne clé gardée).
+ * Sans la bonne clé (ou bloc abîmé ou déplacé) : null, l'enregistrement reste scellé.
+ */
+export async function dechiffrer(s: string, value: unknown, cles: Cle | Cle[] | null): Promise<Obj | null> {
+  if (!objet(value) || !objet(value.sante) || !cles) return null;
   const b = value.sante as unknown as Blob;
-  if (b.k !== c.id) return null;
+  const c = (Array.isArray(cles) ? cles : [cles]).find((x) => x.id === b.k);
+  if (!c) return null;
   try {
-    const secret = await desceller(c, b);
+    const secret = await desceller(c, b, aad(s, value.id));
     if (!objet(secret)) return null;
-    return reunir(s, value, secret, objet(garderLocal) ? garderLocal : undefined);
+    return reunir(s, value, secret);
   } catch { return null; }
 }
 
@@ -189,15 +222,16 @@ export interface Coffre { k: typeof COFFRE; v: { version: 1; id: string; cree: s
  * Rend les identifiants de contrats dont la durée est passée.
  */
 export const CONSERVATION_ANS = 5;
-export function contratsEchus(contracts: Array<{ id: string; child: string; family: string; end?: string }>, aujourdhui: string): string[] {
+export function contratsEchus(contracts: Array<{ id: string; child: string; family: string; start?: string; end?: string }>, aujourdhui: string): string[] {
   const groupes = new Map<string, typeof contracts>();
   for (const c of contracts) {
-    const k = `${c.child.trim().toLowerCase()}|${c.family.trim().toLowerCase()}`;
+    const k = `${(c.child ?? '').trim().toLowerCase()}|${(c.family ?? '').trim().toLowerCase()}`;
     groupes.set(k, [...(groupes.get(k) ?? []), c]);
   }
   const out: string[] = [];
   for (const g of groupes.values()) {
-    if (g.some((c) => !c.end)) continue;
+    // Fin manquante, ou avant le début (faute de frappe probable) : rien n'est effacé (relecture de l'option b, m4).
+    if (g.some((c) => !c.end || (c.start && c.end < c.start))) continue;
     const fin = g.map((c) => c.end!).sort().pop()!;
     const limite = `${Number(fin.slice(0, 4)) + CONSERVATION_ANS}${fin.slice(4)}`;
     if (aujourdhui > limite) out.push(...g.map((c) => c.id));

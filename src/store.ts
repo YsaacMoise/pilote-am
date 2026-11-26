@@ -105,6 +105,8 @@ export async function purgerConservation(aujourdhui = today()): Promise<number> 
   const ids = new Set(contratsEchus(state.contracts, aujourdhui));
   if (!ids.size) return 0;
   const notes = state.journal.filter((j) => ids.has(j.cid));
+  // Copie automatique du téléphone d'abord (Sauvegarde, copies automatiques) : une date de fin fausse se rattrape.
+  if (notes.length) await autoCopy(true).catch(() => {});
   for (const j of notes) await db.del('journal', j.id);
   state.journal = state.journal.filter((j) => !ids.has(j.cid));
   for (const c of state.contracts.filter((x) => ids.has(x.id) && (x.majoreFiscal !== undefined || x.accordSante))) {

@@ -9,8 +9,8 @@ import { acceptationConditions } from './legal';
 import { autoCopy, ctxFor, load, logErreur, logUsage, putContract, saveSettings, state, subscribe, toast } from './store';
 import { buildSnapshot } from './partage/snapshot';
 import { newShare, seal } from './partage/crypto';
-import { cleLocale, cloudInfo, deviceId, LS, lsGet, lsSet, messageRefus, setCloud, type EtatChiffrement } from './cloud-state';
-import { aChiffrer, chiffrer, CHIFFRES, codeDeSecours, COFFRE, dechiffrer, estScelle, lireCode, nouveauSecret, ouvrirCle, type Cle } from './sync/coffre';
+import { clesLocales, cloudInfo, deviceId, garderCleLocale, oublierClesLocales, LS, lsGet, lsSet, messageRefus, setCloud, type EtatChiffrement } from './cloud-state';
+import { aChiffrer, chiffrer, CHIFFRES, cleDuBloc, codeDeSecours, COFFRE, dechiffrer, estScelle, lireCode, nouveauSecret, ouvrirCle, type Cle } from './sync/coffre';
 import { errCode, type Backend, type CloudUser } from './sync/backend';
 import { applyRemote, docId, forRemote, needsChoice, nextSince, planMerge, RESUME_MARGIN_MS, stable, type LocalRecord, type MergeMode, type RemoteDoc } from './sync/plan';
 
@@ -71,6 +71,7 @@ async function onUser(u: CloudUser | null) {
     detach();
     user = null;
     cle = null;
+    cles = [];
     setCloud({ cleManquante: undefined, cleOk: undefined });
     protegees.clear();
     setCloud({ status: 'off', email: undefined, verified: undefined, lastSync: undefined, refus: undefined });
@@ -78,7 +79,12 @@ async function onUser(u: CloudUser | null) {
   }
   user = u;
   // T-121 : clé de secours de ce téléphone pour ce compte, avant tout envoi.
-  cle = await chargerCle(u.uid).catch(() => null);
+  // Seulement la clé qui correspond au coffre déjà connu de ce téléphone ; sinon rien ne part chiffré avant `etablirCoffre`.
+  cles = await chargerCles(u.uid).catch(() => []);
+  cle = null;
+  const idLocal = await idCoffreLocal().catch(() => null);
+  if (idLocal) choisirCle(idLocal);
+  setCloud({ uid: u.uid });
   // Nouvelle connexion : les clés refusées repartent avec la file d'attente, l'ancien bandeau n'a plus lieu d'être.
   setCloud({ email: u.email ?? undefined, verified: u.verified, refus: undefined });
   protegees.clear();
@@ -141,7 +147,8 @@ async function doLink(u: CloudUser, mode?: MergeMode) {
     throw friendly(e);
   }
   // T-121 (option b) : coffre du compte. Clé de secours de ce téléphone, ou nouvelle clé si le compte n'en a pas encore.
-  remote = await preparerCoffre(u, remote);
+  await etablirCoffre(u, remote);
+  remote = await ouvrirDocs(remote);
   const local = await localRecords();
   const sameAccount = last === u.uid;
   if (!mode && !sameAccount && needsChoice(local, remote)) {
@@ -229,14 +236,20 @@ export async function retryRejected(): Promise<boolean> {
 }
 
 // ---------- Coffre : chiffrement de bout en bout des données de santé (T-121, option b) ----------
-// Voir sync/coffre.ts. La clé reste en mémoire et dans le stockage de ce téléphone (cloud-state.ts, LS.coffre).
+// Voir sync/coffre.ts. Les clés restent en mémoire et dans le stockage de ce téléphone (cloud-state.ts, LS.coffre, par compte).
+// `cle` : la clé du compte (celle dont l'empreinte est dans kv/coffre). `cles` : elle, plus les anciennes clés gardées, qui
+// servent seulement à déchiffrer puis rechiffrer avec la clé du compte (relecture de l'option b, B1).
 
 let cle: Cle | null = null;
+let cles: Cle[] = [];
 
-async function chargerCle(uid: string): Promise<Cle | null> {
-  const code = cleLocale(uid);
-  const sec = code ? lireCode(code) : null;
-  return sec ? ouvrirCle(sec) : null;
+async function chargerCles(uid: string): Promise<Cle[]> {
+  const out: Cle[] = [];
+  for (const code of clesLocales(uid)) {
+    const sec = lireCode(code);
+    if (sec) out.push(await ouvrirCle(sec));
+  }
+  return out;
 }
 
 function idCoffre(docs: RemoteDoc[]): string | null {
@@ -244,77 +257,75 @@ function idCoffre(docs: RemoteDoc[]): string | null {
   try { return d ? (JSON.parse(d.v!) as { v: { id: string } }).v.id : null; } catch { return null; }
 }
 
-/** Ouvre la clé de ce téléphone, ou en crée une si le compte n'a pas encore de coffre ; puis déchiffre ce qui peut l'être. */
-async function preparerCoffre(u: CloudUser, remote: RemoteDoc[]): Promise<RemoteDoc[]> {
-  const id = idCoffre(remote);
-  cle = await chargerCle(u.uid);
-  if (cle && id && cle.id !== id) cle = null;
-  if (!id) {
-    if (!cle) {
-      const sec = nouveauSecret();
-      lsSet(LS.coffre, JSON.stringify({ uid: u.uid, code: codeDeSecours(sec) }));
-      cle = await ouvrirCle(sec);
-    }
-    // Rangé sur le téléphone : la réunion l'envoie avec le reste (empreinte seulement, jamais le secret).
-    await db.putRaw('kv', { k: COFFRE, v: { version: 1, id: cle.id, cree: new Date().toISOString().slice(0, 10) } });
-  }
-  setCloud({ cleManquante: !cle, cleOk: !!cle });
-  return ouvrirDocs(remote);
+async function idCoffreLocal(): Promise<string | null> {
+  return (await db.get<{ k: string; v: { id: string } }>('kv', COFFRE))?.v.id ?? null;
+}
+
+/** Choisit, parmi les clés de ce téléphone, celle du compte ; null si ce téléphone ne l'a pas. */
+function choisirCle(id: string | null): void {
+  cle = id ? cles.find((c) => c.id === id) ?? null : null;
+  setCloud({ cleManquante: !!id && !cle, cleOk: !!cle });
 }
 
 /**
- * Téléphone déjà relié au compte (démarrage) : le coffre est lu sur le téléphone. S'il n'y est pas (première ouverture de
- * cette version), le compte est lu une fois : coffre trouvé (clé demandée si ce téléphone ne l'a pas), ou créé.
+ * Établit le coffre du compte. S'il existe : la clé de ce téléphone est-elle la sienne ? Sinon, la clé est demandée. S'il
+ * n'existe pas : une clé est créée, seulement si aucune donnée n'est déjà chiffrée (sinon une autre clé existe quelque part,
+ * on la demande), et le coffre est écrit seulement s'il n'existe toujours pas au moment d'écrire (transaction : deux appareils
+ * ne peuvent pas créer deux clés).
  */
-async function assurerCoffre(u: CloudUser) {
-  const local = await db.get<{ k: string; v: { id: string } }>('kv', COFFRE);
-  let id = local?.v.id ?? null;
+async function etablirCoffre(u: CloudUser, remote?: RemoteDoc[]): Promise<void> {
+  cles = await chargerCles(u.uid);
+  let id = await idCoffreLocal();
   if (!id) {
-    const remote = await be!.fetchAll(u.uid);
+    remote ??= await be!.fetchAll(u.uid);
     id = idCoffre(remote);
     const d = remote.find((x) => x.s === 'kv' && x.k === COFFRE && x.v);
     if (d) await db.putRaw('kv', JSON.parse(d.v!));
   }
-  if (!cle) cle = await chargerCle(u.uid);
-  if (cle && id && cle.id !== id) cle = null;
   if (!id) {
-    if (!cle) {
+    const local = await localRecords();
+    const blocs = new Set([...remote!.map((d) => (d.v ? cleDuBloc(JSON.parse(d.v)) : null)), ...local.map((r) => cleDuBloc(r.value))].filter((x): x is string => !!x));
+    let candidate = cles.find((c) => blocs.has(c.id)) ?? (blocs.size ? null : cles[0] ?? null);
+    if (!candidate && blocs.size) { choisirCle(null); setCloud({ cleManquante: true, cleOk: false }); return; }
+    if (!candidate) {
       const sec = nouveauSecret();
-      lsSet(LS.coffre, JSON.stringify({ uid: u.uid, code: codeDeSecours(sec) }));
-      cle = await ouvrirCle(sec);
+      garderCleLocale(u.uid, codeDeSecours(sec));
+      candidate = await ouvrirCle(sec);
+      cles = [...cles, candidate];
     }
-    await db.put('kv', { k: COFFRE, v: { version: 1, id: cle.id, cree: new Date().toISOString().slice(0, 10) } });
+    const doc = { k: COFFRE, v: { version: 1, id: candidate.id, cree: new Date().toISOString().slice(0, 10) } };
+    const enLigne = await be!.creerCoffre(u.uid, stable(doc));
+    const garde = JSON.parse(enLigne) as typeof doc;
+    await db.putRaw('kv', garde);
+    id = garde.v.id;
   }
-  setCloud({ cleManquante: !cle, cleOk: !!cle });
-  if (cle) {
-    if (await ouvrirLocal()) await load();
-    renvoyerAttente();
-  }
+  choisirCle(id);
 }
 
-/** Ce qui attendait la clé (file d'attente) repart, chiffré. */
+/** Ce qui attendait la clé (file d'attente) repart, chiffré. Mis dans la file d'envoi avant d'être retiré de l'attente. */
 function renvoyerAttente() {
   const waiting = db.outboxRead();
   if (!waiting.length || !attached) return;
-  db.outboxClear();
   void (async () => {
     for (const { s, k } of waiting) {
       const v = await db.get(s, k);
       if (v === undefined) enqueue(s, k, null);
       else enqueue(s, k, stable(forRemote(s, k, v)));
     }
+    // Retirées de l'attente juste avant l'envoi : ce qui attend encore la clé y est remis par `envoyer`.
+    db.outboxDrop(waiting);
   })();
 }
 
 /** Déchiffre les documents reçus quand ce téléphone a la clé ; sinon ils restent scellés (illisibles, gardés tels quels). */
 async function ouvrirDocs(docs: RemoteDoc[]): Promise<RemoteDoc[]> {
-  if (!cle) return docs;
+  if (!cles.length) return docs;
   const out: RemoteDoc[] = [];
   for (const d of docs) {
     if (d.v === null || !(CHIFFRES as readonly string[]).includes(d.s)) { out.push(d); continue; }
     const val: unknown = JSON.parse(d.v);
     if (!estScelle(val)) { out.push(d); continue; }
-    const dec = await dechiffrer(d.s, val, cle);
+    const dec = await dechiffrer(d.s, val, cles);
     out.push(dec ? { ...d, v: stable(dec) } : d);
   }
   return out;
@@ -322,12 +333,12 @@ async function ouvrirDocs(docs: RemoteDoc[]): Promise<RemoteDoc[]> {
 
 /** Ouvre les enregistrements scellés de ce téléphone (reçus avant d'avoir la clé). Rend le nombre d'enregistrements ouverts. */
 async function ouvrirLocal(): Promise<number> {
-  if (!cle) return 0;
+  if (!cles.length) return 0;
   let n = 0;
   for (const s of CHIFFRES) {
     for (const value of await db.getAll(s)) {
       if (!estScelle(value)) continue;
-      const dec = await dechiffrer(s, value, cle, value);
+      const dec = await dechiffrer(s, value, cles);
       if (dec) { await db.putRaw(s, dec); n++; }
     }
   }
@@ -343,31 +354,28 @@ export async function entrerCle(texte: string): Promise<void> {
   let id: string | null;
   try { id = idCoffre(await be.fetchAll(user.uid)); } catch { throw new Error('Il faut du réseau pour vérifier la clé.'); }
   if (id && id !== c.id) throw new Error('Ce n’est pas la clé de secours de ce compte. Vérifie chaque caractère.');
-  lsSet(LS.coffre, JSON.stringify({ uid: user.uid, code: codeDeSecours(sec) }));
-  cle = c;
-  setCloud({ cleManquante: false, cleOk: true });
+  // La clé du compte passe en tête ; une autre clé de ce téléphone est gardée pour rechiffrer ce qu'elle a scellé.
+  garderCleLocale(user.uid, codeDeSecours(sec));
+  cles = await chargerCles(user.uid);
+  if (!id) { await etablirCoffre(user); } else choisirCle(id);
   const n = await ouvrirLocal();
   logUsage('cle_secours_entree');
   await load();
-  // Ce qui attendait la clé part maintenant, puis ce qui reste en clair dans le compte est chiffré.
   renvoyerAttente();
   void chiffrerEnLigne(user, true);
   if (n) toast('Clé reconnue : le carnet et ce qui touche à la santé sont ouverts sur ce téléphone.', undefined, 'ok');
 }
 
-/** Code de la clé de secours de ce téléphone (écran Compte), ou null */
-export function codeSecours(): string | null {
-  return user ? cleLocale(user.uid) : null;
-}
-
 /**
- * Seul chemin d'envoi vers le compte. T-121 : ce qui touche à la santé part chiffré. Sans la clé, un enregistrement qui a
- * une donnée de santé en clair ne part pas : il attend dans la file d'attente, et partira quand la clé sera entrée.
+ * Seul chemin d'envoi vers le compte. T-121 : ce qui touche à la santé part chiffré avec la clé du compte. Sans elle, un
+ * enregistrement qui a une donnée de santé en clair ne part pas : il attend dans la file, et partira avec la clé. Le coffre ne
+ * part jamais par ce chemin (seulement par `creerCoffre`, qui ne remplace pas un coffre existant).
  */
 async function envoyer(b: Backend, uid: string, docs: Array<{ s: db.SyncedStore; k: string; v: string | null }>): Promise<void> {
   const ecrire: typeof docs = [];
   const attente: Array<{ s: db.SyncedStore; k: string }> = [];
   for (const d of docs) {
+    if (d.s === 'kv' && d.k === COFFRE) continue;
     if (d.v === null || !(CHIFFRES as readonly string[]).includes(d.s)) { ecrire.push(d); continue; }
     const val: unknown = JSON.parse(d.v);
     const out = await chiffrer(d.s, val, cle);
@@ -378,11 +386,22 @@ async function envoyer(b: Backend, uid: string, docs: Array<{ s: db.SyncedStore;
   if (ecrire.length) await b.write(uid, ecrire);
 }
 
+/** Document en ligne à (re)chiffrer : une donnée de santé en clair, ou un bloc scellé avec une autre clé que celle du compte. */
+function aRechiffrer(s: string, val: unknown): boolean {
+  if (!(CHIFFRES as readonly string[]).includes(s)) return false;
+  if (aChiffrer(s, val)) return true;
+  const k = cleDuBloc(val);
+  return !!k && !!cle && k !== cle.id;
+}
+
 /**
- * T-121, point 3 : données encore en clair dans le compte (versions d'avant, ou appareil resté sur une ancienne version),
- * chiffrées par ce téléphone. Chaque document est chiffré à partir de sa propre version en ligne ; avant d'écrire, l'app le
- * déchiffre et vérifie qu'il redonne exactement l'original (aucune perte possible) ; après, elle relit le compte et vérifie.
- * Une fois par jour au plus tant que ce n'est pas vérifié, et dès qu'une donnée en clair arrive (`force`).
+ * T-121, point 3 : données encore en clair dans le compte (versions d'avant, ou appareil resté sur une ancienne version), ou
+ * scellées avec une ancienne clé, chiffrées avec la clé du compte par ce téléphone. Chaque document part de sa propre version
+ * en ligne, bloc déjà chiffré compris (déchiffré et réuni avec le clair : rien du bloc ne se perd) ; avant d'écrire, l'app
+ * déchiffre le résultat et vérifie qu'il redonne exactement cette version ; l'écriture ne se fait que si le document n'a pas
+ * changé en ligne entre-temps (transaction) ; après, l'app relit le compte et vérifie. Un bloc qu'aucune clé de ce téléphone
+ * n'ouvre est laissé tel quel et compté. Une fois par jour au plus tant que ce n'est pas vérifié, et dès qu'une donnée en
+ * clair arrive (`force`).
  */
 let chiffrementEnCours: Promise<void> | null = null;
 let chiffrementARelancer = false;
@@ -399,39 +418,41 @@ function chiffrerEnLigne(u: CloudUser, force = false): Promise<void> {
     const remote = await b.fetchAll(u.uid);
     if (user?.uid !== u.uid || cle !== c) return;
     noterAppareils(remote);
-    const ecrire: Array<{ s: db.SyncedStore; k: string; v: string }> = [];
+    const ecrire: Array<{ s: db.SyncedStore; k: string; v: string; t: number }> = [];
     const attendu = new Map<string, string>();
     let gardes = 0;
     for (const d of remote) {
-      if (d.v === null || !(CHIFFRES as readonly string[]).includes(d.s)) continue;
+      if (d.v === null) continue;
       const val = JSON.parse(d.v) as Record<string, unknown>;
-      if (!aChiffrer(d.s, val)) continue;
-      const out = await chiffrer(d.s, val, c);
-      const { sante: _s, ...original } = val;
+      if (!aRechiffrer(d.s, val)) continue;
+      // Version complète : bloc déchiffré et réuni avec ce qui est en clair (sans bloc : la version en clair).
+      const { sante: _s, ...sansBloc } = val;
+      const complet = estScelle(val) ? await dechiffrer(d.s, val, cles) : sansBloc;
+      if (!complet) { gardes++; continue; }
+      const out = await chiffrer(d.s, complet, c);
       const relu = out ? await dechiffrer(d.s, out, c) : null;
-      if (!out || !relu || stable(relu) !== stable(original)) { gardes++; continue; }
-      ecrire.push({ s: d.s, k: d.k, v: stable(out) });
-      attendu.set(docId(d.s, d.k), stable(original));
+      if (!out || !relu || stable(relu) !== stable(complet)) { gardes++; continue; }
+      ecrire.push({ s: d.s, k: d.k, v: stable(out), t: d.t });
+      attendu.set(docId(d.s, d.k), stable(complet));
     }
-    if (ecrire.length) await b.write(u.uid, ecrire);
-    const envoye = await b.waitPending(20000);
+    const ecrits = ecrire.length ? await b.remplacerSi(u.uid, ecrire) : 0;
     let verifie = false;
-    if (envoye) {
-      const apres = await b.fetchAll(u.uid);
+    const apres = await b.fetchAll(u.uid).catch(() => null);
+    if (apres) {
       verifie = true;
       for (const d of apres) {
-        if (d.v === null || !(CHIFFRES as readonly string[]).includes(d.s)) continue;
+        if (d.v === null) continue;
         const val: unknown = JSON.parse(d.v);
-        const id = docId(d.s, d.k);
-        if (aChiffrer(d.s, val)) { verifie = false; continue; }
-        const att = attendu.get(id);
-        if (att !== undefined) {
+        if (aRechiffrer(d.s, val)) { verifie = false; continue; }
+        const att = attendu.get(docId(d.s, d.k));
+        if (att !== undefined && cleDuBloc(val) === c.id) {
           const dec = await dechiffrer(d.s, val, c);
-          if (!dec || stable(dec) !== att) verifie = false;
+          // Changé en ligne entre-temps (non écrit) : ce n'est pas une perte, il sera relu au prochain passage.
+          if (!dec) verifie = false;
         }
       }
     }
-    lsSet(LS.chiffrement, JSON.stringify({ uid: u.uid, jour, chiffres: ecrire.length, gardes, verifie } satisfies EtatChiffrement));
+    lsSet(LS.chiffrement, JSON.stringify({ uid: u.uid, jour, chiffres: ecrits, gardes, verifie } satisfies EtatChiffrement));
   })().catch((e) => console.warn('chiffrement', e)).finally(() => {
     chiffrementEnCours = null;
     if (chiffrementARelancer) { chiffrementARelancer = false; void chiffrerEnLigne(u, true); }
@@ -441,10 +462,12 @@ function chiffrerEnLigne(u: CloudUser, force = false): Promise<void> {
 
 // ---------- Appareils pas à jour (T-121, point de décision du DG) ----------
 // Chaque appareil à jour écrit un repère dans le compte (magasin kv, `appareil-<id>`). Un document écrit dans les 60 derniers
-// jours par un appareil sans repère vient d'un appareil resté sur une ancienne version : l'écran Compte le dit.
+// jours par un appareil sans repère vient d'un appareil resté sur une ancienne version : l'écran Compte le dit. Les appareils
+// vus sont notés à chaque réception (pas seulement à la migration : relecture de l'option b, M2).
 
 export const FORMAT_DONNEES = 2;
 const REPERE = 'appareil-';
+const JOURS_VUS = 60;
 
 async function poserRepere() {
   const k = REPERE + deviceId();
@@ -454,19 +477,30 @@ async function poserRepere() {
   await db.put('kv', { k, v: { format: FORMAT_DONNEES, vu: jour } });
 }
 
-function noterAppareils(remote: RemoteDoc[]) {
-  const aJour = new Set<string>();
-  for (const d of remote) {
-    if (d.s !== 'kv' || !d.k.startsWith(REPERE) || !d.v) continue;
-    try { if ((JSON.parse(d.v) as { v: { format: number } }).v.format >= FORMAT_DONNEES) aJour.add(d.k.slice(REPERE.length)); } catch { /* */ }
-  }
+function lireVus(): Record<string, number> {
+  try { return JSON.parse(lsGet(LS.vus) ?? '{}') as Record<string, number>; } catch { return {}; }
+}
+
+/** Note les appareils qui ont écrit ces documents, puis recompte ceux qui ne sont pas à jour. */
+function noterAppareils(docs: RemoteDoc[]) {
   const me = deviceId();
-  const limite = Date.now() - 60 * 86400000;
-  const anciens = new Set<string>();
-  for (const d of remote) if (d.d && d.d !== me && d.t > limite && !aJour.has(d.d)) anciens.add(d.d);
+  const vus = lireVus();
+  const limite = Date.now() - JOURS_VUS * 86400000;
+  for (const d of docs) if (d.d && d.d !== me && !(d.s === 'kv' && d.k.startsWith(REPERE))) vus[d.d] = Math.max(vus[d.d] ?? 0, d.t || Date.now());
+  for (const [id, t] of Object.entries(vus)) if (t < limite) delete vus[id];
+  lsSet(LS.vus, JSON.stringify(vus));
+  void recompterAnciens(vus);
+}
+
+async function recompterAnciens(vus = lireVus()) {
+  const aJour = new Set<string>();
+  for (const r of await db.getAll<{ k: string; v?: { format?: number } }>('kv')) {
+    if (r.k.startsWith(REPERE) && (r.v?.format ?? 0) >= FORMAT_DONNEES) aJour.add(r.k.slice(REPERE.length));
+  }
+  const n = Object.keys(vus).filter((id) => !aJour.has(id)).length;
   const avant = Number(lsGet(LS.anciens) ?? 0);
-  lsSet(LS.anciens, anciens.size ? String(anciens.size) : null);
-  if (anciens.size && !avant) toast('Un autre appareil utilise une ancienne version d’Arvela : ouvre l’app dessus et touche « Mettre à jour ».', undefined, 'warn');
+  lsSet(LS.anciens, n ? String(n) : null);
+  if (n && !avant) toast('Un autre appareil utilise une ancienne version d’Arvela : ouvre l’app dessus et touche « Mettre à jour ».', undefined, 'warn');
 }
 
 // ---------- Copie en direct ----------
@@ -509,7 +543,8 @@ const mirror: db.Mirror = {
         now.add(k);
         enqueueValue(s, k, value);
       }
-      for (const k of oldKeys.get(s) ?? []) if (!now.has(k)) enqueue(s, k, null);
+      // T-121 : une restauration ne retire jamais le coffre ni les repères d'appareils du compte (relecture de l'option b, B1).
+      for (const k of oldKeys.get(s) ?? []) if (!now.has(k) && !(s === 'kv' && (k === COFFRE || k.startsWith(REPERE)))) enqueue(s, k, null);
     }
   },
 };
@@ -552,11 +587,18 @@ function attach(u: CloudUser): Promise<void> {
   reconciled = false;
   scheduleShares(500);
   // T-121 : repère d'appareil à jour, puis chiffrement des données encore en clair dans le compte.
-  void renvoi.then(async () => { await poserRepere(); await assurerCoffre(u); await chiffrerEnLigne(u); }).catch((e) => console.warn('coffre', e));
+  void renvoi.then(async () => {
+    await poserRepere();
+    await etablirCoffre(u);
+    if (cle) { if (await ouvrirLocal()) await load(); renvoyerAttente(); }
+    void recompterAnciens();
+    await chiffrerEnLigne(u);
+  }).catch((e) => console.warn('coffre', e));
   return renvoi;
 }
 
 function detach() {
+  arreterSuivis();
   unsubShares?.();
   unsubShares = null;
   clearTimeout(shareTimer);
@@ -571,7 +613,8 @@ async function receive(recus: RemoteDoc[]) {
   if (!recus.length) return;
   // T-121 : une donnée de santé reçue en clair (appareil resté sur une ancienne version) est rechiffrée dans le compte ; et le
   // lien des parents est rechiffré, au cas où cet appareil l'aurait abîmé.
-  if (cle && user && recus.some((d) => d.v !== null && (CHIFFRES as readonly string[]).includes(d.s) && aChiffrer(d.s, JSON.parse(d.v)))) {
+  noterAppareils(recus);
+  if (cle && user && recus.some((d) => d.v !== null && aRechiffrer(d.s, JSON.parse(d.v)))) {
     const u = user;
     setTimeout(() => { void chiffrerEnLigne(u, true); sentShares.clear(); scheduleShares(0); }, 1000);
   }
@@ -629,6 +672,24 @@ let unsubShares: (() => void) | null = null;
 let shareTimer: ReturnType<typeof setTimeout> | undefined;
 /** Dernier contenu envoyé par lien (sans l'heure), pour ne rien renvoyer d'identique */
 const sentShares = new Map<string, string>();
+/**
+ * T-121 (relecture de l'option b, M3) : dernier texte chiffré envoyé par lien, et suivi en direct de chaque lien. Si le
+ * document change sans venir de ce téléphone (appareil resté sur une ancienne version, qui n'a pas le secret), ce téléphone
+ * le refait aussitôt.
+ */
+const dernierScelle = new Map<string, string>();
+const suivis = new Map<string, () => void>();
+function suivreLien(id: string) {
+  if (suivis.has(id) || !be) return;
+  suivis.set(id, be.watchShare(id, (d) => {
+    const mien = dernierScelle.get(id);
+    if (d && mien && d.v !== mien && cle) { sentShares.delete(id); scheduleShares(1000); }
+  }, () => {}));
+}
+function arreterSuivis() {
+  for (const f of suivis.values()) f();
+  suivis.clear();
+}
 let sharing: Promise<void> = Promise.resolve();
 /** Liens en ligne comparés aux contrats une fois par branchement du compte */
 let reconciled = false;
@@ -663,8 +724,11 @@ async function pushShares() {
     const same = JSON.stringify(snap);
     if (sentShares.get(k.id) === same) continue;
     snap.maj = Date.now();
-    await be.putShare(k.id, await seal(k, snap));
+    const scelle = await seal(k, snap);
+    dernierScelle.set(k.id, scelle.v);
+    await be.putShare(k.id, scelle);
     sentShares.set(k.id, same);
+    suivreLien(k.id);
   }
   // Contrat supprimé, ou lien coupé sur un autre appareil : le lien est effacé en ligne aussi.
   for (const id of [...sentShares.keys()]) {
@@ -834,8 +898,11 @@ export async function deleteAccount(password: string) {
     }
     throw friendly(e);
   }
-  for (const k of [LS.linked, LS.last, LS.since, LS.pending, LS.coffre, LS.chiffrement, LS.anciens]) lsSet(k, null);
+  const uidSupprime = user?.uid;
+  for (const k of [LS.linked, LS.last, LS.since, LS.pending, LS.chiffrement, LS.anciens, LS.vus]) lsSet(k, null);
+  if (uidSupprime) oublierClesLocales(uidSupprime);
   cle = null;
+  cles = [];
   setCloud({ cleManquante: undefined, cleOk: undefined });
   // Le coffre du compte supprimé n'a plus de sens sur ce téléphone.
   await db.delRaw('kv', COFFRE).catch(() => {});

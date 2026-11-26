@@ -30,6 +30,8 @@ export interface CloudInfo {
   cleManquante?: boolean;
   /** T-121 : ce téléphone a la clé de secours du compte */
   cleOk?: boolean;
+  /** T-121 : identifiant du compte connecté (pour trouver sa clé sur ce téléphone) */
+  uid?: string;
 }
 
 /** Message du bandeau quand le serveur refuse un envoi (code d'erreur Firebase ou du faux serveur) */
@@ -60,16 +62,37 @@ export const LS = {
   chiffrement: 'pam-sante-chiffrement',
   /** T-121 : nombre d'autres appareils du compte restés sur une ancienne version (vus dans les 60 derniers jours) */
   anciens: 'pam-appareils-anciens',
+  /** T-121 : appareils vus écrire dans le compte (identifiant → heure), pour repérer ceux restés sur une ancienne version */
+  vus: 'pam-appareils-vus',
   /** T-121 : dernière fois que l'invite « garde ta clé de secours » a été écartée (ms) */
   inviteCle: 'pam-invite-cle',
 } as const;
 
-/** T-121 : clé de secours gardée sur ce téléphone pour ce compte */
-export function cleLocale(uid?: string): string | null {
+/** T-121 : clés de secours gardées sur ce téléphone, par compte (la plus récente en tête ; les autres servent à rechiffrer). */
+function lireCoffres(): Record<string, string[]> {
   try {
-    const v = JSON.parse(lsGet(LS.coffre) ?? 'null') as { uid: string; code: string } | null;
-    return v && (!uid || v.uid === uid) ? v.code : null;
-  } catch { return null; }
+    const v = JSON.parse(lsGet(LS.coffre) ?? '{}') as Record<string, string[]>;
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch { return {}; }
+}
+export function clesLocales(uid: string): string[] {
+  const v = lireCoffres()[uid];
+  return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+}
+/** Garde une clé pour ce compte, en tête ; les autres clés de ce compte restent (jamais effacées sans la suppression du compte). */
+export function garderCleLocale(uid: string, code: string) {
+  const all = lireCoffres();
+  all[uid] = [code, ...clesLocales(uid).filter((c) => c !== code)];
+  lsSet(LS.coffre, JSON.stringify(all));
+}
+export function oublierClesLocales(uid: string) {
+  const all = lireCoffres();
+  delete all[uid];
+  lsSet(LS.coffre, Object.keys(all).length ? JSON.stringify(all) : null);
+}
+/** Clé de secours du compte connecté sur ce téléphone (celle du coffre), pour l'écran Compte */
+export function cleLocale(): string | null {
+  return info.uid && info.cleOk ? clesLocales(info.uid)[0] ?? null : null;
 }
 
 export interface EtatChiffrement { uid: string; jour: string; chiffres: number; gardes: number; verifie: boolean }
