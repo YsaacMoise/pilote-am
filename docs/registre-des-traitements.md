@@ -113,7 +113,7 @@ Constatées dans le code et la configuration le 4 novembre 2026.
 | Personnes concernées | Utilisatrices |
 | Données | Adresse e-mail ; lien à usage unique ; journaux d’envoi de Google. Copie scellée : adresse du compte (et l’ancienne si elle change), texte fixe de l’e-mail (date d’ouverture possible), journaux d’envoi de Brevo |
 | Destinataires | Google (Firebase Authentication envoie les e-mails, expéditeur noreply@arvela.fr) ; Brevo pour les e-mails de la copie scellée (extension « Trigger Email from Firestore », collection `mail`, fermée aux clients) ; OVHcloud pour les enregistrements DNS d’authentification du domaine |
-| Transferts hors UE | Oui (Firebase Authentication, États-Unis). Mêmes garanties qu’en A1. Brevo : aucun (Union européenne) |
+| Transferts hors UE | Oui (Firebase Authentication, États-Unis). Mêmes garanties qu’en A1. Brevo : données stockées dans l’Union européenne ; transferts éventuels de ses propres sous-traitants encadrés par les clauses contractuelles types de son accord de traitement (liste des sous-traitants de Brevo à relever) |
 | Durées | Liens à durée de vie courte fixée par Firebase ; journaux selon Google. Documents `mail` effacés 7 jours après leur création (règle TTL de Firestore sur `expireAt`) ; journaux d’envoi selon Brevo. Aucune liste d’envoi, aucun e-mail commercial |
 | Sécurité | DMARC en quarantaine ; code retiré de l’adresse après lecture, donc absent de l’historique et de la mesure d’usage |
 
