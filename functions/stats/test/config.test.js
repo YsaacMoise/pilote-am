@@ -13,7 +13,7 @@ test('planification : 5 h chaque nuit, heure de Paris, région de Paris, compte 
   assert.equal(e.scheduleTrigger.schedule, '0 5 * * *');
   assert.equal(e.scheduleTrigger.timeZone, 'Europe/Paris');
   assert.equal(e.scheduleTrigger.retryConfig.retryCount, 0);
-  assert.equal(e.serviceAccountEmail, 'arvela-stats@');
+  assert.equal(e.serviceAccountEmail, 'arvela-stats@arvela-app.iam.gserviceaccount.com');
   assert.equal(e.maxInstances, 1);
   assert.equal(e.platform, 'gcfv2');
 });

@@ -39,8 +39,9 @@ export const statsNuit = onSchedule(
     schedule: '0 5 * * *',
     timeZone: 'Europe/Paris',
     region: 'europe-west9',
-    // Compte de service dédié, en lecture seule (créé par le DG : docs/stats.md).
-    serviceAccount: 'arvela-stats@',
+    // Compte de service dédié, en lecture seule (docs/stats.md). Adresse complète : la forme courte « arvela-stats@ »
+    // part telle quelle dans la tâche Cloud Scheduler et Google la refuse (400, constaté le 26/11/2026, firebase-tools 15.34).
+    serviceAccount: 'arvela-stats@arvela-app.iam.gserviceaccount.com',
     memory: '256MiB',
     timeoutSeconds: 900,
     maxInstances: 1,

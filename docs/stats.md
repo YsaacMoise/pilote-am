@@ -65,6 +65,7 @@ firebase deploy --only functions:sequestre,functions:stats,firestore:rules --pro
 - `functions:sequestre` et `firestore:rules` : étape 5 de docs/sequestre-kms.md (avec le fichier `functions/.env` de la clé KMS).
 - `functions:stats` : crée la fonction `statsNuit` et sa planification (une tâche Cloud Scheduler à Paris). Si l'outil propose d'activer des services Google (Cloud Scheduler, Cloud Run, Cloud Build, Artifact Registry), répondre oui. S'il demande combien de jours garder les anciennes images, répondre 1.
 - Plus tard, pour changer un réglage de l'étape 3 : `firebase deploy --only functions:stats --project arvela-app`.
+- Mise en service du 26/11/2026 : la tâche Cloud Scheduler a d'abord été refusée (400), car l'adresse courte du compte de service partait telle quelle. Elle a été créée à la main avec l'adresse complète (même nom, mêmes réglages). La T-131 met l'adresse complète dans le code : le prochain déploiement la reprend sans erreur.
 
 ### Étape 5. Vérifier tout de suite (sans attendre 5 h)
 ```
