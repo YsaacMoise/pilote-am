@@ -262,7 +262,7 @@ function VueMois({ list, month, paieVue, setPaieVue, enfant, lunetteRef, onChois
             <button class="mp-carte" aria-pressed={c.id === enfant?.id} onClick={() => onChoisir(c.id)}>
               <Gommette name={c.child} color={c.color} />
               <b class="mp-nom">{c.child}</b>
-              <span class="mp-chiffres">{ok ? `${r.heuresNormales} h · ${r.joursActivite} j` : 'Non calculé'}</span>
+              <span class="mp-chiffres">{ok ? <><span>{`${r.heuresNormales} h`}</span><span>{`${r.joursActivite} j d’activité`}</span></> : 'Non calculé'}</span>
               {ok && (fait ? <span class="tag mp-etat"><Icon name="check" size={16} />Déclaré</span> : <span class="tag afaire mp-etat">À déclarer</span>)}
             </button>
           );
