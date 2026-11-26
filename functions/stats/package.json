@@ -1,0 +1,16 @@
+{
+  "name": "arvela-stats",
+  "private": true,
+  "description": "T-127 : totaux exacts d'Arvela comptés chaque nuit dans Firebase (lecture seule), envoyés en un événement anonyme à PostHog. Déployé par le DG (docs/stats.md).",
+  "type": "module",
+  "main": "index.js",
+  "engines": { "node": "22" },
+  "scripts": {
+    "test": "node --test test/calcul.test.js test/config.test.js",
+    "test:emulateurs": "cd ../.. && npx firebase emulators:exec --only auth,firestore --project demo-arvela \"node --test functions/stats/test/emulateurs.test.js\""
+  },
+  "dependencies": {
+    "firebase-admin": "13.0.2",
+    "firebase-functions": "6.1.1"
+  }
+}

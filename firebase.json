@@ -31,5 +31,8 @@
       }
     ]
   },
-  "functions": [{ "source": "functions", "codebase": "sequestre", "runtime": "nodejs20" }]
+  "functions": [
+    { "source": "functions", "codebase": "sequestre", "runtime": "nodejs22", "ignore": ["node_modules", ".git", "stats"] },
+    { "source": "functions/stats", "codebase": "stats", "runtime": "nodejs22", "ignore": ["node_modules", ".git", "test"] }
+  ]
 }

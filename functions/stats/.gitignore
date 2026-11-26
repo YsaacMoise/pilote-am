@@ -1,0 +1,2 @@
+# Réglages locaux du DG (comptes exclus) : jamais dans le dépôt.
+.env.*
