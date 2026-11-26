@@ -14,7 +14,7 @@ import { BrutSaisie } from './BrutSaisie';
 import { Banner, Choices, DateInput, EuroInput, NumberInput, Seg, Switch, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { PlanDay, WeeksOff, avenantSummary } from './Contrat';
-import { AIDE_ANNEE, AIDE_COMPLEMENTAIRES, AIDE_SEMAINES, TITRE_AM_AP } from './textes-contrat';
+import { AIDE_COMPLEMENTAIRES, AIDE_SEMAINES, TITRE_AM_AP } from './textes-contrat';
 import { PlanningVariableSaisie } from './PlanningVariableSaisie';
 import { manquesPV } from '../engine/planningVariable';
 
