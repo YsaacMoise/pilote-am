@@ -66,7 +66,7 @@ function rejected(e: unknown, docs: Array<{ s: RemoteDoc['s']; k: string }>) {
 function toRemote(data: DocumentData): RemoteDoc | null {
   if (!isSyncedStore(data.s) || typeof data.k !== 'string') return null;
   const t = data.t instanceof Timestamp ? data.t.toMillis() : 0;
-  return { s: data.s, k: data.k, v: typeof data.v === 'string' ? data.v : null, t };
+  return { s: data.s, k: data.k, v: typeof data.v === 'string' ? data.v : null, t, ...(typeof data.d === 'string' ? { d: data.d } : {}) };
 }
 
 function col(uid: string) {
@@ -149,17 +149,6 @@ export const backend: Backend = {
         track(seuls);
         void seuls.then(() => { if (refuses.length) rejected(derniere, refuses); });
       });
-      track(p);
-    }
-  },
-  async retirer(uid, keys) {
-    for (let i = 0; i < keys.length; i += BATCH) {
-      const b = writeBatch(fs);
-      const lot = keys.slice(i, i + BATCH);
-      for (const d of lot) b.delete(doc(col(uid), docId(d.s, d.k)));
-      // Comme write : hors ligne, la file de Firestore garde l'effacement jusqu'au retour du réseau.
-      const p = b.commit();
-      p.catch((e) => rejected(e, lot));
       track(p);
     }
   },

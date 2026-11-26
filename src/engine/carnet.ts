@@ -172,3 +172,13 @@ export function premierJourCarnet(contracts: { start: ISODate }[], journal: { da
   for (const j of journal) if (j.date < d) d = j.date;
   return d;
 }
+
+/**
+ * T-121 : note qui touche à la santé de l'enfant (genre « Soin », toute température, « Selles liquides »). Elle demande
+ * l'accord écrit des parents (RGPD art. 9.2.a, `Contract.accordSante`) pour être notée et montrée sur le lien.
+ */
+export function estNoteSante(j: { kind?: unknown; temp?: unknown; detail?: unknown }): boolean {
+  if (j.kind === 'soin') return true;
+  if (j.temp !== undefined && j.temp !== null) return true;
+  return typeof j.detail === 'string' && j.detail.startsWith('Selles liquides');
+}

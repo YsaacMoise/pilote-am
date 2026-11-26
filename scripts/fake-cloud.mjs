@@ -98,12 +98,6 @@ createServer(async (req, res) => {
       for (const d of body.docs) m.set(`${d.s}~${d.k}`, { ...d, t: ++clock, d: body.d });
       return send(res, 200, {});
     }
-    // T-121 : effacement sans pierre tombale (données de santé retirées du compte)
-    case '/retirer': {
-      const m = data.get(body.uid) ?? new Map();
-      for (const d of body.keys) m.delete(`${d.s}~${d.k}`);
-      return send(res, 200, {});
-    }
     // Pour les tests : contenu d'un compte, tel qu'il est en ligne
     case '/dump': return send(res, 200, { docs: [...(data.get(url.searchParams.get('uid')) ?? new Map()).values()] });
     case '/docs': {

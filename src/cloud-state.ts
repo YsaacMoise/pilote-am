@@ -26,6 +26,10 @@ export interface CloudInfo {
    * Les changements concernés restent sur le téléphone et sont renvoyés au prochain essai.
    */
   refus?: string;
+  /** T-121 : le compte a un coffre (données de santé chiffrées) mais ce téléphone n'a pas la clé de secours */
+  cleManquante?: boolean;
+  /** T-121 : ce téléphone a la clé de secours du compte */
+  cleOk?: boolean;
 }
 
 /** Message du bandeau quand le serveur refuse un envoi (code d'erreur Firebase ou du faux serveur) */
@@ -48,17 +52,32 @@ export const LS = {
   since: 'pam-cloud-since',
   device: 'pam-device',
   /**
-   * T-121 : dernier passage du retrait des données de santé déjà en ligne (JSON : compte, jour, nombres retirés et gardés,
-   * vérifié). Aucun contenu : seulement des nombres.
+   * T-121 (option b) : clé de secours de ce téléphone (JSON : compte, code de 26 caractères). Reste sur l'appareil, jamais en
+   * ligne : elle déchiffre les données de santé du compte.
    */
-  sante: 'pam-sante-retrait',
+  coffre: 'pam-coffre',
+  /** T-121 : dernier passage du chiffrement des données encore en clair dans le compte (des nombres seulement) */
+  chiffrement: 'pam-sante-chiffrement',
+  /** T-121 : nombre d'autres appareils du compte restés sur une ancienne version (vus dans les 60 derniers jours) */
+  anciens: 'pam-appareils-anciens',
+  /** T-121 : dernière fois que l'invite « garde ta clé de secours » a été écartée (ms) */
+  inviteCle: 'pam-invite-cle',
 } as const;
 
-/** T-121 : résultat du dernier retrait des données de santé déjà en ligne (cloud.ts, retirerSante). */
-export interface EtatRetraitSante { uid: string; jour: string; retires: number; gardes: number; verifie: boolean }
+/** T-121 : clé de secours gardée sur ce téléphone pour ce compte */
+export function cleLocale(uid?: string): string | null {
+  try {
+    const v = JSON.parse(lsGet(LS.coffre) ?? 'null') as { uid: string; code: string } | null;
+    return v && (!uid || v.uid === uid) ? v.code : null;
+  } catch { return null; }
+}
 
-export function etatRetraitSante(): EtatRetraitSante | null {
-  try { return JSON.parse(lsGet(LS.sante) ?? 'null') as EtatRetraitSante | null; } catch { return null; }
+export interface EtatChiffrement { uid: string; jour: string; chiffres: number; gardes: number; verifie: boolean }
+export function etatChiffrement(): EtatChiffrement | null {
+  try { return JSON.parse(lsGet(LS.chiffrement) ?? 'null') as EtatChiffrement | null; } catch { return null; }
+}
+export function appareilsAnciens(): number {
+  return Number(lsGet(LS.anciens) ?? 0) || 0;
 }
 
 export function lsGet(k: string): string | null {

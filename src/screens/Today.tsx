@@ -17,6 +17,8 @@ import { isDemo } from '../db';
 import { Icon } from '../ui/icons';
 import { bornesBande, decaler, finParDefaut, finPourJour, joursBande, libelleBande, peutAvancer, peutReculer } from '../ui/bandeJours';
 import { de } from '../engine/texte';
+import { hasCloudAccount, LS, lsGet, lsSet, useCloud } from '../cloud-state';
+import { copieAJour, rappelDuJour } from '../rappels';
 
 const fmtH = (t: string) => t.replace(/^0(\d)/, '$1').replace(':', ' h ');
 
@@ -89,7 +91,15 @@ export function Today() {
     }
   }
   const lastBackup = s.settings.lastBackup;
-  const backupDue = s.contracts.length > 0 && (!lastBackup || Date.now() - lastBackup > 7 * 86400000);
+  // T-121 : avec un compte et une copie à jour, plus de rappel chaque semaine (src/rappels.ts).
+  const cl = useCloud();
+  const [, setEcartee] = useState(0);
+  const compte = !isDemo() && hasCloudAccount() && !!cl.email;
+  const rappel = rappelDuJour({
+    contrats: s.contracts.length, maintenant: Date.now(), derniereSauvegarde: lastBackup,
+    compte, copieAJour: copieAJour(cl), cleOk: !!cl.cleOk, cleManquante: !!cl.cleManquante,
+    cleGardee: s.settings.cleGardee, inviteEcartee: Number(lsGet(LS.inviteCle) ?? 0) || undefined,
+  });
   const amToday = s.leaves.find((l) => day >= l.from && day <= l.to);
 
   return (
@@ -162,7 +172,24 @@ export function Today() {
           </Banner>
         )}
 
-        {day === t && backupDue && (
+        {day === t && rappel === 'cle' && (
+          <Banner tone="info" icon="shield">
+            <strong>Garde ta clé de secours</strong>
+            <span>Tes données sont copiées dans ton compte : plus besoin de sauvegarde chaque semaine. Le carnet et ce qui touche à la santé y sont chiffrés : sans ta clé de secours, un nouveau téléphone ne pourra pas les lire.</span>
+            <div class="btn-row">
+              <a class="btn btn-outline" href="#/compte">Voir ma clé</a>
+              <button class="btn btn-ghost" onClick={() => { lsSet(LS.inviteCle, String(Date.now())); setEcartee(Date.now()); }}>Plus tard</button>
+            </div>
+          </Banner>
+        )}
+        {day === t && rappel === 'cle-manquante' && (
+          <Banner tone="warn" icon="shield">
+            <strong>Entre ta clé de secours</strong>
+            <span>Ce téléphone ne peut pas lire le carnet ni ce qui touche à la santé sans elle.</span>
+            <div class="btn-row"><a class="btn btn-outline" href="#/compte">Entrer ma clé</a></div>
+          </Banner>
+        )}
+        {day === t && rappel === 'sauvegarde' && (
           <Banner tone="info" icon="shield">
             <strong>Pense à ta sauvegarde de la semaine</strong>
             <span>Une copie dans Fichiers protège tes données si le téléphone est perdu.</span>

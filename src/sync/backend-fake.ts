@@ -35,7 +35,7 @@ function setUser(u: CloudUser | null) {
 
 // File d'envoi gardée dans localStorage : elle survit à la fermeture, comme celle de Firestore.
 const Q_KEY = 'pam-fake-queue';
-type Item = { uid: string; docs: Array<Omit<RemoteDoc, 't'>>; retrait?: true };
+type Item = { uid: string; docs: Array<Omit<RemoteDoc, 't'>> };
 function readQ(): Item[] { try { return JSON.parse(localStorage.getItem(Q_KEY) ?? '[]'); } catch { return []; } }
 function writeQ(q: Item[]) { localStorage.setItem(Q_KEY, JSON.stringify(q)); pendSubs.forEach((f) => f(q.length > 0)); }
 const pendSubs = new Set<(p: boolean) => void>();
@@ -48,8 +48,7 @@ async function flush() {
     let q = readQ();
     while (q.length) {
       try {
-        if (q[0].retrait) await call('/retirer', { uid: q[0].uid, keys: q[0].docs.map((d) => ({ s: d.s, k: d.k })) });
-        else await call('/write', { ...q[0], d: deviceId() });
+        await call('/write', { ...q[0], d: deviceId() });
       } catch (e) {
         const code = errCode(e);
         // Seuls les refus définitifs sortent de la file ; le reste (réseau, serveur indisponible) est réessayé.
@@ -106,10 +105,6 @@ export const backend: Backend = {
   },
   async write(uid, docs) {
     writeQ([...readQ(), { uid, docs }]);
-    void flush();
-  },
-  async retirer(uid, keys) {
-    writeQ([...readQ(), { uid, docs: keys.map((x) => ({ s: x.s, k: x.k, v: null })), retrait: true }]);
     void flush();
   },
   listen(uid, since, cb, onError) {

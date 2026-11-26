@@ -35,11 +35,6 @@ export interface Backend {
   fetchAll(uid: string): Promise<RemoteDoc[]>;
   /** Écrit (ou marque supprimés, v = null) des documents ; l'heure est posée par le serveur */
   write(uid: string, docs: Array<Omit<RemoteDoc, 't'>>): Promise<void>;
-  /**
-   * T-121 : efface des documents du compte sans laisser de pierre tombale (les autres appareils gardent leur copie). Sert
-   * seulement aux données de santé, qui restent sur le téléphone. Hors ligne, l'effacement attend le réseau.
-   */
-  retirer(uid: string, keys: Array<{ s: RemoteDoc['s']; k: string }>): Promise<void>;
   /** Écoute les documents modifiés après `since` (ms). Les échos des écritures de ce téléphone sont filtrés. */
   listen(uid: string, since: number, cb: (docs: RemoteDoc[], meta: ListenMeta) => void, onError: (e: unknown) => void): () => void;
   /**
