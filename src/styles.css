@@ -982,3 +982,7 @@ h1.h-card { font-size: 25px; }
 .cp-barres .avant { background: var(--surface-2); }
 .cp-barres-l { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; font-size: 11px; color: var(--ink-2); text-align: center; }
 .ton-mois .tm-arriere { justify-content: center; }
+/* T-118 (ajout du DG du 26/11) : information neutre dans la carte de la paie (plus de pastille orange) */
+.summary-info { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; line-height: 1.4; opacity: 0.88; }
+.summary-info svg { flex: none; margin-top: 2px; }
+.summary-info a { color: inherit; text-decoration: underline; }

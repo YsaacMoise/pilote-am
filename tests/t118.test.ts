@@ -235,3 +235,27 @@ describe('T-118 : carte « Ton mois »', async () => {
     expect(css).toMatch(/prefers-reduced-motion: reduce\)\s*\{\s*\.ton-mois \.tm-face \{ transition: none; \}/);
   });
 });
+
+describe('T-118 (ajout du DG) : mois en cours, mention neutre et montant final attendu', async () => {
+  const { montantFinDeMois, texteMoisEnCours } = await import('../src/engine/resume');
+  const { totalAVerser } = await import('../src/engine/month');
+  const c = contract({ entretienJour: 400, entretienMode: 'jour', repasPrix: 300, repasParJour: 1, repasParents: false } as Partial<Contract>);
+  it('seuls l’entretien et les repas des jours restants s’ajoutent ; le salaire est le même', () => {
+    const r = computeMonth(makeCtx(c, [], [], '2026-11-04'), '2026-11');
+    const fin = computeMonth(makeCtx(c, [], [], '2026-11-30'), '2026-11');
+    expect(fin.netTotal).toBe(r.netTotal);
+    const attendu = montantFinDeMois(totalAVerser(r), r, fin)!;
+    expect(attendu).toBe(totalAVerser(fin));
+    // novembre 2026 : 20 jours ouvrés hors 11 novembre ; 3 jours comptés au 04/11 (lundi 2 au mercredi 4)
+    expect(attendu - totalAVerser(r)).toBe(17 * (r.entretien / 3) + 17 * 300);
+  });
+  it('texte : neutre, date de fin du mois, montant attendu', async () => {
+    const { euros } = await import('../src/engine/money');
+    expect(texteMoisEnCours('2026-11', 86012)).toBe(`Montant provisoire : l’entretien et les repas s’ajoutent jour après jour, jusqu’au 30/11. Si les jours restants se passent comme prévu : ${euros(86012)} au 30/11.`);
+    expect(texteMoisEnCours('2026-02')).toBe('Montant provisoire : l’entretien et les repas s’ajoutent jour après jour, jusqu’au 28/02.');
+  });
+  it('plus de pastille orange dans la carte', () => {
+    const src = readFileSync('src/screens/Mois.tsx', 'utf8');
+    expect(src).not.toContain('class="summary-note"');
+  });
+});

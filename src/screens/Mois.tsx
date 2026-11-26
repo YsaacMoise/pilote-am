@@ -16,7 +16,7 @@ import { shareText } from '../share';
 import { AideVideo } from '../ui/VideoGuide';
 import { DaySheet } from './Today';
 import { lignesDetail } from '../engine/detail';
-import { dureeTexte, etatDeclaration, lignesResume, resumeTravail } from '../engine/resume';
+import { dureeTexte, etatDeclaration, lignesResume, montantFinDeMois, resumeTravail, texteMoisEnCours } from '../engine/resume';
 import { mouvementReduit, paieToujoursVisible, setPaieToujoursVisible } from '../paie-visible';
 import { Switch } from '../ui/kit';
 import { releveDonnees } from '../releve/donnees';
@@ -95,6 +95,11 @@ function MonthView({ c, month, onEdit, paieVue, setPaieVue }: { c: Contract; mon
   const lines = declarationLines(ctx, r);
   const current = month === monthOf(today());
   const totalVerse = totalAVerser(r);
+  // T-118 (ajout du DG du 26/11) : mois en cours, montant provisoire. Le salaire du mois est fixe ; l'entretien et les repas
+  // s'ajoutent par jour d'accueil. Montant final attendu si les jours restants se passent comme prévu : le même mois calculé au
+  // dernier jour du mois, en ne reprenant que la différence d'entretien et de repas.
+  const enCours = current && !!moisEnCoursAu(ctx.today, month);
+  const finAttendue = enCours ? montantFinDeMois(totalVerse, r, computeMonth(ctxFor(c, lastDay(month)), month, state.settings.enfantsACharge)) : undefined;
   const [occupe, setOccupe] = useState(false);
   const [pret, setPret] = useState<File | null>(null);
   const [partage, setPartage] = useState(false);
@@ -187,8 +192,9 @@ function MonthView({ c, month, onEdit, paieVue, setPaieVue }: { c: Contract; mon
         titre={<span class="summary-label" id="tot">Ta paie de {monthLabel(month).split(' ')[0]} · à verser par la famille{c.family ? ` ${c.family}` : ''}</span>}>
         <span class="summary-sub">dont salaire net {euros(r.netTotal)}{r.brutConnu ? `, soit ${euros(r.brutEstime)} brut` : ''}</span>
         {r.brutConnu && r.reductionHS > 0 && <span class="summary-sub">et réduction de cotisations des heures complémentaires et majorées {euros(r.reductionHS)}</span>}
-        {!r.brutConnu && <span class="summary-note">Brut : <a href={`#/contrat/${c.id}`}>indique ton taux horaire brut dans le contrat</a></span>}
-        {current && moisEnCoursAu(ctx.today, month) && <span class="summary-note">Mois en cours : entretien et repas comptés jusqu’au {moisEnCoursAu(ctx.today, month)}</span>}
+        {/* T-118 (ajout du DG du 26/11) : informations neutres, sans couleur d'alerte (plus de pastille orange). */}
+        {!r.brutConnu && <span class="summary-info"><Icon name="info" size={16} /><span>Brut non affiché : <a href={`#/contrat/${c.id}`}>indique ton taux horaire brut dans le contrat</a>.</span></span>}
+        {enCours && <span class="summary-info"><Icon name="info" size={16} /><span>{texteMoisEnCours(month, finAttendue)}</span></span>}
       </TonMois>
 
       {!c.pajemploiPlus && (!c.end || c.end >= PAJEMPLOI_PLUS_DATE) && <Banner tone="info">{PAJEMPLOI_PLUS_RAPPEL}</Banner>}

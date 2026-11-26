@@ -4,6 +4,8 @@
 import { addMonths, eachDay, firstDay, lastDay, type ISODate, type Month } from './dates';
 import { AM_ABS_LABEL, type AmAbs, type ChildAbs } from './model';
 import { dayInfo, inContract, type Ctx } from './payroll';
+import type { MonthResult } from './month';
+import { euros } from './money';
 
 export interface ResumeTravail {
   /** Jours d'accueil faits (présence de l'enfant), jusqu'à aujourd'hui pour le mois en cours */
@@ -92,4 +94,21 @@ export function etatDeclaration(m: Month, t: ISODate): string {
   if (t < lastDay(m)) return `Mois en cours, compté jusqu’au ${jj(t)}. Déclaration par le parent du ${jj(d25)} au ${jj(d5)}`;
   if (t <= d5) return `À déclarer par le parent jusqu’au ${jj(d5)}`;
   return `Période de déclaration terminée le ${jj(d5)}`;
+}
+
+/**
+ * T-118 (ajout du DG du 26/11) : montant final attendu d'un mois en cours, si les jours restants se passent comme prévu.
+ * `fin` : le même mois calculé au dernier jour du mois. Seuls l'entretien et les repas changent (payés par jour d'accueil,
+ * CCN 114.1 et 114.2) ; le salaire mensualisé est fixe. Undefined si le mois ne se calcule pas au dernier jour.
+ */
+export function montantFinDeMois(total: number, r: MonthResult, fin: MonthResult): number | undefined {
+  if (fin.nonGere.length) return undefined;
+  return total + Math.max(0, fin.entretien - r.entretien) + Math.max(0, fin.repas - r.repas);
+}
+
+/** Mention neutre du mois en cours (sans couleur d'alerte) */
+export function texteMoisEnCours(m: Month, finAttendue?: number): string {
+  const fin = lastDay(m);
+  const jj = `${fin.slice(8, 10)}/${fin.slice(5, 7)}`;
+  return `Montant provisoire : l’entretien et les repas s’ajoutent jour après jour, jusqu’au ${jj}.${finAttendue !== undefined ? ` Si les jours restants se passent comme prévu : ${euros(finAttendue)} au ${jj}.` : ''}`;
 }
