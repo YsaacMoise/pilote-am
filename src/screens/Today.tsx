@@ -1,7 +1,7 @@
 import { ABSENCES_PROTEGEES_AIDE, ABSENCES_PROTEGEES_DONNEES } from '../legal';
 import { useEffect, useState } from 'preact/hooks';
 import { activeContracts, ctxFor, logUsage, putLeave, state, toast, uid, updateDay, useStore } from '../store';
-import { addDays, dayLabel, minutes, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NOMS, daysBetween } from '../engine/dates';
+import { addDays, dayLabel, minutes, mondayOf, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NOMS, daysBetween } from '../engine/dates';
 import { dayInfo, libelleFerie, type Ctx, type DayInfo } from '../engine/payroll';
 import { alertesDurees, AMPLITUDE_MAX_MIN, messageAmplitude } from '../engine/durees';
 import { AM_ABS_LABEL, CHILD_ABS_LABEL, NATURE_ATMP_LABEL, type NatureAtMp, type ChildAbs, type Contract, type DayRec, type NatureEvenement, type Plage, type Presence } from '../engine/model';
@@ -272,7 +272,7 @@ const RAYONS = [146, 126, 106, 86];
 
 /**
  * Demi-cadran de la journée : un anneau par enfant (plein = présence pointée, clair = prévu, pointillé = absent ce jour-là),
- * aiguille or = maintenant. Bornes de la présence : la pastille de l'enfant marque l'arrivée, un trait marque le départ.
+ * aiguille or = maintenant. Bornes de la présence : la pastille de l'enfant marque l'arrivée, une perle claire marque le départ.
  */
 function Cadran({ kids, day }: { kids: Contract[]; day: string }) {
   const t = today();
@@ -303,7 +303,11 @@ function Cadran({ kids, day }: { kids: Contract[]; day: string }) {
     (di.rec?.pres ?? []).forEach((p) => { if (p.a) textes.push(`arrivée ${fmtH(p.a)}${p.d ? `, départ ${fmtH(p.d)}` : ''}`); });
     return { c, prevu, absents, faits, bornes, texte: `${c.child} : ${textes.join(', ')}` };
   });
-  const toutes = anneaux.flatMap((x) => [...x.prevu, ...x.absents, ...x.faits].flat());
+  // Début et fin du cadran : les heures possibles des contrats sur la semaine (même cadran d'un jour à l'autre), élargies si
+  // une présence pointée en sort.
+  const lundi = mondayOf(day);
+  const semaine = kids.flatMap((c) => Array.from({ length: 7 }, (_, k) => dayInfo(ctxFor(c), addDays(lundi, k)).planned).flat().flatMap((p) => [minutes(p.start), minutes(p.end)]));
+  const toutes = [...semaine, ...anneaux.flatMap((x) => [...x.prevu, ...x.absents, ...x.faits].flat())];
   const b = bornesCadran(toutes);
   if (!b) return null;
   const frac = (m: number) => Math.min(1, Math.max(0, (m - b.debut) / (b.fin - b.debut)));
@@ -340,8 +344,8 @@ function Cadran({ kids, day }: { kids: Contract[]; day: string }) {
           {anneaux.map((x, i) => x.faits.map((p, j) => arc(RAYONS[i], p, 'cad-fait', CHILD_COLORS[x.c.color % CHILD_COLORS.length], `f${i}-${j}`)))}
           {anneaux.map((x, i) => x.absents.map((p, j) => portion(RAYONS[i], p, CHILD_COLORS[x.c.color % CHILD_COLORS.length], `a${i}-${j}`)))}
         </g>
-        <g class="cad-bornes" stroke-width="3" stroke-linecap="round">
-          {anneaux.map((x, i) => x.bornes.map((m) => { const [x1, y1] = point(RAYONS[i] - 9, m); const [x2, y2] = point(RAYONS[i] + 9, m); return <line x1={x1} y1={y1} x2={x2} y2={y2} />; }))}
+        <g class="cad-bornes">
+          {anneaux.map((x, i) => x.bornes.map((m) => { const [bx, by] = point(RAYONS[i], m); return <circle cx={bx} cy={by} r="4.5" style={{ '--g': CHILD_COLORS[x.c.color % CHILD_COLORS.length] } as any} />; }))}
         </g>
         <g class="cad-reperes" stroke-width="1.5" stroke-linecap="round">
           {ticks.map((m) => { const [x1, y1] = point(160, m); const [x2, y2] = point(168, m); return <line x1={x1} y1={y1} x2={x2} y2={y2} />; })}

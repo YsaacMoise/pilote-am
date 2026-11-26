@@ -384,7 +384,7 @@ main {
 .cadran { display: flex; justify-content: center; margin: 4px 0 -4px; }
 .cadran svg { width: 100%; max-width: 320px; height: auto; display: block; overflow: visible; }
 .cadran .cad-absent { stroke: var(--g); stroke-width: 7; stroke-dasharray: 0.1 12; }
-.cadran .cad-bornes line { stroke: var(--ink); }
+.cadran .cad-bornes circle { fill: var(--surface); stroke: color-mix(in srgb, var(--g) 70%, var(--ink)); stroke-width: 2.5; }
 .cad-piste { stroke: var(--piste); }
 .cad-prevu { stroke: color-mix(in srgb, var(--g) 45%, #ffffff); }
 .cad-fait { stroke: var(--g); transition: stroke-dasharray 0.3s ease, stroke-dashoffset 0.3s ease; }
