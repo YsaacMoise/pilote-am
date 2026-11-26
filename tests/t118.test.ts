@@ -213,7 +213,7 @@ describe('T-118 : carte « Ton mois »', async () => {
     const l = lignesResume(r);
     expect(l[0]).toBe('+ 1 h en plus du planning');
     expect(l).toContain('1 jour : enfant absent à la demande des parents, payé');
-    expect(l).toContain('5 jours : mes congés payés');
+    expect(l).toContain('5 jours : congés payés');
   });
   it('mois en cours : compté jusqu’à aujourd’hui', () => {
     const r = resumeTravail(makeCtx(contract(), [], [], '2026-11-04'), '2026-11');

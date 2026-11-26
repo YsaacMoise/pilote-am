@@ -29,7 +29,7 @@ export function Conges() {
     <>
       <Topbar title="Congés et absences" back="#/plus" screen="conges" />
       <main>
-        <p class="muted">Période en cours : du 1er juin {y} au 31 mai {y + 1}. Tu gagnes 2,5 jours ouvrables par mois de travail (30 au plus), et 2 par mois pendant un arrêt maladie, à prendre l’année suivante.</p>
+        <p class="muted">Période en cours : du 1er juin {y} au 31 mai {y + 1}. Tu acquiers 2,5 jours ouvrables par mois de travail (30 au plus), et 2 par mois d’arrêt maladie, à prendre l’année suivante.</p>
         {list.length > 1 && (
           <div class="chips" role="group" aria-label="Contrat">
             {suivis.length > 1 && <button class="chip" aria-pressed={vue === 'tous'} onClick={() => setVue('tous')}><Icon name="calendar" size={18} />Tous</button>}
@@ -106,7 +106,7 @@ function CongesTous({ contrats, t, enfants, leaves, onChoisir, tableau = true }:
         <div class="cal-legende" aria-hidden="true">
           <span><i class="l-pris" />pris</span><span><i class="l-pose" />posé, à venir</span><span><i class="l-auj" />aujourd’hui</span><span><i class="l-ferie" />férié</span>
         </div>
-        <p class="hint">Un jour de congé compte du lundi au samedi, sans les fériés. Pour les poser : « Ajouter une absence », plus bas.</p>
+        <p class="hint">Décompte en jours ouvrables : du lundi au samedi, hors fériés. Pour poser des congés : « Ajouter une absence ».</p>
       </section>
       {tableau && lignes.length > 0 && (
         <section class="card stack" aria-labelledby="cpt-t">
@@ -122,7 +122,7 @@ function CongesTous({ contrats, t, enfants, leaves, onChoisir, tableau = true }:
               ))}
             </tbody>
           </table>
-          <p class="hint">Droits acquis du 1er juin {y - 1} au 31 mai {y}, à prendre avant le {JJ(lignes[0].x.dateLimite)}. Chaque contrat a ses propres droits : un jour de congé compte pour chaque contrat où c’est un jour ouvrable. « — » : un nombre attend une donnée, touche le prénom pour la voir.</p>
+          <p class="hint">Droits acquis du 1er juin {y - 1} au 31 mai {y}, à prendre avant le {JJ(lignes[0].x.dateLimite)}. Chaque contrat a ses propres droits : un jour de congé compte pour chaque contrat où c’est un jour ouvrable. « — » : nombre non calculé faute d’une donnée ; le détail est sur la fiche du contrat (touche le prénom).</p>
           <details class="more" style={{ boxShadow: 'none', border: '1px solid var(--line)' }}>
             <summary>Comment c’est calculé</summary>
             <div class="more-body">

@@ -345,8 +345,8 @@ function TonMois({ c, month, vue, setVue, total, titre, children }: { c: Contrac
   return (
     <div class={`ton-mois${vue ? ' retourne' : ''}${reduit ? ' sans-mouvement' : ''}`}>
       <section class="card tm-face tm-avant" aria-labelledby="tm-t" inert={vue}>
-        <span class="tm-eyebrow">Ton mois avec {c.child}{c.family ? ` · famille ${c.family}` : ''}</span>
-        <h2 id="tm-t" class="tm-titre">Ce que tu as fait en {monthLabel(month).split(' ')[0]}</h2>
+        <span class="tm-eyebrow">Ton mois · {c.child}{c.family ? `, famille ${c.family}` : ''}</span>
+        <h2 id="tm-t" class="tm-titre">Ton travail en {monthLabel(month).split(' ')[0]}</h2>
         <div class="stat-grid">
           <div><b class="num">{res.jours}</b><span>jour{res.jours > 1 ? 's' : ''} d’accueil</span></div>
           <div><b class="num">{dureeTexte(res.minutes)}</b><span>de travail</span></div>
@@ -354,7 +354,7 @@ function TonMois({ c, month, vue, setVue, total, titre, children }: { c: Contrac
         </div>
         {lignes.length
           ? <ul class="tm-lignes">{lignes.map((l) => <li>{l}</li>)}</ul>
-          : <p class="muted">Rien d’autre à signaler : tout s’est passé comme prévu au planning.</p>}
+          : <p class="muted">Aucun écart avec le planning.</p>}
         {etat && <span class="tm-etat"><Icon name="clock" size={16} />{etat}</span>}
         <button ref={voirRef} class="btn btn-primary btn-lg btn-block" type="button" onClick={voir} aria-expanded={vue} aria-controls="tm-paie">
           <Icon name="euro" />Voir ma paie du mois

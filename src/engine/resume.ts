@@ -55,6 +55,17 @@ export function resumeTravail(ctx: Ctx, m: Month): ResumeTravail {
 
 const s = (n: number) => (n > 1 ? 's' : '');
 
+/** Absence de l'AM, dite comme sur un bulletin (vocabulaire du métier), sans « je » ni « mes » */
+const ABSENCE_AM: Partial<Record<AmAbs, string>> = {
+  cp: 'congés payés',
+  am_malade: 'arrêt maladie',
+  am_enfant_malade: 'absence pour enfant malade',
+  evenement: 'congé pour événement familial',
+  sans_solde: 'congé sans solde',
+  formation: 'formation obligatoire',
+  remuneree: 'absence payée',
+};
+
 /** Absence de l'enfant, dite en une phrase courte */
 const ABSENCE_ENFANT: Record<ChildAbs, string> = {
   malade_certif: 'enfant malade avec certificat',
@@ -71,7 +82,7 @@ export function lignesResume(r: ResumeTravail): string[] {
     const effet = e.retenus === e.jours ? 'retenu' + s(e.jours) : e.retenus ? `dont ${e.retenus} retenu${s(e.retenus)}` : 'payé' + s(e.jours);
     out.push(`${e.jours} jour${s(e.jours)} : ${ABSENCE_ENFANT[e.abs]}, ${effet}`);
   }
-  for (const a of r.am) out.push(`${a.jours} jour${s(a.jours)} : ${AM_ABS_LABEL[a.type].replace(/^./, (x) => x.toLowerCase())}`);
+  for (const a of r.am) out.push(`${a.jours} jour${s(a.jours)} : ${ABSENCE_AM[a.type] ?? AM_ABS_LABEL[a.type].replace(/^./, (x) => x.toLowerCase())}`);
   if (r.feries.length) out.push(`${r.feries.length} jour${s(r.feries.length)} férié${s(r.feries.length)} (${r.feries.join(', ')})`);
   return out;
 }
