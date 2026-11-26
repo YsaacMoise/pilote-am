@@ -68,6 +68,15 @@ async function run(scheme) {
   await p.getByRole('radio', { name: /^Régulier/ }).click();
   await p.getByRole('radio', { name: /^CDI/ }).click();
   await p.getByLabel('Taux horaire net').fill('3,50');
+  // T-115 (R3) : le brut se calcule seul depuis le net (F2 : 4,49 € redonne 3,50 € net, cotisation par cotisation) ;
+  // un lien ouvre le champ brut pour écrire celui du contrat, un autre revient au brut calculé.
+  await p.locator('.brut-calcule', { hasText: /Soit 4,49\s€ brut/ }).waitFor();
+  assert(true, 'contrat : net 3,50 € saisi, brut 4,49 € affiché sans saisie');
+  await p.getByRole('button', { name: 'Mon contrat indique un autre brut' }).click();
+  await p.getByLabel('Taux horaire brut').waitFor();
+  await p.getByRole('button', { name: 'Revenir au brut calculé' }).click();
+  await p.locator('.brut-calcule').waitFor();
+  assert(true, 'contrat : champ brut ouvert puis refermé (brut calculé gardé)');
   await p.getByRole('radio', { name: /^Par jour d’accueil/ }).click();
   await p.getByText('Reprise d’un contrat en cours').waitFor();
   await shot('01-contrat');
@@ -122,6 +131,20 @@ async function run(scheme) {
   await p.getByRole('radio', { name: /^Mon mariage ou mon PACS/ }).click();
   await p.getByRole('button', { name: 'Enregistrer' }).click();
   assert(await toastHas(/Événement familial/), 'absence de l’AM enregistrée');
+
+  // T-115 (R1) : trois semaines en arrière puis retour à aujourd'hui (au-delà de l'ancienne limite de 5 jours).
+  // Le contrat de Lou commence le 01/09/2026 : la bande recule jusque-là.
+  for (let i = 0; i < 3; i++) await p.getByRole('button', { name: 'Semaine précédente' }).click();
+  await p.locator('.daynav-range', { hasText: 'du 19 au 25 septembre' }).waitFor();
+  assert((await p.locator('.daystrip button[aria-pressed="true"] .d-num').innerText()) === '24', 'jours : trois semaines en arrière (24 septembre)');
+  await shot('04b-trois-semaines');
+  await p.getByRole('button', { name: 'Revenir à aujourd’hui' }).click();
+  await p.locator('.daystrip button[aria-pressed="true"]', { hasText: 'auj.' }).waitFor();
+  assert(true, 'jours : retour à aujourd’hui en un geste');
+  for (let i = 0; i < 3; i++) await p.getByRole('button', { name: 'Semaine suivante' }).click();
+  await p.locator('.daynav-range', { hasText: 'novembre' }).waitFor();
+  assert(true, 'jours : trois semaines en avant, jusqu’en novembre (absence prévue possible)');
+  await p.getByRole('button', { name: 'Revenir à aujourd’hui' }).click();
 
   // Carnet
   await p.getByRole('link', { name: 'Carnet' }).click();
@@ -195,9 +218,10 @@ async function run(scheme) {
   await p.getByRole('link', { name: 'Contrôler le bulletin' }).click();
   await p.getByLabel('Salaire net').fill('100,00');
   await p.getByLabel('Salaire brut').fill('200,00');
-  // T-103 (D1, D6) : le brut est contrôlé avec le taux horaire brut du contrat ; sans lui, l'app le demande.
-  await p.getByText('Brut non contrôlé').waitFor();
-  assert(true, 'contrôle : brut non contrôlé sans le taux brut du contrat, taux demandé');
+  // T-103 (D1, D6) : le brut est contrôlé avec le taux horaire brut du contrat. T-115 (R3) : sans lui, le brut du mois est
+  // calculé depuis le net : 200,00 € de brut saisi est très loin du brut calculé, l'écart est signalé.
+  await p.getByText('Salaire brut différent').waitFor();
+  assert(true, 'contrôle : brut du bulletin comparé au brut calculé depuis le net (sans taux brut au contrat)');
   await shot('07-controle');
 
   // Ça coince

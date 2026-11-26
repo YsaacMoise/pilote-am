@@ -15,7 +15,7 @@ export function BrutSaisie({ net, brut, date, region, set, ecrit = 'ton contrat'
   const ferme = !ouvert && !brut;
   return (
     <div class="brut-saisie">
-      {ferme && calcule !== undefined && <p class="brut-calcule">Soit <b>{euros(calcule)} brut</b> de l’heure, calculé par l’app avec les taux de l’Urssaf.</p>}
+      {ferme && calcule !== undefined && <p class="brut-calcule">Soit <b>{euros(calcule)}</b> brut de l’heure, calculé par l’app avec les taux de l’Urssaf.</p>}
       {ferme && calcule === undefined && net > 0 && <p class="hint">{region === 'mayotte' ? 'À Mayotte' : 'Pour cette période'}, l’app ne peut pas calculer le brut au centime près : écris celui de {ecrit}.</p>}
       {ferme
         ? <button type="button" class="btn btn-ghost brut-lien" onClick={() => setOuvert(true)}>{ecrit === 'ton contrat' ? 'Mon contrat indique un autre brut' : 'L’avenant indique un autre brut'}</button>
