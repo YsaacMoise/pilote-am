@@ -1,5 +1,7 @@
 # Copie de secours scellée (T-125, point 4) : ce que fait le DG
 
+Séance commune avec les totaux de la nuit (T-127) : suivre docs/stats.md, section 3, qui reprend ces étapes dans l'ordre. Node 20 n'étant plus accepté par Google depuis le 30/10/2026, la fonction est réglée en Node 22 (firebase.json).
+
 Décision du DG du 26/11/2026. Le code est prêt (app : src/sync/sequestre.ts ; serveur : functions/sequestre.js). Rien n'est actif tant que les étapes ci-dessous ne sont pas faites : l'app ne scelle rien sans la clé publique.
 
 Sigles : KMS (Key Management Service, service de clés de Google Cloud), HSM (module matériel de sécurité, boîtier qui garde la clé), IAM (gestion des droits de Google Cloud).

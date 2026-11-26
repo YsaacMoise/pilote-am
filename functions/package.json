@@ -4,7 +4,7 @@
   "description": "T-125 : ouverture de la copie de secours scellée (Cloud KMS, HSM, Paris), à la demande de l'AM seulement. Déployé par le DG.",
   "type": "module",
   "main": "sequestre.js",
-  "engines": { "node": "20" },
+  "engines": { "node": "22" },
   "dependencies": {
     "@google-cloud/kms": "4.5.0",
     "firebase-admin": "13.0.2",
