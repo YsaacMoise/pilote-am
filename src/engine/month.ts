@@ -1,7 +1,7 @@
 // Récapitulatif mensuel par enfant, dans l'ordre de la déclaration Pajemploi.
 import { lastDay, monthLabel, type Month } from './dates';
 import { cpForMonth } from './conges';
-import { brutConnu, brutDuNet, monthBase, termsAt, type Ctx, type MonthBase } from './payroll';
+import { brutConnu, brutDuNetMois, monthBase, termsAt, type Ctx, type MonthBase } from './payroll';
 import { REDUCTION_HS } from './rates';
 import { regionDe } from './regions';
 
@@ -53,7 +53,8 @@ function computeMonthLecture(ctx: Ctx, m: Month, enfants = 0): MonthResult {
   const mayotte = regionDe(ctx.c) === 'mayotte';
   if (mayotte && b.complAmount + b.majAmount + b.majContratAmount > 0) alerts.push(MESSAGE_REDUCTION_HS_MAYOTTE);
   const hsNet = b.complAmount + b.majAmount + b.majContratAmount;
-  const hsBrut = brutDuNet(ctx.c, hsNet, lastDay(m));
+  // T-118 (D-24) : mois d'avenant, période par période (brutDuNetMois).
+  const hsBrut = brutDuNetMois(ctx.c, b, hsNet, (x) => x.hsNet);
   const exact = !!b.brut || brutConnu(ctx.c, lastDay(m));
   return {
     ...b,
@@ -64,7 +65,7 @@ function computeMonthLecture(ctx: Ctx, m: Month, enfants = 0): MonthResult {
     cpComplement: cp.complement,
     cpNote: cp.note,
     netTotal,
-    brutEstime: b.brut ?? brutDuNet(ctx.c, netTotal, lastDay(m)),
+    brutEstime: b.brut ?? brutDuNetMois(ctx.c, b, netTotal, (x) => x.net),
     brutConnu: !!b.brut || brutConnu(ctx.c, lastDay(m)),
     hsNet,
     hsBrut,

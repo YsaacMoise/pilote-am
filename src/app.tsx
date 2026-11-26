@@ -95,12 +95,14 @@ export function App() {
       '': 'Aujourd’hui', carnet: 'Carnet', mois: 'Mois', plus: 'Plus', contrat: 'Contrat', avenant: 'Avenant', historique: 'Historique',
       controle: 'Contrôle du bulletin', conges: 'Congés', fin: 'Fin de contrat', fiscal: 'Impôts', sauvegarde: 'Sauvegarde',
       pilote: 'Données du pilote', compte: 'Compte', reglages: 'Réglages', regles: 'Comment l’app calcule', confidentialite: 'Confidentialité', mentions: 'Mentions légales', conditions: 'Conditions d’utilisation', installer: 'Installer', simulateur: 'Simuler un accueil',
-    } as Record<string, string>)[p] ?? 'Arvela';
+      guide: 'Vidéos', bienvenue: 'Bienvenue',
+    } as Record<string, string>)[p];
     // Avant le compte, c'est le site public : titres pensés pour les moteurs de recherche.
     const site = s.ready && !s.settings.onboarded && !isDemo();
     if (site && p === 'simulateur') document.title = 'Simulateur du coût d’une assistante maternelle · Arvela';
     else if (site && p !== 'confidentialite' && p !== 'mentions' && p !== 'conditions') document.title = 'Arvela · L’app des assistantes maternelles';
-    else document.title = `${title} · Arvela`;
+    // T-118 : un écran sans nom donne « Arvela », jamais « Arvela · Arvela ».
+    else document.title = title ? `${title} · Arvela` : 'Arvela';
   }, [p, s.ready, s.settings.onboarded]);
 
   // Lien parent ouvert depuis l'app (rare : il s'ouvre d'habitude seul, voir main.tsx)

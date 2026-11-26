@@ -56,17 +56,20 @@ export async function seedDemo() {
   rec(leo, y6, { abs: 'parents' });
   rec(malo, y2, { pres: [{ a: '08:30' }] }); // départ oublié
   rec(ines, y1, { pres: [{ a: '07:30', d: '08:30' }, { a: '16:30', d: '19:00' }], km: 6, kmPartage: false });
-  if (weekday(t) <= 5) rec(leo, t, { pres: [{ a: '07:58' }] });
+  // T-118 (D-18) : l'arrivée de 7 h 58 n'est notée qu'une fois 7 h 58 passée (plus d'arrivée affichée à 3 h du matin).
+  const maintenant = new Date();
+  const heure = `${String(maintenant.getHours()).padStart(2, '0')}:${String(maintenant.getMinutes()).padStart(2, '0')}`;
+  if (weekday(t) <= 5 && heure >= '07:58') rec(leo, t, { pres: [{ a: '07:58' }] });
 
   const leaves: AmLeave[] = [
     { id: 'demo-cp1', type: 'cp', from: addDays(firstDay(addMonths(cur, -2)), 9), to: addDays(firstDay(addMonths(cur, -2)), 14) },
     { id: 'demo-ev', type: 'evenement', from: addDays(t, 16), to: addDays(t, 16), joursEvenement: 1 },
   ];
-  const journal: Journal[] = weekday(t) <= 5 ? [
+  const journal: Journal[] = weekday(t) <= 5 ? ([
     { id: 'demo-j1', cid: leo.id, date: t, time: '09:30', kind: 'humeur', detail: 'De bonne humeur' },
     { id: 'demo-j2', cid: leo.id, date: t, time: '11:45', kind: 'repas', detail: 'A bien mangé' },
     { id: 'demo-j3', cid: leo.id, date: t, time: '12:40', kind: 'sieste', sommeil: true, detail: detailSieste('12:40') },
-  ] : [];
+  ] as Journal[]).filter((j) => j.time <= heure) : [];
   await db.replaceAll({
     kv: [{ k: 'settings', v: { amName: 'Sonia', enfantsACharge: 1, onboarded: true, lastBackup: Date.now() - 9 * 86400000 } }],
     contracts: [leo, ines, malo], days, leaves, bulletins: [], journal, feedback: [], usage: [],

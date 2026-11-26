@@ -3,7 +3,7 @@ import { logUsage, saveSettings, toast, useStore } from '../store';
 import { addMonths, monthLabel, monthOf, today, type Month } from '../engine/dates';
 import { buildPilotExport } from '../backup';
 import { jsonFile, shareFile } from '../share';
-import { Banner, Topbar } from '../ui/kit';
+import { Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 
 const SCREEN_NAMES: Record<string, string> = {
@@ -17,14 +17,12 @@ export function Pilote() {
   const [m, setM] = useState<Month>(addMonths(monthOf(today()), -1));
   const [preview, setPreview] = useState(false);
   const data = buildPilotExport(m);
-  const due = s.settings.lastExport !== addMonths(monthOf(today()), -1) && today().slice(8) <= '10';
   return (
     <>
       <Topbar title="Données du pilote" back="#/plus" screen="pilote" />
       <main>
-        <p>Arvela est en test. Chaque mois, envoie l’export pseudonymisé à YKM : il sert à construire l’app finale. Il ne contient <b>aucun prénom</b> (les enfants deviennent A, B, C) et <b>aucune note du carnet</b>.</p>
-        {due && <Banner tone="info">L’export de {monthLabel(addMonths(monthOf(today()), -1))} est prêt.</Banner>}
-        <section class="card stack">
+        <p>Ici, tes remarques « Ça coince » et un export pseudonymisé de ton utilisation. Tu n’as rien à envoyer : si l’équipe d’Arvela te le demande, tu peux le partager. Il ne contient <b>aucun prénom</b> (les enfants deviennent A, B, C) et <b>aucune note du carnet</b>.</p>
+                <section class="card stack">
           <div class="month-nav">
             <button class="icon-btn" aria-label="Mois précédent" onClick={() => setM(addMonths(m, -1))}><Icon name="left" /></button>
             <h2 aria-live="polite">{monthLabel(m).replace(/^./, (x) => x.toUpperCase())}</h2>

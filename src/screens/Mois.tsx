@@ -15,6 +15,7 @@ import { Icon } from '../ui/icons';
 import { shareText } from '../share';
 import { AideVideo } from '../ui/VideoGuide';
 import { DaySheet } from './Today';
+import { lignesDetail } from '../engine/detail';
 import { releveDonnees } from '../releve/donnees';
 
 declare const __APP_VERSION__: string;
@@ -231,21 +232,10 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
         <summary>Comment c’est calculé</summary>
         <div class="more-body">
           <dl class="kv">
-            {/* T-104 (cas 2) : accueil occasionnel, salaire non mensualisé (CCN 108.2, 109.3). */}
-            {c.accueilOccasionnel
-              ? (<><dt>Heures d’accueil payées ({hoursLabel(r.normalesMin ?? 0)} au taux du contrat)</dt><dd>{euros(r.base)}</dd></>)
-              : (<><dt>Salaire de base (le même chaque mois)</dt><dd>{euros(r.salaireMens)}</dd>
-            <dt>{termsAt(c, `${month}-01`).yearType === 'complete' ? 'Heures du planning type ce mois (art. 111)' : 'Jours du planning type ce mois (art. 111)'}</dt>
+            {/* T-118 (D-23) : lignes qui font toujours le salaire net (prorata d'entrée, de sortie ou d'avenant compris). */}
+            {!c.accueilOccasionnel && (<><dt>{termsAt(c, `${month}-01`).yearType === 'complete' ? 'Heures du planning type ce mois (art. 111)' : 'Jours du planning type ce mois (art. 111)'}</dt>
             <dd>{termsAt(c, `${month}-01`).yearType === 'complete' ? hoursLabel(r.divisorMin) : r.divisorDays}</dd></>)}
-            {r.retenue > 0 && (<><dt>Retenue ({termsAt(c, `${month}-01`).yearType === 'complete' ? hoursLabel(r.deductedMin) : `${r.deductedDays} j`} non payés)</dt><dd>−{euros(r.retenue)}</dd></>)}
-            {!!r.regulAvenant && (<><dt>Régularisation à l’avenant</dt><dd>{euros(r.regulAvenant)}</dd></>)}
-            {(r.normalesPlusAmount ?? 0) > 0 && (<><dt>Heures en plus la semaine d’une absence ({hoursLabel(r.normalesPlusMin ?? 0)}, taux du contrat)</dt><dd>{euros(r.normalesPlusAmount ?? 0)}</dd></>)}
-            {r.complAmount > 0 && (<><dt>Heures complémentaires ({hoursLabel(r.complMin)})</dt><dd>{euros(r.complAmount)}</dd></>)}
-            {r.majAmount > 0 && (<><dt>Heures majorées en plus ({hoursLabel(r.majMin)})</dt><dd>{euros(r.majAmount)}</dd></>)}
-            {r.ferieAmount > 0 && (<><dt>Fériés travaillés</dt><dd>{euros(r.ferieAmount)}</dd></>)}
-            {r.cpIndemnite > 0 && (<><dt>Congés payés</dt><dd>{euros(r.cpIndemnite)}</dd></>)}
-            {r.cpComplement > 0 && (<><dt>Complément congés</dt><dd>{euros(r.cpComplement)}</dd></>)}
-            <dt>Salaire net</dt><dd>{euros(r.netTotal)}</dd>
+            {lignesDetail(c, month, r).map((l) => <><dt>{l.total ? <b>{l.label}</b> : l.label}</dt><dd>{l.montant < 0 ? `−${euros(-l.montant)}` : euros(l.montant)}</dd></>)}
             {r.brutConnu && r.reductionHS > 0 && (<><dt>Réduction de cotisations des heures complémentaires et majorées</dt><dd>{euros(r.reductionHS)}</dd></>)}
             <dt>Entretien ({r.presenceDays} j)</dt><dd>{euros(r.entretien)}</dd>
             {r.repas > 0 && (<><dt>Repas</dt><dd>{euros(r.repas)}</dd></>)}
