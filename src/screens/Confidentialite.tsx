@@ -31,7 +31,7 @@ export function Confidentialite({ back = '#/plus' }: { back?: string }) {
           <p><b>Toi</b>, sur ton téléphone et dans ton compte.</p>
           <p><b>L’éditeur d’Arvela (YKM)</b> peut techniquement accéder à la copie en ligne, comme pour tout service en ligne. Il s’engage à ne la consulter qu’avec ton accord, au cas par cas, pour t’aider à résoudre un problème. Le comptage des totaux de la nuit se fait sans personne : il n’en voit que les nombres. Il lit en revanche tes remarques « Ça coince » et, sauf si tu l’as éteinte, la mesure d’usage.</p>
           <p><b>Une analyse automatique chaque semaine</b> : un assistant d’intelligence artificielle (Claude, de la société Anthropic), lancé par l’éditeur, lit la mesure d’usage pour en faire un résumé. Il ne lit ni tes contrats, ni tes journées, ni ton carnet.</p>
-          <p><b>Les prestataires techniques</b> : Google (hébergement et comptes) et PostHog (mesure d’usage), qui traitent les données pour le compte d’Arvela. Avant d’ajouter ou de changer un prestataire qui touche aux données que tu saisis, Arvela te prévient au moins 15 jours avant, par e-mail à l’adresse de ton compte.</p>
+          <p><b>Les prestataires techniques</b> : Google (hébergement et comptes), PostHog (mesure d’usage) et OVHcloud (e-mails de contact@arvela.fr et de la copie scellée), qui traitent les données pour le compte d’Arvela. Avant d’ajouter ou de changer un prestataire qui touche aux données que tu saisis, Arvela te prévient au moins 15 jours avant, par e-mail à l’adresse de ton compte.</p>
           <p><b>Des relecteurs de sécurité</b>, mandatés par l’éditeur, peuvent lire le code et les réglages des services. Ils ne lisent pas tes données.</p>
         </section>
 
