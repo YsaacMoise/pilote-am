@@ -53,7 +53,7 @@ async function adresseStable(uid, email) {
 const demandeRef = (uid) => db.doc(`sequestre-demandes/${uid}`);
 const journal = (uid, quoi) => db.collection('sequestre-journal').add({ uid, quoi, quand: FieldValue.serverTimestamp() });
 /**
- * E-mail par l'extension « Trigger Email » (collection mail, serveur d'envoi Brevo). `expireAt` : le document s'efface 7 jours
+ * E-mail par l'extension « Trigger Email » (collection mail, envoi par la boîte OVHcloud d'Arvela). `expireAt` : le document s'efface 7 jours
  * après (règle TTL de Firestore sur ce champ, docs/sequestre-kms.md, étape 4) ; le temps de voir un échec d'envoi.
  */
 const mail = (to, subject, text) =>
