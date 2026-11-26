@@ -89,10 +89,12 @@ describe('R-ABS-03 : jours de congés acquis (période du 01/06/2025 au 31/05/20
   it('accident de trajet de moins d’un an : travail effectif (CCN 49)', () => {
     expect(periode(abs('at_mp', '2025-06-01', '2026-05-31', { atmp: 'trajet', jourAccident: false }))).toBe(30);
   });
-  it('congé supplémentaire de naissance de deux mois (juillet et août 2025) : hors travail effectif, 28 jours', () => {
-    // Décompte le plus favorable (T-103, C10 bis ; fiche service-public F18260) : 303 jours calendaires de travail ÷ 28 =
-    // 10,82 périodes de 4 semaines × 2,5 = 27,05, arrondi à 28 (mensuel : 10 mois × 2,5 = 25).
-    expect(periode(abs('naissance_supp', '2025-07-01', '2025-08-31'))).toBe(28);
+  it('congé supplémentaire de naissance de deux mois (juillet et août 2025) : hors travail effectif, 27 jours', () => {
+    // Décompte le plus favorable (T-103, C10 bis ; fiche service-public F18260). T-113 (regles/t113-quatre-jours.md) :
+    // en jours, 260 jours prévus − 44 jours d'absence = 216 ÷ 20 = 10,8 périodes × 2,5 = 27,0 ; en semaines entières,
+    // 52 − 9 = 43 ÷ 4 × 2,5 = 26,875 ; mensuel : 10 mois × 2,5 = 25. Le plus haut : 27. Avant la T-113 : 28, par les jours
+    // calendaires ÷ 28 (303 ÷ 28 × 2,5 = 27,05), décompte sans texte qui donnait plus de 13 périodes à une année entière.
+    expect(periode(abs('naissance_supp', '2025-07-01', '2025-08-31'))).toBe(27);
     expect(periode(abs('naissance_supp', '2025-07-01', '2025-08-31'))).toBeLessThan(30);
   });
 });

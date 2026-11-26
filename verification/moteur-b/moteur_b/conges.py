@@ -156,7 +156,8 @@ def acquisition_cp_periode(type_annee, debut, fin, jours_non_assimiles=(), jours
       de reference, le decompte de ses conges payes s'effectue [...] selon la regle qui lui est la plus favorable » :
       mensuel (decompte de 1980 ci-dessus), hebdomadaire (2,5 jours par 4 semaines de travail effectif : semaines
       civiles entieres qui comptent) ou journalier (2,5 jours par 24 jours, 20 jours sur 5 jours par semaine, 22 sur
-      5,5 ; jours de travail prevus qui comptent ; jours_travail_semaine = jours du planning, 0 = lundi). C. trav.
+      5,5 ; T-113 : 4 x jours de travail par semaine de 1 a 6 jours, 16 sur 4 jours, DDETS 31 fiche 2/5 ; jours de
+      travail prevus qui comptent ; jours_travail_semaine = jours du planning, 0 = lundi). C. trav.
       L3141-4 (4 semaines ou 24 jours equivalent a un mois). S'applique quand la periode contient une absence non
       assimilee, un arret maladie ou une semaine sans accueil non comptee ; sinon, decompte mensuel."""
     type_annee_valide(type_annee)
@@ -220,7 +221,10 @@ def acquisition_cp_periode(type_annee, debut, fin, jours_non_assimiles=(), jours
         methodes["hebdomadaire"] = Fraction(5, 2) * Fraction(sem, 4)
         if jours_travail_semaine is not None:
             jts = set(jours_travail_semaine)
-            diviseur = {5: 20, 6: 24}.get(len(jts))
+            # T-113 : 4 semaines de l'horaire, soit 4 x jours de travail par semaine (DDETS 31, fiche 2/5 du 05/11/2024 :
+            # « 4 jours de travail par semaine x 4 semaines 16 jours », de 1 a 6 jours ; F18260 : 20, 22, 24 ; CCN 48.1.1.2 :
+            # meme droit « quelle que soit [...] la repartition de son temps de travail sur la semaine »).
+            diviseur = 4 * len(jts) if 1 <= len(jts) <= 6 else None
             if diviseur is not None:
                 nj = sum(1 for i in range((fin - debut).days + 1)
                          for x in [debut + timedelta(days=i)] if x.weekday() in jts and compte(x))

@@ -1930,12 +1930,35 @@ def situations_t103():
                     ("SANS-SOLDE", payee("sans_solde")),
                     ("NON-10S", payee("remuneree", "2025-10-06", "2025-12-14", comptePourConges=False)),
                     ("OUI-10S", payee("remuneree", "2025-10-06", "2025-12-14", comptePourConges=True))):
-        # Contrat de 40 h seulement (essai du controleur). Sur 4 jours (H32), A et B different deja pour un conge sans
-        # solde aux memes dates (26 et 25 : decomptes hebdomadaire et journalier, T-103 C10 bis) : ecart signale a la
-        # direction (rapport T-109, section 10), sans lien avec l'absence payee.
+        # Contrat de 40 h (essai du controleur). Les contrats de 3 et 4 jours : situations T113-* ci-dessous.
         for hr in ("H40",):
             ajoute(f"T109-ABS-PAYEE-CP-{id_}-{hr}", "congés payés", contrat_grille("C52", hr, "T420", debut="2025-06-02"), acq, ev,
                    theme="T-109 absence payée et congés acquis (contrôle n° 4)")
+    # T-113 (regles/t113-quatre-jours.md) : contrats de 3, 4 et 5 jours par semaine, absences non assimilees. Methode en
+    # jours : 4 x jours de travail par semaine (16 sur 4 jours, 12 sur 3 : DDETS 31, fiche 2/5 du 05/11/2024 ; F18260 :
+    # 20 sur 5) ; methode en semaines : semaines civiles entieres. Attendu sur 4 jours, absence du 01/10 au 15/12/2025 :
+    # 165 / 16 x 2,5 = 25,78, soit 26 jours.
+    plannings_t113 = (("3J", semaine([1, 2, 4], "08:00", "16:00")), ("4J", P4x8), ("5J", P5x8))
+    def ss_semaines(lundis):
+        # Conge sans solde du lundi au vendredi, saisi semaine par semaine (week-ends hors absence)
+        return {"absences_am": [conge("sans_solde", l, (date.fromisoformat(l) + timedelta(days=4)).isoformat()) for l in lundis]}
+    cas_t113 = (
+        ("SS-LONG", "2025-06-02", payee("sans_solde")),
+        ("NON-LONG", "2025-06-02", payee("remuneree", comptePourConges=False)),
+        ("DEFAUT-LONG", "2025-06-02", payee("remuneree")),
+        ("OUI-LONG", "2025-06-02", payee("remuneree", comptePourConges=True)),
+        ("EXAMEN-LONG", "2025-06-02", payee("examen_grossesse")),
+        ("SS-10S", "2025-06-02", payee("sans_solde", "2025-10-06", "2025-12-14")),
+        ("SS-6S-MILIEU", "2025-06-02", payee("sans_solde", "2026-03-04", "2026-04-14")),
+        ("SS-2J", "2025-06-02", payee("sans_solde", "2026-02-11", "2026-02-12")),
+        ("SS-8-SEMAINES-OUVREES", "2025-06-02", ss_semaines(["2026-01-05", "2026-01-12", "2026-01-19", "2026-01-26",
+                                                            "2026-02-02", "2026-02-09", "2026-02-16", "2026-02-23"])),
+        ("SS-DEBUT-MERCREDI", "2025-09-03", payee("sans_solde", "2026-02-02", "2026-02-13")),
+    )
+    for id_, debut, ev in cas_t113:
+        for nom, pl in plannings_t113:
+            ajoute(f"T113-{id_}-{nom}", "congés payés", contrat_grille("C52", "H40", "T420", debut=debut, planning=pl), acq, ev,
+                   theme="T-113 jours acquis sur 3, 4 et 5 jours par semaine")
     cp_am = ["2025-08-04", "2025-08-11", "2025-08-18", "2025-12-22", "2025-12-29"]  # 5 des 6 semaines sans accueil
     for id_, debut, cpam in (("C11-AVEC-CP-AM", "2024-09-02", cp_am), ("C11-SANS-CP-AM-SAISI", "2024-09-02", None),
                              ("C11-DEBUT-SEPT-CP-AM", "2025-09-01", ["2025-12-22", "2025-12-29"]),

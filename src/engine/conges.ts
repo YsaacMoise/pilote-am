@@ -325,19 +325,29 @@ function joursAcquis(ctx: Ctx, from: ISODate, to: ISODate): number {
   // par mois), hebdomadaire (2,5 jours toutes les 4 semaines) ou journalier (2,5 jours pour 24 jours de travail, ou 20 si
   // les horaires sont sur 5 jours par semaine, 22 sur 5,5 jours) ; C. trav. L3141-4 (« quatre semaines ou vingt-quatre
   // jours »). Mensuel : méthode de Cass. soc. 10/01/1980 (mois complets, puis semaines, puis jours), restes au prorata
-  // (CCN 48.1.1.2). Hebdomadaire : jours calendaires de travail ÷ 7 ÷ 4. Journalier : jours d'accueil prévus et travaillés
-  // ÷ (4 × jours d'accueil par semaine du planning). Le plus haut est retenu. Sans absence ni semaine sans accueil dans la
+  // (CCN 48.1.1.2). Hebdomadaire : semaines civiles (lundi à dimanche) entières, dans la période, sans jour hors travail,
+  // ÷ 4 (T-113, regles/t113-quatre-jours.md : DDETS 31, fiche 2/5 du 05/11/2024, « toutes les 4 semaines travaillées »,
+  // méthodes qui ne se combinent pas ; avant : jours calendaires ÷ 28, sans texte, qui comptait les jours non travaillés
+  // d'une semaine incomplète). Journalier : jours d'accueil prévus et travaillés ÷ (4 × jours d'accueil par semaine du
+  // planning) : 16 sur 4 jours (DDETS 31, fiche 2/5) ; il compte les semaines incomplètes au jour près. Le plus haut est
+  // retenu. Sans absence ni semaine sans accueil dans la
   // période (seulement l'embauche ou la fin), le décompte mensuel s'applique seul (fiche 4/5 de la DDETS 31, 05/11/2024 :
   // septembre à mai, 9 mois → 23 jours ; Code du travail numérique : novembre à mai, 7 mois → 18 jours).
-  let joursCal = 0, joursPlan = 0, absence = false;
+  let joursPlan = 0, absence = false;
   for (const d of eachDay(a, b)) {
     if (sorte(d) !== 'travail') { absence = true; continue; }
-    joursCal++;
     const t = termsAt(c, d);
     if (planningBrutMin(t, d) > 0) joursPlan += 1 / (4 * Math.max(1, daysPerWeek(t.planning)));
   }
+  let semainesEntieres = 0;
+  if (absence) {
+    for (let l = mondayOf(a); l <= b; l = addDays(l, 7)) {
+      const sem = [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(l, i));
+      if (sem.every((d) => d >= a && d <= b && sorte(d) === 'travail')) semainesEntieres++;
+    }
+  }
   const mensuel = travail.mois + travail.semaines / 4 + travail.jours / 24;
-  const periodes = absence ? Math.max(mensuel, joursCal / 28, joursPlan) : mensuel;
+  const periodes = absence ? Math.max(mensuel, semainesEntieres / 4, joursPlan) : mensuel;
   const maladie = Math.min(CP_MALADIE_PLAFOND, (arret.mois + arret.semaines / 4 + arret.jours / 24) * CP_MALADIE_PAR_4_SEMAINES);
   return periodes * 2.5 + maladie;
 }
