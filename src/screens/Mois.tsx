@@ -164,19 +164,21 @@ export const joursPrevus = (jours: JourLunette[]) => jours.filter((j) => !j.feri
 /**
  * Jours d'accueil faits (demande du DG du 26/11/2026) : jours du mois jusqu'à aujourd'hui où au moins un des enfants est accueilli,
  * avec la même règle que la paie et que la carte « Ton mois » (présence pointée, ou planning qui fait foi sans pointage).
- * `horsPlanning` : ceux de ces jours où aucun accueil n'était prévu (imprévus), pour expliquer un total qui dépasse les jours prévus.
+ * `nonPrevus` : ceux de ces jours qui ne sont pas des jours prévus du cercle (imprévu, férié travaillé, jour de congé de l'AM
+ * travaillé), pour expliquer un total qui dépasse les jours prévus.
  */
-export function joursFaits(list: Contract[], month: Month, auj: ISODate): { faits: number; horsPlanning: number } {
-  let faits = 0, horsPlanning = 0;
+export function joursFaits(list: Contract[], month: Month, auj: ISODate, jours: JourLunette[]): { faits: number; nonPrevus: number } {
+  const prevus = new Set(jours.filter((j) => !j.ferie && !j.conge).map((j) => j.d));
+  let faits = 0, nonPrevus = 0;
   for (const d of eachDay(firstDay(month), lastDay(month))) {
     if (d > auj) break;
     const infos = list.map((c) => dayInfo(ctxFor(c), d));
     if (infos.some((di) => di.presentMin > 0 && (di.kind === 'present' || di.kind === 'prevu'))) {
       faits++;
-      if (infos.every((di) => di.planned.length === 0)) horsPlanning++;
+      if (!prevus.has(d)) nonPrevus++;
     }
   }
-  return { faits, horsPlanning };
+  return { faits, nonPrevus };
 }
 
 /** Montant qui monte de 0 à sa valeur en 0,8 s après le geste « Voir ma paie » ; rien ne bouge si le téléphone demande un mouvement réduit. */
@@ -213,7 +215,7 @@ function VueMois({ list, month, paieVue, setPaieVue, enfant, lunetteRef, onChois
   // Centre : jours d'accueil faits (même compte que « Ton mois ») sur jours prévus du calendrier (T-135, T-138) ; ni l'un ni
   // l'autre ne sont les jours d'activité déclarés à Pajemploi des cartes (jours mensualisés).
   const prevus = joursPrevus(jours);
-  const { faits, horsPlanning } = joursFaits(enfant ? [enfant] : list, month, t);
+  const { faits, nonPrevus } = joursFaits(enfant ? [enfant] : list, month, t, jours);
   const conges = jours.some((j) => j.conge);
   const calculs = list.map((c) => ({ c, ...calcule(c, month) }));
   const nonCalcules = calculs.filter((x) => !x.ok);
@@ -233,7 +235,7 @@ function VueMois({ list, month, paieVue, setPaieVue, enfant, lunetteRef, onChois
   // Bouton d'un jour : aussi large que l'écart entre deux jours (13 % du cadre au plus).
   const taille = Math.min(13, ((2 * Math.PI * R) / n / 340) * 100);
   const Mois1 = monthLabel(month).replace(/^./, (x) => x.toUpperCase());
-  const label = `${enfant ? `Calendrier ${de(enfant.child)}, ` : ''}${Mois1} : ${faits} jour${faits > 1 ? 's' : ''} d’accueil fait${faits > 1 ? 's' : ''} sur ${prevus} prévu${prevus > 1 ? 's' : ''}${horsPlanning ? `, dont ${horsPlanning} hors planning` : ''}.`;
+  const label = `${enfant ? `Calendrier ${de(enfant.child)}, ` : ''}${Mois1} : ${faits} jour${faits > 1 ? 's' : ''} d’accueil fait${faits > 1 ? 's' : ''} sur ${prevus} prévu${prevus > 1 ? 's' : ''}${nonPrevus ? `, dont ${nonPrevus} non prévu${nonPrevus > 1 ? 's' : ''}` : ''}.`;
   const nomJour = (j: JourLunette) => `${dayLabel(j.d)}${j.conge ? (j.conge.type === 'cp' || !j.conge.type ? ', congé' : ', absence') : ''}${j.ferie ? ', férié' : ''}${j.absents.length ? `, absence ${j.absents.map((c) => de(c.child)).join(', ')}` : ''}${j.d === t ? ', aujourd’hui' : ''}`;
   return (
     <section class="vue-mois" aria-label="Le mois en un coup d’œil">
@@ -263,7 +265,7 @@ function VueMois({ list, month, paieVue, setPaieVue, enfant, lunetteRef, onChois
           <div class="ln-centre" aria-hidden="true">
             <span class="ln-total">{faits}<span class="ln-sur">/{prevus}</span></span>
             <span class="ln-total-label">jours d’accueil faits / prévus</span>
-            {horsPlanning > 0 && <span class="ln-total-label ln-hors">dont {horsPlanning} hors planning</span>}
+            {nonPrevus > 0 && <span class="ln-total-label ln-hors">dont {nonPrevus} non prévu{nonPrevus > 1 ? 's' : ''}</span>}
           </div>
         </div>
       </div>
