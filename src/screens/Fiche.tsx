@@ -113,7 +113,7 @@ export function FicheEnfant({ id }: { id: string }) {
           <ListLink title="Couleur" onClick={() => setCouleur(true)} end={<Gommette name={c.child} color={c.color} size="sm" />} />
         </div>
         <div class="fiche-actions">
-          <a class="btn btn-outline" href={`#/avenant/${c.id}/nouveau`} aria-label="Changer le contrat (avenant)">Avenant</a>
+          <a class="btn btn-outline" href={`#/avenant/${c.id}/nouveau`}><span class="sr-only">Changer le contrat (</span>Avenant<span class="sr-only">)</span></a>
           <a class="btn btn-ghost" href={`#/fin/${c.id}`}>Fin du contrat</a>
         </div>
         {(c.avenants?.length || c.end) && (

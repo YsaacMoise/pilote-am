@@ -43,14 +43,15 @@ export function Plus() {
           <div class="plus-enfants">
             {[...enCours, ...termines].map((c) => (
               // Classes « li » et « li-title » gardées : les parcours e2e retrouvent l'enfant comme dans la Vision 1.0.
-              <a class={`li pe-enfant${c.end && c.end < t ? ' termine' : ''}`} href={`#/enfant/${c.id}`} aria-label={`${c.child}, ${libelleDebut(c, t)}`}>
+              <a class={`li pe-enfant${c.end && c.end < t ? ' termine' : ''}`} href={`#/enfant/${c.id}`}>
                 <Gommette name={c.child} color={c.color} size="lg" />
                 <span class="li-title pe-nom">{c.child}</span>
+                <span class="sr-only">, {libelleDebut(c, t)}</span>
               </a>
             ))}
-            <a class="pe-enfant pe-ajouter" href="#/contrat/nouveau" aria-label="Ajouter un enfant accueilli">
+            <a class="pe-enfant pe-ajouter" href="#/contrat/nouveau">
               <span class="pe-plus" aria-hidden="true"><Icon name="plus" /></span>
-              <span class="pe-nom" aria-hidden="true">Ajouter</span>
+              <span class="pe-nom">Ajouter<span class="sr-only"> un enfant accueilli</span></span>
             </a>
           </div>
           <div class="list pe-brouillons"><BrouillonsEnCours liste /></div>
