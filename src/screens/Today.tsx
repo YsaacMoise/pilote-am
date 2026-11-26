@@ -791,7 +791,7 @@ const AM_OPTIONS: { v: ChoixAbsence; l: string; sub: string }[] = [
   { v: 'sans_solde', l: 'Congé sans solde', sub: 'Non payé, avec l’accord des parents.' },
   // T-109 (correction 5) : absences payées par les parents.
   { v: 'formation', l: 'Formation obligatoire', sub: 'Ta formation d’assistante maternelle (code de l’action sociale, article L421-14). Payée par les parents (article L423-5).' },
-  { v: 'examen_grossesse', l: 'Examen médical de grossesse', sub: 'Examens obligatoires de ta grossesse. Payés par les parents, sans retenue (code du travail, article L1225-16). Le motif reste sur ce téléphone : en ligne, c’est une « absence payée ».' },
+  { v: 'examen_grossesse', l: 'Examen médical de grossesse', sub: 'Examens obligatoires de ta grossesse. Payés par les parents, sans retenue (code du travail, article L1225-16). Comptés comme du travail pour tes congés (même article). Le motif reste sur ce téléphone : en ligne, c’est une « absence payée ».' },
   { v: 'remuneree', l: 'Autre absence payée par les parents', sub: 'Une absence que les parents te paient. L’app ne garde pas sa raison.' },
   // T-104 (regles/t104-absences-protegees.md) : calculées par l'app ; non payées par les parents (indemnités de la Sécurité
   // sociale), sauf le jour de l'accident et, en Alsace-Moselle, le maintien du salaire.
@@ -832,6 +832,8 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
   const [atmp, setAtmp] = useState<NatureAtMp | undefined>(undefined);
   const [jourAccident, setJourAccident] = useState<'oui' | 'non' | undefined>(undefined);
   const atmpManque = type === 'at_mp' && (!atmp || (atmp !== 'maladie_pro' && !jourAccident));
+  // T-109 (contrôle n° 4) : « Autre absence payée » : comptée pour les congés seulement si les parents l'acceptent.
+  const [congesPayee, setCongesPayee] = useState<'oui' | 'non'>('non');
   const ijDemande = demandeIJ(type, nature, from, to, state.contracts);
   const err = to < from ? 'La date de fin doit être après le début.' : '';
   useErreurAffichee('dates_absence', !!err);
@@ -852,6 +854,10 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
       {type === 'at_mp' && atmp && atmp !== 'maladie_pro' && (
         <Choices label="Le premier jour de l’absence est-il le jour de l’accident ?" value={jourAccident} onChange={setJourAccident}
           options={[{ v: 'oui', l: 'Oui', sub: 'Ce jour-là est payé en entier par les parents (code de la sécurité sociale, article L433-1).' }, { v: 'non', l: 'Non, l’arrêt commence après', sub: 'Le jour de l’accident n’est pas dans cette absence : il reste payé comme prévu.' }]} />
+      )}
+      {type === 'remuneree' && (
+        <Choices label="Les parents la comptent-ils comme du travail pour les congés ?" value={congesPayee} onChange={setCongesPayee}
+          options={[{ v: 'non', l: 'Non', sub: 'La règle : aucun texte ne la compte comme du travail. Tes congés acquis baissent un peu si l’absence est longue (convention, article 48.1.1.2).' }, { v: 'oui', l: 'Oui, les parents l’acceptent', sub: 'Une règle plus favorable pour toi est permise si les parents sont d’accord.' }]} />
       )}
       {estSuspension(type) ? <p class="hint">{ABSENCES_PROTEGEES_DONNEES}</p> : <p class="hint">{ABSENCES_PROTEGEES_AIDE}</p>}
       {type === 'evenement' && <p class="hint">L’app garde seulement « événement familial » et le nombre de jours payés, pas l’événement choisi.</p>}
@@ -882,6 +888,7 @@ export function AmAbsenceSheet({ start, onClose }: { start: string; onClose: () 
           if (!l) return;
           if (ijDemande && ij !== undefined) l.ijSecu = ij;
           if (ijDemande && ijAutres !== undefined) l.ijSalairesAutres = ijAutres;
+          if (l.type === 'remuneree') l.comptePourConges = congesPayee === 'oui';
           if (l.type === 'at_mp') { l.atmp = atmp; if (atmp !== 'maladie_pro') l.jourAccident = jourAccident === 'oui'; }
           const undos: (() => Promise<void>)[] = [];
           for (const x of appliquerReponses(l, questions, reps)) undos.push(await putLeave(x));

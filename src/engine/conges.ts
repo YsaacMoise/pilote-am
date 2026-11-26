@@ -303,7 +303,9 @@ function joursAcquis(ctx: Ctx, from: ISODate, to: ISODate): number {
   // T-103 (C10) : absence non assimilée à du travail effectif (L3141-5 ne la cite pas) : congé sans solde, enfant malade de
   // l'AM. CCN 48.1.1.2 : calcul « pro rata temporis, en cas […] d'absence » : ces jours sortent du mois de travail.
   const nonAssimile = new Set<ISODate>();
-  for (const l of ctx.leaves) if (l.type === 'sans_solde' || l.type === 'am_enfant_malade') for (const d of eachDay(l.from > a ? l.from : a, l.to < b ? l.to : b)) nonAssimile.add(d);
+  // T-109 (contrôle n° 4) : « absence payée » non assimilée sauf accord des parents (CCN 48.1.1.2 ; L3141-5) ; l'examen
+  // médical de grossesse est assimilé (L1225-16).
+  for (const l of ctx.leaves) if (l.type === 'sans_solde' || l.type === 'am_enfant_malade' || (l.type === 'remuneree' && l.comptePourConges !== true)) for (const d of eachDay(l.from > a ? l.from : a, l.to < b ? l.to : b)) nonAssimile.add(d);
   // Congés payés pris pendant des semaines sans accueil (année incomplète, semaines toutes saisies) : assimilés à du
   // travail effectif (L3141-5, 1° ; CCN 48.1.1.3). Une semaine dont le lundi au samedi sont des congés payés compte entière.
   const cpPayes = off.size && semainesSaisiesCP(c, a, b) ? cpAssimilesJours(ctx, a, b, off) : new Set<ISODate>();

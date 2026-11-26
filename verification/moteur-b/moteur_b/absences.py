@@ -29,6 +29,10 @@ _TYPES = {
     "am_solidarite_familiale": (True, ["M-07"]),
     "am_proche_aidant": (True, ["M-07"]),
     "am_formation_obligatoire": (False, ["M-08"]),
+    # T-109 (correction 5 ; decision du DG du 26/11/2026) : examen medical de grossesse (C. trav. L1225-16 : « n'entrainent
+    # aucune diminution de la remuneration ») et autre absence payee par les parents (accord des parents) : pas de deduction.
+    "am_examen_grossesse": (False, ["L1225-16"]),
+    "am_absence_payee": (False, ["T109-ABS-PAYEE"]),
     # T-103 (C9) : conge de deuil (CCN 48.1.3.1.2) : salaire maintenu sous deduction des indemnites journalieres
     # (CCN 48.1.3.1.3) : pas de deduction d'absence ; le montant des IJ se retire a part (conge_deuil).
     "am_deuil_complementaire": (False, ["R-ABS-06", "T103-C9"]),
@@ -539,3 +543,22 @@ def ferie_local_travaille(date_ferie, region, minutes_presence, taux_horaire_cen
         "ferie_local": locaux[date_ferie],
         "message": "Majoration de 10 % a confirmer, non comprise dans le total (lecture A : ferie de l'art. 47.2 ; "
                    "lecture B : jour ordinaire)."})
+
+
+@api("R-CP-01", "T109-ABS-PAYEE")
+def assimilation_cp_absence_payee(type_absence, compte_pour_conges=None):
+    """T-109 (controle n° 4 de la n° 67) : une absence payee par les parents compte-t-elle comme travail effectif pour les
+    conges payes ?
+    - examen_grossesse : C. trav. L1225-16 (« assimilees a une periode de travail effectif pour la determination de la duree
+      des conges payes ») : oui, fixe par la loi.
+    - absence_payee (autre absence payee par les parents) : aucun texte ne l'assimile (L3141-5 ne la cite pas ; CCN
+      48.1.1.2 : calcul « pro rata temporis, en cas [...] d'absence non assimilee ») : non, sauf si les parents l'acceptent
+      (compte_pour_conges = True : regle plus favorable a la salariee, permise).
+    Sortie : assimilee (bool)."""
+    if type_absence == "examen_grossesse":
+        return resultat_ok(["L1225-16"], {"assimilee": True})
+    if type_absence == "absence_payee":
+        if compte_pour_conges not in (None, True, False):
+            raise ErreurSaisie("compte_pour_conges : True, False ou None (non par defaut).")
+        return resultat_ok(["CCN-48.1.1.2", "L3141-5"], {"assimilee": compte_pour_conges is True})
+    raise ErreurSaisie("type_absence : examen_grossesse ou absence_payee.")

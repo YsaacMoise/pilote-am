@@ -306,11 +306,15 @@ import { applyRemote, planMerge, stable } from '../src/sync/plan';
 
 describe('Décision du DG du 26/11/2026 : l’examen médical de grossesse ne part jamais en ligne', () => {
   const examen: AmLeave = { id: 'g', type: 'examen_grossesse', from: '2026-10-12', to: '2026-10-12' };
-  const neutre: AmLeave = { id: 'g', type: 'remuneree', from: '2026-10-12', to: '2026-10-12' };
+  const neutre: AmLeave = { id: 'g', type: 'remuneree', from: '2026-10-12', to: '2026-10-12', comptePourConges: true };
   const doc = (v: unknown) => ({ s: 'leaves' as const, k: 'g', v: JSON.stringify(v), t: 1 });
   it('en ligne : une « absence payée » sans motif, de même forme que les autres absences (identifiant, type, dates)', () => {
     expect(forRemote('leaves', 'g', examen)).toEqual(neutre);
     expect(absenceEnLigne({ id: 'f', type: 'formation', from: '2026-10-12', to: '2026-10-12' })).toEqual({ id: 'f', type: 'formation', from: '2026-10-12', to: '2026-10-12' });
+    // Contrôle n° 4 : une seule forme pour toute absence payée (oui ou non pour les congés) ; « oui » n'est pas propre à l'examen.
+    const autreOui: AmLeave = { id: 'g', type: 'remuneree', from: '2026-10-12', to: '2026-10-12', comptePourConges: true };
+    expect(forRemote('leaves', 'g', autreOui)).toEqual(forRemote('leaves', 'g', examen));
+    expect(forRemote('leaves', 'g', { id: 'g', type: 'remuneree', from: '2026-10-12', to: '2026-10-12' })).toEqual({ ...neutre, comptePourConges: false });
     expect(JSON.stringify(forRemote('leaves', 'g', examen))).not.toMatch(/examen|grossesse/);
   });
   it('paie inchangée : l’absence payée en ligne donne le même mois que l’examen sur le téléphone', () => {
@@ -331,5 +335,36 @@ describe('Décision du DG du 26/11/2026 : l’examen médical de grossesse ne pa
   it('en direct : l’écho de son propre envoi ne remplace pas le motif ; une ancienne version est lue neutre', () => {
     expect(applyRemote(examen, doc(neutre))).toEqual({ op: 'none' });
     expect(applyRemote(undefined, doc(examen))).toEqual({ op: 'put', value: neutre });
+  });
+});
+
+import { acquisition } from '../src/engine/conges';
+
+describe('Contrôle n° 4 de la n° 67 : « autre absence payée » et congés acquis (CCN 48.1.1.2 ; L3141-5 ; L1225-16)', () => {
+  // Contrat de 40 h du lundi au vendredi, 52 semaines, depuis le 01/06/2025. Absence du mercredi 01/10 au lundi 15/12/2025
+  // (essai du contrôleur, dix semaines et six jours). Si elle ne compte pas, décompte le plus favorable (F18260) : 206 jours
+  // prévus ÷ 20 × 2,5 = 25,75 → 26 jours.
+  const c = ct({ start: '2025-06-01', trackedFrom: '2025-06-01' });
+  const abs = (l: Partial<AmLeave>, from = '2025-10-01', to = '2025-12-15'): AmLeave[] => [{ id: 'l', type: 'remuneree', from, to, ...l } as AmLeave];
+  const jours = (leaves: AmLeave[]) => acquisition(makeCtx(c, [], leaves, '2026-12-31'), 2025).jours;
+  it('saisie : réponse Non par défaut', () => {
+    expect(absenceSaisie('remuneree', undefined, 'x', '2025-10-01', '2025-12-15')).toEqual({ id: 'x', type: 'remuneree', from: '2025-10-01', to: '2025-12-15', comptePourConges: false });
+  });
+  it('Non : 26 jours ; Oui : 30 jours ; examen de grossesse : 30 jours (assimilé par la loi)', () => {
+    expect(jours([])).toBe(30);
+    expect(jours(abs({ comptePourConges: false }))).toBe(26);
+    expect(jours(abs({}))).toBe(26);
+    expect(jours(abs({ comptePourConges: true }))).toBe(30);
+    expect(jours(abs({ type: 'examen_grossesse' }))).toBe(30);
+    expect(jours(abs({ type: 'sans_solde' }))).toBe(26);
+  });
+  it('dix semaines tout juste (06/10 au 14/12/2025) : 42 semaines ÷ 4 × 2,5 = 26,25 → 27 jours si Non ; 30 si Oui', () => {
+    expect(jours(abs({ comptePourConges: false }, '2025-10-06', '2025-12-14'))).toBe(27);
+    expect(jours(abs({ comptePourConges: true }, '2025-10-06', '2025-12-14'))).toBe(30);
+  });
+  it('en ligne, l’examen donne la même forme et les mêmes congés qu’une absence payée comptée', () => {
+    const enLigne = forRemote('leaves', 'l', abs({ type: 'examen_grossesse' })[0]) as AmLeave;
+    expect(enLigne).toEqual(abs({ comptePourConges: true })[0]);
+    expect(jours([enLigne])).toBe(30);
   });
 });

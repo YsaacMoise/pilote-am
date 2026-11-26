@@ -83,6 +83,8 @@ export function absenceSaisie(choix: ChoixAbsence, nature: NatureEvenement | und
     // comptent contrat par contrat au calcul (evenements.ts, statutJourEvenement), sans aucun champ propre à ce cas.
     return { id, type: 'evenement', from, to, joursEvenement: joursEvenementSaisi(nature, from) };
   }
+  // T-109 (contrôle n° 4) : « Autre absence payée » : réponse par défaut Non pour les congés (CCN 48.1.1.2 ; L3141-5).
+  if (choix === 'remuneree') return { id, type: 'remuneree', from, to, comptePourConges: false };
   return { id, type: choix, from, to };
 }
 
@@ -170,11 +172,13 @@ export function ruptureSansSante<R extends object>(r: R): R {
 }
 
 /**
- * T-109 (décision du DG du 26/11/2026) : forme en ligne d'une absence de l'AM. L'examen médical de grossesse ne part jamais en
- * ligne sous son type : il part en « absence payée » (`remuneree`), de même forme que les autres (identifiant, type, dates), sans
- * motif ni champ propre. Le motif reste sur le téléphone de l'AM. Rend le même objet pour toute autre absence.
+ * T-109 (décision du DG du 26/11/2026 ; contrôle n° 4) : forme en ligne d'une absence de l'AM. L'examen médical de grossesse ne
+ * part jamais en ligne sous son type : il part en « absence payée » (`remuneree`). Une seule forme pour toute absence payée :
+ * identifiant, type, dates, et `comptePourConges` (oui ou non), sans motif. L'examen donne oui (L1225-16) ; une autre absence
+ * payée, la réponse des parents. Rend le même objet pour toute autre absence.
  */
 export function absenceEnLigne(l: AmLeave): AmLeave {
-  if (l.type !== 'examen_grossesse') return l;
-  return { id: l.id, type: 'remuneree', from: l.from, to: l.to };
+  if (l.type === 'examen_grossesse') return { id: l.id, type: 'remuneree', from: l.from, to: l.to, comptePourConges: true };
+  if (l.type === 'remuneree') return { id: l.id, type: 'remuneree', from: l.from, to: l.to, comptePourConges: l.comptePourConges === true };
+  return l;
 }

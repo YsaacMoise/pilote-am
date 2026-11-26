@@ -325,7 +325,9 @@ export type ChildAbs = 'malade_certif' | 'malade' | 'parents' | 'sans_solde_enfa
  * absences n'entraînent aucune diminution de la rémunération ».
  * `remuneree` (décision du DG du 26/11/2026) : absence payée par les parents, sans motif. C'est la seule forme qui part en
  * ligne pour un examen de grossesse (le motif reste sur le téléphone de l'AM) ; l'AM peut aussi la choisir pour toute autre
- * absence que les parents lui paient. Même calcul que l'examen : payée, hors du seuil des heures, comptée pour les congés.
+ * absence que les parents lui paient. Payée, hors du seuil des heures. Pour les congés : selon `comptePourConges` (contrôle
+ * n° 4 de la n° 67). L'examen est assimilé à du travail effectif par la loi (L1225-16) ; une autre absence payée ne l'est par
+ * aucun texte (CCN 48.1.1.2 ; C. trav. L3141-5) : elle ne compte que si les parents l'acceptent (règle plus favorable).
  */
 export type AmAbsPayee = 'formation' | 'examen_grossesse' | 'remuneree';
 export type AmAbs = 'cp' | 'am_malade' | 'am_enfant_malade' | 'evenement' | 'sans_solde' | 'non_gere' | AmAbsPayee | AmSuspension;
@@ -424,6 +426,12 @@ export interface AmLeave {
    * congé, en centimes. Le salaire est maintenu « sous déduction des indemnités journalières versées ». Demandé à la saisie.
    */
   ijSecu?: number;
+  /**
+   * T-109 (contrôle n° 4 de la n° 67) : « Absence payée » (`remuneree`) seulement : les parents la comptent-ils comme du
+   * travail pour les congés ? Absent ou false : non (CCN 48.1.1.2, prorata). true : oui (règle plus favorable acceptée par les
+   * parents ; ou examen médical de grossesse envoyé en ligne, assimilé par L1225-16). Aucun motif.
+   */
+  comptePourConges?: boolean;
   /**
    * T-103 (N1) : salaires bruts versés à l'AM, les 3 mois civils avant l'absence, par ses employeurs qui ne sont pas dans
    * l'app (centimes ; 0 si aucun). Sert à la part des indemnités journalières de chaque parent (CSS R323-4).

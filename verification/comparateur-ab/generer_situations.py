@@ -1920,6 +1920,22 @@ def situations_t103():
         for hr in ("H40", "H32"):
             ajoute(f"T103-{id_}-{hr}", "congés payés", contrat_grille("C52", hr, "T420", debut=debut), acq, ev,
                    theme="T-103 jours acquis en 52 semaines (C10)")
+    # T-109 (controle n° 4 de la n° 67) : absence payee par les parents, du 01/10 au 15/12/2025 (dix semaines et six jours) :
+    # comptee pour les conges seulement si les parents l'acceptent (CCN 48.1.1.2 ; L3141-5) ; examen de grossesse : oui
+    # (L1225-16). Attendu (H40) : 26 jours si non, 30 si oui. Dix semaines tout juste (06/10 au 14/12) : 27 si non.
+    def payee(t, du="2025-10-01", au="2025-12-15", **kw):
+        return {"absences_am": [dict(conge(t, du, au), **kw)]}
+    for id_, ev in (("NON", payee("remuneree", comptePourConges=False)), ("DEFAUT", payee("remuneree")),
+                    ("OUI", payee("remuneree", comptePourConges=True)), ("EXAMEN", payee("examen_grossesse")),
+                    ("SANS-SOLDE", payee("sans_solde")),
+                    ("NON-10S", payee("remuneree", "2025-10-06", "2025-12-14", comptePourConges=False)),
+                    ("OUI-10S", payee("remuneree", "2025-10-06", "2025-12-14", comptePourConges=True))):
+        # Contrat de 40 h seulement (essai du controleur). Sur 4 jours (H32), A et B different deja pour un conge sans
+        # solde aux memes dates (26 et 25 : decomptes hebdomadaire et journalier, T-103 C10 bis) : ecart signale a la
+        # direction (rapport T-109, section 10), sans lien avec l'absence payee.
+        for hr in ("H40",):
+            ajoute(f"T109-ABS-PAYEE-CP-{id_}-{hr}", "congés payés", contrat_grille("C52", hr, "T420", debut="2025-06-02"), acq, ev,
+                   theme="T-109 absence payée et congés acquis (contrôle n° 4)")
     cp_am = ["2025-08-04", "2025-08-11", "2025-08-18", "2025-12-22", "2025-12-29"]  # 5 des 6 semaines sans accueil
     for id_, debut, cpam in (("C11-AVEC-CP-AM", "2024-09-02", cp_am), ("C11-SANS-CP-AM-SAISI", "2024-09-02", None),
                              ("C11-DEBUT-SEPT-CP-AM", "2025-09-01", ["2025-12-22", "2025-12-29"]),

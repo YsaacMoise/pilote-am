@@ -290,7 +290,22 @@ class Ctx:
 REFUS_BLOQUANTS = ("HORS-COMPARATEUR", "PV-SEMAINE-SANS-PLANNING", "PV-SEMAINE-PREVUE-PLUS-45H")
 
 _TYPE_AM = {"am_malade": "am_maladie", "am_enfant_malade": "am_enfant_malade",
-            "sans_solde": "am_convenance_personnelle", "evenement": "am_evenement_familial"}
+            "sans_solde": "am_convenance_personnelle", "evenement": "am_evenement_familial",
+            # T-109 : absences payees par les parents (examen de grossesse ; autre absence payee).
+            "examen_grossesse": "am_examen_grossesse", "remuneree": "am_absence_payee"}
+
+
+def non_assimile_cp(ctx, d):
+    """Jour hors travail effectif pour les conges payes (fait du jour ; B decide pour les absences payees, T-109)."""
+    c = ctx.conge(d)
+    if c in ("sans_solde", "am_enfant_malade"):
+        return True
+    if c in ("examen_grossesse", "remuneree"):
+        l = ctx.conge_ligne(d, c)
+        r = appel("assimilation_cp_absence_payee", "examen_grossesse" if c == "examen_grossesse" else "absence_payee",
+                  compte_pour_conges=l.get("comptePourConges"))
+        return not r["resultat"]["assimilee"]
+    return False
 
 
 # T-027 : nature d'evenement (moteur A) -> evenement de B.
@@ -336,7 +351,7 @@ def statut_presence(ctx, d):
     c = ctx.conge(d)
     if c in ("am_malade", "am_enfant_malade"):
         return "absence_am"
-    if c in ("cp", "evenement", "sans_solde"):
+    if c in ("cp", "evenement", "sans_solde", "examen_grossesse", "remuneree"):
         return "absence_autorisee"
     j = ctx.jours.get(d)
     if j and j.get("abs"):
@@ -1091,7 +1106,7 @@ def acquisition_b(ctx, y):
         return res
     try:
         malade = [d for d in jours_entre(a, b) if ctx.conge(d) == "am_malade"]
-        non_assimile = [d for d in jours_entre(a, b) if ctx.conge(d) in ("sans_solde", "am_enfant_malade")]
+        non_assimile = [d for d in jours_entre(a, b) if non_assimile_cp(ctx, d)]
         complete_periode = a == p0 and b == p1 and ctx.type == "complete" and not malade and not non_assimile
         if True:
             # T-103 (C10, C11) : B compte lui-meme mois complets, semaines et jours (Cass. soc. 10/01/1980 ; CCN
@@ -1129,7 +1144,7 @@ def acquisition_b(ctx, y):
                 lundis = {lundi(d) for d in jours_entre(a, b) if ctx.prevu(d) > 0}
                 sem = Fraction(len([x for x in lundis if x >= a and x + timedelta(days=6) <= b]))
                 mois_n = sum(1 for m in mois_list if any(ctx.prevu(d) > 0 for d in jours_entre(premier(m), dernier(m))))
-            jours_trav = sum(1 for d in jours_entre(a, b) if ctx.prevu(d) > 0 and ctx.conge(d) not in ("am_malade", "sans_solde", "am_enfant_malade"))
+            jours_trav = sum(1 for d in jours_entre(a, b) if ctx.prevu(d) > 0 and ctx.conge(d) != "am_malade" and not non_assimile_cp(ctx, d))
             kw = {}
             if malade:
                 mm = sum(1 for m in mois_entre(a, b) if all(ctx.conge(d) == "am_malade" for d in jours_entre(premier(m), dernier(m))))

@@ -121,6 +121,8 @@ function contexte(s: any): Ctx {
     id: `l${i}`, type: l.type, from: l.du, to: l.au, ...(l.nature ? { nature: l.nature } : {}),
     // T-103 (C9, R3) : indemnités journalières saisies.
     ...(l.ijSecu != null ? { ijSecu: l.ijSecu } : {}),
+    // T-109 (contrôle n° 4) : « absence payée » : les parents la comptent-ils pour les congés ?
+    ...(l.comptePourConges != null ? { comptePourConges: l.comptePourConges } : {}),
   })));
   // T-103 (C11) : semaines sans accueil où l'AM prend ses congés payés (donnée de B) : dans l'app, ce sont des congés
   // payés saisis, du lundi au samedi (« Je serai absente », congés payés).
