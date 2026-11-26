@@ -810,7 +810,7 @@ const CHILD_ABS_OPTIONS: { v: ChildAbs | 'none'; l: string; sub?: string }[] = [
   { v: 'none', l: 'Oui, comme prévu' },
   { v: 'malade_certif', l: 'Non, malade, avec certificat médical', sub: 'Certificat médical ou bulletin d’hospitalisation. Déduit du salaire : 5 jours par année de contrat au plus, plus une absence de 14 jours calendaires consécutifs.' },
   { v: 'malade', l: 'Non, malade, sans certificat', sub: 'Payé normalement.' },
-  { v: 'parents', l: 'Non, absent à la demande des parents', sub: 'Payé normalement.' },
+  { v: 'parents', l: 'Non, à la demande des parents', sub: 'Payé normalement.' },
 ];
 // T-035b : l'absence « sans solde » de l'enfant n'est plus proposée (CCN art. 105 : absence non prévue = payée). Elle reste
 // affichée seulement sur un jour déjà noté ainsi, pour pouvoir le corriger.
