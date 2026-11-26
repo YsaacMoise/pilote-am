@@ -195,3 +195,30 @@ describe('T-115 (R3) : brut calculé depuis le net (calculateur-arvela, regles/t
     expect(brutHoraireDepuisNet(286, '2023-06-01', 'metropole')).toBeUndefined();
   });
 });
+
+import { MESSAGE_MAINTIEN_LOCAL_SUSPENSION } from '../src/engine/regions';
+import { brutDuNet, brutConnu } from '../src/engine/payroll';
+
+describe('Relecture T-115 : corrections m3, m4, m5', () => {
+  it('m3 : congé ou arrêt en Alsace-Moselle, indemnités déduites : information', () => {
+    expect(estInformation(`${MESSAGE_MAINTIEN_LOCAL_SUSPENSION} 30,00 € d’indemnités journalières déduits du salaire de ce mois.`)).toBe(true);
+  });
+  it('m4 : deux contrats sans nom de famille ne sont pas réunis en un employeur ; le message nomme l’enfant', () => {
+    // Deux contrats sans famille, 30 h et 25 h à des heures différentes : 55 h tous réunis, aucun ne dépasse seul.
+    const a = ct({ family: '', child: 'Lucas', planning: week('08:00', '14:00') });
+    const b = { ...ct({ family: '', child: 'Marc', planning: week('14:00', '19:00') }), id: 'c2' } as Contract;
+    const ctxs = [makeCtx(a, [], [], '2026-12-31'), makeCtx(b, [], [], '2026-12-31')];
+    expect(alertesDurees(ctxs, '2026-11-26')).toEqual([]);
+    expect(informationsDurees(ctxs, '2026-11-26').length).toBe(1);
+    const seul = ct({ family: '', child: 'Lucas', planning: week('07:00', '17:00') });
+    expect(alertesDurees([makeCtx(seul, [], [], '2026-12-31')], '2026-11-26').join(' ')).toMatch(/quatre derniers mois pour Lucas :/);
+  });
+  it('m5 : un avenant « brut calculé » (0) remplace le brut écrit avant lui', () => {
+    const c = ct({ rateBrut: 700, avenants: [{ id: 'a1', from: '2026-11-01', changes: { rateBrut: 0 } }] } as Partial<Contract>);
+    expect(brutDuNet(c, 50000, '2026-10-31')).toBe(70000); // avant l'avenant : 500 € × 7,00 ÷ 5,00
+    expect(brutDuNet(c, 50000, '2026-11-30')).toBe(64004); // après : F1, 500 ÷ 0,7811975 = 640,04 €
+    expect(brutConnu(c, '2026-11-30')).toBe(true);
+    // La sauvegarde JSON garde le 0 (une valeur vide disparaîtrait).
+    expect(JSON.parse(JSON.stringify(c)).avenants[0].changes.rateBrut).toBe(0);
+  });
+});

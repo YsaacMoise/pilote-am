@@ -16,6 +16,7 @@ const INFORMATIONS = [
   'Absente tout le mois',                         // aucune déclaration à faire
   'Congé indemnisé par la Sécurité sociale',      // indemnités journalières déduites
   'Absence pour ta maladie ou celle de ton enfant, en Alsace-Moselle : les parents maintiennent', // idem, Alsace-Moselle
+  'Congé ou arrêt en Alsace-Moselle : les parents maintiennent', // idem, congé ou arrêt en Alsace-Moselle (T-104)
   'Des jours d’enfant malade dépassent la limite', // ils restent payés
   'Indemnité kilométrique : contrôle impossible', // donnée à donner (puissance fiscale)
   'Mayotte : l’app ne calcule pas la réduction',  // Pajemploi la calcule : renvoi au relevé
