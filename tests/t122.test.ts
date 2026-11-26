@@ -94,6 +94,8 @@ describe('T-122 : assistant, rien de choisi d’avance (décision 1 du DG)', () 
     expect(c.cpMode).toBeUndefined();
     expect(c.pajemploiPlus).toBeUndefined();
     expect(c.departement).toBeUndefined();
+    // Relecture n1 : la case « handicap ou maladie » n'est pas cochée « non » d'office ; l'écran Impôts la demande.
+    expect('majoreFiscal' in contratFinal(c, {})).toBe(false);
   });
   it('le département du profil est repris (Alsace-Moselle déduite)', () => {
     state.settings = { ...state.settings, departement: '67' };

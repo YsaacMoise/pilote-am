@@ -29,7 +29,7 @@ export const libelleEntretien = (t: Valeurs): string => {
 // T-122 (textes au strict minimum) : le minimum appliqué, avec ses chiffres, en une ligne.
 const aideVide = () => `Vide : ${libelleMinimumEntretien()}.`;
 
-export function EntretienSaisie({ t, set, hint, passe }: { t: Valeurs; set: (p: Partial<Valeurs>) => void; hint?: string; passe?: boolean }) {
+export function EntretienSaisie({ t, set, hint, passe, error }: { t: Valeurs; set: (p: Partial<Valeurs>) => void; hint?: string; passe?: boolean; error?: string }) {
   const mode = modeEntretien(t);
   return (
     <>
@@ -38,7 +38,7 @@ export function EntretienSaisie({ t, set, hint, passe }: { t: Valeurs; set: (p: 
           { v: 'heure', l: 'Par heure d’accueil' },
           { v: 'jour', l: 'Par jour d’accueil' },
         ]}
-        onChange={(v) => set({ entretienMode: v, entretienJour: 0, entretienHeure: 0 })} />
+        onChange={(v) => set({ entretienMode: v, entretienJour: 0, entretienHeure: 0 })} error={error} />
       {mode === 'heure' && <EuroInput key="h" label="Montant par heure d’accueil" hint={hint ?? aideVide()} cents={t.entretienHeure || undefined} allowEmpty onChange={(v) => set({ entretienHeure: v ?? 0, entretienJour: 0 })} />}
       {mode === 'jour' && <EuroInput key="j" label="Montant par jour d’accueil" hint={hint ?? aideVide()} cents={t.entretienJour || undefined} allowEmpty onChange={(v) => set({ entretienJour: v ?? 0, entretienHeure: 0 })} />}
       {passe && <Banner tone="warn">Ce changement touche des mois déjà passés : leur indemnité d’entretien sera recalculée. {MESSAGE_MOIS_DEJA_DECLARE}</Banner>}

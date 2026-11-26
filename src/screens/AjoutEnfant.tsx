@@ -45,7 +45,8 @@ export function contratVide(): Contract {
     id: uid(), child: '', family: '', color: couleurLibre(couleursPrises(state.contracts, '', t)), start: '',
     yearType: undefined as unknown as Contract['yearType'], weeks: 52, weeksOff: [], planning: {},
     rateNet: undefined as unknown as number, majoration: 10, entretienJour: 0, repasPrix: 0, repasParJour: 0, kmTaux: 0,
-    cpMode: undefined as unknown as Contract['cpMode'], majoreFiscal: false, trackedFrom: '',
+    // Relecture n1 : la case « handicap ou maladie » reste sans réponse ; l'écran Impôts pose la question.
+    cpMode: undefined as unknown as Contract['cpMode'], majoreFiscal: undefined as unknown as boolean, trackedFrom: '',
     balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }, history: [], createdAt: Date.now(),
     ...(dep ? { departement: dep, ...lieuDuDepartement(dep) } : {}),
     // Brouillon venu du simulateur : les conditions que l'AM y a saisies.
@@ -68,6 +69,8 @@ export function contratFinal(c: Contract, r: ReponsesAssistant): Contract {
     // Année complète : le mode de versement n'est pas demandé (il ne sert qu'en année incomplète) ; valeur d'avant T-122.
     cpMode: c.cpMode ?? 'juin',
   };
+  // Relecture n1 : champ absent (pas « non ») tant que l'AM n'a pas répondu, à l'écran Impôts ou Contrat.
+  if (typeof out.majoreFiscal !== 'boolean') delete (out as Partial<Contract>).majoreFiscal;
   if (r.pajemploi === 'oui') out.pajemploiPlus = true;
   else if (r.pajemploi === 'non') out.pajemploiPlus = false;
   else delete out.pajemploiPlus;
@@ -191,6 +194,16 @@ export function resumeEtape(n: number, c: Contract, r: ReponsesAssistant): strin
     case 6: return r.maladie !== undefined ? 'Congés et absences repris' : SOUS_TITRES[5];
     default: return '';
   }
+}
+
+/** Groupe de champs d'un composant partagé, relié à son message d'erreur (relecture m5). */
+function Groupe({ id, m, label, children }: { id: string; m?: string; label: string; children: ComponentChildren }) {
+  return (
+    <div role="group" aria-label={label} aria-invalid={m ? 'true' : undefined} aria-describedby={m ? id : undefined}>
+      {children}
+      <Err m={m} id={id} />
+    </div>
+  );
 }
 
 /** Erreur d'un groupe de champs (jours, horaires, composants partagés) ; `id` la relie aux champs qui la citent. */
@@ -440,8 +453,7 @@ export function AjoutEnfant({ id }: { id?: string }) {
         {ecran === 'accueils' && (
           <>
             <h2>Accueils prévus au contrat {de(c.child)}</h2>
-            <AccueilsOccasionnels c={c} set={set} />
-            <Err m={errs.accueils} />
+            <Groupe id="err-accueils" m={errs.accueils} label="Accueils prévus"><AccueilsOccasionnels c={c} set={set} /></Groupe>
           </>
         )}
 
@@ -468,13 +480,13 @@ export function AjoutEnfant({ id }: { id?: string }) {
                     options={JOUR_NOMS.slice(0, 6).map((l, i) => ({ v: String(i + 1), l }))} error={errs.reposHebdo} />
                 </>
               )}
-              {(dureeMoyenneContrat({ ...c, planning: planningRempli(c.planning) }) ?? 0) > SEUIL_ACCORD_MIN && (
-                <Switch label="J’ai donné mon accord écrit pour plus de 48 h par semaine" checked={!!c.accord48h} onChange={(v) => set({ accord48h: v })} />
-              )}
-              <Err m={errs.duree} />
+              <Groupe id="err-duree" m={errs.duree} label="Durée du travail">
+                {(dureeMoyenneContrat({ ...c, planning: planningRempli(c.planning) }) ?? 0) > SEUIL_ACCORD_MIN && (
+                  <Switch label="J’ai donné mon accord écrit pour plus de 48 h par semaine" checked={!!c.accord48h} onChange={(v) => set({ accord48h: v })} />
+                )}
+              </Groupe>
             </section>
-            {c.planningVariable && <PlanningVariableSaisie c={c} set={set} />}
-            <Err m={errs.pv} />
+            {c.planningVariable ? <Groupe id="err-pv" m={errs.pv} label="Horaires qui changent"><PlanningVariableSaisie c={c} set={set} /></Groupe> : <Err m={errs.pv} />}
           </>
         )}
 
@@ -499,8 +511,7 @@ export function AjoutEnfant({ id }: { id?: string }) {
         {ecran === 'frais' && (
           <section class="card stack">
             <h2>Les frais</h2>
-            <EntretienSaisie t={c} set={set} />
-            <Err m={errs.entretien} />
+            <EntretienSaisie t={c} set={set} error={errs.entretien} />
             <Choices label="Repas" value={c.repasParents === undefined ? undefined : c.repasParents ? 'parents' : 'am'}
               onChange={(v) => set(v === 'parents' ? { repasParents: true, repasPrix: 0, repasParJour: 0 } : { repasParents: false })}
               options={[{ v: 'am', l: 'Fournis par moi' }, { v: 'parents', l: 'Fournis par les parents' }]} error={errs.repas} />
@@ -528,6 +539,7 @@ export function AjoutEnfant({ id }: { id?: string }) {
         {ecran === 'avant1' && (
           <section class="card stack">
             <h2>Congés au début du suivi</h2>
+            <Groupe id="err-depart" m={errs.depart} label="Congés au début du suivi">
             {departCalculable && !r.cpManuel ? (
               <>
                 <CongesDepart c={{ ...c, planning: planningRempli(c.planning), trackedFrom: suiviDepuis }} mode="formulaire" reponses={r}
@@ -549,7 +561,7 @@ export function AjoutEnfant({ id }: { id?: string }) {
                 {departCalculable && <button type="button" class="btn btn-ghost" onClick={() => setR({ cpManuel: false })}>Revenir au calcul d’Arvela</button>}
               </>
             )}
-            <Err m={errs.depart} />
+            </Groupe>
           </section>
         )}
 

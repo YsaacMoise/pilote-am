@@ -31,6 +31,9 @@ const CHOIX_MOTIF: { v: Motif; l: string; sub?: string }[] = [
   { v: 'deces_employeur', l: 'Décès du parent employeur' },
 ];
 
+/** T-122 (n3) : simulation ; les documents officiels de fin ne sont pas produits par l'app. */
+export const AVERTISSEMENT_FIN = 'Simulation. Les documents officiels de fin sont établis par le parent employeur.';
+
 const ouiNon = (v: boolean | undefined) => (v === undefined ? undefined : v ? 'oui' : 'non');
 
 /** « de mars », « d’août », « d’octobre » */
@@ -76,7 +79,7 @@ export function Fin({ id }: { id?: string }) {
     </div>
   );
   // T-076 : un CDD finit sans lettre ni préavis (R-CDD-06) : écran à part.
-  if (c.cdd) return <><Topbar title="Fin de contrat" back="#/plus" screen="fin" /><main>{choixEnfant}<FinCddEcran key={c.id} c={c} /></main></>;
+  if (c.cdd) return <><Topbar title="Fin de contrat" back="#/plus" screen="fin" /><main>{choixEnfant}<p class="muted">{AVERTISSEMENT_FIN}</p><FinCddEcran key={c.id} c={c} /></main></>;
   const envoi = notif < c.start ? c.start : notif;
   // C-017 : le préavis part de la première présentation de la lettre recommandée ou de la remise en main propre
   // contre décharge (art. 120), jamais de l'annonce orale.
@@ -126,6 +129,8 @@ export function Fin({ id }: { id?: string }) {
       <main>
         {etape === 1 && choixEnfant}
         <p class="eyebrow">{etape} sur 3 · {['Pourquoi', 'La lettre et ses dates', 'Ce qui t’est dû'][etape - 1]}</p>
+        {/* T-122 (décision de la direction, n3) : protection juridique, une ligne. */}
+        <p class="muted">{AVERTISSEMENT_FIN}</p>
         {etape === 1 && <section class="card">
           <fieldset>
             <legend>Pourquoi</legend>

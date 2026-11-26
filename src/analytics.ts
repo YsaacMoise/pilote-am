@@ -267,6 +267,12 @@ function page() {
 const INFO = 'pam-mesure-info';
 /** Une seule fois par téléphone : dire que la mesure est active et comment la couper. */
 export function informerUneFois() {
+  // T-122 (relecture n2) : jamais pendant l'ajout d'un enfant ; le message attend la sortie de l'assistant.
+  if (/^#\/(ajout|contrat\/nouveau)\b/.test(location.hash)) {
+    const apres = () => { if (!/^#\/(ajout|contrat\/nouveau)\b/.test(location.hash)) { window.removeEventListener('hashchange', apres); informerUneFois(); } };
+    window.addEventListener('hashchange', apres);
+    return;
+  }
   try {
     if (!utilisatrice() || !mesureActive() || localStorage.getItem(INFO) === '1') return;
     localStorage.setItem(INFO, '1');

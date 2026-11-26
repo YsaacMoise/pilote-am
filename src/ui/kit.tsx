@@ -158,6 +158,17 @@ export function Toaster() {
     });
     return () => { off(); clearTimeout(timer); };
   }, []);
+  // T-122 (relecture n2) : un message avec action (mesure d'usage) ne couvre pas l'assistant d'ajout : il revient à la sortie.
+  useEffect(() => {
+    let attente: ToastMsg | null = null;
+    const assistant = () => /^#\/(ajout|contrat\/nouveau)\b/.test(location.hash);
+    const f = () => {
+      if (assistant()) setT((cur) => { if (cur?.action) { attente = cur; return null; } return cur; });
+      else if (attente) { const m = attente; attente = null; toast(m.text, m.undo, m.tone, m.action); }
+    };
+    window.addEventListener('hashchange', f);
+    return () => window.removeEventListener('hashchange', f);
+  }, []);
   return (
     <div class="toast-wrap" aria-live="polite" role="status">
       {t && (
