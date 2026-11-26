@@ -338,7 +338,7 @@ export function AjoutEnfant({ id }: { id?: string }) {
     );
   }
 
-  if (b.etape >= 7) return <Recap c={c} r={r} titre={titre} total={total} erreurs={erreursFinales} modifier={modifier} creer={creer} />;
+  if (b.etape >= 7) return <Recap c={c} r={r} total={total} erreurs={erreursFinales} modifier={modifier} creer={creer} />;
 
   const rates = ratesAtRegion(today(), regionDe(c)) ?? ratesConnus(today());
   const rappel = Object.values(errs);
@@ -594,6 +594,8 @@ export function AjoutEnfant({ id }: { id?: string }) {
   );
 }
 
+const nbj = (x: number) => `${x.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} jour${x > 1 ? 's' : ''}`;
+
 function Bloc({ n, titre, modifier, children }: { n: number; titre: string; modifier: (n: number) => void; children: ComponentChildren }) {
   return (
     <section class="card stack-sm" aria-label={titre}>
@@ -609,7 +611,7 @@ function libellePlanning(pl: Planning): ComponentChildren[] {
 }
 
 /** Récapitulatif (maquette 11) : chaque bloc avec « Modifier », mensualisation calculée par le moteur. */
-function Recap({ c, r, titre, total, erreurs, modifier, creer }: { c: Contract; r: ReponsesAssistant; titre: string; total: number; erreurs: string[]; modifier: (n: number) => void; creer: () => void }) {
+function Recap({ c, r, total, erreurs, modifier, creer }: { c: Contract; r: ReponsesAssistant; total: number; erreurs: string[]; modifier: (n: number) => void; creer: () => void }) {
   const f = contratFinal({ ...c, planning: c.planningVariable || c.accueilOccasionnel ? c.planning : planningRempli(c.planning) }, r);
   const mensualise = !f.accueilOccasionnel && f.yearType;
   return (
@@ -651,14 +653,14 @@ function Recap({ c, r, titre, total, erreurs, modifier, creer }: { c: Contract; 
         {total === 6 && (
           <Bloc n={6} titre={NOMS_ETAPES[5]} modifier={modifier}>
             {r.pris !== undefined && <><dt>Congés pris depuis le 1er juin</dt><dd>{r.pris} jour{r.pris > 1 ? 's' : ''} ouvrable{r.pris > 1 ? 's' : ''}</dd></>}
-            {r.soldes && !r.cpManuel && <><dt>Reste à prendre</dt><dd>{r.soldes.cpRestants} jours</dd><dt>En cours d’acquisition</dt><dd>{r.soldes.cpEnCours} jours</dd></>}
-            {r.cpManuel !== false && c.balances.cpSaisi && (r.cpManuel || !r.soldes) && <><dt>Congés saisis</dt><dd>{c.balances.cpRestants} restants, {c.balances.cpEnCours} en cours</dd></>}
+            {r.soldes && !r.cpManuel && <><dt>Reste à prendre</dt><dd>{nbj(r.soldes.cpRestants)}</dd><dt>En cours d’acquisition</dt><dd>{nbj(r.soldes.cpEnCours)}</dd></>}
+            {r.cpManuel !== false && c.balances.cpSaisi && (r.cpManuel || !r.soldes) && <><dt>Congés saisis</dt><dd>{nbj(c.balances.cpRestants)} restants, {nbj(c.balances.cpEnCours)} en cours</dd></>}
             <dt>Absence non rémunérée</dt><dd>{r.absent === 'oui' ? 'oui' : r.absent === 'non' ? 'non' : '—'}</dd>
             <dt>Jours d’enfant malade retenus</dt><dd>{r.maladie ?? 0}</dd>
           </Bloc>
         )}
         <button class="btn btn-primary btn-lg btn-block" onClick={creer}>Créer le contrat {de(c.child)}</button>
-        <p class="hint">{titre} : le contrat en cours de saisie reste sur ce téléphone jusqu’à sa création.</p>
+        <p class="hint">Jusqu’à sa création, le contrat en cours de saisie reste sur ce téléphone seulement.</p>
       </main>
     </>
   );
