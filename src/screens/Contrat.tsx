@@ -341,7 +341,10 @@ export function Contrat({ id }: { id?: string }) {
                 </>
               ) : (
                 <>
-                  {depart?.aConfirmer && <p class="hint">{depart.aConfirmer}</p>}
+                  {/* T-119 : pendant la saisie, le calcul attend seulement les réponses du haut du contrat : le dire simplement. */}
+                  {depart?.aConfirmer && (nonGeresContrat(c).some((t) => t.startsWith('Contrat à compléter'))
+                    ? <p class="hint">Réponds d’abord aux questions plus haut (département, horaires, accueil régulier, CDI ou CDD) : Arvela calculera alors tes congés de départ depuis le début du contrat.</p>
+                    : <p class="hint">{depart.aConfirmer}</p>)}
                   <NumberInput label="Congés restants de l’an dernier (jours)" hint="Acquis avant le dernier 1er juin et pas encore pris" value={c.balances.cpRestants} step={0.5} max={60} onChange={(v) => set({ balances: { ...c.balances, cpRestants: v ?? 0, cpSaisi: true } })} />
                   <NumberInput label="Congés en cours d’acquisition (jours)" hint="Acquis depuis le 1er juin, avant le suivi par l’app" value={c.balances.cpEnCours} step={0.5} max={30} onChange={(v) => set({ balances: { ...c.balances, cpEnCours: v ?? 0, cpSaisi: true } })} />
                   {soldeCongesInconnu(c) && (
