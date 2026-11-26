@@ -307,7 +307,10 @@ function Cadran({ kids, day }: { kids: Contract[]; day: string }) {
   // une présence pointée en sort.
   const lundi = mondayOf(day);
   const semaine = kids.flatMap((c) => Array.from({ length: 7 }, (_, k) => dayInfo(ctxFor(c), addDays(lundi, k)).planned).flat().flatMap((p) => [minutes(p.start), minutes(p.end)]));
-  const toutes = [...semaine, ...anneaux.flatMap((x) => [...x.prevu, ...x.absents, ...x.faits].flat())];
+  const duJour = anneaux.flatMap((x) => [...x.prevu, ...x.absents, ...x.faits].flat());
+  // Jour sans accueil prévu ni présence (week-end) : pas de cadran, comme avant.
+  if (!duJour.length) return null;
+  const toutes = [...semaine, ...duJour];
   const b = bornesCadran(toutes);
   if (!b) return null;
   const frac = (m: number) => Math.min(1, Math.max(0, (m - b.debut) / (b.fin - b.debut)));
