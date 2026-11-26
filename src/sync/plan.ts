@@ -6,7 +6,7 @@
 
 import { SYNCED, type SyncedStore } from '../db';
 import { absenceEnLigne, normaliserAbsence, ruptureSansSante, type AbsenceLue } from '../engine/absences';
-import { avecSanteLocale, CHAMPS_SANTE_CONTRAT, contratSansSante, estNoteSante, resteSurTelephone } from './sante';
+import { avecSanteLocale, CHAMPS_SANTE_CONTRAT, contratSansSante, estNoteSante, resteSurTelephone, santeEnLigne } from './sante';
 
 export interface RemoteDoc {
   s: SyncedStore;
@@ -199,12 +199,34 @@ export function applyRemote(localValue: unknown, d: RemoteDoc): { op: 'put'; val
 }
 
 /**
+ * T-121 : tri d'un lot à envoyer au compte (cloud.ts, `envoyer`, seul chemin d'envoi). Une note de santé du carnet n'est
+ * jamais écrite : sa copie en ligne éventuelle est retirée à la place (le téléphone vient de l'enregistrer).
+ */
+export function trierEnvoi<D extends { s: SyncedStore; k: string; v: string | null }>(docs: D[]): { ecrire: D[]; retirer: Array<{ s: SyncedStore; k: string }> } {
+  const ecrire: D[] = [];
+  const retirer: Array<{ s: SyncedStore; k: string }> = [];
+  for (const d of docs) {
+    if (d.s === 'journal' && d.v !== null && resteSurTelephone(d.s, JSON.parse(d.v))) retirer.push({ s: d.s, k: d.k });
+    else ecrire.push(d);
+  }
+  return { ecrire, retirer };
+}
+
+/** T-121 : vrai si un lot reçu du compte contient une donnée de santé (envoyée par un appareil resté sur une ancienne version). */
+export function recuAvecSante(docs: RemoteDoc[]): boolean {
+  return docs.some((d) => {
+    if (d.v === null) return false;
+    try { return santeEnLigne(d.s, JSON.parse(d.v)); } catch { return false; }
+  });
+}
+
+/**
  * T-121, point 3 de la consigne : retrait des données de santé déjà en ligne, décidé sur le téléphone de l'AM.
  * Pour chaque document en ligne qui en contient :
  * - note de santé du carnet : retirée du compte (document effacé, sans pierre tombale : les autres appareils gardent leur
  *   copie) seulement si le téléphone en a une copie identique ;
- * - contrat : réécrit sans ses champs de santé (le reste tel qu'en ligne) seulement si le téléphone a ce contrat avec les
- *   mêmes valeurs pour ces champs.
+ * - contrat : réécrit sans ses champs de santé seulement si le téléphone a une copie identique de ce contrat (relecture
+ *   indépendante, m3 : une version en ligne différente peut être plus récente ; on ne l'écrase pas).
  * Copie du téléphone absente ou différente : rien n'est retiré, le document est noté dans `gardes`.
  */
 export interface PlanRetrait {
@@ -230,9 +252,8 @@ export function planRetraitSante(remote: RemoteDoc[], local: Map<string, unknown
     }
     const enLigne = rv as Record<string, unknown>;
     if (!enLigne || typeof enLigne !== 'object' || !CHAMPS_SANTE_CONTRAT.some((f) => f in enLigne)) continue;
-    const l = loc as Record<string, unknown> | undefined;
-    if (!l || typeof l !== 'object') out.gardes.push({ s: d.s, k: d.k, raison: 'manque' });
-    else if (CHAMPS_SANTE_CONTRAT.some((f) => !(f in l) || stable(l[f]) !== stable(enLigne[f]))) out.gardes.push({ s: d.s, k: d.k, raison: 'differe' });
+    if (!loc || typeof loc !== 'object') out.gardes.push({ s: d.s, k: d.k, raison: 'manque' });
+    else if (stable(loc) !== stable(enLigne)) out.gardes.push({ s: d.s, k: d.k, raison: 'differe' });
     else out.corriger.push({ s: d.s, k: d.k, value: contratSansSante(enLigne) });
   }
   return out;

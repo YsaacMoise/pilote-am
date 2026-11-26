@@ -454,8 +454,8 @@ function EntrySheet({ cs, kind, date, edit, ouverte, onClose }: {
         <p class="hint">Un médicament se note aussi dans ton registre des médicaments (nom, dose, heure, ordonnance, autorisation écrite des parents) : ce carnet ne le remplace pas. Un accident grave se déclare sans délai à la PMI de ton département.</p>
         <p class="hint">Les soins restent sur ce téléphone : ils ne vont ni dans ton compte en ligne, ni sur le lien des parents. Pour les leur dire, envoie le résumé du jour.</p>
       </>)}
-      {kind.k === 'note' && !kind.apporter && !edit && (
-        <p class="hint">Pour la santé (température, médicament, chute…), choisis plutôt « Soin » : il reste sur ce téléphone.</p>
+      {kind.k !== 'soin' && !kind.apporter && texteLibre && !ouverte && (
+        <p class="hint">Pour la santé (température, médicament, chute…), choisis plutôt « Soin » : il reste sur ce téléphone, alors que ce texte est copié dans ton compte en ligne si tu en as un.</p>
       )}
       {texteLibre && !ouverte && (
         <>

@@ -12,7 +12,7 @@ const fs = require('fs');
 const base = process.env.BASE || 'http://localhost:4173/pilote-am/';
 const cloud = process.env.CLOUD || 'http://localhost:4180';
 const out = path.join(__dirname, 'out');
-fs.mkdirSync(out, { recursive: true });
+fs.mkdirSync(path.join(out, 't121'), { recursive: true });
 
 function assert(cond, msg) {
   if (!cond) throw new Error('ÉCHEC : ' + msg);
@@ -140,6 +140,43 @@ const stable = (v) => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' &
     return new Promise((res) => { const r = db.transaction('journal').objectStore('journal').getAll(); r.onsuccess = () => res(r.result); });
   });
   assert(localNotes.some((j) => j.temp === 38.9), 'la note de température 38,9 est sur le téléphone');
+
+  console.log('\n== Appareil resté sur une ancienne version : renvoie une note de soin (relecture M1) ==');
+  const j6 = note('j6', 'soin', 'Lavage de nez', { time: '15:00' });
+  await post('/write', { uid, d: 'ancien-telephone', docs: [{ s: 'journal', k: 'j6', v: stable(j6) }] });
+  // Ce téléphone écoute de nouveau tout le compte : il range la note, puis la retire (copie identique).
+  await p.evaluate(() => localStorage.setItem('pam-cloud-since', '0'));
+  await p.reload();
+  const fin2 = Date.now() + 30000;
+  let docs2 = await dump(uid);
+  while (enLigne(docs2, 'journal', 'j6') && Date.now() < fin2) { await p.waitForTimeout(500); docs2 = await dump(uid); }
+  assert(!enLigne(docs2, 'journal', 'j6'), 'note de soin renvoyée par l’ancien appareil : rangée sur ce téléphone puis retirée du compte');
+  assert(!enLigne(docs2, 'journal', 'j2'), 'note de médicament reçue du compte : rangée sur ce téléphone, puis retirée (copie identique)');
+  assert(!!enLigne(docs2, 'journal', 'j3'), 'note « selles liquides » toujours différente : toujours gardée');
+  const j6Local = await p.evaluate(async () => {
+    const db = await new Promise((res) => { const r = indexedDB.open('pam-donnees', 1); r.onsuccess = () => res(r.result); });
+    return new Promise((res) => { const r = db.transaction('journal').objectStore('journal').get('j6'); r.onsuccess = () => res(r.result); });
+  });
+  assert(j6Local?.detail === 'Lavage de nez', 'la note renvoyée est sur ce téléphone');
+
+  console.log('\n== Impôts : case inconnue sur cet appareil (relecture B1) ==');
+  await p.evaluate(async () => {
+    const db = await new Promise((res) => { const r = indexedDB.open('pam-donnees', 1); r.onsuccess = () => res(r.result); });
+    const c = await new Promise((res) => { const r = db.transaction('contracts').objectStore('contracts').get('c1'); r.onsuccess = () => res(r.result); });
+    delete c.majoreFiscal;
+    await new Promise((res) => { const tx = db.transaction('contracts', 'readwrite'); tx.objectStore('contracts').put(c); tx.oncomplete = res; });
+  });
+  await p.goto(base + '#/fiscal');
+  await p.reload();
+  await p.getByText(/Lou.*est-il en situation de handicap ou de maladie/).waitFor();
+  assert(await p.getByText('non calculé').first().isVisible(), 'case inconnue : abattement et revenu « non calculé », la question est posée');
+  await p.screenshot({ path: path.join(out, 't121', 'apres-impots-question-clair.png') });
+  await p.getByRole('button', { name: 'Oui', exact: true }).click();
+  await p.getByText(/Abattement \(4 × SMIC/).waitFor();
+  assert(true, 'réponse « Oui » : abattement majoré (4 × SMIC) calculé');
+  const cFin = await dump(uid);
+  assert(!('majoreFiscal' in JSON.parse(enLigne(cFin, 'contracts', 'c1').v)), 'la réponse reste sur le téléphone : le contrat en ligne n’a pas la case');
+
   assert(erreurs.length === 0, 'aucune erreur dans la page' + (erreurs.length ? ' : ' + erreurs.join(' | ') : ''));
   await b.close();
   console.log('\nParcours T-121 : tout est bon.');

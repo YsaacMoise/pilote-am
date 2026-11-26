@@ -155,7 +155,7 @@ export function Compte() {
         <section class="card stack-sm">
           <h2 class="row"><Icon name="lock" />Où vont tes données</h2>
           <p>La copie de tes données est rangée chez Google Firebase, sur des serveurs à Paris. Ton adresse e-mail et ton mot de passe, haché (transformé de façon irréversible), sont gérés par Google hors de France. Dans l’app, seul ton compte donne accès à tes données. Comme pour tout service en ligne, l’éditeur d’Arvela peut techniquement y accéder ; il s’engage à ne le faire qu’avec ton accord.</p>
-          <p>Ce qui touche à la santé reste sur ce téléphone et ne va pas dans ton compte : les soins et les températures du carnet, les selles liquides, et la case « Enfant en situation de handicap ou de maladie » d’un contrat. Sur un autre appareil, tu ne les retrouves pas : recoche la case dans le contrat.</p>
+          <p>Ce qui touche à la santé reste sur ce téléphone et ne va pas dans ton compte : les soins et les températures du carnet, les selles liquides, et la case « Enfant en situation de handicap ou de maladie » d’un contrat. Sur un autre appareil, tu ne les retrouves pas ; l’écran Impôts y redemande la case.</p>
           <p class="hint">Les sauvegardes dans Fichiers restent utiles : elles ne dépendent d’aucun compte, et elles gardent aussi ce qui touche à la santé.</p>
         </section>
       </main>

@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { ctxFor, useStore } from '../store';
+import { ctxFor, putContract, useStore } from '../store';
 import { monthOf, today } from '../engine/dates';
 import { fiscalYears } from '../engine/fiscal';
 import { MESSAGE_TAUX_BRUT } from '../engine/payroll';
@@ -27,7 +27,10 @@ export function Fiscal() {
   const negatif = rows.some((r) => reste(r.f) < 0);
   // T-103 (D1) : sans brut connu (taux horaire brut du contrat) ou avec des mois sans bulletin, le revenu n'est pas donné.
   const brutInconnu = rows.some((r) => r.f.brutInconnu);
-  const aDemander = brutInconnu || partiel;
+  // T-121 : la case « handicap ou maladie » reste sur le téléphone où elle a été cochée. Sur un autre appareil (ou après une
+  // ancienne version qui l'a perdue), elle est inconnue : l'app la demande au lieu de supposer « non ».
+  const caseInconnue = cs.filter((c) => typeof c.majoreFiscal !== 'boolean');
+  const aDemander = brutInconnu || partiel || caseInconnue.length > 0;
   return (
     <>
       <Topbar title="Impôts" back="#/plus" screen="fiscal" />
@@ -37,12 +40,22 @@ export function Fiscal() {
           <h2 aria-live="polite">Revenus {year}</h2>
           <button class="icon-btn" aria-label="Année suivante" disabled={year >= cur} onClick={() => setYear(year + 1)}><Icon name="right" /></button>
         </div>
+        {caseInconnue.map((c) => (
+          <section class="card stack-sm" aria-label={`Abattement majoré, ${c.child}`}>
+            <p><b>{c.child}</b> est-il en situation de handicap ou de maladie (abattement majoré de 4 SMIC horaires par jour au lieu de 3) ?</p>
+            <p class="hint">Cette réponse reste sur ce téléphone, jamais dans ton compte en ligne : elle n’est donc pas encore connue ici.</p>
+            <div class="row">
+              <button class="btn btn-secondary" onClick={() => void putContract({ ...c, majoreFiscal: true })}>Oui</button>
+              <button class="btn btn-secondary" onClick={() => void putContract({ ...c, majoreFiscal: false })}>Non</button>
+            </div>
+          </section>
+        ))}
         <section class="card stack" aria-labelledby="imp">
           <span class="muted" id="imp">Revenu imposable{year === cur ? ' à ce jour' : ''}</span>
           <span class="total">{aDemander ? 'non calculé' : eurosArrondis(imposableAffiche)}</span>
           <dl class="kv">
             <dt>Sommes reçues (salaires, entretien, repas, kilomètres)</dt><dd>{eurosArrondis(tot.recu)}</dd>
-            <dt>Abattement spécifique</dt><dd>−{eurosArrondis(tot.abat)}</dd>
+            <dt>Abattement spécifique</dt><dd>{caseInconnue.length ? 'non calculé' : `−${eurosArrondis(tot.abat)}`}</dd>
           </dl>
           {tot.hsExo > 0 && <p class="hint">Heures complémentaires et majorées exonérées d’impôt : {eurosArrondis(tot.hsExo)}, à part, sur la ligne des heures supplémentaires exonérées (case 1GH). Elles ne sont pas imposées mais comptent dans le revenu fiscal de référence.{tot.hsImp > 0 ? ` Le plafond de ${eurosArrondis(plafondHS(year))} est dépassé : ${eurosArrondis(tot.hsImp)} restent imposables.` : ''}</p>}
           <p class="hint">Montants arrondis à l’euro, comme sur la déclaration.</p>
@@ -62,8 +75,10 @@ export function Fiscal() {
               {f.km > 0 && (<><dt>Indemnités kilométriques</dt><dd>{eurosArrondis(f.km)}</dd></>)}
               {f.repasParents > 0 && (<><dt>Repas fournis par les parents (avantage en nature)</dt><dd>{eurosArrondis(f.repasParents)}</dd></>)}
               <dt>Jours d’accueil</dt><dd>{f.jours}{f.joursCourts ? ` (dont ${f.joursCourts} de moins de 8 h)` : ''}</dd>
+              {typeof c.majoreFiscal !== 'boolean' ? (<><dt>Abattement</dt><dd>non calculé</dd></>) : (<>
               <dt>Abattement ({f.facteur} × SMIC {f.smics.length > 1 ? f.smics.map(euros).join(' puis ') : euros(f.smic)} par jour)</dt><dd>−{eurosArrondis(f.abattement)}</dd>
               <dt>Reste après abattement</dt><dd>{reste(f) < 0 ? `−${eurosArrondis(-reste(f))}` : eurosArrondis(reste(f))}</dd>
+              </>)}
             </dl>
             {(f.abattement < f.abattementBrut || (negatif && reste(f) < 0)) && <p class="hint">L’abattement est plafonné au total des sommes reçues pour tous les enfants, pas enfant par enfant : le reste d’un enfant peut être négatif, seul le total compte.</p>}
           </section>

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Contract, Journal, Planning } from '../src/engine/model';
 import { makeCtx } from '../src/engine/payroll';
 import { buildSnapshot } from '../src/partage/snapshot';
-import { applyRemote, docId, forRemote, planMerge, planRetraitSante, stable, type LocalRecord, type RemoteDoc } from '../src/sync/plan';
+import { applyRemote, docId, forRemote, planMerge, planRetraitSante, recuAvecSante, stable, trierEnvoi, type LocalRecord, type RemoteDoc } from '../src/sync/plan';
 import { avecSanteLocale, contratSansSante, estNoteSante, resteSurTelephone } from '../src/sync/sante';
 import { fiscalYear } from '../src/engine/fiscal';
 
@@ -112,10 +112,13 @@ describe('T-121 : retrait des données déjà en ligne (point 3)', () => {
     expect(p.gardes).toEqual([{ s: 'journal', k: 'j2', raison: 'manque' }, { s: 'journal', k: 'j3', raison: 'differe' }]);
     expect(p.corriger).toEqual([]);
   });
-  it('contrat : réécrit sans la case si le téléphone a la même case ; sinon gardé', () => {
-    const p = planRetraitSante([rd('contracts', 'c1', { ...contrat, rateNet: 999 })], local([lr('contracts', 'c1', contrat)]));
-    // Seule la case est retirée : le reste de la version en ligne est gardé tel quel.
-    expect(p.corriger).toEqual([lr('contracts', 'c1', { ...contratSansSante(contrat), rateNet: 999 })]);
+  it('contrat : réécrit sans la case seulement si le téléphone en a une copie identique ; sinon gardé', () => {
+    const p = planRetraitSante([rd('contracts', 'c1', contrat)], local([lr('contracts', 'c1', contrat)]));
+    expect(p.corriger).toEqual([lr('contracts', 'c1', contratSansSante(contrat))]);
+    // Version en ligne différente (peut-être plus récente, d'un autre appareil) : on ne l'écrase pas (relecture m3).
+    const p1 = planRetraitSante([rd('contracts', 'c1', { ...contrat, rateNet: 999 })], local([lr('contracts', 'c1', contrat)]));
+    expect(p1.corriger).toEqual([]);
+    expect(p1.gardes).toEqual([{ s: 'contracts', k: 'c1', raison: 'differe' }]);
     const p2 = planRetraitSante([rd('contracts', 'c1', contrat)], local([lr('contracts', 'c1', { ...contrat, majoreFiscal: false })]));
     expect(p2.gardes).toEqual([{ s: 'contracts', k: 'c1', raison: 'differe' }]);
     const p3 = planRetraitSante([rd('contracts', 'c1', contrat)], local([]));
@@ -148,5 +151,26 @@ describe('T-121 : la paie et l’abattement ne changent pas sur le téléphone',
     expect(apres).toEqual(avant);
     // Témoin : sans la case, l'abattement change (le test voit bien la différence).
     expect(fiscalYear(makeCtx({ ...contrat, majoreFiscal: false }, [], [], '2026-12-31'), 2026)).not.toEqual(avant);
+  });
+});
+
+describe('T-121 : seul chemin d’envoi (relecture m5)', () => {
+  it('une note de santé n’est jamais écrite : elle est retirée ; le reste est écrit tel quel', () => {
+    const docs = [
+      { s: 'journal' as const, k: 'j1', v: stable(soin) },
+      { s: 'journal' as const, k: 'j3', v: stable(selles) },
+      { s: 'journal' as const, k: 'j4', v: stable(repas) },
+      { s: 'journal' as const, k: 'j9', v: null },
+      { s: 'contracts' as const, k: 'c1', v: stable(forRemote('contracts', 'c1', contrat)) },
+    ];
+    const t = trierEnvoi(docs);
+    expect(t.retirer).toEqual([{ s: 'journal', k: 'j1' }, { s: 'journal', k: 'j3' }]);
+    expect(t.ecrire.map((d) => d.k)).toEqual(['j4', 'j9', 'c1']);
+    expect(t.ecrire.map((d) => d.v ?? '').join('')).not.toMatch(/majoreFiscal|Température|liquides/);
+  });
+  it('un lot reçu avec une donnée de santé (appareil resté sur une ancienne version) est repéré (relecture M1)', () => {
+    expect(recuAvecSante([rd('journal', 'j1', soin)])).toBe(true);
+    expect(recuAvecSante([rd('contracts', 'c1', contrat)])).toBe(true);
+    expect(recuAvecSante([rd('contracts', 'c1', contratSansSante(contrat)), rd('journal', 'j4', repas), rd('journal', 'j1', null)])).toBe(false);
   });
 });

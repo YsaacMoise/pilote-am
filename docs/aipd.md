@@ -111,6 +111,8 @@ Constat de l’audit T-110 : le carnet copiait soins et températures dans le co
 | Copies déjà en ligne de ces données | — | Retirées par le téléphone de l’AM s’il en a une copie identique (note effacée sans pierre tombale ; contrat réécrit sans la case) ; vérifié par une relecture du compte ; sinon rien n’est retiré, l’écran Compte le dit. Elles restent au plus 98 jours dans les sauvegardes de la base |
 | Motif « malade » d’un jour de l’enfant et dates du certificat, jours d’enfant malade déjà déduits, raison des absences de l’AM, motif « inaptitude » | Compte en ligne ; « malade » dans le lien | Inchangé : la paie en a besoin (CCN 49, 105 ; RGPD 9.2.b ; décision du DG du 22/11/2026) |
 
+Appareils restés sur une ancienne version : tant qu’ils ne sont pas mis à jour, ils peuvent renvoyer ces données dans le compte ou dans le lien. Le téléphone à jour les reçoit, les range, les retire du compte si sa copie est identique et rechiffre le lien sans elles. Un ancien appareil qui reçoit un contrat sans la case la perd : une fois à jour, l’écran Impôts la redemande (« non calculé » d’ici là), au lieu de supposer « non ».
+
 Pourquoi la santé ne va plus dans le lien : les clés du lien (secret, code, sel) sont gardées dans le compte de l’AM, à côté du texte chiffré ; quiconque lit le compte peut lire le lien. Effet sur le risque 1 : un accès illégitime au compte ne révèle plus les soins ni le handicap d’un enfant. Effet sur le risque 3 : ces données n’ont plus de copie en ligne ; un téléphone perdu les perd, sauf sauvegarde dans Fichiers (qui les garde).
 
 ---

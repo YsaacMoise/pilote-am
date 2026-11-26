@@ -11,8 +11,7 @@ import { buildSnapshot } from './partage/snapshot';
 import { newShare, seal } from './partage/crypto';
 import { cloudInfo, etatRetraitSante, LS, lsGet, lsSet, messageRefus, setCloud, type EtatRetraitSante } from './cloud-state';
 import { errCode, type Backend, type CloudUser } from './sync/backend';
-import { applyRemote, docId, forRemote, needsChoice, nextSince, planMerge, planRetraitSante, RESUME_MARGIN_MS, stable, type LocalRecord, type MergeMode, type RemoteDoc } from './sync/plan';
-import { resteSurTelephone } from './sync/sante';
+import { applyRemote, docId, forRemote, needsChoice, nextSince, planMerge, planRetraitSante, recuAvecSante, RESUME_MARGIN_MS, stable, trierEnvoi, type LocalRecord, type MergeMode, type RemoteDoc } from './sync/plan';
 
 let be: Backend | null = null;
 let starting: Promise<Backend> | null = null;
@@ -229,12 +228,7 @@ export async function retryRejected(): Promise<boolean> {
  * en ligne éventuelle est retirée (effacée sans pierre tombale). Le téléphone vient de l'enregistrer : sa copie existe.
  */
 function envoyer(b: Backend, uid: string, docs: Array<{ s: db.SyncedStore; k: string; v: string | null }>): Promise<void> {
-  const ecrire: typeof docs = [];
-  const retirer: Array<{ s: db.SyncedStore; k: string }> = [];
-  for (const d of docs) {
-    if (d.s === 'journal' && d.v !== null && resteSurTelephone(d.s, JSON.parse(d.v))) retirer.push({ s: d.s, k: d.k });
-    else ecrire.push(d);
-  }
+  const { ecrire, retirer } = trierEnvoi(docs);
   const p: Promise<void>[] = [];
   if (ecrire.length) p.push(b.write(uid, ecrire));
   if (retirer.length) p.push(b.retirer(uid, retirer));
@@ -245,17 +239,18 @@ function envoyer(b: Backend, uid: string, docs: Array<{ s: db.SyncedStore; k: st
  * T-121, point 3 : données de santé déjà en ligne (versions d'avant), retirées par ce téléphone. Il lit tout le compte sur le
  * serveur, compare chaque donnée de santé à sa copie sur le téléphone (planRetraitSante) : copie identique, retrait ; copie
  * absente ou différente, rien n'est retiré et c'est noté (LS.sante, des nombres seulement). Puis il relit le compte pour
- * vérifier. Une fois par jour au plus tant que tout n'est pas retiré et vérifié ; plus jamais ensuite pour ce compte.
+ * vérifier. Une fois par jour au plus tant que tout n'est pas retiré et vérifié ; ensuite, seulement quand une donnée de
+ * santé arrive du compte (`force` : envoyée par un appareil resté sur une ancienne version, relecture indépendante M1).
  */
 let retraitEnCours: Promise<void> | null = null;
 
-function retirerSante(u: CloudUser): Promise<void> {
+function retirerSante(u: CloudUser, force = false): Promise<void> {
   retraitEnCours ??= (async () => {
     const b = be;
     if (!b) return;
     const avant = etatRetraitSante();
     const jour = new Date().toISOString().slice(0, 10);
-    if (avant?.uid === u.uid && ((avant.verifie && avant.gardes === 0) || avant.jour === jour)) return;
+    if (!force && avant?.uid === u.uid && ((avant.verifie && avant.gardes === 0) || avant.jour === jour)) return;
     // Ce que le téléphone a changé doit être en ligne avant la comparaison.
     await b.waitPending(10000);
     const lire = async () => {
@@ -400,6 +395,13 @@ async function receive(docs: RemoteDoc[]) {
     else if (act.op === 'del') { await db.delRaw(d.s, d.k); changed = true; }
   }
   lsSet(LS.since, String(nextSince(Number(lsGet(LS.since) ?? 0), docs)));
+  // T-121 (relecture M1) : un appareil resté sur une ancienne version a renvoyé une donnée de santé. Elle est d'abord rangée
+  // sur ce téléphone (applyRemote), puis retirée du compte si la copie est identique ; le lien des parents est rechiffré sans
+  // les soins, au cas où cet appareil l'aurait aussi renvoyé avec.
+  if (user && recuAvecSante(docs)) {
+    const u = user;
+    setTimeout(() => { void retirerSante(u, true); sentShares.clear(); scheduleShares(0); }, 1000);
+  }
   if (remplace) {
     toast('Une version plus récente, faite sur un autre appareil, a remplacé un changement qui n’avait pas pu partir. Ta version est gardée dans Sauvegarde, copies automatiques.', undefined, 'warn');
   }
