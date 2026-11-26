@@ -200,7 +200,7 @@ function VueMois({ list, month, paieVue, setPaieVue, onOuvrir, choisi }: { list:
           <span class="mp-paie-label">Ta paie du mois</span>
           {nonCalcules.length
             ? <span class="mp-paie-non">Non calculé pour {nonCalcules.map((x) => x.c.child).join(', ')}</span>
-            : paieVue ? <b class="mp-total">{euros(total)}</b> : <b class="mp-total mp-cache" aria-label="Montant caché">•••• €</b>}
+            : paieVue ? <b class="mp-total">{euros(total)}</b> : <b class="mp-total mp-cache"><span aria-hidden="true">•••• €</span><span class="sr-only">Montant caché</span></b>}
         </span>
         {!nonCalcules.length && !paieVue && <button class="btn btn-primary" type="button" onClick={() => { setPaieVue(true); logUsage('paie_vue', 'mois'); }}>Voir ma paie</button>}
       </div>
@@ -305,9 +305,18 @@ function MonthView({ c, month, onEdit, paieVue, setPaieVue }: { c: Contract; mon
     .map((d) => dayInfo(ctx, d))
     .filter((di) => di.rec || di.kind === 'am' || di.kind === 'ferie' || di.departOublie);
   const fait = declareLe(c, month);
+  const annulerRef = useRef<HTMLButtonElement>(null);
+  const declarerRef = useRef<HTMLButtonElement>(null);
+  const focusDeclare = useRef(false);
+  useEffect(() => {
+    if (!focusDeclare.current) return;
+    focusDeclare.current = false;
+    (fait ? annulerRef : declarerRef).current?.focus();
+  }, [fait]);
   // T-126 : « C'est déclaré » (contrat à jour lu dans l'état : rien d'autre ne change).
   const noterDeclare = async (oui: boolean) => {
     const actuel = state.contracts.find((x) => x.id === c.id) ?? c;
+    focusDeclare.current = true;
     await putContract(oui ? marquerDeclare(actuel, month, today()) : annulerDeclare(actuel, month));
   };
   const copier = async (v: string) => {
@@ -339,10 +348,10 @@ function MonthView({ c, month, onEdit, paieVue, setPaieVue }: { c: Contract; mon
         {fait ? (
           <div class="declare-fait" role="status">
             <Icon name="check" size={20} /><span>{texteDeclare(fait)}</span>
-            <button class="btn btn-ghost btn-sm" type="button" onClick={() => void noterDeclare(false)}>Annuler</button>
+            <button ref={annulerRef} class="btn btn-ghost btn-sm" type="button" onClick={() => void noterDeclare(false)}>Annuler</button>
           </div>
         ) : (
-          <button class="btn btn-primary declare-btn" type="button" onClick={() => void noterDeclare(true)}>C’est déclaré</button>
+          <button ref={declarerRef} class="btn btn-primary declare-btn" type="button" onClick={() => void noterDeclare(true)}>C’est déclaré</button>
         )}
       </section>
 

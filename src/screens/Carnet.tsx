@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { activeContracts, addJournal, deleteJournal, logUsage, putContract, state, toast, uid, updateJournal, useStore, ctxFor } from '../store';
 import { addDays, dayLabel, minutes, nowHHMM, today, type ISODate } from '../engine/dates';
 import { dayInfo } from '../engine/payroll';
@@ -12,6 +12,7 @@ import { Icon, type IconName } from '../ui/icons';
 import { AideVideo } from '../ui/VideoGuide';
 import { shareText } from '../share';
 import { de } from '../engine/texte';
+import { msAvantMinuteSuivante } from './Today';
 
 // Choix qui ouvrent une case à remplir (la quantité ou la température)
 const OPT_BIBERON = 'Biberon';
@@ -208,7 +209,7 @@ export function Carnet() {
                 <span class="muted small">{entries.length} note{entries.length > 1 ? 's' : ''}</span>
               </div>
               {entries.length === 0 ? (
-                <p class="muted">{estAuj ? 'Touche un bouton au-dessus : l’heure est notée toute seule.' : 'Aucune note ce jour-là. Tu peux en ajouter une avec les boutons au-dessus.'}</p>
+                <p class="muted">{estAuj ? 'Touche un bouton en dessous : l’heure est notée toute seule.' : 'Aucune note ce jour-là. Tu peux en ajouter une avec les boutons en dessous.'}</p>
               ) : (
                 <ul class="timeline" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                   {entries.map((e) => (
@@ -261,6 +262,17 @@ export function Carnet() {
  * fil écrit dessous (choix A) ; son aria-label cite tout.
  */
 function Reglette({ c, jour, entries }: { c: Contract; jour: ISODate; entries: Journal[] }) {
+  // Le trait « maintenant » avance chaque minute, avec la minuterie d'Aujourd'hui (msAvantMinuteSuivante, T-048).
+  const [, setMinute] = useState(0);
+  useEffect(() => {
+    const tic = () => setMinute((m) => m + 1);
+    let id: ReturnType<typeof setTimeout>;
+    const planifier = () => { id = setTimeout(() => { tic(); planifier(); }, msAvantMinuteSuivante(Date.now())); };
+    planifier();
+    const retour = () => { if (document.visibilityState === 'visible') tic(); };
+    document.addEventListener('visibilitychange', retour);
+    return () => { clearTimeout(id); document.removeEventListener('visibilitychange', retour); };
+  }, []);
   const t = today();
   const di = dayInfo(ctxFor(c), jour);
   const now = minutes(nowHHMM());

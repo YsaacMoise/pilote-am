@@ -33,7 +33,9 @@ export function Plus() {
   const reste = cp?.reste;
   const droits = cp?.droits;
   const etatCompte = cloud.email ? (cloud.verified === false ? 'adresse e-mail non vérifiée' : statusLine(cloud)) : statusLine(cloud);
-  const joursSauvegarde = lastB ? daysBetween(new Date(lastB).toISOString().slice(0, 10), t) : undefined;
+  // Date locale de la dernière sauvegarde (comme « Dernière le … » et today()), pas la date UTC.
+  const dl = lastB ? new Date(lastB) : undefined;
+  const joursSauvegarde = dl ? daysBetween(`${dl.getFullYear()}-${String(dl.getMonth() + 1).padStart(2, '0')}-${String(dl.getDate()).padStart(2, '0')}`, t) : undefined;
   return (
     <>
       <Topbar title="Plus" screen="plus" />
