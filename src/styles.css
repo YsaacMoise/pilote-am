@@ -33,7 +33,7 @@
   --primary: #1f1c1a;
   --primary-ink: #f5f2ec;
   --primary-press: #3a3532;
-  --tabbar-bg: rgb(251 250 247 / 0.86);
+  --tabbar-bg: rgb(251 250 247 / 0.96); /* maquette 0,86 ; 0,96 garde 4,5:1 aux onglets même sur un aplat encre */
   --tabbar-line: rgb(31 28 26 / 0.07);
   --tabbar-shadow: 0 8px 24px rgb(31 28 26 / 0.10);
   --scrim: rgb(31 28 26 / 0.38);
@@ -105,7 +105,7 @@
     --primary: #f2eee7;
     --primary-ink: #161412;
     --primary-press: #ffffff;
-    --tabbar-bg: rgb(34 31 28 / 0.86);
+    --tabbar-bg: rgb(34 31 28 / 0.96);
     --tabbar-line: rgb(242 238 231 / 0.08);
     --tabbar-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
     --scrim: rgb(0 0 0 / 0.55);
@@ -135,7 +135,7 @@
   --primary: #f2eee7;
   --primary-ink: #161412;
   --primary-press: #ffffff;
-  --tabbar-bg: rgb(34 31 28 / 0.86);
+  --tabbar-bg: rgb(34 31 28 / 0.96);
   --tabbar-line: rgb(242 238 231 / 0.08);
   --tabbar-shadow: 0 8px 24px rgb(0 0 0 / 0.4);
   --scrim: rgb(0 0 0 / 0.55);
@@ -324,39 +324,81 @@ main {
 .brut-calcule b { color: var(--ink); font-family: var(--font-num); font-variant-numeric: tabular-nums; }
 .brut-lien { min-height: 44px; padding-left: 0; padding-right: 0; justify-content: flex-start; }
 
-/* T-115 (R1) : flèches d'une semaine à l'autre, au-dessus de la bande ; cibles de 44 px au moins. */
-.daynav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
-.daynav-arrow {
-  min-width: 44px; min-height: 44px; border: 0; border-radius: var(--r-btn); background: var(--surface-2); color: var(--ink);
-  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
-}
-.daynav-arrow:disabled { opacity: 0.35; cursor: default; }
-.daynav-range { flex: 1; text-align: center; font-size: 15px; font-weight: 600; color: var(--ink-2); }
-.daynav-back { margin: 4px 0 0; text-align: center; }
-.daynav-back .btn { min-height: 44px; }
-.daystrip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-.daystrip button {
-  min-height: 60px; border: 0; background: transparent; color: var(--ink-2);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; cursor: pointer; padding: 0;
-}
-.daystrip .d-num { font-size: 18px; font-weight: 600; color: var(--ink); line-height: 1; }
-.daystrip .d-name { font-size: 13px; font-weight: 600; }
-.daystrip button[aria-pressed='true'] { background: var(--primary); box-shadow: var(--shadow-tab); }
-.daystrip button { border-radius: var(--r-btn); }
-.daystrip button[aria-pressed='true'] .d-num, .daystrip button[aria-pressed='true'] .d-name { color: var(--primary-ink); }
-.daystrip .d-dot { width: 6px; height: 6px; border-radius: 3px; background: currentColor; opacity: 0; }
-.daystrip .d-dot.on { opacity: 1; color: var(--warn); }
-.daystrip button[aria-pressed='true'] .d-dot { color: var(--primary-ink); }
+/* Vision 1.1 : barre du haut d'Aujourd'hui (logo et boutons sur une ligne, date en titre centré dessous) */
+.topbar-grand { flex-wrap: wrap; row-gap: 2px; padding-bottom: 4px; }
+.topbar-grand h1 { order: 5; flex: 1 1 100%; text-align: center; font-size: 28px; }
+.topbar-grand h1:has(.sub) { flex-direction: column; align-items: center; gap: 2px; }
+.topbar-grand .sub { font-family: var(--font-body); font-size: 15px; }
+.topbar-grand .pill { margin-left: auto; }
+.absente-btn { width: 44px; height: 44px; }
 
-.kid {
-  background: var(--surface); border-radius: var(--r-lg); border: 1px solid var(--line); box-shadow: var(--shadow);
-  padding: 16px; display: flex; flex-direction: column; gap: 14px;
-  border-left: 6px solid var(--g, var(--primary));
+/* Bande de la semaine : flèches de part et d'autre, jour choisi en or, point brique sur un départ non pointé */
+.semaine { display: flex; flex-direction: column; gap: 2px; }
+.daynav { display: flex; align-items: center; gap: 2px; }
+.daynav-arrow {
+  width: 32px; min-height: 56px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; flex: none;
 }
-.kid-head { display: flex; align-items: center; gap: 12px; }
-.kid-name { font-family: var(--font-display); font-size: 27px; font-weight: 600; line-height: 1.1; }
-.kid-plan { font-size: 15px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.daynav-arrow:disabled { opacity: 0.3; cursor: default; }
+.daynav-range { margin: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0 8px; min-height: 28px; font-size: 15px; color: var(--ink-2); text-align: center; }
+.daynav-range .btn { min-height: 44px; padding: 0 8px; }
+.daystrip { flex: 1; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.daystrip button {
+  min-height: 56px; border: 0; background: transparent; color: var(--ink); border-radius: var(--r-sm);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; cursor: pointer; padding: 0;
+}
+.daystrip .d-num { font-size: 17px; font-weight: 600; color: var(--ink); line-height: 1.1; }
+.daystrip .d-name { font-size: 13px; font-weight: 400; color: var(--ink-2); }
+.daystrip button[aria-pressed='true'] { background: var(--or); }
+.daystrip button[aria-pressed='true'] .d-num, .daystrip button[aria-pressed='true'] .d-name { color: #1f1c1a; }
+.daystrip .d-dot { width: 6px; height: 6px; border-radius: 3px; background: var(--brique); opacity: 0; }
+.daystrip .d-dot.on { opacity: 1; }
+.daystrip button[aria-pressed='true'] .d-dot { background: #1f1c1a; }
+
+/* Carte « Maintenant » : surface, rayon 22, bouton principal encre */
+.kid {
+  background: var(--surface); border-radius: 22px; border: 1px solid var(--line); box-shadow: var(--shadow);
+  padding: 18px; display: flex; flex-direction: column; gap: 14px;
+}
+.kid-head, .kl-main { display: flex; align-items: center; gap: 12px; }
+.kl-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.kid-name { font-family: var(--font-display); font-size: 20px; font-weight: 600; line-height: 1.2; }
+.kid-name a { color: inherit; text-decoration: none; }
+.kid-plan { font-size: 15px; color: var(--ink-2); }
+.kid-plan .hours { font-family: var(--font-body); font-size: 15px; color: var(--ink-2); white-space: nowrap; }
 .kid-status { display: flex; flex-wrap: wrap; gap: 6px; }
+.kid-edit { width: 44px; height: 44px; color: var(--ink-2); }
+.kid-absente { align-self: center; color: var(--ink-2); text-decoration: none; }
+.kid-now .kid-absente { margin-top: -6px; }
+/* Lignes des autres enfants : filet entre les lignes, pas de carte */
+.kid-lines { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.kid-line { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 12px 0; gap: 10px; border-bottom: 1px solid var(--line); }
+.kid-line .gommette { width: 40px; height: 40px; font-size: 17px; }
+.kid-line .kid-name { font-size: 17px; }
+.kid-line .btn-outline { min-height: 44px; padding: 0 18px; flex: none; }
+.kid-line .kid-prevoir { flex: none; }
+.kl-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; padding-left: 52px; }
+.kid-line .kid-status, .kid-line .pointage-choix { padding-left: 52px; }
+
+/* Demi-cadran de la journée (graphique : il double les heures écrites, choix A ; aria-label complet) */
+.cadran { display: flex; justify-content: center; margin: 4px 0 -4px; }
+.cadran svg { width: 100%; max-width: 320px; height: auto; display: block; overflow: visible; }
+.cad-piste { stroke: var(--piste); }
+.cad-prevu { stroke: color-mix(in srgb, var(--g) 45%, #ffffff); }
+.cad-fait { stroke: var(--g); transition: stroke-dasharray 0.3s ease, stroke-dashoffset 0.3s ease; }
+.cad-reperes line { stroke: var(--repere); }
+.cad-heures text { font-family: var(--font-body); font-size: 13px; fill: var(--ink-2); }
+.cad-aiguille { transform-box: view-box; transform-origin: 170px 178px; transition: transform 0.3s ease; }
+.cad-aiguille line { stroke: var(--or); }
+.cad-centre { fill: var(--or); }
+.cad-maintenant { font-family: var(--font-display); font-size: 26px; font-weight: 600; fill: var(--ink); }
+.cad-initiales text { font-family: var(--font-display); font-size: 11px; font-weight: 600; }
+.cad-pastille { stroke: var(--bg); stroke-width: 2; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .cad-prevu { stroke: color-mix(in srgb, var(--g) 28%, #161412); }
+}
+:root[data-theme='dark'] .cad-prevu { stroke: color-mix(in srgb, var(--g) 28%, #161412); }
+
 /* Étiquettes : pilule de 30 px, 13 à 15 px ; alerte (brique), « À faire » (or), neutre (surface secondaire) */
 .tag {
   display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 2px 12px; border-radius: 15px;
@@ -368,18 +410,21 @@ main {
 .tag.info { background: var(--surface-2); color: var(--ink); }
 .kid-actions { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 /* T-048 : trois choix quand le pointage arrive loin de l'heure prévue */
-.pointage-choix { display: grid; gap: 8px; margin-bottom: 8px; }
+.pointage-choix { display: grid; gap: 8px; }
 .pointage-choix-titre { margin: 0; font-weight: 600; }
 .pointage-choix .err { margin: 0; }
+/* Question sur une plage passée : Oui et Non côte à côte (maquette) */
+.pointage-choix.question { grid-template-columns: 1fr 1fr; }
+.pointage-choix.question .pointage-choix-titre { grid-column: 1 / -1; font-weight: 400; }
 .view-switch { margin-bottom: 2px; }
-.kid-list { background: var(--surface); border-radius: var(--r-lg); border: 1px solid var(--line); box-shadow: var(--shadow); overflow: hidden; }
-.kid-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px 8px 0; border-left: 6px solid var(--g, var(--primary)); min-height: 64px; }
-.kid-row + .kid-row { border-top: 1px solid var(--line); }
-.kid-row-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 0 0 12px; background: transparent; border: 0; text-align: left; color: var(--ink); cursor: pointer; }
+/* Réglage « Liste » : une ligne par enfant, sans cadran ni carte */
+.kid-list { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.kid-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; min-height: 64px; border-bottom: 1px solid var(--line); }
+.kid-row-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0; background: transparent; border: 0; text-align: left; color: var(--ink); cursor: pointer; }
 .kid-row-text { display: flex; flex-direction: column; min-width: 0; }
-.kid-row-name { font-family: var(--font-display); font-size: 23px; font-weight: 600; line-height: 1.15; }
-.kid-row-status { font-size: 14px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.kid-row .btn { flex: none; }
+.kid-row-name { font-family: var(--font-display); font-size: 17px; font-weight: 600; line-height: 1.2; }
+.kid-row-status { font-size: 15px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kid-row .btn { flex: none; min-height: 44px; }
 .big-time { font-size: 32px; font-weight: 600; line-height: 1; }
 
 /* ---------- Bandeaux ---------- */
@@ -529,48 +574,62 @@ dialog.sheet[open] { animation: sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 @keyframes toast-in { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ---------- Carnet ---------- */
-.quick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+/* Six boutons Repas, Sommeil, Change, Humeur, Soin, Note ; « À apporter » en septième bouton large dessous */
+.quick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .quick button {
-  min-height: 88px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); color: var(--ink);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; font-weight: 600; cursor: pointer;
+  min-height: 64px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); box-shadow: none; color: var(--ink);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-weight: 600; font-size: 16px; cursor: pointer; padding: 8px 4px;
 }
-.quick button:active { background: var(--surface-2); }
-/* « À apporter » : une demande aux parents, pas un moment de la journée. Toute la largeur, sous les six tuiles. */
-.quick .q-large { grid-column: 1 / -1; min-height: 68px; flex-direction: row; justify-content: flex-start; gap: 14px; padding: 8px 16px; text-align: left; }
-.quick .q-large .q-ico { background: var(--accent-soft); color: var(--accent-ink); }
-.quick .q-txt { display: flex; flex-direction: column; line-height: 1.2; }
-.quick .q-txt small { font-size: 14px; font-weight: 500; color: var(--ink-2); }
-.quick .q-ico { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--sauge-soft); color: var(--sauge); }
-/* Carnet : fonds en galets légèrement penchés, comme le logo ; le picto reste droit */
-.quick .q-ico { width: 52px; border-radius: 52% 48% 50% 50% / 56% 54% 46% 44%; }
-.quick button:nth-child(6n+1) .q-ico { border-radius: 55% 45% 50% 50% / 60% 55% 45% 40%; transform: rotate(-6deg); }
-.quick button:nth-child(6n+2) .q-ico { border-radius: 48% 52% 45% 55% / 52% 60% 40% 48%; transform: rotate(5deg); }
-.quick button:nth-child(6n+3) .q-ico { border-radius: 52% 48% 56% 44% / 44% 52% 48% 56%; transform: rotate(-3deg); }
-.quick button:nth-child(6n+4) .q-ico { border-radius: 46% 54% 50% 50% / 58% 46% 54% 42%; transform: rotate(4deg); }
-.quick button:nth-child(6n+5) .q-ico { border-radius: 54% 46% 48% 52% / 50% 58% 42% 50%; transform: rotate(-5deg); }
-.quick button:nth-child(6n) .q-ico { border-radius: 50% 50% 54% 46% / 46% 50% 50% 54%; transform: rotate(6deg); }
-.quick button:nth-child(6n+1) .q-ico svg { transform: rotate(6deg); }
-.quick button:nth-child(6n+2) .q-ico svg { transform: rotate(-5deg); }
-.quick button:nth-child(6n+3) .q-ico svg { transform: rotate(3deg); }
-.quick button:nth-child(6n+4) .q-ico svg { transform: rotate(-4deg); }
-.quick button:nth-child(6n+5) .q-ico svg { transform: rotate(5deg); }
-.quick button:nth-child(6n) .q-ico svg { transform: rotate(-6deg); }
-.timeline { display: flex; flex-direction: column; }
-.tl-item { display: grid; grid-template-columns: 56px 1fr auto; gap: 8px; align-items: center; min-height: 52px; border-bottom: 1px solid var(--line); padding: 6px 0; }
-.tl-item:last-child { border-bottom: 0; }
-.tl-time { font-weight: 600; font-size: 15px; color: var(--ink-2); }
+.quick button:active { background: var(--select); }
+.quick .q-large { grid-column: 1 / -1; min-height: 52px; flex-direction: row; justify-content: center; gap: 10px; padding: 8px 16px; }
+.quick .q-txt { display: inline; line-height: 1.2; }
+.quick .q-txt small { font-size: 16px; font-weight: 400; color: var(--ink-2); }
+.quick .q-ico { width: 24px; height: 24px; display: grid; place-items: center; background: none; color: var(--ink); }
+.quick .q-ico svg { width: 22px; height: 22px; stroke-width: 1.8; }
+/* Fil de la journée : heure, puis ce qui a été noté ; filet entre les lignes */
+.carnet-fil h2 { font-size: 20px; }
+.timeline { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.tl-item { display: grid; grid-template-columns: 72px 1fr auto; gap: 8px; align-items: center; min-height: 48px; border-bottom: 1px solid var(--line); padding: 2px 0; }
+.tl-time { font-weight: 600; font-size: 17px; color: var(--ink); font-family: var(--font-display); }
 .tl-item > * { min-width: 0; }
-.tl-body { all: unset; display: block; min-height: 44px; padding: 4px 0; cursor: pointer; color: var(--ink); line-height: 1.35; overflow-wrap: break-word; }
-.tl-body:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.tl-body { all: unset; display: block; min-height: 44px; padding: 10px 0; box-sizing: border-box; cursor: pointer; color: var(--ink); line-height: 1.35; overflow-wrap: break-word; font-size: 17px; }
+.tl-body b { font-weight: 400; }
+.tl-body:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; border-radius: 6px; }
 .tl-tag { margin-left: 8px; vertical-align: middle; }
-.tl-actions { display: flex; align-items: center; gap: 4px; }
-.day-nav { gap: 8px; }
-.day-nav-label { display: flex; flex-direction: column; align-items: center; text-align: center; flex: 1; min-width: 0; }
-.day-nav-label .btn { min-height: 44px; }
-.day-nav-label input[type="date"] { width: auto; min-height: 44px; margin-top: 4px; }
+.tl-actions { display: flex; align-items: center; gap: 4px; color: var(--ink-2); }
+/* Jour du carnet : ‹ jour › puis retour et choix d'une date */
+.day-nav { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0 2px; margin-top: -6px; }
+.day-nav-jour { font-family: var(--font-display); font-size: 16px; font-weight: 600; min-width: 0; text-align: center; }
+.day-nav-plus { flex: 1 1 100%; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4px 8px; }
+.day-nav-plus:empty { display: none; }
+.day-nav-plus .btn { min-height: 44px; }
+.day-nav-plus input[type="date"] { width: auto; min-height: 44px; }
+/* Pastilles des enfants (56 px) avec le prénom dessous ; la choisie cerclée d'or */
+.carnet-enfants { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; }
+.ce-enfant { display: flex; flex-direction: column; align-items: center; gap: 6px; border: 0; background: transparent; padding: 2px 0; cursor: pointer; color: var(--ink-2); min-height: 44px; }
+.ce-enfant .gommette, .ce-tous { width: 56px; height: 56px; font-size: 22px; }
+.ce-tous { border-radius: 50%; border: 1.5px solid var(--ink); display: grid; place-items: center; font-family: var(--font-display); font-weight: 600; font-size: 18px; color: var(--ink); }
+.ce-nom { font-size: 15px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ce-enfant[aria-pressed='true'] { color: var(--ink); }
+.ce-enfant[aria-pressed='true'] .ce-nom { font-weight: 600; }
+.ce-enfant[aria-pressed='true'] .gommette, .ce-enfant[aria-pressed='true'] .ce-tous { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--or); }
+/* Réglette de la journée (graphique, il double le fil écrit) */
+.reglette svg { width: 100%; height: auto; display: block; overflow: visible; }
+.rg-axe { stroke: var(--repere); stroke-width: 1.5; }
+.rg-heures text { font-family: var(--font-body); font-size: 13px; fill: var(--ink-2); }
+.rg-point { fill: var(--ink); }
+.rg-ico { color: var(--ink); }
+.rg-sommeil { fill: color-mix(in srgb, var(--g) 45%, #ffffff); }
+.rg-maintenant { stroke: var(--or); stroke-width: 2.5; stroke-linecap: round; }
+.rg-bulle { fill: var(--or); }
+.rg-bulle-txt { font-family: var(--font-display); font-size: 13px; font-weight: 600; fill: #1f1c1a; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .rg-sommeil { fill: color-mix(in srgb, var(--g) 28%, #161412); }
+}
+:root[data-theme='dark'] .rg-sommeil { fill: color-mix(in srgb, var(--g) 28%, #161412); }
 .hint.warn { color: var(--warn); font-weight: 600; }
 .choice-champ { padding: 4px 4px 8px; }
-.choices-titre { font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); margin: 6px 2px 0; }
+.choices-titre { font-family: var(--font-display); font-size: 15px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-2); margin: 6px 2px 0; }
 .chip[disabled] { opacity: 0.45; cursor: default; }
 /* Choix de la couleur d'un enfant : grille de pastilles, la choisie cerclée d'encre */
 .couleurs { display: grid; grid-template-columns: repeat(4, 1fr); justify-items: center; gap: 12px 8px; padding: 4px 0; max-width: 320px; }
@@ -580,21 +639,17 @@ dialog.sheet[open] { animation: sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 .couleur:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .couleur[disabled] { cursor: default; }
 .couleur[disabled] .gommette { opacity: 0.28; }
-/* Carnet : enfants qui dorment, avec le réveil à portée de pouce */
-.dodo { display: flex; flex-direction: column; gap: 8px; }
-.dodo-ligne { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 14px; border-radius: var(--r-md); background: var(--sauge-soft); border: 1px solid var(--line); }
-.dodo-ico { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border-radius: 52% 48% 50% 50% / 56% 54% 46% 44%; background: var(--surface); color: var(--sauge); }
-.dodo-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
-.dodo-txt span { color: var(--ink-2); font-size: 15px; }
-.dodo-ligne .btn { flex: none; }
-.oublis { display: flex; flex-direction: column; gap: 8px; }
-.oubli-ligne { display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 14px; border-radius: var(--r-md); background: var(--warn-soft); border: 1px solid var(--warn-line); }
-.oubli-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
-.oubli-txt b { color: var(--warn); }
-.oubli-txt span { color: var(--ink); font-size: 15px; }
-.oubli-ligne .btn { flex: none; }
-.quick .q-sub { font-size: 12.5px; font-weight: 600; color: var(--accent-ink); line-height: 1.2; text-align: center; white-space: nowrap; margin-top: -4px; }
-.sommeil-etat { display: flex; align-items: center; gap: 10px; margin: 0; padding: 12px 14px; border-radius: var(--r-btn); background: var(--sauge-soft); color: var(--ink); }
+/* Carnet : « En train de dormir » et « Réveils non notés » en bandeaux, en haut */
+.dodo, .oublis { display: flex; flex-direction: column; gap: 8px; }
+.dodo-ligne, .oubli-ligne { display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 16px; border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--line); }
+.dodo-ico { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--or); color: #1f1c1a; }
+.oubli-ligne .b-ico.alerte { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--brique); color: var(--bg); font-family: var(--font-display); font-weight: 600; font-size: 16px; }
+.dodo-txt, .oubli-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.dodo-txt b, .oubli-txt b { font-weight: 600; color: var(--ink); }
+.dodo-txt span, .oubli-txt span { color: var(--ink-2); font-size: 15px; }
+.dodo-ligne .btn, .oubli-ligne .btn { flex: none; }
+.quick .q-sub { font-size: 15px; font-weight: 400; color: var(--or-ink); line-height: 1.2; text-align: center; white-space: nowrap; margin-top: -2px; }
+.sommeil-etat { display: flex; align-items: center; gap: 10px; margin: 0; padding: 12px 14px; border-radius: var(--r-sm); background: var(--surface-2); color: var(--ink); }
 .sommeil-etat svg { color: var(--sauge); flex: none; }
 
 /* ---------- Accueil (installation) ---------- */
@@ -771,46 +826,56 @@ h1.h-card { font-size: 25px; }
 .video-guide > .seg { max-width: 300px; width: 100%; margin: 0 auto; }
 
 /* ---------- Page des parents (lien privé) ---------- */
+/* Vision 1.1 : en-tête posé sur le fond, logo au-dessus, pastille et prénom centrés */
 .ph { min-height: 100dvh; background: var(--bg); }
-.ph-head { display: flex; align-items: center; gap: 12px; padding: calc(env(safe-area-inset-top, 0px) + 14px) var(--gutter) 12px; background: var(--surface); border-bottom: 1px solid var(--line); }
-.ph-head .t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.ph-head b, .ph-title { font-family: var(--font-display); font-size: 26px; font-weight: 600; line-height: 1.1; margin: 0; }
+.ph-head { display: grid; grid-template-columns: 1fr; justify-items: center; gap: 8px; padding: calc(env(safe-area-inset-top, 0px) + 16px) var(--gutter) 8px; background: transparent; border-bottom: 0; text-align: center; }
+.ph-head > .logo { order: -1; color: var(--ink); flex: none; }
+.ph-head .t { min-width: 0; display: flex; flex-direction: column; align-items: center; }
+.ph-head b, .ph-title { font-family: var(--font-display); font-size: 28px; font-weight: 600; line-height: 1.15; margin: 0; }
 .ph-head small { color: var(--ink-2); font-size: 15px; }
-.ph-head .logo { color: var(--ink-2); flex: none; }
-.ph-tabs { margin: 12px auto 0; width: calc(100% - 2 * var(--gutter)); max-width: 560px; }
-.ph-main { padding: 14px var(--gutter) 40px; display: flex; flex-direction: column; gap: 14px; max-width: 560px; margin: 0 auto; }
+.ph-head .gommette { width: 64px; height: 64px; font-size: 28px; }
+.ph-tabs { margin: 8px auto 0; width: calc(100% - 2 * var(--gutter)); max-width: 560px; }
+.ph-main { padding: 16px var(--gutter) 40px; display: flex; flex-direction: column; gap: 16px; max-width: 560px; margin: 0 auto; }
 .ph-h2 { font-size: 22px; margin: 0; }
 .ph-h2.sm { font-size: 20px; }
-.ev { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px dashed var(--line); }
+/* Compteurs de la journée : Repas, Sommeil, Changes, Humeur (ronds en pointillé, Humeur en or) */
+.ph-compteurs { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 12px; padding: 4px 0 8px; }
+.ph-compteur { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.ph-rond { width: 108px; height: 108px; border-radius: 50%; border: 3px dotted var(--ink); display: grid; place-items: center; padding: 8px; text-align: center; }
+.ph-rond b { font-family: var(--font-display); font-weight: 600; font-size: 30px; line-height: 1.1; overflow-wrap: anywhere; }
+.ph-compteur.or .ph-rond { border-color: var(--or); }
+.ph-compteur.or .ph-rond b { font-size: 20px; }
+.ph-c-label { font-size: 16px; font-weight: 600; }
+.ph-note { margin: 0; padding: 14px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 17px; }
+.ev { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .ev:last-of-type { border-bottom: 0; }
-.ev b { display: block; }
+.ev b { display: block; font-weight: 600; }
 .ev span:not(.ev-t) { display: block; color: var(--ink-2); font-size: 15px; }
-.ev-t { font-family: var(--font-num); font-size: 15px; color: var(--ink-2); min-width: 56px; white-space: nowrap; flex: none; padding-top: 2px; }
+.ev-t { font-family: var(--font-display); font-weight: 600; font-size: 16px; color: var(--ink); min-width: 64px; white-space: nowrap; flex: none; padding-top: 1px; }
 .ev-body { flex: 1; min-width: 0; }
 .ev-details { margin-top: 6px; }
-.ev-details summary { cursor: pointer; color: var(--primary); font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+.ev-details summary { cursor: pointer; color: var(--ink); font-weight: 600; min-height: 44px; display: flex; align-items: center; text-decoration: underline; text-underline-offset: 3px; }
 .ev-details p { margin: 4px 0; font-size: 15px; }
-/* Page des parents : ce que l'AM demande d'apporter, en haut de la journée */
-.apporter { display: flex; gap: 14px; align-items: flex-start; border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: var(--accent-soft); }
-.apporter > svg { flex: none; color: var(--accent-ink); margin-top: 2px; }
+/* Page des parents : ce que l'AM demande d'apporter */
+.apporter { display: flex; gap: 14px; align-items: flex-start; border-color: var(--line); background: var(--surface); }
+.apporter > svg { flex: none; color: var(--or-ink); margin-top: 2px; }
 .apporter h2 { margin: 0 0 4px; }
 .apporter ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
-.apporter li b { font-weight: 600; }
-.apporter li b { display: block; }
-.apporter li span { display: block; color: var(--ink-2); font-size: 15px; }
+.apporter li b { display: inline-flex; align-items: center; min-height: 32px; padding: 0 14px; border-radius: 16px; border: 1px solid var(--ink); font-weight: 600; }
+.apporter li span { display: block; color: var(--ink-2); font-size: 15px; margin-top: 2px; }
 .cp { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px dashed var(--line); }
 .cp:last-of-type { border-bottom: 0; }
 .cp-l { display: flex; flex-direction: column; }
-.cp-l small { color: var(--ink-2); font-size: 14px; }
+.cp-l small { color: var(--ink-2); font-size: 15px; }
 .cp-v { display: flex; align-items: center; gap: 8px; font-family: var(--font-num); font-weight: 600; font-size: 18px; white-space: nowrap; }
-.cpy { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); display: grid; place-items: center; color: var(--ink); cursor: pointer; flex: none; }
+.cpy { width: 44px; height: 44px; border-radius: 22px; border: 1px solid var(--line-strong); background: transparent; display: grid; place-items: center; color: var(--ink); cursor: pointer; flex: none; }
 .cpy.done { background: var(--ok-soft); color: var(--ok); }
-.foot { font-size: 13px; color: var(--ink-2); text-align: center; margin: 0; }
-.live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-right: 6px; vertical-align: middle; }
+.foot { font-size: 15px; color: var(--ink-2); text-align: center; margin: 0; }
+.live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--or); margin-right: 6px; vertical-align: middle; }
 .code-input { font-size: 32px; letter-spacing: 0.4em; text-align: center; max-width: 220px; }
 /* Carte « Lien pour les parents » côté AM */
 .share-code { font-family: var(--font-num); font-size: 40px; font-weight: 600; letter-spacing: 0.25em; text-align: center; padding: 8px 0; }
-.share-url { font-family: var(--font-num); font-size: 14px; color: var(--ink-2); background: var(--surface-2); border-radius: 10px; padding: 10px 12px; overflow-wrap: anywhere; }
+.share-url { font-family: var(--font-body); font-size: 15px; color: var(--ink-2); background: var(--surface-2); border-radius: var(--r-sm); padding: 10px 12px; overflow-wrap: anywhere; }
 .what { margin: 0; padding-left: 20px; }
 
 /* ---------- Accueil : vidéo et simulateur mis en avant ---------- */

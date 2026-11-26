@@ -49,8 +49,11 @@ export function Gommette({ name, color, size }: { name: string; color: number; s
   );
 }
 
-/** Barre du haut : titre + bouton « Ça coince » présent sur chaque écran */
-export function Topbar({ title, sub, back, screen, end }: { title: string; sub?: string; back?: string; screen: string; end?: ComponentChildren }) {
+/**
+ * Barre du haut : titre + bouton « Ça coince » présent sur chaque écran. `apres` : bouton posé à droite de « Ça coince »
+ * (Aujourd'hui : « Je serai absente »). `grand` (Vision 1.1, Aujourd'hui) : logo et boutons sur une ligne, titre centré dessous.
+ */
+export function Topbar({ title, sub, back, screen, end, apres, grand }: { title: string; sub?: string; back?: string; screen: string; end?: ComponentChildren; apres?: ComponentChildren; grand?: boolean }) {
   const [open, setOpen] = useState(false);
   const [video, setVideo] = useState(false);
   const [signal, setSignal] = useState(false); // les aides viennent de partir dans « Ça coince » : le bouton s'anime
@@ -62,7 +65,7 @@ export function Topbar({ title, sub, back, screen, end }: { title: string; sub?:
     return () => { window.removeEventListener('pam-coince', f); clearTimeout(t); };
   }, []);
   return (
-    <header class="topbar">
+    <header class={grand ? 'topbar topbar-grand' : 'topbar'}>
       {back ? (
         <a class="icon-btn" href={back} aria-label="Retour">
           <Icon name="left" />
@@ -79,6 +82,7 @@ export function Topbar({ title, sub, back, screen, end }: { title: string; sub?:
         <Icon name="message" size={18} />
         Ça coince
       </button>
+      {apres}
       {open && <CoinceSheet screen={screen} onVideo={aide ? () => { setOpen(false); setVideo(true); logUsage('aide_video_coince', screen); } : undefined} onClose={() => setOpen(false)} />}
       {video && aide && <VideoSheet aide={aide} vue={AIDE_PAR_ECRAN[screen]} onClose={() => setVideo(false)} />}
     </header>
