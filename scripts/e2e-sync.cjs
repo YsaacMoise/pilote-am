@@ -77,7 +77,9 @@ async function phone(b, name) {
   await a.goto(base + '#/');
   await a.locator('article.kid', { hasText: 'Lou' }).waitFor();
   await a.waitForTimeout(2500);
+  // T-122 : l'envoi peut prendre plus de 2,5 s (chiffrement de T-121) : attendu jusqu'à 15 s.
   let st = await stats();
+  for (let i = 0; i < 25 && !(Object.keys(st)[0] && st[Object.keys(st)[0]].live >= 2); i++) { await a.waitForTimeout(500); st = await stats(); }
   const uid = Object.keys(st)[0];
   assert(uid && st[uid].live >= 2, `données envoyées dans le compte (${st[uid]?.live} documents)`);
   await a.goto(base + '#/compte');
@@ -209,13 +211,17 @@ async function phone(b, name) {
   assert(true, 'enfants des deux côtés : le choix est demandé, rien n’est mélangé');
   await c.shot('05-choix');
   const live1 = (await stats())[uid].live;
+  const docs1 = JSON.stringify(await (await fetch(`${cloud}/docs?uid=${uid}&since=-1`)).json());
   assert(!JSON.stringify(await (await fetch(`${cloud}/docs?uid=${uid}&since=-1`)).json()).includes('Malo'), 'avant le choix : rien de ce téléphone n’est parti en ligne');
   await c.getByRole('button', { name: 'Garder ce qui est dans mon compte' }).click();
   await c.getByText(/^À jour/).waitFor({ timeout: 10000 });
   await c.goto(base + '#/plus');
   await c.locator('.li-title', { hasText: 'Lou' }).waitFor();
   assert(!(await c.locator('.li-title', { hasText: 'Malo' }).count()), '« garder le compte » : le téléphone a pris les enfants du compte, sans doublon');
-  assert((await stats())[uid].live === live1, 'le compte n’a pas changé');
+  const docs2 = JSON.stringify(await (await fetch(`${cloud}/docs?uid=${uid}&since=-1`)).json());
+  // Données de l'AM seulement : la marque d'appareil de T-121 (kv/appareil-…, format de l'app) est écrite à chaque connexion.
+  const donnees = (j) => JSON.parse(j).docs.filter((x) => x.v !== null && !(x.s === 'kv' && String(x.k).startsWith('appareil-'))).map((x) => `${x.s}/${x.k}:${x.v}`).sort().join('\n');
+  assert(donnees(docs2) === donnees(docs1), 'le compte n’a pas changé (données de l’AM)');
 
   console.log('\n== Suppression du compte sur B ==');
   await p2.goto(base + '#/compte');
