@@ -347,7 +347,8 @@ export function AjoutEnfant({ id }: { id?: string }) {
   if (b.etape >= 7) return <Recap c={c} r={r} total={total} erreurs={erreursFinales} modifier={modifier} creer={creer} />;
 
   const rates = ratesAtRegion(today(), regionDe(c)) ?? ratesConnus(today());
-  const rappel = Object.values(errs);
+  // Rappel au-dessus de « Continuer » : la même erreur, en court (maquette 08 : « un taux d'au moins 3,28 € net »).
+  const rappel = Object.entries(errs).map(([k, m]) => (k === 'rateNet' && m.startsWith('Inférieur') && rates.minConvNet !== undefined ? `un taux d’au moins ${euros(rates.minConvNet)} net` : m));
   return (
     <>
       <Topbar title={titre} back="#/plus" screen="ajout" />

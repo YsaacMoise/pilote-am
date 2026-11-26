@@ -64,7 +64,7 @@ async function ajouterEnfant(p, o) {
   await p.getByRole('heading', { name: `Récapitulatif · ${prenom}` }).waitFor();
   if (!creer) return;
   await p.getByRole('button', { name: new RegExp(`^Créer le contrat d`) }).click();
-  await p.getByRole('heading', { name: new RegExp(`^Contrat d.${prenom} créé$`) }).waitFor();
+  await p.getByRole('heading', { name: new RegExp(`^Contrat (de |d’)${prenom} créé$`) }).waitFor();
 }
 
 module.exports = { continuer, profil, ajouterEnfant, JOURS };

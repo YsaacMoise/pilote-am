@@ -24,6 +24,8 @@ async function run(scheme) {
     permissions: ['clipboard-read', 'clipboard-write'],
   });
   // Date fixe : le parcours ne dépend pas du jour où il est lancé (bulletin de test de septembre 2026).
+  // T-122 : le thème suit le parcours (l'app est en version jour par défaut ; « sombre » = version nuit choisie).
+  if (scheme === 'dark') await ctx.addInitScript(() => { try { localStorage.setItem('pam-theme', 'dark'); } catch { /* rien */ } });
   await ctx.clock.install({ time: new Date('2026-10-15T10:00:00+02:00') });
   await ctx.clock.resume();
   const p = await ctx.newPage();

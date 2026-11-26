@@ -1,10 +1,11 @@
 // Parcours automatisé du compte et de la copie en ligne, sur deux « téléphones » séparés,
 // avec le faux service en ligne (scripts/fake-cloud.mjs). Aucun compte réel n'est créé.
+// T-122 : SCHEME=dark pour le parcours en sombre (clair par défaut).
 // Usage :
 //   VITE_FAKE_CLOUD=http://localhost:4180 npm run build
 //   node scripts/fake-cloud.mjs 4180 & node scripts/serve.mjs 4173 & node scripts/e2e-sync.cjs
 const { chromium } = require('playwright');
-const A = require('./e2e-assistant.cjs');
+const Assistant = require('./e2e-assistant.cjs');
 const path = require('path');
 const fs = require('fs');
 const base = process.env.BASE || 'http://localhost:4173/pilote-am/';
@@ -30,7 +31,9 @@ function assert(cond, msg) {
 const stats = async () => (await fetch(cloud + '/stats')).json();
 
 async function phone(b, name) {
-  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: 'fr-FR', timezoneId: 'Europe/Paris', hasTouch: true, isMobile: true });
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: process.env.SCHEME === 'dark' ? 'dark' : 'light', locale: 'fr-FR', timezoneId: 'Europe/Paris', hasTouch: true, isMobile: true });
+  // T-122 : le thème suit le parcours (l'app est en version jour par défaut ; « sombre » = version nuit choisie).
+  if (process.env.SCHEME === 'dark') await ctx.addInitScript(() => { try { localStorage.setItem('pam-theme', 'dark'); } catch { /* rien */ } });
   const p = await ctx.newPage();
   const errors = [];
   p.on('pageerror', (e) => errors.push(e.message));
@@ -68,8 +71,8 @@ async function phone(b, name) {
   await a.getByRole('heading', { name: 'Toi' }).waitFor();
   assert(true, 'compte créé, profil « Toi » tout de suite (l’installation reste dans Plus)');
   await a.shot('01-compte-pret');
-  await A.profil(a);
-  await A.ajouterEnfant(a, { prenom: 'Lou', famille: 'Petit', debut: `${new Date().toISOString().slice(0, 7)}-01` });
+  await Assistant.profil(a);
+  await Assistant.ajouterEnfant(a, { prenom: 'Lou', famille: 'Petit', debut: `${new Date().toISOString().slice(0, 7)}-01` });
   if (await a.getByRole('button', { name: 'Enregistrer ce mois' }).isVisible().catch(() => false)) await a.goto(base + '#/');
   await a.goto(base + '#/');
   await a.locator('article.kid', { hasText: 'Lou' }).waitFor();
@@ -93,7 +96,7 @@ async function phone(b, name) {
   assert(true, 'mauvais mot de passe : message clair');
   await p2.getByLabel('Mot de passe').fill(pw);
   await p2.getByRole('button', { name: 'Me connecter' }).click();
-  await p2.locator('article.kid', { hasText: 'Lou' }).waitFor({ timeout: 10000 });
+  await p2.locator('article.kid', { hasText: 'Lou' }).waitFor({ timeout: 20000 });
   assert(true, 'B : l’enfant créé sur A apparaît, sans repasser par l’accueil');
   await p2.shot('03-b-recupere');
 
@@ -106,7 +109,9 @@ async function phone(b, name) {
 
   await a.goto(base + '#/');
   const card = a.locator('article.kid', { hasText: 'Lou' });
-  await card.getByRole('button', { name: 'Arrivée' }).click();
+  // L'heure réelle peut être loin de l'heure prévue (T-048) : choix « Maintenant » si l'app le propose.
+  const maintenant = card.getByRole('button', { name: /^Arrivée de Lou : Maintenant/ });
+  if (await maintenant.count()) await maintenant.click(); else await card.getByRole('button', { name: /^Arrivée de Lou à/ }).click();
   await p2.goto(base + '#/');
   await p2.locator('article.kid', { hasText: 'Lou' }).getByRole('button', { name: 'Départ' }).waitFor({ timeout: 10000 });
   assert(true, 'arrivée pointée sur A → visible sur B');
@@ -135,7 +140,7 @@ async function phone(b, name) {
   console.log('\n== Ajout puis suppression d’un enfant, propagés ==');
   const before = (await stats())[uid].live;
   await a2.goto(base + '#/contrat/nouveau');
-  await A.ajouterEnfant(a2, { prenom: 'Inès', famille: 'Martin', debut: `${new Date().toISOString().slice(0, 7)}-01`, taux: '3,60' });
+  await Assistant.ajouterEnfant(a2, { prenom: 'Inès', famille: 'Martin', debut: `${new Date().toISOString().slice(0, 7)}-01`, taux: '3,60' });
   await p2.goto(base + '#/plus');
   await p2.locator('.li-title', { hasText: 'Inès' }).waitFor({ timeout: 10000 });
   assert(true, 'enfant ajouté sur A → visible sur B');

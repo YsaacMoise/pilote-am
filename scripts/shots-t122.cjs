@@ -12,6 +12,8 @@ async function run(scheme) {
   fs.mkdirSync(dir, { recursive: true });
   const b = await chromium.launch();
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: scheme, locale: 'fr-FR', timezoneId: 'Europe/Paris', hasTouch: true, isMobile: true });
+  // T-122 : le thème suit le parcours (l'app est en version jour par défaut ; « sombre » = version nuit choisie).
+  if (scheme === 'dark') await ctx.addInitScript(() => { try { localStorage.setItem('pam-theme', 'dark'); } catch { /* rien */ } });
   await ctx.clock.install({ time: new Date('2026-11-26T10:00:00+01:00') });
   await ctx.clock.resume();
   const p = await ctx.newPage();
