@@ -8,6 +8,8 @@ import { Carnet } from './screens/Carnet';
 import { Mois } from './screens/Mois';
 import { Plus } from './screens/Plus';
 import { Contrat } from './screens/Contrat';
+import { AjoutEnfant } from './screens/AjoutEnfant';
+import { AbsencesEnfant, ContratCree, FicheEnfant, ParentsEnfant } from './screens/Fiche';
 import { Avenant } from './screens/Avenant';
 import { Confidentialite } from './screens/Confidentialite';
 import { Mentions } from './screens/Mentions';
@@ -95,7 +97,7 @@ export function App() {
       '': 'Aujourd’hui', carnet: 'Carnet', mois: 'Mois', plus: 'Plus', contrat: 'Contrat', avenant: 'Avenant', historique: 'Historique',
       controle: 'Contrôle du bulletin', conges: 'Congés', fin: 'Fin de contrat', fiscal: 'Impôts', sauvegarde: 'Sauvegarde',
       pilote: 'Données du pilote', compte: 'Compte', reglages: 'Réglages', regles: 'Comment l’app calcule', confidentialite: 'Confidentialité', mentions: 'Mentions légales', conditions: 'Conditions d’utilisation', installer: 'Installer', simulateur: 'Simuler un accueil',
-      guide: 'Vidéos', bienvenue: 'Bienvenue',
+      guide: 'Vidéos', bienvenue: 'Bienvenue', ajout: 'Nouvel enfant accueilli', enfant: 'Fiche de l’enfant', 'contrat-cree': 'Contrat créé',
     } as Record<string, string>)[p];
     // Avant le compte, c'est le site public : titres pensés pour les moteurs de recherche.
     const site = s.ready && !s.settings.onboarded && !isDemo();
@@ -117,13 +119,18 @@ export function App() {
     return <><Welcome /><Toaster /></>;
   }
 
+  const assistant = p === 'ajout' || (p === 'contrat' && (parts[1] === 'nouveau' || !parts[1]));
   let screen;
   switch (p) {
     case '': screen = <Today />; break;
     case 'carnet': screen = <Carnet />; break;
     case 'mois': screen = <Mois month={parts[1]} cid={parts[2]} />; break;
     case 'plus': screen = <Plus />; break;
-    case 'contrat': screen = <Contrat key={parts[1]} id={parts[1] === 'nouveau' ? undefined : parts[1]} />; break;
+    // T-122 : un nouveau contrat passe par l'assistant ; l'écran Contrat sert à corriger un contrat existant.
+    case 'contrat': screen = parts[1] === 'nouveau' || !parts[1] ? <AjoutEnfant key={hash} /> : <Contrat key={parts[1]} id={parts[1]} />; break;
+    case 'ajout': screen = <AjoutEnfant key={hash} id={parts[1]} />; break;
+    case 'contrat-cree': screen = <ContratCree id={parts[1]} />; break;
+    case 'enfant': screen = parts[2] === 'parents' ? <ParentsEnfant key={hash} id={parts[1]} /> : parts[2] === 'absences' ? <AbsencesEnfant id={parts[1]} /> : <FicheEnfant id={parts[1]} />; break;
     case 'avenant': screen = <Avenant key={hash} cid={parts[1]} aid={parts[2] === 'nouveau' ? undefined : parts[2]} />; break;
     case 'historique': screen = <Historique id={parts[1]} />; break;
     case 'controle': screen = <Controle key={hash} cid={parts[1]} month={parts[2]} />; break;
@@ -161,16 +168,17 @@ export function App() {
       )}
       {!isDemo() && <RefusBanner />}
       <ConditionsBanner />
-      <div class="app">
+      <div class={assistant ? 'app sans-onglets' : 'app'}>
         {screen}
-        <nav class="tabbar" aria-label="Navigation principale">
+        {/* T-122 : pendant l'ajout d'un enfant, « Continuer » est le seul bouton principal (la croix du haut ferme, tout est gardé). */}
+        {!assistant && <nav class="tabbar" aria-label="Navigation principale">
           {TABS.map((t) => (
             <a href={t.href} aria-current={t.match(p) ? 'page' : undefined}>
               <span class="tab-ico"><Icon name={t.icon} /></span>
               {t.label}
             </a>
           ))}
-        </nav>
+        </nav>}
       </div>
       <Toaster />
     </>

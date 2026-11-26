@@ -3,7 +3,8 @@ import { saveSettings, logUsage, state, useStore } from '../store';
 import { AccountForm } from './Compte';
 import { useCloud } from '../cloud-state';
 import { deleteDatabase, setDemo } from '../db';
-import { Banner, Sheet, Stepper, TextInput, Topbar } from '../ui/kit';
+import { Banner, Sheet, Topbar } from '../ui/kit';
+import { ProfilChamps } from './Profil';
 import { Logo } from '../ui/Logo';
 import { ApercuVideo, VIDEOS_PRETES, VideoClip, isIOS } from '../ui/VideoGuide';
 import { SimApercu } from './SimApercu';
@@ -97,53 +98,36 @@ export function InstallButton({ label = 'Installer l’app sur l’écran d’ac
 }
 
 export function Welcome() {
-  const s = useStore();
-  const [step, setStep] = useState<'hello' | 'installer' | 'me'>('hello');
+  useStore();
+  const [step, setStep] = useState<'hello' | 'me'>('hello');
   const [hintEmail] = useState(loginHint);
   const [form, setForm] = useState<null | 'create' | 'login'>(hintEmail ? 'login' : null);
   const standalone = isStandalone();
   const cloud = useCloud();
   const signedIn = !!cloud.email && cloud.status !== 'off';
   if (step === 'me') {
+    // T-122 : profil « Toi » juste après le compte (l'aide d'installation reste dans Plus).
     return (
       <div class="welcome">
         <LockupStacked />
-        <h1 class="hero-title">Faisons connaissance</h1>
-        <TextInput label="Ton prénom" hint="Pour signer les messages aux parents. Facultatif." value={s.settings.amName} onChange={(v) => saveSettings({ amName: v })} autoComplete="given-name" />
-        <Stepper label="Tes propres enfants à charge" value={s.settings.enfantsACharge} onChange={(v) => saveSettings({ enfantsACharge: v })} max={10} />
-        <p class="hint">Tes enfants à toi, pas ceux que tu gardes : moins de 15 ans au 30 avril, ou en situation de handicap quel que soit leur âge, et qui vivent chez toi. Chacun peut te donner 2 jours de congés en plus, sans dépasser 30 jours par an.</p>
+        <h1 class="hero-title">Toi</h1>
+        {cloud.verified === false && cloud.email && (
+          <p class="hint center" role="status">Un e-mail de confirmation est parti à <strong>{cloud.email}</strong>. Ouvre-le quand tu peux : il protège ton compte si tu oublies ton mot de passe.</p>
+        )}
+        <ProfilChamps />
         <button class="btn btn-primary btn-lg btn-block" onClick={async () => {
           await saveSettings({ onboarded: true });
           try { const ok = await navigator.storage?.persist?.(); await saveSettings({ persisted: !!ok }); } catch { /* pas grave */ }
           logUsage('onboarding_fini');
           location.hash = '#/contrat/nouveau';
-        }}>Ajouter un enfant que tu accueilles</button>
-      </div>
-    );
-  }
-  if (step === 'installer') {
-    return (
-      <div class="welcome">
-        <LockupStacked />
-        <h1 class="hero-title">Ton compte est prêt</h1>
-        {cloud.verified === false && cloud.email && (
-          <p class="hint center" role="status">Un e-mail de confirmation est parti à <strong>{cloud.email}</strong>. Ouvre-le quand tu peux : il protège ton compte si tu oublies ton mot de passe.</p>
-        )}
-        <section class="card stack" aria-labelledby="inst">
-          <h2 id="inst">Installe l’app sur ton téléphone</h2>
-          <p>Avec son icône sur l’écran d’accueil, l’app s’ouvre en un geste, en plein écran, même sans réseau.</p>
-          <InstallButton />
-          {VIDEOS_PRETES && <VideoClip clip="installer" />}
-          <p class="hint">Ouvre ensuite l’app depuis son icône et connecte-toi avec la même adresse e-mail.</p>
-        </section>
-        <button class="btn btn-secondary btn-lg btn-block" onClick={() => setStep('me')}>Continuer ici pour l’instant</button>
+        }}>Ajouter un enfant accueilli</button>
       </div>
     );
   }
   // Fin de connexion ou de création : données retrouvées d'un autre appareil → l'app s'ouvre directement.
   const done = () => {
     if (state.settings.onboarded) { location.hash = '#/'; return; }
-    setStep(standalone ? 'me' : 'installer');
+    setStep('me');
   };
   const essayer = () => { logUsage('demo'); enterDemo(); };
 
@@ -206,7 +190,7 @@ export function Welcome() {
           {signedIn ? (
             <div class="hero-form stack">
               <p class="row"><Icon name="cloud" />Connectée avec <strong>{cloud.email}</strong></p>
-              <button class="btn btn-primary btn-lg btn-block" onClick={() => setStep('installer')}>Continuer</button>
+              <button class="btn btn-primary btn-lg btn-block" onClick={() => setStep('me')}>Continuer</button>
             </div>
           ) : form ? (
             <>

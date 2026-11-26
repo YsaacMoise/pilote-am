@@ -4,3 +4,6 @@ export const AIDE_ANNEE =
 export const AIDE_SEMAINES = 'Sans compter tes congés payés. 46 au plus.';
 export const AIDE_COMPLEMENTAIRES =
   'Heures faites au-delà de la durée par semaine du contrat, jusqu’à 45 h. Majorées seulement si ton contrat le prévoit ; sinon, laisse 0.';
+
+/** T-122 (relecture D1) : le titre AM-AP en une ligne, à la place du paragraphe de rates.ts */
+export const TITRE_AM_AP = '+4 % au moins avec le titre « Assistant maternel – assistant parental ».';
