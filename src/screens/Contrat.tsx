@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import { ctxFor, deleteContract, logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
 import { addMonthsToDate, deMois, firstDay, mondayOf, monthOf, shortDate, today, JOUR_NOMS, type Month } from '../engine/dates';
-import { dureeMoyenneContrat, erreursDureeContrat, informationsDurees, SEUIL_ACCORD_MIN } from '../engine/durees';
+import { dureeMoyenneContrat, informationsDurees, SEUIL_ACCORD_MIN } from '../engine/durees';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, semainesSansAccueilAnnee, termsAt, weeklyMinutes } from '../engine/payroll';
 import { entretienPlancher, minimumSansTitre, ratesAtRegion, ratesConnus, repasAvantageAu } from '../engine/rates';
 import { regionDe } from '../engine/regions';
@@ -9,7 +9,6 @@ import { congesDeDepart, MESSAGE_SOLDE_CONGES, soldeCongesInconnu } from '../eng
 import { CongesDepart } from './CongesDepart';
 import { euros, eurosTexte, hoursLabel } from '../engine/money';
 import type { AccueilOcc, Avenant, Contract, Plage, Planning, Terms } from '../engine/model';
-import { manquesOccasionnel } from '../engine/occasionnel';
 import { EntretienSaisie, libelleEntretien } from './EntretienSaisie';
 import { BrutSaisie } from './BrutSaisie';
 import { Banner, CHILD_COLORS, Choices, COLOR_NAMES, couleurLibre, couleursPrises, DateInput, EuroInput, Gommette, NumberInput, Seg, Switch, TextInput, Topbar } from '../ui/kit';
@@ -21,9 +20,9 @@ import { PAJEMPLOI_PLUS_AIDE } from '../legal';
 import { MESSAGE_REPOS_HEBDO, NON_GERE_47_51, nonGeresContrat, planningAvecDimanche, semaines4751 } from '../engine/nonGeres';
 import { DEPARTEMENTS, libelleDepartement, reponseSaisie, trouverDepartement } from '../engine/departements';
 import { AIDE_ANNEE, AIDE_COMPLEMENTAIRES, AIDE_SEMAINES } from './textes-contrat';
-import { manquesPV } from '../engine/planningVariable';
 import { PlanningVariableSaisie } from './PlanningVariableSaisie';
 import { CDD_A_COMPLETER, messagesCdd } from '../engine/cdd';
+import { contratAEnregistrer, erreursContrat } from './contrat-validation';
 
 const ouiNon = (b: boolean | undefined): 'oui' | 'non' | undefined => (b === undefined ? undefined : b ? 'oui' : 'non');
 
@@ -104,52 +103,17 @@ export function Contrat({ id }: { id?: string }) {
   }
 
   async function save() {
-    const errs: string[] = [];
-    if (!c.child.trim()) errs.push('Indique le prénom de l’enfant.');
-    if (!c.start) errs.push('Indique la date de début du contrat.');
-    if (!c.planningVariable && !c.accueilOccasionnel && wk <= 0) errs.push('Le planning est vide : ajoute au moins un jour d’accueil.');
-    // T-104 (cas 2) : accueil occasionnel, périodes d'accueil (dates et horaires prévus au contrat, CCN 98.2).
-    for (const m of manquesOccasionnel(c)) errs.push(`Accueil occasionnel : indique ${m}.`);
-    if (c.accueilOccasionnel) for (const a of c.accueils ?? []) for (let d = 1; d <= 7; d++) for (const p of a.planning[d] ?? []) if (p.end <= p.start) errs.push(`${JOUR_NOMS[d - 1]} (accueil du ${shortDate(a.du)}) : l’heure de fin doit être après le début.`);
-    for (let d = 1; d <= 7; d++) for (const p of c.planning[d] ?? []) if (p.end <= p.start) errs.push(`${JOUR_NOMS[d - 1]} : l’heure de fin doit être après le début.`);
-    if (semaines4751(c.yearType, c.weeks)) errs.push(NON_GERE_47_51);
-    else if (c.yearType === 'incomplete' && (c.weeks < 1 || c.weeks > 46)) errs.push('En année incomplète, le nombre de semaines va de 1 à 46.');
-    // Audit C-002 : les semaines sans accueil manquantes sont signalées dans le formulaire (bandeau) sans bloquer,
-    // car elles peuvent être communiquées plus tard, par écrit, deux mois à l'avance (art. 98.1.2) ;
-    // la régularisation n'est pas calculée tant qu'une année terminée en manque.
-    if (c.end && c.end < c.start) errs.push('La date de fin est avant le début.');
-    if (c.repasParents === undefined) errs.push('Indique qui fournit les repas de l’enfant.');
-    if (c.alsaceMoselle === undefined) errs.push('Indique le département où tu accueilles l’enfant.');
-    if (c.planningVariable === undefined) errs.push('Indique si le planning est le même chaque semaine.');
-    // T-076 : horaires qui changent, données à compléter (cycle, semaine de départ, heures payées chaque mois).
-    for (const m of manquesPV(c)) errs.push(`Horaires qui changent : indique ${m}.`);
-    if (c.planningVariable) for (const pl of [...(c.cycle ?? []), ...Object.values(c.planningsSemaines ?? {})]) for (let d = 1; d <= 7; d++) for (const p of pl[d] ?? []) if (p.end <= p.start) errs.push(`${JOUR_NOMS[d - 1]} : l’heure de fin doit être après le début.`);
-    if (c.accueilOccasionnel === undefined) errs.push('Indique si l’accueil est régulier ou occasionnel.');
-    if (c.cdd === undefined) errs.push('Indique si le contrat est un CDI ou un CDD.');
-    // T-076 : le CDD est calculé ; sa date de fin prévue (ou de durée minimale) et son motif sont demandés.
-    if (c.cdd && !c.cddTerme) errs.push(c.cddTermeImprecis ? 'Indique la date de fin de la durée minimale du CDD.' : 'Indique la date de fin prévue du CDD.');
-    if (c.cdd && c.cddTerme && c.cddTerme < c.start) errs.push('La date de fin prévue du CDD est avant le début.');
-    if (c.cdd && !c.cddMotif) errs.push('Indique pourquoi le CDD a été signé.');
-    // T-109 (correction 9) : CASF L423-22, plus de 48 h par semaine en moyenne sans l'accord de l'AM, ou plus de 2 250 h par an.
-    errs.push(...erreursDureeContrat(c));
-    // T-044b : choix explicite du mode de l'indemnité d'entretien sur un nouveau contrat.
-    if (isNew && !c.entretienMode) errs.push('Indique si l’indemnité d’entretien est fixée par heure ou par jour.');
+    // T-122 : validation et contrat enregistré partagés avec l'assistant d'ajout (contrat-validation.ts).
+    const errs = erreursContrat(c, isNew);
     setErrors(errs);
     // C-101 : chaque enregistrement refusé est noté (relecture contradictoire : le deuxième refus passait inaperçu).
     if (errs.length) logErreur('contrat_incomplet');
     if (errs.length) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
-    const toSave: Contract = {
-      ...c,
-      // T-119 : soldes calculés par l'app (carte affichée, réponses de l'AM) : écrits à l'enregistrement, case cochée.
-      balances: !cpManuel && departCalculable && soldesDepart ? { ...c.balances, ...soldesDepart, cpSaisi: true } : c.balances,
-      child: c.child.trim(),
-      family: c.family.trim(),
-      weeks: c.yearType === 'complete' ? 52 : c.weeks,
-      trackedFrom: isNew ? (reprise ? curMonthStart : c.start) : c.trackedFrom < c.start ? c.start : c.trackedFrom,
-      // Le lien parent a pu être créé ou coupé pendant que le formulaire était ouvert : on garde l'état enregistré.
+    const toSave = contratAEnregistrer(c, {
+      isNew, curMonthStart,
+      soldesDepart: !cpManuel && departCalculable && soldesDepart ? soldesDepart : undefined,
       partage: state.contracts.find((x) => x.id === c.id)?.partage,
-    };
-    if (!toSave.partage) delete toSave.partage;
+    });
     const prev = await putContract(toSave);
     logUsage(isNew ? 'contrat_cree' : 'contrat_modifie', 'contrat');
     toast(isNew ? `Contrat ${de(toSave.child)} créé` : 'Contrat enregistré', prev ? async () => { await putContract(prev); } : async () => { await deleteContract(toSave.id); });
