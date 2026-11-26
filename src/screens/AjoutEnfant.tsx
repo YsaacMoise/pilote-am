@@ -284,9 +284,13 @@ export function AjoutEnfant({ id }: { id?: string }) {
     if (ecran === 'enfant' && !s.settings.departement && c.departement) void saveSettings({ departement: c.departement });
     if (b.ecran + 1 < ecrans.length) n = { ...b, ecran: b.ecran + 1 };
     else {
-      const faites = [...new Set([...b.faites, b.etape])];
-      n = { ...b, faites, etape: versRecap ? 7 : etapeSuivante(b.etape), ecran: 0 };
-      if (versRecap) setVersRecap(false);
+      let faites = [...new Set([...b.faites, b.etape])];
+      // Début, type d'année ou planning modifiés depuis le récapitulatif : les congés de départ se recalculent, l'étape 6
+      // est refaite (ses réponses dépendent de ces conditions).
+      const refaire6 = versRecap && (b.etape === 2 || b.etape === 3) && total === 6;
+      if (refaire6) faites = faites.filter((k) => k !== 6);
+      n = { ...b, faites, etape: refaire6 ? 6 : versRecap ? 7 : etapeSuivante(b.etape), ecran: 0, ...(refaire6 ? { r: { ...b.r, soldes: undefined, pris: undefined, absent: undefined } } : {}) };
+      if (versRecap && !refaire6) setVersRecap(false);
     }
     if (!lireBrouillon(b.id)) logUsage('brouillon_cree', 'ajout');
     garde(n);
@@ -300,7 +304,9 @@ export function AjoutEnfant({ id }: { id?: string }) {
   const modifier = (n: number) => { setVersRecap(true); setErreursFinales([]); setB({ ...b, etape: n, ecran: 0 }); setVue('ecran'); window.scrollTo(0, 0); };
 
   async function creer() {
-    const final = contratFinal({ ...c, planning: c.planningVariable || c.accueilOccasionnel ? c.planning : planningRempli(c.planning) }, r);
+    const final = contratFinal({ ...c, planning: c.planningVariable || c.accueilOccasionnel ? c.planning : planningRempli(c.planning) }, total === 6 ? r : { ...r, maladie: undefined });
+    // Contrat commencé ce mois-ci (pas d'étape 6) : aucune réponse « avant Arvela » gardée d'une saisie précédente.
+    if (total === 5) { final.balances = { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 }; delete final.cddCpPrisAvantSuivi; }
     const e = erreursContrat(final, true);
     setErreursFinales(e);
     if (e.length) { logErreur('contrat_incomplet'); window.scrollTo(0, 0); return; }

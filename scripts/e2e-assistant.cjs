@@ -49,12 +49,16 @@ async function ajouterEnfant(p, o) {
   await p.getByRole('radio', { name: /^Fournis par les parents/ }).click();
   await p.getByRole('radio', { name: /^Non prévues/ }).click();
   await continuer(p);
-  if (avant) {
+  // Étape 6, seulement pour un contrat commencé avant le mois en cours.
+  await p.getByRole('heading', { name: /^(Congés au début du suivi|Récapitulatif · )/ }).first().waitFor();
+  if (await p.getByRole('heading', { name: 'Congés au début du suivi' }).count()) {
+    const av = avant ?? {};
     const pris = p.getByLabel(/^Jours de congés déjà pris depuis le 1er juin/);
-    if (await pris.count()) await pris.fill(String(avant.pris ?? 0));
-    await p.getByRole('radio', { name: /^Non$/ }).first().click();
+    if (await pris.count()) await pris.fill(String(av.pris ?? 0));
+    if (await p.getByRole('radio', { name: /^Non$/ }).count()) await p.getByRole('radio', { name: /^Non$/ }).first().click();
+    else await p.getByRole('button', { name: 'Je n’ai aucun congé de départ' }).click();
     await continuer(p);
-    await p.getByLabel(/malade, avec certificat, déjà retenus/).fill(String(avant.malade ?? 0));
+    await p.getByLabel(/malade, avec certificat, déjà retenus/).fill(String(av.malade ?? 0));
     await continuer(p);
   }
   await p.getByRole('heading', { name: `Récapitulatif · ${prenom}` }).waitFor();

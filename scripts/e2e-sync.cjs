@@ -4,6 +4,7 @@
 //   VITE_FAKE_CLOUD=http://localhost:4180 npm run build
 //   node scripts/fake-cloud.mjs 4180 & node scripts/serve.mjs 4173 & node scripts/e2e-sync.cjs
 const { chromium } = require('playwright');
+const A = require('./e2e-assistant.cjs');
 const path = require('path');
 const fs = require('fs');
 const base = process.env.BASE || 'http://localhost:4173/pilote-am/';
@@ -63,18 +64,12 @@ async function phone(b, name) {
   assert(true, 'mot de passe trop faible refusé, en français');
   await a.getByLabel('Mot de passe').fill(pw);
   await a.getByRole('button', { name: 'Créer mon compte' }).click();
-  await a.getByRole('heading', { name: 'Ton compte est prêt' }).waitFor();
-  assert(await a.getByRole('button', { name: 'Installer l’app sur l’écran d’accueil' }).isVisible(), 'compte créé, bouton Installer proposé ensuite');
+  // T-122 : plus d'écran « Ton compte est prêt » intercalé : profil « Toi », puis l'assistant d'ajout.
+  await a.getByRole('heading', { name: 'Toi' }).waitFor();
+  assert(true, 'compte créé, profil « Toi » tout de suite (l’installation reste dans Plus)');
   await a.shot('01-compte-pret');
-  await a.getByRole('button', { name: 'Continuer ici pour l’instant' }).click();
-  await a.getByLabel('Ton prénom').fill('Sonia');
-  await a.getByRole('button', { name: 'Ajouter un enfant que tu accueilles' }).click();
-  await a.getByLabel('Prénom de l’enfant').fill('Lou');
-  await a.getByLabel('Nom de la famille').fill('Petit');
-  await a.getByLabel('Taux horaire net').fill('3,50');
-  await a.getByRole('radio', { name: /^Les parents/ }).click();
-  await a.getByRole('button', { name: /^Enregistrer/ }).first().click();
-  await a.waitForTimeout(500);
+  await A.profil(a);
+  await A.ajouterEnfant(a, { prenom: 'Lou', famille: 'Petit', debut: `${new Date().toISOString().slice(0, 7)}-01` });
   if (await a.getByRole('button', { name: 'Enregistrer ce mois' }).isVisible().catch(() => false)) await a.goto(base + '#/');
   await a.goto(base + '#/');
   await a.locator('article.kid', { hasText: 'Lou' }).waitFor();
@@ -140,16 +135,12 @@ async function phone(b, name) {
   console.log('\n== Ajout puis suppression d’un enfant, propagés ==');
   const before = (await stats())[uid].live;
   await a2.goto(base + '#/contrat/nouveau');
-  await a2.getByLabel('Prénom de l’enfant').fill('Inès');
-  await a2.getByLabel('Nom de la famille').fill('Martin');
-  await a2.getByLabel('Taux horaire net').fill('3,60');
-  await a2.getByRole('radio', { name: /^Les parents/ }).click();
-  await a2.getByRole('button', { name: /^Enregistrer/ }).first().click();
-  await a2.waitForTimeout(500);
+  await A.ajouterEnfant(a2, { prenom: 'Inès', famille: 'Martin', debut: `${new Date().toISOString().slice(0, 7)}-01`, taux: '3,60' });
   await p2.goto(base + '#/plus');
   await p2.locator('.li-title', { hasText: 'Inès' }).waitFor({ timeout: 10000 });
   assert(true, 'enfant ajouté sur A → visible sur B');
   await p2.locator('.li-title', { hasText: 'Inès' }).click();
+  await p2.getByRole('link', { name: /^Le contrat/ }).click();
   await p2.getByRole('button', { name: 'Supprimer ce contrat' }).click();
   await a2.goto(base + '#/plus');
   await attendre(a2, () => ![...document.querySelectorAll('.li-title')].some((e) => e.textContent.includes('Inès')), 10000);

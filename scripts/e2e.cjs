@@ -8,6 +8,7 @@ const base = process.env.BASE || 'http://localhost:4173/pilote-am/';
 const out = path.join(__dirname, 'out');
 fs.mkdirSync(out, { recursive: true });
 const pdf = path.join(__dirname, '..', 'tests', 'fixtures', 'bulletin-test.pdf');
+const A = require('./e2e-assistant.cjs');
 
 function assert(cond, msg) {
   if (!cond) throw new Error('ÉCHEC : ' + msg);
@@ -53,58 +54,94 @@ async function run(scheme) {
   await p.getByLabel('Adresse e-mail').fill(`parcours-${scheme}-${Date.now()}@exemple.fr`);
   await p.getByLabel('Mot de passe', { exact: true }).fill('Motdepasse-solide1');
   await p.getByRole('button', { name: 'Créer mon compte', exact: true }).click();
-  await p.getByRole('button', { name: 'Continuer ici pour l’instant' }).click();
-  await p.getByLabel('Ton prénom').fill('Sonia');
-  await p.getByRole('button', { name: 'Ajouter un enfant que tu accueilles' }).click();
+  // T-122 : plus d'écran d'installation intercalé ; profil « Toi » (prénom, département, enfants à charge).
+  await A.profil(p);
 
-  // Contrat repris en cours d'année
+  // T-122 : assistant d'ajout d'un enfant. Erreur sous le champ et rappel au-dessus de « Continuer », bouton actif.
+  await p.getByText('Étape 1 sur 5 · L’enfant et son employeur').waitFor();
+  await A.continuer(p);
+  await p.locator('p.err', { hasText: /^Pour continuer : indique le prénom de l’enfant/ }).waitFor();
+  assert(await p.locator('.field .err', { hasText: 'Indique le prénom de l’enfant.' }).isVisible(), 'assistant : erreur sous le champ et rappel au-dessus de « Continuer »');
   await p.getByLabel('Prénom de l’enfant').fill('Lou');
-  await p.getByLabel('Nom de la famille').fill('Petit');
-  // T-107 : l'écran Contrat a changé (T-079, T-031, T-076, T-104) : « Premier jour d'accueil », département, planning,
-  // accueil régulier, CDI ou CDD.
-  await p.getByLabel('Premier jour d’accueil').fill('2026-09-01');
-  await p.getByLabel('Dans quel département accueilles-tu l’enfant ?').fill('31 – Haute-Garonne');
-  await p.getByRole('radio', { name: /^Oui, une semaine type qui se répète/ }).click();
-  await p.getByRole('radio', { name: /^Régulier/ }).click();
+  await p.getByLabel('Nom de famille de l’employeur').fill('Petit');
+  await p.getByLabel('E-mail du parent employeur (facultatif)').fill('parent@exemple.fr');
+  await A.continuer(p);
+  // Étape 2 : rien de coché ni de daté d'avance (décision 1 du DG).
+  assert((await p.getByLabel('Date de début du contrat').inputValue()) === '' && (await p.locator('[role=radio][aria-checked=true]').count()) === 0, 'contrat : aucune date ni aucun choix d’avance');
+  await shot('01-assistant-contrat');
+  // Brouillon : quitter, le retrouver dans Plus et Aujourd'hui, reprendre (liste des étapes).
+  await p.goto(base + '#/plus');
+  await p.locator('a.li', { hasText: 'Contrat en cours de saisie : étape 2' }).waitFor();
+  await p.goto(base + '#/');
+  await p.getByText(/^Contrat de Lou en cours de saisie : étape 2/).waitFor();
+  assert(true, 'brouillon : rappelé dans Plus et Aujourd’hui');
+  await p.getByRole('link', { name: 'Reprendre' }).click();
+  await p.getByRole('button', { name: 'Reprendre : le contrat' }).click();
+  await p.getByLabel('Date de début du contrat').fill('2025-09-01');
   await p.getByRole('radio', { name: /^CDI/ }).click();
-  // T-115 (R3) : le brut se calcule seul depuis le net (F2 : 4,49 € redonne 3,50 € net, cotisation par cotisation) ;
-  // un lien ouvre le champ brut pour écrire celui du contrat, un autre revient au brut calculé.
+  await p.getByRole('radio', { name: /^Régulier/ }).click();
+  await A.continuer(p);
+  await p.getByRole('radio', { name: /^Année complète/ }).click();
+  await A.continuer(p);
+  await p.getByText('Étape 3 sur 6 · Le planning').waitFor();
+  assert(true, 'contrat commencé avant le mois en cours : 6 étapes');
+  await p.getByRole('radio', { name: /^Identique chaque semaine/ }).click();
+  for (const j of A.JOURS.slice(0, 5)) await p.getByRole('button', { name: j, exact: true }).click();
+  assert((await p.getByLabel('Lundi, arrivée', { exact: true }).inputValue()) === '', 'planning : horaires vides à l’arrivée');
+  await p.getByLabel('Lundi, arrivée', { exact: true }).fill('08:00');
+  await p.getByLabel('Lundi, départ', { exact: true }).fill('17:30');
+  await p.getByRole('button', { name: 'Copier lundi sur les jours cochés' }).click();
+  await p.getByText(/47 h 30\s*par semaine/).waitFor();
+  assert(true, 'planning : copie du lundi, 47 h 30 par semaine');
+  await A.continuer(p);
+  // Étape 4 : taux sous le minimum refusé ; brut calculé (T-115).
+  await p.getByLabel('Taux horaire net').fill('3,00');
+  await p.getByRole('radio', { name: /^Celles de la convention/ }).click();
+  await A.continuer(p);
+  await p.locator('.err', { hasText: /^Inférieur au minimum conventionnel/ }).first().waitFor();
+  assert(true, 'salaire : taux sous le minimum refusé, dit sous le champ');
   await p.getByLabel('Taux horaire net').fill('3,50');
   await p.locator('.brut-calcule', { hasText: /Soit 4,49\s€ brut/ }).waitFor();
-  assert(true, 'contrat : net 3,50 € saisi, brut 4,49 € affiché sans saisie');
   await p.getByRole('button', { name: 'Mon contrat indique un autre brut' }).click();
   await p.getByLabel('Taux horaire brut').waitFor();
   await p.getByRole('button', { name: 'Revenir au brut calculé' }).click();
-  await p.locator('.brut-calcule').waitFor();
-  assert(true, 'contrat : champ brut ouvert puis refermé (brut calculé gardé)');
+  assert(true, 'salaire : net 3,50 €, brut 4,49 € calculé ; champ brut ouvert puis refermé');
+  await A.continuer(p);
   await p.getByRole('radio', { name: /^Par jour d’accueil/ }).click();
-  await p.getByText('Reprise d’un contrat en cours').waitFor();
-  // T-119 : contrat commencé avant l'app : Arvela calcule les congés de départ ; l'AM ne donne que les jours déjà pris (0 proposé).
-  // Début au 01/09/2025 (droits de la période précédente) : la question est posée, 0 proposé.
-  await p.getByLabel('Premier jour d’accueil').fill('2025-09-01');
+  await p.getByRole('radio', { name: /^Fournis par les parents/ }).click();
+  await p.getByRole('radio', { name: /^Non prévues/ }).click();
+  await A.continuer(p);
+  // Étape 6 : congés de départ calculés par Arvela ; jours pris sans valeur d'avance.
   const prisAvant = p.getByLabel('Jours de congés déjà pris depuis le 1er juin 2026');
   await prisAvant.waitFor();
-  assert((await prisAvant.inputValue()) === '0', 'congés de départ : 0 jour pris proposé d’office');
+  assert((await prisAvant.inputValue()) === '', 'congés de départ : aucun nombre d’avance');
   await p.getByText('Comment c’est calculé').waitFor();
-  assert(true, 'congés de départ : calcul montré (acquis, pris, reste)');
-  // Début au 01/09/2026 (après le 1er juin) : aucun droit à prendre, la question n'est pas posée.
-  await p.getByLabel('Premier jour d’accueil').fill('2026-09-01');
-  await p.getByText('le contrat a commencé après le 1er juin 2026', { exact: false }).waitFor();
-  assert(!(await prisAvant.isVisible()), 'congés de départ : pas de question quand aucun droit n’est à prendre');
-  await shot('01-contrat');
-  // T-119 : la carte des congés de départ allonge l'écran : le bouton est centré avant le clic (sinon sous la barre d'onglets).
-  const enregistrer = p.getByRole('button', { name: 'Enregistrer et reprendre l’historique' });
-  // Le message de la mesure d'usage (affiché à la création du compte) peut couvrir le bas de l'écran : le bouton est activé
-  // au clavier (focus puis Entrée), comme le ferait une AM qui utilise le clavier.
-  await enregistrer.focus();
-  await p.keyboard.press('Enter');
-  await p.getByText('Indique qui fournit les repas de l’enfant.').waitFor();
-  assert(true, 'contrat : choix des repas obligatoire');
-  await p.getByRole('radio', { name: /^Les parents/ }).click();
-  await enregistrer.focus();
-  await p.keyboard.press('Enter');
+  await prisAvant.fill('0');
+  await p.getByRole('radio', { name: /^Non$/ }).click();
+  await A.continuer(p);
+  await p.getByLabel(/malade, avec certificat, déjà retenus/).fill('0');
+  await A.continuer(p);
+  await p.getByRole('heading', { name: 'Récapitulatif · Lou' }).waitFor();
+  assert(await p.getByText(/^Mensualisation :/).isVisible(), 'récapitulatif : mensualisation calculée');
+  // « Modifier » : début au 01/09/2026 ; les congés de départ se refont (étape 6), puis retour au récapitulatif.
+  await p.getByRole('button', { name: 'Modifier : Le contrat' }).click();
+  await p.getByLabel('Date de début du contrat').fill('2026-09-01');
+  await A.continuer(p);
+  await A.continuer(p);
+  await p.getByText(/le contrat a commencé après le 1er juin 2026/).waitFor();
+  assert(!(await prisAvant.isVisible()), 'congés de départ refaits : pas de question quand aucun droit n’est à prendre');
+  await p.getByRole('radio', { name: /^Non$/ }).click();
+  await A.continuer(p);
+  await A.continuer(p);
+  await p.getByRole('heading', { name: 'Récapitulatif · Lou' }).waitFor();
+  await shot('01b-recapitulatif');
+  await p.getByRole('button', { name: 'Créer le contrat de Lou' }).click();
+  await p.getByRole('heading', { name: 'Contrat de Lou créé' }).waitFor();
+  assert(await p.getByText('Accueil prévu').isVisible(), 'contrat créé : le mois en cours, calculé');
+  assert((await p.locator('nav.tabbar').count()) === 1, 'barre d’onglets revenue après la création');
+  await p.getByRole('link', { name: /^Bulletins d’avant Arvela/ }).click();
   await p.getByText('1 mois sans bulletin').waitFor();
-  assert(true, 'contrat créé, historique demandé');
+  assert(true, 'bulletins d’avant Arvela : facultatifs, depuis l’écran de création');
 
   // Import PDF (pdf.js legacy)
   await p.locator('input[type=file]').setInputFiles(pdf);
@@ -116,6 +153,46 @@ async function run(scheme) {
   await p.getByRole('button', { name: 'Enregistrer ce mois' }).click();
   await p.getByText('Historique complet.').waitFor();
   assert(true, 'historique complet après import');
+
+  // T-122 : fiche de l'enfant, parents, absences, avenant, fin du contrat en trois temps.
+  await p.goto(base + '#/plus');
+  await p.locator('a.li', { hasText: 'Lou' }).first().click();
+  await p.getByRole('link', { name: /^Les parents et leur lien/ }).waitFor();
+  assert(await p.getByRole('link', { name: /^Absences et congés/ }).isVisible() && await p.getByRole('link', { name: /^Fin du contrat/ }).isVisible(), 'fiche de l’enfant : contrat, parents, absences, avenant, fin');
+  await shot('01c-fiche');
+  await p.getByRole('link', { name: /^Les parents et leur lien/ }).click();
+  assert((await p.getByLabel('E-mail du parent employeur (facultatif)').inputValue()) === 'parent@exemple.fr', 'parents : contact gardé avec le contrat');
+  await p.getByRole('heading', { name: 'Lien pour les parents' }).waitFor();
+  await p.getByRole('link', { name: 'Retour' }).click();
+  await p.getByRole('link', { name: /^Absences et congés/ }).click();
+  await p.getByRole('button', { name: 'Déclarer mon absence (tous mes contrats)' }).click();
+  await p.getByRole('heading', { name: 'Je serai absente' }).waitFor();
+  await p.keyboard.press('Escape');
+  assert(true, 'absences de Lou : la feuille « Je serai absente » s’ouvre');
+  await p.getByRole('link', { name: 'Retour' }).click();
+  await p.getByRole('link', { name: /^Changer le contrat/ }).click();
+  await p.getByRole('button', { name: 'Continuer' }).click();
+  await p.getByText(/^Pour continuer : indique la date d’effet/).waitFor();
+  await p.getByLabel('Date d’effet').fill('2026-11-01');
+  await p.getByRole('switch', { name: /^Le salaire/ }).check();
+  await p.getByRole('button', { name: 'Continuer' }).click();
+  assert(!(await p.getByText('Qui fournit les repas de l’enfant ?').count()), 'avenant : seules les parties cochées s’ouvrent');
+  await p.getByLabel('Taux horaire net').fill('3,70');
+  await p.getByText(/^Taux : 3,50\s€ → 3,70\s€/).waitFor();
+  await p.getByRole('button', { name: 'Enregistrer l’avenant' }).click();
+  assert(await toastHas(/^Avenant à partir du 01\/11\/2026/), 'avenant enregistré, retour à la fiche');
+  await p.getByRole('link', { name: /^Fin du contrat/ }).click();
+  await p.getByRole('button', { name: 'Continuer' }).click();
+  await p.getByText(/^Pour continuer : choisis pourquoi/).waitFor();
+  assert((await p.locator('[role=radio][aria-checked=true]').count()) === 0, 'fin : aucun motif choisi d’avance');
+  await p.getByRole('radio', { name: /^Les parents retirent l’enfant\b/ }).first().click();
+  await p.getByRole('button', { name: 'Continuer' }).click();
+  await p.getByRole('radio', { name: /^En main propre/ }).click();
+  await p.getByLabel('Date de remise en main propre').fill('2026-10-15');
+  await p.getByRole('radio', { name: /^Oui, effectué ou en cours/ }).click();
+  await p.getByRole('button', { name: 'Continuer' }).click();
+  await p.getByRole('heading', { name: 'Ce qui t’est dû' }).waitFor();
+  assert(true, 'fin du contrat en trois temps : ce qui t’est dû');
 
   // T-119 : le mois d'octobre du contrat repris a son montant (plus de mois bloqué faute de solde de congés).
   await p.goto(base + '#/mois');
@@ -327,7 +404,7 @@ async function run(scheme) {
   await ctx.setOffline(false);
 
   // Horizontal scroll ?
-  for (const h of ['', 'carnet', 'mois', 'plus', 'contrat/nouveau', 'conges', 'fin', 'fiscal', 'sauvegarde', 'pilote']) {
+  for (const h of ['', 'carnet', 'mois', 'plus', 'contrat/nouveau', 'reglages', 'conges', 'fin', 'fiscal', 'sauvegarde', 'pilote']) {
     await p.goto(base + '#/' + h);
     await p.waitForTimeout(150);
     const over = await p.evaluate(() => {

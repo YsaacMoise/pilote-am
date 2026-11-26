@@ -5,6 +5,7 @@
 //   VITE_FAKE_CLOUD=http://localhost:4180 npm run build
 //   node scripts/fake-cloud.mjs 4180 & node scripts/serve.mjs 4173 & node scripts/e2e-parent.cjs
 const { chromium } = require('playwright');
+const A = require('./e2e-assistant.cjs');
 const path = require('path');
 const fs = require('fs');
 const base = process.env.BASE || 'http://localhost:4173/pilote-am/';
@@ -51,17 +52,10 @@ async function axe(p, label) {
   await a.getByLabel('Adresse e-mail').fill('sonia@exemple.fr');
   await a.getByLabel('Mot de passe').fill('Motdepasse-solide');
   await a.getByRole('button', { name: 'Créer mon compte' }).click();
-  await a.getByRole('button', { name: 'Continuer ici pour l’instant' }).click();
-  await a.getByLabel('Ton prénom').fill('Sonia');
-  await a.getByRole('button', { name: 'Ajouter un enfant que tu accueilles' }).click();
-  await a.getByLabel('Prénom de l’enfant').fill('Lou');
-  await a.getByLabel('Nom de la famille').fill('Petit');
-  await a.getByLabel('Taux horaire net').fill('3,50');
-  await a.getByRole('radio', { name: /^Les parents/ }).click();
-  await a.getByRole('button', { name: /^Enregistrer/ }).first().click();
-  await a.waitForTimeout(500);
-  await a.goto(base + '#/plus');
-  await a.locator('a.li', { hasText: 'Lou' }).first().click();
+  // T-122 : profil « Toi », puis l'assistant d'ajout ; le lien des parents est dans la fiche de l'enfant.
+  await A.profil(a);
+  await A.ajouterEnfant(a, { prenom: 'Lou', famille: 'Petit', debut: '2026-11-02' });
+  await a.getByRole('link', { name: /^Créer le lien des parents/ }).click();
   await a.getByRole('heading', { name: 'Lien pour les parents' }).waitFor();
   await a.getByRole('button', { name: 'Créer le lien' }).click();
   await a.locator('.share-code').waitFor();
