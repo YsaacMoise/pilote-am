@@ -172,6 +172,12 @@ export function Today() {
           </Banner>
         )}
 
+        {day === t && cl.ouverture && (
+          <Banner tone="warn" icon="shield">
+            <strong>Demande de récupération par Arvela en cours</strong>
+            <div class="btn-row"><a class="btn btn-outline" href="#/compte">Voir</a></div>
+          </Banner>
+        )}
         {day === t && rappel === 'cle' && (
           <Banner tone="info" icon="shield">
             <strong>Protège ta clé de secours</strong>

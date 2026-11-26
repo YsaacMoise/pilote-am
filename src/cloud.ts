@@ -164,6 +164,14 @@ async function doLink(u: CloudUser, mode?: MergeMode) {
   const plan = planMerge(local, remote, { mode: mode ?? 'merge', localWins });
   if (plan.toLocal.length + plan.deleteLocal.length > 0 && localHasData()) await autoCopy(true);
   for (const r of plan.toLocal) await db.putRaw(r.s, r.value);
+  // T-125 (relecture R2) : en mode « garder ce téléphone », le coffre, la copie scellée, les paquets des clés d'accès et les
+  // repères du compte arrivent quand même sur le téléphone (ils ne sont jamais effacés en ligne, voir `envoyer`).
+  if (mode === 'phone') {
+    for (const d of remote) {
+      if (d.s !== 'kv' || !d.v || !(d.k === COFFRE || d.k === SEQUESTRE || d.k.startsWith(PAQUET) || d.k.startsWith(REPERE))) continue;
+      if ((await db.get('kv', d.k)) === undefined) await db.putRaw('kv', JSON.parse(d.v));
+    }
+  }
   for (const r of plan.deleteLocal) await db.delRaw(r.s, r.k);
   await envoyer(b, u.uid, [
     ...plan.toRemote.map((r) => ({ s: r.s, k: r.k, v: stable(forRemote(r.s, r.k, r.value)) })),
@@ -704,7 +712,8 @@ function attach(u: CloudUser): Promise<void> {
     await etablirCoffre(u);
     if (cle) { if (await ouvrirLocal()) await load(); renvoyerAttente(); await scellerSiBesoin(u); }
     // Demande d'ouverture en cours, montrée sur tous les téléphones du compte, avec « Annuler » (relecture T-125, M1).
-    if (cloudInfo().sequestre || !cle) void etatOuverture();
+    // L'adresse du compte est aussi notée là par le serveur, avant toute demande (relecture T-125, R1).
+    if (cloudInfo().sequestre || !cle || (await be?.sequestreClePublique().catch(() => null))) void etatOuverture();
     void recompterAnciens(lireVus(), true);
     await chiffrerEnLigne(u);
   }).catch((e) => console.warn('coffre', e));

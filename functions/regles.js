@@ -18,3 +18,17 @@ export function etatDemande(d, maintenant, delai = DELAI_MS, validite = VALIDITE
 export function contenuValide(contenu, uid, coffre) {
   return !!contenu && contenu.u === uid && contenu.c === coffre && typeof contenu.s === 'string';
 }
+
+/**
+ * Suivi de l'adresse du compte (relecture T-125, M2 puis R1). Rend ce qu'il faut faire :
+ * - 'noter' : première fois qu'on la voit (au branchement d'un téléphone, avant toute demande) ;
+ * - 'changee' : elle a changé : prévenir l'ancienne adresse, noter la nouvelle, refuser les demandes pendant le délai ;
+ * - 'ok' : stable depuis la première fois, ou depuis plus que le délai ;
+ * - 'attente' : changée il y a moins que le délai.
+ */
+export function decisionAdresse(cur, email, maintenant, delai = DELAI_MS) {
+  if (!cur) return 'noter';
+  if (cur.email !== email) return 'changee';
+  if (cur.depuis === cur.premier || maintenant - cur.depuis >= delai) return 'ok';
+  return 'attente';
+}

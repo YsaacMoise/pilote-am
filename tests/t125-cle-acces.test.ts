@@ -7,7 +7,7 @@ import { codeDeSecours, nouveauSecret, ouvrirCle } from '../src/sync/coffre';
 import { lireOuverture, sceller, type Scelle } from '../src/sync/sequestre';
 import { aUnFilet } from '../src/rappels';
 // @ts-expect-error module JavaScript des fonctions serveur, sans types
-import { contenuValide, DELAI_MS, etatDemande, VALIDITE_MS } from '../functions/regles.js';
+import { contenuValide, decisionAdresse, DELAI_MS, etatDemande, VALIDITE_MS } from '../functions/regles.js';
 
 const prfDe = () => crypto.getRandomValues(new Uint8Array(32));
 
@@ -72,6 +72,18 @@ describe('T-125 : copie scellée chez Arvela (procédé de Cloud KMS : RSA-OAEP 
     expect(etatDemande(d, 1000 + VALIDITE_MS + 1)).toBe('expiree');
     expect(etatDemande({ ...d, annulee: true }, 2000)).toBe('aucune');
     expect(etatDemande({ ...d, ouverte: true }, 2000)).toBe('ouverte');
+  });
+});
+
+describe('T-125 : suivi de l’adresse du compte (fonctions serveur)', () => {
+  it('notée dès la première fois ; changée : ancienne prévenue, demandes refusées 72 h ; puis acceptées', () => {
+    expect(decisionAdresse(undefined, 'a@x.fr', 0)).toBe('noter');
+    const premier = { email: 'a@x.fr', depuis: 100, premier: 100 };
+    expect(decisionAdresse(premier, 'a@x.fr', 200)).toBe('ok');
+    expect(decisionAdresse(premier, 'voleur@x.fr', 200)).toBe('changee');
+    const change = { email: 'voleur@x.fr', depuis: 200, premier: 100 };
+    expect(decisionAdresse(change, 'voleur@x.fr', 200 + DELAI_MS - 1)).toBe('attente');
+    expect(decisionAdresse(change, 'voleur@x.fr', 200 + DELAI_MS)).toBe('ok');
   });
 });
 

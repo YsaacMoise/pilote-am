@@ -8,11 +8,11 @@
 //   - avec une trace de chaque demande, annulation et ouverture (collection sequestre-journal, fermée aux clients).
 // Le contenu déchiffré n'est rendu que s'il porte l'identifiant de ce compte.
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
-import { auth as authV1 } from 'firebase-functions/v1';
+import * as functionsV1 from 'firebase-functions/v1';
 import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { KeyManagementServiceClient } from '@google-cloud/kms';
-import { DELAI_MS, contenuValide, etatDemande } from './regles.js';
+import { DELAI_MS, contenuValide, decisionAdresse, etatDemande } from './regles.js';
 
 initializeApp();
 const db = getFirestore();
@@ -38,14 +38,15 @@ const compteRef = (uid) => db.doc(`sequestre-comptes/${uid}`);
  */
 async function adresseStable(uid, email) {
   const cur = (await compteRef(uid).get()).data();
-  if (!cur) { const t = Date.now(); await compteRef(uid).set({ email, depuis: t, premier: t }); return true; }
-  if (cur.email !== email) {
+  const d = decisionAdresse(cur, email, Date.now());
+  if (d === 'noter') { const t = Date.now(); await compteRef(uid).set({ email, depuis: t, premier: t }); return true; }
+  if (d === 'changee') {
     await mail(cur.email, 'Arvela : adresse de ton compte changée', `L’adresse de ton compte Arvela est devenue ${email}. Si ce n’est pas toi, écris à contact@arvela.fr.`);
-    await compteRef(uid).set({ email, depuis: Date.now(), ancienne: cur.email });
+    await compteRef(uid).set({ email, depuis: Date.now(), premier: cur.premier, ancienne: cur.email });
     await journal(uid, 'adresse changée');
     return false;
   }
-  return Date.now() - cur.depuis >= DELAI_MS || cur.depuis === cur.premier;
+  return d === 'ok';
 }
 const demandeRef = (uid) => db.doc(`sequestre-demandes/${uid}`);
 const journal = (uid, quoi) => db.collection('sequestre-journal').add({ uid, quoi, quand: FieldValue.serverTimestamp() });
@@ -75,7 +76,11 @@ export const sequestreDemander = onCall(opts, async (req) => {
 });
 
 export const sequestreEtat = onCall(opts, async (req) => {
-  const { uid } = compte(req);
+  // Appelé au branchement de chaque téléphone : l'adresse du compte est notée dès là, avant toute demande (relecture R1),
+  // même si elle n'est pas encore confirmée.
+  if (!req.auth?.uid) throw new HttpsError('unauthenticated', 'Connecte-toi.');
+  const uid = req.auth.uid;
+  if (req.auth.token.email) await adresseStable(uid, req.auth.token.email);
   const cur = (await demandeRef(uid).get()).data();
   const etat = etatDemande(cur, Date.now());
   return etat === 'attente' || etat === 'prete' ? { pret: cur.pret } : { pret: null };
@@ -96,14 +101,15 @@ export const sequestreOuvrir = onCall(opts, async (req) => {
   const { uid, email, authTime } = compte(req);
   // Connexion récente exigée pour ouvrir (relecture T-125, M2) : une session restée ouverte ne suffit pas.
   if (Date.now() - authTime > 60 * 60 * 1000) throw new HttpsError('unauthenticated', 'Reconnecte-toi, puis recommence.');
+  // Copie et clé vérifiées avant de prendre la demande (relecture r4).
+  const s = await lireSequestre(uid);
+  if (!s || !CLE) throw new HttpsError('failed-precondition', 'Aucune copie scellée.');
   // La demande est prise par une transaction : deux appels ne l'ouvrent pas deux fois, une annulation l'emporte (m1).
   await db.runTransaction(async (tx) => {
     const cur = (await tx.get(demandeRef(uid))).data();
     if (etatDemande(cur, Date.now()) !== 'prete' || cur.email !== email) throw new HttpsError('failed-precondition', 'Pas encore.');
     tx.set(demandeRef(uid), { ouverte: true, ouverteLe: Date.now() }, { merge: true });
   });
-  const s = await lireSequestre(uid);
-  if (!s || !CLE) throw new HttpsError('failed-precondition', 'Aucune copie scellée.');
   let contenu;
   try {
     const [res] = await kms.asymmetricDecrypt({ name: CLE, ciphertext: Buffer.from(s.c, 'base64url') });
@@ -119,7 +125,7 @@ export const sequestreOuvrir = onCall(opts, async (req) => {
 });
 
 /** Suppression du compte : demandes, suivi d'adresse et journal du compte effacés (relecture T-125, m6 ; registre). */
-export const sequestreNettoyage = authV1.user().onDelete(async (u) => {
+export const sequestreNettoyage = functionsV1.region('europe-west9').auth.user().onDelete(async (u) => {
   await demandeRef(u.uid).delete();
   await compteRef(u.uid).delete();
   const j = await db.collection('sequestre-journal').where('uid', '==', u.uid).get();

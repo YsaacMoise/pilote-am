@@ -281,7 +281,9 @@ function CleSecours() {
       {voir ? <p class="share-code" style={{ fontSize: '1.1rem', wordBreak: 'break-all' }} aria-label="Clé de secours">{code}</p> : <button class="btn btn-ghost btn-block" onClick={() => setVoir(true)}>Afficher la clé</button>}
       {!state.settings.cleGardee && voir && <button class="btn btn-ghost btn-block" onClick={() => void saveSettings({ cleGardee: today() })}>Je l’ai notée</button>}
       {cl.ouverture && <Banner tone="warn">Demande de récupération par Arvela en cours</Banner>}
-      {cl.ouverture && <button class="btn btn-danger btn-block" onClick={async () => { await (await cloud()).annulerOuverture(); }}>Annuler la demande</button>}
+      {cl.ouverture && <button class="btn btn-danger btn-block" onClick={async () => {
+        try { await (await cloud()).annulerOuverture(); toast('Demande annulée.'); } catch (e) { toast((e as Error).message || 'Ça n’a pas marché. Réessaie.', undefined, 'warn'); }
+      }}>Annuler la demande</button>}
       {imprimer && (
         <div class="feuille-cle" aria-hidden="true">
           <h1>Arvela : ma clé de secours</h1>
