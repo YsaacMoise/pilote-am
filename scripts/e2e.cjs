@@ -79,6 +79,11 @@ async function run(scheme) {
   assert(true, 'contrat : champ brut ouvert puis refermé (brut calculé gardé)');
   await p.getByRole('radio', { name: /^Par jour d’accueil/ }).click();
   await p.getByText('Reprise d’un contrat en cours').waitFor();
+  // T-119 : contrat commencé avant l'app : Arvela calcule les congés de départ ; l'AM ne donne que les jours déjà pris (0 proposé).
+  const prisAvant = p.getByLabel('Jours de congés déjà pris depuis le 1er juin 2026');
+  assert((await prisAvant.inputValue()) === '0', 'congés de départ : 0 jour pris proposé d’office');
+  await p.getByText('Comment c’est calculé').waitFor();
+  assert(true, 'congés de départ : calcul montré (acquis, pris, reste)');
   await shot('01-contrat');
   await p.getByRole('button', { name: 'Enregistrer et reprendre l’historique' }).click();
   await p.getByText('Indique qui fournit les repas de l’enfant.').waitFor();
@@ -98,6 +103,11 @@ async function run(scheme) {
   await p.getByRole('button', { name: 'Enregistrer ce mois' }).click();
   await p.getByText('Historique complet.').waitFor();
   assert(true, 'historique complet après import');
+
+  // T-119 : le mois d'octobre du contrat repris a son montant (plus de mois bloqué faute de solde de congés).
+  await p.goto(base + '#/mois');
+  await p.locator('.summary .total').first().waitFor();
+  assert(!(await p.getByText('Ce mois n’est pas calculé').isVisible()) && !(await p.getByText('Indique ton solde de congés').isVisible()), 'congés de départ : montant du mois affiché, aucune demande de solde');
 
   // Pointage en un geste + annulation
   await p.goto(base + '#/');

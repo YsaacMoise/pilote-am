@@ -657,6 +657,16 @@ function premiersJoursAccueil(c: Contract, a: ISODate, b: ISODate, n: number): I
 }
 
 export function congesDeDepart(c: Contract, trackedFrom: ISODate, r: ReponsesDepart = {}, enfants = 0, amMoins21Jusqu?: number): CongesDepart {
+  const avec = congesDeDepartBrut(c, trackedFrom, r, enfants, amMoins21Jusqu);
+  if (!(r.absencePrec ?? 0) && !(r.absenceCours ?? 0)) return avec;
+  // Règle T-119, point 3.4 (plafond) : une absence non payée ne donne jamais plus de jours qu'aucune absence (le décompte le
+  // plus favorable, qui ne joue qu'avec une absence, peut dépasser le décompte mensuel d'une période sans absence).
+  const sans = congesDeDepartBrut(c, trackedFrom, { pris: r.pris }, enfants, amMoins21Jusqu);
+  const droitsPrec = Math.min(avec.droitsPrec, sans.droitsPrec);
+  return { ...avec, droitsPrec, cpRestants: Math.max(0, droitsPrec - Math.max(0, r.pris ?? 0)), cpEnCours: Math.min(avec.cpEnCours, sans.cpEnCours) };
+}
+
+function congesDeDepartBrut(c: Contract, trackedFrom: ISODate, r: ReponsesDepart, enfants: number, amMoins21Jusqu?: number): CongesDepart {
   const y = cpPeriodStartYear(trackedFrom);
   const p = cpPeriod(y), pp = cpPeriod(y - 1);
   const jusqua = addDays(trackedFrom, -1);
@@ -669,7 +679,8 @@ export function congesDeDepart(c: Contract, trackedFrom: ISODate, r: ReponsesDep
   const ctx = makeCtx({ ...c, trackedFrom: c.start, end: undefined }, [], absence, trackedFrom, enfants, amMoins21Jusqu);
   const prec = c.start < p.from ? acquisition(ctx, y - 1, enfants) : undefined;
   const droitsPrec = prec ? prec.jours : 0;
-  const cpEnCours = jusqua >= coursDu ? Math.round(joursAcquis(ctx, coursDu, jusqua) * 100) / 100 : 0;
+  // Au centième, demi vers le haut (règle T-119, 3.3) : 11,875 → 11,88 (le petit ajout corrige l'écriture binaire du nombre).
+  const cpEnCours = jusqua >= coursDu ? Math.round(joursAcquis(ctx, coursDu, jusqua) * 100 + 1e-6) / 100 : 0;
   const out: CongesDepart = {
     droitsPrec, ...(prec ? { precDu, precAu: pp.to } : {}),
     cpRestants: Math.max(0, droitsPrec - Math.max(0, r.pris ?? 0)), cpEnCours, depuis: p.from, jusqua,

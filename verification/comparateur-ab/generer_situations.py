@@ -867,6 +867,7 @@ def grille():
     S += situations_t076_e()  # T-076 : decisions D15 a D19 et R2 (relecteur independant)
     S += situations_t103()  # T-103 : regles du tableau rapports/T-103-inventaire.md (calculateur-arvela)
     S += situations_t115()  # T-115 (R3) : brut depuis le net, F1 et F2 (regles/t115-net-brut.md)
+    S += situations_t119()  # T-119 : conges de depart (regles/t119-conges-depart.md)
     return S
 
 
@@ -2043,6 +2044,40 @@ def situations_t115():
                  [{"id": f"r{i}", "type": "brut_horaire", "net": n, "date": d, "region": r}
                   for i, (n, d, r) in enumerate(refus)],
                  theme="T-115 brut horaire : Mayotte (A4) et avant 2024 (A5)"))
+    return S
+
+
+def situations_t119():
+    """T-119 : conges de depart au debut du suivi (regles/t119-conges-depart.md, calculateur-arvela, § 3 et § 5).
+    Type « conges_depart » {type, suivi, pris, absence_prec, absence_cours} sur le contrat de la situation ;
+    sorties droits_prec (D, § 3.1), cp_restants (§ 3.2), cp_en_cours (§ 3.3, centiemes de jour, entier).
+    Anciennetes 3 mois, 14 mois, 3 ans ; 3, 4 et 5 jours par semaine ; sans et avec absence ; annee complete ;
+    suivi au 01/11/2026. Aucun resultat attendu n'est calcule ici."""
+    S = []
+    # Absences assez longues pour baisser les soldes malgre le plafond du § 3.4 (le plus petit avec et sans absence).
+    rythmes = {"3J": semaine([1, 3, 5], "08:00", "16:00"), "4J": P4x8, "5J": P5x8}
+    anciennetes = {
+        # debut, (pris, absence_prec, absence_cours) sans absence, puis avec absence
+        "3M": ("2026-08-01", (0, 0, 0), (0, 0, 15)),
+        "14M": ("2025-09-01", (0, 0, 0), (5, 20, 10)),
+        "3A": ("2023-11-01", (0, 0, 0), (12, 25, 15)),
+    }
+    for an, (debut, sans, avec) in anciennetes.items():
+        for ry, pl in rythmes.items():
+            k = contrat_grille("C52", "H40", "T500", debut=debut, planning=pl)
+            for suf, (p, ap, ac) in (("SANS", sans), ("ABS", avec)):
+                calc = [{"id": "cd", "type": "conges_depart", "suivi": "2026-11-01", "pris": p,
+                         "absence_prec": ap, "absence_cours": ac}]
+                S.append(sit(f"S119-{an}-{ry}-{suf}", "congés de départ", k, calc,
+                             theme="T-119 congés de départ (D, reste, en cours)"))
+    # P > D (§ 3.2 : reste nul) et suivi au 1er juin (fenetre en cours vide).
+    k = contrat_grille("C52", "H40", "T500", debut="2025-09-01", planning=P5x8)
+    S.append(sit("S119-14M-5J-PRIS-SUP", "congés de départ", k,
+                 [{"id": "cd", "type": "conges_depart", "suivi": "2026-11-01", "pris": 30, "absence_prec": 0,
+                   "absence_cours": 0}], theme="T-119 congés de départ : pris supérieur aux droits"))
+    S.append(sit("S119-14M-5J-JUIN", "congés de départ", k,
+                 [{"id": "cd", "type": "conges_depart", "suivi": "2026-06-01", "pris": 0, "absence_prec": 3,
+                   "absence_cours": 0}], theme="T-119 congés de départ : suivi au 1er juin"))
     return S
 
 

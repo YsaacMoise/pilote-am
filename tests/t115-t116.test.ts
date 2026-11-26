@@ -260,6 +260,8 @@ describe('T-119 : congés de départ calculés par Arvela (calculateur-arvela, r
     expect(d.cpEnCours).toBe(12.5);
     // 10 jours d'absence en juin 2026 ne font rien perdre : décompte en jours d'accueil (110 − 10) ÷ 20 = 5 périodes → 12,5
     // (le plus favorable, T-103 C10 bis) ; 30 jours : (110 − 30) ÷ 20 = 4 périodes, moins que 12,5.
+    // Plafond (règle, 3.4) : 5 jours d'absence donneraient (110 − 5) ÷ 20 × 2,5 = 13,125 ; jamais plus que sans absence : 12,5.
+    expect(congesDeDepart(ct({ start: '2025-09-01', trackedFrom: T, balances: sans }), T, { absenceCours: 5 }).cpEnCours).toBe(12.5);
     expect(congesDeDepart(ct({ start: '2025-09-01', trackedFrom: T, balances: sans }), T, { absenceCours: 10 }).cpEnCours).toBe(12.5);
     const e = congesDeDepart(ct({ start: '2025-09-01', trackedFrom: T, balances: sans }), T, { absenceCours: 30 });
     expect(e.cpEnCours).toBeLessThan(12.5);

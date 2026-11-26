@@ -16,6 +16,7 @@ from .absences import (assimilation_cp, assimilation_cp_absence_payee, qualifier
 from .conges import (conges_accueil_occasionnel, salaire_accueil_occasionnel, acquisition_cp, acquisition_cp_periode, jours_enfants_a_charge, jours_fractionnement, decompte_jours_cp,
                      indemnite_cp, complement_cp_annee_complete, paiement_cp_annee_incomplete,
                      indemnite_cp_prise_partielle, conges_apres_changement_type)
+from .conges_depart import conges_de_depart
 from .indemnites import (minimum_entretien_journalier, verifier_entretien_journalier, indemnite_entretien_mois,
                          indemnite_repas_mois, indemnite_kilometrique, indemnite_kilometrique_mois,
                          duree_travail_art99)

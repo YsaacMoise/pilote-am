@@ -2149,6 +2149,26 @@ def ctx_mois(s, m, ctx=None):
     return ctx
 
 
+def conges_depart_b(ctx, k):
+    """T-119 (regles/t119-conges-depart.md, § 3) : soldes de conges au debut du suivi, calcules par B
+    (conges_de_depart). L'adaptateur ne fait que traduire le contrat : debut, type d'annee, minutes du planning par
+    jour (0 = lundi), semaines sans accueil, semaines de CP de l'AM, region, enfants a charge. Sorties : droits_prec
+    (D), cp_restants, cp_en_cours (centiemes de jour, entier)."""
+    noms = ("droits_prec", "cp_restants", "cp_en_cours")
+    contrat = {"debut": ctx.debut, "type_annee": ctx.type, "planning": dict(ctx.plan_min), "region": ctx.region,
+               "semaines_sans_accueil": sorted(ctx.sans_accueil) if ctx.type == "incomplete" else [],
+               "planning_variable": ctx.pv, "cdd": ctx.cdd}
+    if ctx.k.get("semaines_cp_am") is not None:
+        contrat["semaines_cp_am"] = [d_(x) for x in ctx.k["semaines_cp_am"]]
+    try:
+        r = appel("conges_de_depart", contrat, d_(k["suivi"]), pris_depuis_juin=k.get("pris", 0),
+                  absence_prec=k.get("absence_prec", 0), absence_cours=k.get("absence_cours", 0),
+                  enfants_a_charge=ctx.k.get("enfants_a_charge", 0), age_am_au_30_avril=ctx.k.get("age_am"))["resultat"]
+    except Refus as e:
+        return {n: e for n in noms}
+    return {"droits_prec": r["droits_prec"], "cp_restants": r["cp_restants"], "cp_en_cours": r["cp_en_cours_centiemes"]}
+
+
 def composition(s):
     ctx = Ctx(s)
     out = {}
@@ -2223,6 +2243,8 @@ def composition(s):
                                              reg)["resultat"]["brut_horaire_centimes"]}
             except Refus as e:
                 res = {"brut_horaire": e}
+        elif t == "conges_depart":
+            res = conges_depart_b(ctx, k)  # T-119 : regles/t119-conges-depart.md, § 3
         elif t == "minimum_conventionnel":
             # T-077 (R2) : minimum brut (grille ; 0,281 x SMIC de la region) et repere net Urssaf de la region.
             res = {}

@@ -33,6 +33,8 @@ import * as RATES_A from '__A_RACINE__/src/engine/rates';
 import * as REGIONS_A from '__A_RACINE__/src/engine/regions';
 // T-115 (R3) : brut horaire calculé depuis le net (F2).
 import * as BRUT_A from '__A_RACINE__/src/engine/brut';
+// T-119 : congés de départ.
+import * as CONGES_A from '__A_RACINE__/src/engine/conges';
 import { lastDay, monthOf } from '__A_RACINE__/src/engine/dates';
 // T-027 : fonctions publiques du moteur A pour les kilomètres et les événements familiaux (signatures seulement).
 import { controleKm } from '__A_RACINE__/src/engine/km';
@@ -392,6 +394,15 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       if ((RATES_A as any).ratesAtRegion) out.minimum_net = ok((RATES_A as any).ratesAtRegion(k.date, (REGIONS_A as any).regionDe(ctx.c)).minConvNet);
       if (out.minimum_net.valeur === undefined) out.minimum_net = absent('A : aucun repère net à cette date');
       break;
+    case 'conges_depart': {
+      // T-119 : congés de départ calculés par l'app depuis le début du contrat (regles/t119-conges-depart.md).
+      const d = (CONGES_A as any).congesDeDepart({ ...ctx.c, trackedFrom: k.suivi }, k.suivi, { pris: k.pris ?? 0, absencePrec: k.absence_prec ?? 0, absenceCours: k.absence_cours ?? 0 }, enfants, ctx.amMoins21Jusqu);
+      if (d.aConfirmer) { const x = refus(`A : ${d.aConfirmer}`); out.droits_prec = x; out.cp_restants = x; out.cp_en_cours = x; break; }
+      out.droits_prec = ok(d.droitsPrec);
+      out.cp_restants = ok(d.cpRestants);
+      out.cp_en_cours = ok(Math.round(d.cpEnCours * 100));
+      break;
+    }
     case 'brut_horaire': {
       // T-115 (R3) : brut horaire affiché au contrat (F2) ; région donnée par la situation, sinon celle du contrat.
       // Les situations nomment les régions comme le moteur B (« alsace_moselle ») : traduites vers les noms de A.
