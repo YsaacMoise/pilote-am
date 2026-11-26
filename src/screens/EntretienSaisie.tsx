@@ -1,4 +1,5 @@
-// T-044 et T-044b : saisie de l'indemnité d'entretien du contrat, par heure ou par jour, sans choix présélectionné.
+// T-044 et T-044b : saisie de l'indemnité d'entretien du contrat, par heure ou par jour. T-118 (ajout du DG du 26/11) : un
+// nouveau contrat arrive avec « par jour » coché d'avance, visible et modifiable.
 // CCN art. 114.1 : « versée en cas de travail effectif, par heure de travail. Le montant horaire de cette indemnité est
 // prévu dans le contrat de travail. » Un montant par jour reste possible : un jour d'une autre durée que le planning est
 // alors en partie « à confirmer » (payroll.ts).

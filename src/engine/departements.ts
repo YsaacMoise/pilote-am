@@ -71,3 +71,11 @@ export function reponseSaisie(saisie: string, origine: ReponseLieu): ReponseLieu
   if (!origine.departement && origine.alsaceMoselle !== undefined) return { departement: undefined, alsaceMoselle: origine.alsaceMoselle, mayotte: origine.mayotte };
   return { departement: undefined, alsaceMoselle: undefined, mayotte: undefined };
 }
+
+/**
+ * T-118 (ajout du DG du 26/11) : département du profil de l'AM, valable pour tous ses contrats : celui du dernier contrat
+ * saisi qui en a un. Aucune donnée nouvelle : il est lu dans les contrats, où il est déjà enregistré.
+ */
+export function departementDesContrats(cs: readonly { departement?: string; createdAt?: number }[]): string | undefined {
+  return [...cs].filter((x) => !!x.departement).sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0]?.departement;
+}
