@@ -175,7 +175,6 @@ export function Today() {
         {day === t && rappel === 'cle' && (
           <Banner tone="info" icon="shield">
             <strong>Protège ta clé de secours</strong>
-            <span>Plus besoin de sauvegarde chaque semaine : tout est copié dans ton compte. Le carnet y est chiffré avec ta clé de secours ; mets-la à l’abri pour ne jamais le perdre, même avec ton téléphone.</span>
             <div class="btn-row">
               <BoutonCleAcces mode="proteger" />
               <a class="btn btn-ghost" href="#/compte">Autres moyens</a>
@@ -185,7 +184,6 @@ export function Today() {
         {day === t && rappel === 'cle-manquante' && (
           <Banner tone="warn" icon="shield">
             <strong>Entre ta clé de secours</strong>
-            <span>Sans elle, ce téléphone ne lit pas le carnet ni la case handicap, et ses nouvelles notes du carnet attendent sur lui sans partir dans ton compte. Entre-la vite, ou fais une sauvegarde dans Fichiers.</span>
             <div class="btn-row"><BoutonCleAcces mode="ouvrir" /><a class="btn btn-outline" href="#/compte">Entrer ma clé</a><a class="btn btn-ghost" href="#/sauvegarde">Sauvegarder</a></div>
           </Banner>
         )}

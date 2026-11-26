@@ -117,6 +117,18 @@ Clé : secret de 128 bits tiré au hasard sur le téléphone, montré à l’AM 
 
 Effets sur les risques : risque 1 (accès illégitime) fortement réduit pour ces données : un accès à la base, y compris par l’éditeur ou Google, ne les révèle plus, sauf dans les sauvegardes faites avant le chiffrement (98 jours au plus ; Google : 180 jours au plus). Risque 3 (disparition) : nouveau cas, la perte de la clé de secours et de tous les appareils rend ces données illisibles ; mesure : invite à garder la clé tant qu’elle ne l’est pas, fichier et affichage dans Compte, texte clair sur la conséquence. Risque résiduel : un appareil resté sur une ancienne version perd la case handicap et peut abîmer le lien des parents jusqu’à sa mise à jour ; mesure : repère d’appareil et message « mets à jour ».
 
+### 2 quater. Clé de secours sans perte possible (T-125, 26 novembre 2026)
+
+Demande du DG : le carnet chiffré ne doit pas être perdu avec le téléphone et la clé de secours, puisqu’il est gardé 5 ans. Quatre filets :
+
+| Filet | Ce qui est gardé, où | Qui peut ouvrir |
+|---|---|---|
+| Clé d’accès Face ID ou empreinte (WebAuthn, extension PRF) | Paquet chiffré dans le compte (`kv/cleacces-…`) ; la clé d’accès dans le trousseau iCloud ou le gestionnaire Google | Quiconque déverrouille un appareil relié au compte Apple ou Google de l’AM |
+| E-mail à soi-même, impression, fichier | Chez l’AM (sa messagerie, ses papiers, ses fichiers) | Quiconque y a accès |
+| Copie scellée chez Arvela (décision du DG) | `kv/sequestre`, chiffrée avec une clé Cloud KMS de niveau HSM, à Paris | Les fonctions serveur d’Arvela, à la demande de l’AM connectée, après 72 h, avec e-mail et trace ; techniquement, qui contrôle les comptes d’administration d’Arvela |
+
+Effets : risque 3 (disparition) : le carnet n’est plus perdu que si l’AM perd à la fois ses appareils, son compte Apple ou Google, sa clé (e-mail, papier, fichier) et l’accès à son compte Arvela (la copie scellée exige d’être connectée). Risque 1 (accès illégitime) : la copie scellée rouvre un chemin d’accès par Arvela que l’option b avait fermé ; mesures : clé non exportable dans un HSM, seul le compte de service des fonctions peut déchiffrer, délai de 72 h et e-mail à chaque demande (l’AM peut annuler), contenu lié au compte, journaux d’audit KMS ; **la double authentification des comptes d’administration (mesure 1) devient bloquante avant d’activer la copie scellée**. Point à revoir : l’option b reposait sur « Arvela ne peut pas lire » ; avec la copie scellée, Arvela peut techniquement rouvrir la clé, ce qui affaiblit cet argument (le chiffrement ne change de toute façon rien à la question HDS, regles/t123-hds.md).
+
 ---
 
 ## 3. Risques
@@ -224,5 +236,6 @@ Effets sur les risques : risque 1 (accès illégitime) fortement réduit pour ce
 
 Modèle remis par le sous-traitant, que chaque AM peut reprendre à son compte.
 | 25 novembre 2026 | T-104 : raison des quatre absences protégées de l’AM enregistrée (décision du DG du 22/11/2026), avec la nature de l’accident du travail ; périodes d’accueil de l’accueil occasionnel ; avenant d’un contrat à horaires variables (forme, cycle, heures payées chaque mois). Base 9.2.b ; pas d’hébergement certifié (CSP L1111-8). Rien de nouveau vers les parents. |
+| 26 novembre 2026 | T-125 : filets de la clé de secours (clé d’accès PRF, e-mail, impression, fichier) et copie scellée chez Arvela (Cloud KMS HSM, Paris ; section 2 quater) ; double authentification des administrateurs bloquante avant activation |
 | 26 novembre 2026 | T-121, option b : chiffrement de bout en bout du carnet, de la case handicap et du secret du lien (section 2 ter) ; consentement explicite des parents daté ; effacement à 5 ans ; risques 1 et 3 revus |
 | 26 novembre 2026 | T-115 et T-116 : brut calculé depuis le net sur le téléphone (aucun calcul en ligne) ; champ oui ou non `balances.cpSaisi` (solde de congés de départ donné), sans donnée nouvelle sur la personne. Aucun risque nouveau ; rien de nouveau vers les parents. |

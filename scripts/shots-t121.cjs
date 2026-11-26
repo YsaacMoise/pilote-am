@@ -22,7 +22,7 @@ const contrat = {
   accueilOccasionnel: false, cdd: false, reposHebdo: 7, trackedFrom: '2026-09-01',
   balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0, cpSaisi: true }, history: [], createdAt: 1,
 };
-const reglages = { k: 'settings', v: { amName: 'Sonia', enfantsACharge: 0, onboarded: true, conditionsAcceptees: { version: process.env.CGU || '2026-11-26', date: today } } };
+const reglages = { k: 'settings', v: { amName: 'Sonia', enfantsACharge: 0, onboarded: true, conditionsAcceptees: { version: process.env.CGU || '2026-11-26-2', date: today } } };
 
 (async () => {
   await post('/reset-all', {});

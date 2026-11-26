@@ -21,7 +21,7 @@ export const LEGAL = {
 };
 
 /** Version des conditions d'utilisation : à changer quand leur contenu change, pour redemander l'accord. */
-export const CONDITIONS_VERSION = '2026-11-26';
+export const CONDITIONS_VERSION = '2026-11-26-2';
 
 /** Accord donné aux conditions d'utilisation, enregistré dans les réglages copiés dans le compte. */
 export function acceptationConditions(now: Date = new Date()): { version: string; date: string } {
@@ -35,7 +35,7 @@ export function conditionsAAccepter(s: { onboarded?: boolean; conditionsAcceptee
 }
 
 /** Message affiché une fois aux comptes existants, jusqu'à leur accord. */
-export const MESSAGE_CONDITIONS = 'Les conditions d’utilisation ont changé le 26 novembre 2026 : le carnet de liaison, la case handicap ou maladie et le code du lien des parents sont chiffrés de bout en bout avec ta clé de secours, l’accord écrit des parents est noté dans l’app, et le carnet est effacé 5 ans après la fin du dernier contrat de l’enfant.';
+export const MESSAGE_CONDITIONS = 'Les conditions d’utilisation ont changé le 26 novembre 2026 : carnet chiffré de bout en bout, protection de ta clé de secours (Face ID, copie scellée chez Arvela).';
 
 /** Phrase de responsabilité reprise dans l'app et dans le message envoyé au parent (C-120, C-121) */
 /** Pajemploi+ : vérifié sur Légifrance le 06/11/2026 (LFSS 2026, article 101 : « Le I du présent article entre en vigueur le 1er septembre 2027 ») */

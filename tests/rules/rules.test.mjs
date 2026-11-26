@@ -67,6 +67,10 @@ const cas = [
   ['26 septies. T-125 : Alice réécrit son paquet (renvoi par la synchronisation)', () => assertSucceeds(setDoc(doc(alice, 'users/alice/data/kv~cleacces-AbC_d-1'), { s: 'kv', k: 'cleacces-AbC_d-1', v: '{"k":"cleacces-AbC_d-1","v":{"version":1}}', t: serverTimestamp() }))],
   ['26 octies. T-125 : Alice retire un paquet', () => assertSucceeds(deleteDoc(doc(alice, 'users/alice/data/kv~cleacces-AbC_d-1')))],
   ['26 nonies. T-125 : Bob range un paquet chez Alice : refusé', () => assertFails(setDoc(doc(bob, 'users/alice/data/kv~cleacces-X'), { s: 'kv', k: 'cleacces-X', v: '{}', t: serverTimestamp() }))],
+  ['26 decies. T-125 : Alice lit sa demande d’ouverture : refusé (fonctions serveur seulement)', () => assertFails(getDoc(doc(alice, 'sequestre-demandes/alice')))],
+  ['26 undecies. T-125 : Alice écrit une demande d’ouverture : refusé', () => assertFails(setDoc(doc(alice, 'sequestre-demandes/alice'), { pret: 0 }))],
+  ['26 duodecies. T-125 : Alice lit le journal des ouvertures : refusé', () => assertFails(getDocs(collection(alice, 'sequestre-journal')))],
+  ['26 terdecies. T-125 : Alice écrit un e-mail à envoyer : refusé', () => assertFails(setDoc(doc(alice, 'mail/x'), { to: 'a@b.fr' }))],
   ['27. Écriture ailleurs que sous users/{uid}/data : refusée', () => assertFails(setDoc(doc(alice, 'autre/alice'), { a: 1 }))],
   // Lien parent
   ['28. Anonyme lit un lien dont il a l’identifiant', () => assertSucceeds(getDoc(doc(anon, `partages/${P0}`)))],

@@ -7,7 +7,7 @@ import { PrfAbsent, supportPrf, type Support } from '../sync/cleacces';
 
 const cloud = () => import('../cloud');
 
-export const TEXTE_SANS_PRF = 'Ce navigateur ne permet pas de protéger la clé avec Face ID ou l’empreinte. Envoie-la-toi par e-mail ou imprime-la (Plus › Compte).';
+export const TEXTE_SANS_PRF = 'Face ID indisponible sur ce navigateur.';
 
 export function useSupportPrf(): Support {
   const [s, setS] = useState<Support>('inconnu');
@@ -27,14 +27,14 @@ export function BoutonCleAcces({ mode, block }: { mode: 'proteger' | 'ouvrir'; b
       const c = await cloud();
       if (mode === 'proteger') {
         await c.protegerParCleAcces();
-        toast('Clé protégée : sur un nouveau téléphone relié au même compte Apple ou Google, Face ID ou l’empreinte suffira.', undefined, 'ok');
+        toast('Clé protégée.', undefined, 'ok');
       } else {
         await c.ouvrirParCleAcces();
       }
     } catch (e) {
       const err = e as Error & { name?: string };
       if (err.name === 'NotAllowedError') toast('Annulé.');
-      else if (err.name === 'InvalidStateError') toast('Ce trousseau a déjà une clé d’accès Arvela pour ce compte.');
+      else if (err.name === 'InvalidStateError') toast('Déjà protégée sur ce trousseau.');
       else if (e instanceof PrfAbsent || err.name === 'NotSupportedError') toast(TEXTE_SANS_PRF, undefined, 'warn');
       else toast(err.message || 'Ça n’a pas marché. Réessaie.', undefined, 'warn');
     } finally { setBusy(false); }

@@ -11,6 +11,7 @@ import { buildSnapshot } from './partage/snapshot';
 import { newShare, open as openShare, seal } from './partage/crypto';
 import { clesLocales, cloudInfo, deviceId, garderCleLocale, oublierClesLocales, LS, lsGet, lsSet, messageRefus, setCloud, type EtatChiffrement } from './cloud-state';
 import { creerCleAcces, ouvrirAvecCleAcces, paquetsDe, PREFIXE as PAQUET, type Paquet } from './sync/cleacces';
+import { lireOuverture, sceller, SEQUESTRE, type Sequestre } from './sync/sequestre';
 import { aChiffrer, chiffrer, CHIFFRES, cleDuBloc, separer, codeDeSecours, COFFRE, dechiffrer, estScelle, lireCode, nouveauSecret, ouvrirCle, type Cle } from './sync/coffre';
 import { errCode, type Backend, type CloudUser } from './sync/backend';
 import { applyRemote, docId, forRemote, needsChoice, nextSince, planMerge, RESUME_MARGIN_MS, stable, type LocalRecord, type MergeMode, type RemoteDoc } from './sync/plan';
@@ -361,9 +362,56 @@ async function paquetsLocaux(): Promise<Paquet[]> {
   return paquetsDe(await db.getAll<{ k: string; v?: unknown }>('kv'), await idCoffreLocal());
 }
 
-/** Compte les clés d'accès qui protègent la clé de secours du compte (état des filets, écrans Compte et Aujourd'hui). */
+/** Compte les clés d'accès et la copie scellée qui protègent la clé de secours du compte (écrans Compte et Aujourd'hui). */
 async function compterPaquets() {
-  setCloud({ paquets: (await paquetsLocaux()).length });
+  const coffre = await idCoffreLocal();
+  const s = await db.get<{ k: string; v: Sequestre }>('kv', SEQUESTRE);
+  setCloud({ paquets: (await paquetsLocaux()).length, sequestre: !!coffre && s?.v.coffre === coffre });
+}
+
+// ---------- Copie scellée chez Arvela (T-125, point 4) ----------
+// Voir sync/sequestre.ts et functions/sequestre.js. Rien ne se fait tant que la clé publique KMS n'est pas dans l'app.
+
+/** Scelle la clé de secours du compte (une fois par coffre) avec la clé publique KMS, et la range dans kv/sequestre. */
+async function scellerSiBesoin(u: CloudUser) {
+  if (!be || !cle) return;
+  const coffre = await idCoffreLocal();
+  const cur = await db.get<{ k: string; v: Sequestre }>('kv', SEQUESTRE);
+  if (!coffre || cle.id !== coffre || cur?.v.coffre === coffre) return;
+  const pem = await be.sequestreClePublique().catch(() => null);
+  const code = clesLocales(u.uid)[0];
+  if (!pem || !code) return;
+  const v = await sceller({ pem, code, uid: u.uid, coffre, jour: new Date().toISOString().slice(0, 10) });
+  await db.put('kv', { k: SEQUESTRE, v });
+  await compterPaquets();
+}
+
+/** Téléphone sans la clé : état d'une demande d'ouverture de la copie scellée. */
+export async function etatOuverture(): Promise<void> {
+  if (!be || !user) return;
+  setCloud({ ouverture: await be.sequestreEtat().catch(() => null) });
+}
+export async function demanderOuverture(): Promise<void> {
+  if (!be || !user) throw new Error('Connecte-toi d’abord à ton compte.');
+  setCloud({ ouverture: await be.sequestreDemander() });
+  logUsage('sequestre_demande');
+}
+export async function annulerOuverture(): Promise<void> {
+  if (!be || !user) return;
+  await be.sequestreAnnuler();
+  setCloud({ ouverture: null });
+  logUsage('sequestre_annule');
+}
+/** Ouverture : la fonction serveur rend le contenu scellé déchiffré par KMS ; l'app vérifie qu'il est de ce compte. */
+export async function ouvrirSequestre(): Promise<void> {
+  if (!be || !user) throw new Error('Connecte-toi d’abord à ton compte.');
+  const coffre = await idCoffreLocal();
+  const contenu = await be.sequestreOuvrir();
+  const code = coffre ? lireOuverture(contenu, user.uid, coffre) : null;
+  if (!code) throw new Error('Cette copie n’ouvre pas ce compte.');
+  setCloud({ ouverture: null });
+  logUsage('sequestre_ouvert');
+  await entrerCle(code);
 }
 
 /**
@@ -409,7 +457,8 @@ export async function entrerCle(texte: string): Promise<void> {
   await load();
   renvoyerAttente();
   void chiffrerEnLigne(user, true);
-  if (n) toast('Clé reconnue : le carnet et ce qui touche à la santé sont ouverts sur ce téléphone.', undefined, 'ok');
+  void scellerSiBesoin(user);
+  if (n) toast('Clé reconnue.', undefined, 'ok');
 }
 
 /**
@@ -600,7 +649,7 @@ const mirror: db.Mirror = {
         enqueueValue(s, k, value);
       }
       // T-121 : une restauration ne retire jamais le coffre ni les repères d'appareils du compte (relecture de l'option b, B1).
-      for (const k of oldKeys.get(s) ?? []) if (!now.has(k) && !(s === 'kv' && (k === COFFRE || k.startsWith(REPERE) || k.startsWith(PAQUET)))) enqueue(s, k, null);
+      for (const k of oldKeys.get(s) ?? []) if (!now.has(k) && !(s === 'kv' && (k === COFFRE || k === SEQUESTRE || k.startsWith(REPERE) || k.startsWith(PAQUET)))) enqueue(s, k, null);
     }
   },
 };
@@ -646,7 +695,7 @@ function attach(u: CloudUser): Promise<void> {
   void renvoi.then(async () => {
     await poserRepere();
     await etablirCoffre(u);
-    if (cle) { if (await ouvrirLocal()) await load(); renvoyerAttente(); }
+    if (cle) { if (await ouvrirLocal()) await load(); renvoyerAttente(); await scellerSiBesoin(u); } else void etatOuverture();
     void recompterAnciens(lireVus(), true);
     await chiffrerEnLigne(u);
   }).catch((e) => console.warn('coffre', e));

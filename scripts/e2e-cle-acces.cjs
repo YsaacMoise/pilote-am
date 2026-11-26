@@ -52,7 +52,7 @@ const contrat = {
   balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0, cpSaisi: true }, history: [], createdAt: 1,
 };
 const j1 = { id: 'j1', cid: 'c1', date: today, time: '10:00', kind: 'soin', detail: 'Température 38,4 °C (fièvre)', temp: 38.4 };
-const reglages = { k: 'settings', v: { amName: 'Sonia', enfantsACharge: 0, onboarded: true, conditionsAcceptees: { version: '2026-11-26', date: today } } };
+const reglages = { k: 'settings', v: { amName: 'Sonia', enfantsACharge: 0, onboarded: true, conditionsAcceptees: { version: '2026-11-26-2', date: today } } };
 
 async function telephone(b, nom, prf) {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: 'fr-FR', timezoneId: 'Europe/Paris', hasTouch: true, isMobile: true });
@@ -120,10 +120,18 @@ const lireLocal = (p, s, k) => p.evaluate(async ({ s, k }) => {
   await a.waitForTimeout(800);
   assert(!(await a.getByText('Protège ta clé de secours').isVisible()), 'filet en place : la carte disparaît');
   await a.goto(base + '#/compte');
-  await a.getByText(/oui \(1 clé d’accès\)/).waitFor();
+  await a.getByRole('heading', { name: 'Ta clé de secours' }).waitFor();
   await a.getByRole('heading', { name: 'Ta clé de secours' }).scrollIntoViewIfNeeded();
   await a.screenshot({ path: path.join(out, 'apres-compte-filets-clair.png') });
-  assert(true, 'Compte : Face ID ou empreinte « oui (1 clé d’accès) »');
+  const etatFilet = (p, nom) => p.locator('dl[aria-label="État des filets"] dt', { hasText: nom }).locator('xpath=following-sibling::dd[1]').textContent();
+  assert(await etatFilet(a, 'Face ID') === 'oui', 'Compte : Face ID « oui », un état, sans texte d’explication');
+  await attendreQue(async () => (await dump(uid)).some((d) => d.k === 'sequestre'), 15000, 'copie scellée');
+  const seq = (await dump(uid)).find((d) => d.k === 'sequestre');
+  assert(!seq.v.includes(code) && !seq.v.includes(code.replace(/-/g, '')) && JSON.parse(seq.v).v.coffre === JSON.parse(coffreApres.v).v.id, 'copie scellée chez Arvela (kv/sequestre) : clé KMS publique, rien en clair');
+  await a.reload();
+  await a.getByRole('heading', { name: 'Ta clé de secours' }).waitFor();
+  await a.waitForTimeout(1000);
+  assert(await etatFilet(a, 'Copie Arvela') === 'oui', 'Compte : copie Arvela « oui »');
 
   console.log('\n== Nouveau téléphone, même trousseau : « Ouvrir avec Face ID » ==');
   // Même page (même trousseau simulé : l'authentificateur virtuel ne peut pas être copié avec son secret PRF), données de
@@ -154,7 +162,7 @@ const lireLocal = (p, s, k) => p.evaluate(async ({ s, k }) => {
   await attendre(c, () => !!localStorage.getItem('pam-sante-chiffrement'), 30000);
   await c.goto(base + '#/compte');
   await c.getByRole('button', { name: 'Protéger avec Face ID' }).click();
-  await c.getByText(/ne permet pas de protéger la clé avec Face ID/).first().waitFor();
+  await c.getByText('Face ID indisponible sur ce navigateur.').first().waitFor();
   await c.waitForTimeout(500);
   assert(!(await dump(u2)).some((d) => d.k.startsWith('cleacces-')), 'sans PRF : message clair, aucun paquet rangé');
   const code2 = await c.evaluate((u) => JSON.parse(localStorage.getItem('pam-coffre'))[u][0], u2);
@@ -167,7 +175,7 @@ const lireLocal = (p, s, k) => p.evaluate(async ({ s, k }) => {
   await c.emulateMedia({ media: 'screen' });
   assert(feuille === `visible|${code2}|hidden`, 'impression : seule la feuille de la clé est imprimée, avec la clé');
   await c.getByRole('button', { name: 'Oui, imprimée' }).click();
-  await c.getByText(/Imprimée : oui, le/).waitFor();
+  await c.getByRole('button', { name: 'Imprimer ma clé' }).waitFor();
   const lien = c.getByRole('link', { name: 'M’envoyer ma clé par e-mail' });
   const href = await lien.getAttribute('href');
   const body = decodeURIComponent(href.split('body=')[1] || '');
@@ -175,8 +183,8 @@ const lireLocal = (p, s, k) => p.evaluate(async ({ s, k }) => {
   await lien.evaluate((el) => el.addEventListener('click', (e) => e.preventDefault()));
   await lien.click();
   await c.getByRole('button', { name: 'Oui, envoyé' }).click();
-  await c.getByText(/Envoyée par e-mail à toi-même : oui, le/).waitFor();
-  await c.getByRole('heading', { name: 'Tes filets' }).scrollIntoViewIfNeeded();
+  await c.waitForTimeout(500);
+  await c.getByRole('heading', { name: 'Ta clé de secours' }).scrollIntoViewIfNeeded();
   await c.screenshot({ path: path.join(out, 'apres-compte-sans-prf-clair.png') });
   await c.goto(base + '#/');
   await c.waitForTimeout(800);
@@ -184,7 +192,24 @@ const lireLocal = (p, s, k) => p.evaluate(async ({ s, k }) => {
   const reg = JSON.parse((await dump(u2)).find((d) => d.k === 'settings').v).v;
   assert(reg.filets?.email === today && reg.filets?.impression === today && !stable(reg).includes(code2), 'filets notés dans les réglages (dates seulement, jamais la clé)');
 
-  const erreurs = [a, c].flatMap((p) => p.erreurs);
+  console.log('\n== Tout perdu (téléphone, trousseau, clé) : récupération par la copie scellée ==');
+  const d = await telephone(b, 'D', false);
+  await semer(d, { donnees: { kv: [reglages] }, ls: { 'pam-fake-user': JSON.stringify({ uid: u2, email: email2, verified: true }), 'pam-cloud-pending': u2, 'pam-mesure': 'non', 'pam-mesure-info': '1' } });
+  await d.reload();
+  await attendre(d, () => !!localStorage.getItem('pam-cloud-linked'), 30000);
+  await d.goto(base + '#/compte');
+  await d.getByRole('button', { name: 'Récupérer par Arvela' }).click();
+  await d.getByText(/Récupération possible le/).waitFor();
+  await d.screenshot({ path: path.join(out, 'apres-compte-recuperation-clair.png') });
+  assert((await lireLocal(d, 'journal', 'j1'))?.sante, 'demande faite, délai de sécurité en cours, carnet encore fermé');
+  await d.waitForTimeout(3500);
+  await d.goto(base + '#/');
+  await d.goto(base + '#/compte');
+  await d.getByRole('button', { name: 'Récupérer ma clé' }).click();
+  await attendreQue(async () => (await lireLocal(d, 'journal', 'j1'))?.temp === 38.4, 20000, 'carnet ouvert par la copie scellée');
+  assert((await lireLocal(d, 'contracts', 'c1')).majoreFiscal === true, 'après le délai : clé récupérée, carnet et case handicap ouverts, zéro perte');
+
+  const erreurs = [a, c, d].flatMap((p) => p.erreurs);
   assert(erreurs.length === 0, 'aucune erreur dans les pages' + (erreurs.length ? ' : ' + erreurs.join(' | ') : ''));
   await b.close();
   console.log('\nParcours T-125 : tout est bon.');
