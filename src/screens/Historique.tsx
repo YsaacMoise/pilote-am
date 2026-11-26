@@ -56,7 +56,8 @@ export function Historique({ id }: { id: string }) {
 
   return (
     <>
-      <Topbar title="Historique" sub={c.child} back={`#/contrat/${c.id}`} screen="historique" />
+      {/* T-135 : la fiche de l'enfant ouvre cet écran (« Bulletins d'avant Arvela ») : Retour y ramène, comme Contrat, Avenant et Fin. */}
+      <Topbar title="Historique" sub={c.child} back={`#/enfant/${c.id}`} screen="historique" />
       <main>
         {months.length === 0 ? (
           <Banner tone="ok">Ce contrat est suivi par l’app depuis son début : pas d’historique à reprendre.</Banner>

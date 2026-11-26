@@ -48,7 +48,8 @@ export function Controle({ cid, month }: { cid?: string; month?: string }) {
 
   return (
     <>
-      <Topbar title="Contrôler un bulletin" back="#/plus" screen="controle" />
+      {/* T-135 : ouvert depuis Mois (#/controle/<contrat>/<mois>), Retour ramène à ce mois ; depuis Plus, à Plus. */}
+      <Topbar title="Contrôler un bulletin" back={cid && month ? `#/mois/${month}/${cid}` : '#/plus'} screen="controle" />
       <main>
         {s.contracts.length > 1 && (
           <div class="chips" role="group" aria-label="Enfant">

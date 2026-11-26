@@ -3,6 +3,7 @@
 // Rien n'est envoyé : le calcul se fait sur le téléphone. Le lien partagé ne contient jamais les revenus de la famille.
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { SIM_RESSOURCES } from './SimApercu';
+import { OUVRIR_CREATION } from './Welcome';
 import { logUsage } from '../store';
 import { JOUR_NOMS, MOIS_NOMS, addDays, monthLabel, today } from '../engine/dates';
 import { BAREMES_VERIFIES_JUSQU_AU, MESSAGE_BAREMES_PUBLIES, MINIMUM_SANS_TITRE, baremesAttendus, dateLongue, entretienHoraireMin, minConvDepuis, minimumTitreAmAp, ratesConnus } from '../engine/rates';
@@ -212,6 +213,8 @@ export function Simulateur({ back, connecte }: { back: string; connecte: boolean
       }));
     } catch { /* stockage indisponible : le contrat partira des valeurs par défaut */ }
     logUsage('simulateur_contrat', 'simulateur');
+    // T-135 : sans compte, la page d'accueil s'ouvre sur la création du compte (et non sur son haut).
+    if (!connecte) { try { sessionStorage.setItem(OUVRIR_CREATION, '1'); } catch { /* rien */ } }
     location.hash = connecte ? '#/contrat/nouveau' : '#/';
   };
 

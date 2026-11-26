@@ -65,7 +65,7 @@ const kindDef = (k: Kind) => KINDS.find((x) => x.k === k)!;
 const defDe = (e: Journal) => (estApporter(e) ? APPORTER : kindDef(e.kind));
 
 
-export function Carnet() {
+export function Carnet({ cid: cid0 }: { cid?: string } = {}) {
   const s = useStore();
   const t = today();
   const [jour, setJour] = useState<ISODate>(t);
@@ -73,7 +73,8 @@ export function Carnet() {
   const kids = activeContracts(jour);
   // Enfants présents en ce moment (arrivés, pas encore partis) : pour noter à tous d'un coup (aujourd'hui seulement)
   const present = estAuj ? kids.filter((k) => (dayInfo(ctxFor(k), t).rec?.pres ?? []).some((p) => p.a && !p.d)) : [];
-  const [cid, setCid] = useState<string | undefined>(present.length > 1 ? 'tous' : kids[0]?.id);
+  // T-135 : « Son carnet » (fiche de l'enfant) ouvre #/carnet/<id> sur cet enfant.
+  const [cid, setCid] = useState<string | undefined>(cid0 && kids.some((k) => k.id === cid0) ? cid0 : present.length > 1 ? 'tous' : kids[0]?.id);
   const [sheet, setSheet] = useState<{ kind: KindDef; edit?: Journal } | null>(null);
   const all = cid === 'tous' && present.length > 1;
   const c = all ? undefined : kids.find((k) => k.id === cid) ?? kids[0];

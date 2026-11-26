@@ -17,6 +17,12 @@ function loginHint(): string {
   try { const e = sessionStorage.getItem(LOGIN_HINT) ?? ''; sessionStorage.removeItem(LOGIN_HINT); return e; } catch { return ''; }
 }
 
+/** T-135 : « Créer mon compte » du simulateur public : la page d'accueil s'ouvre sur la création du compte (lu une seule fois). */
+export const OUVRIR_CREATION = 'pam-ouvrir-creation';
+function creationDemandee(): boolean {
+  try { const v = sessionStorage.getItem(OUVRIR_CREATION) === '1'; sessionStorage.removeItem(OUVRIR_CREATION); return v; } catch { return false; }
+}
+
 /** Logo vertical empilé de la charte (déclinaison 02 « Page connexion & accueil ») */
 export function LockupStacked() {
   return (
@@ -101,7 +107,16 @@ export function Welcome() {
   useStore();
   const [step, setStep] = useState<'hello' | 'me'>('hello');
   const [hintEmail] = useState(loginHint);
-  const [form, setForm] = useState<null | 'create' | 'login'>(hintEmail ? 'login' : null);
+  const [creation] = useState(creationDemandee);
+  const [form, setForm] = useState<null | 'create' | 'login'>(hintEmail ? 'login' : creation ? 'create' : null);
+  useEffect(() => {
+    if (!creation) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const el = document.getElementById('compte');
+      el?.scrollIntoView({ block: 'nearest' });
+      el?.querySelector<HTMLInputElement>('input')?.focus({ preventScroll: true });
+    }));
+  }, []);
   const standalone = isStandalone();
   const cloud = useCloud();
   const signedIn = !!cloud.email && cloud.status !== 'off';

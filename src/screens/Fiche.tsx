@@ -107,7 +107,7 @@ export function FicheEnfant({ id }: { id: string }) {
             end={<span class="fiche-valeur-sous">{cp ? `${nb(cp.reste)} j à poser` : '10 %'}</span>}
             sub={cp ? undefined : 'congés versés à chaque accueil'} />
           <ListLink href={`#/enfant/${c.id}/parents`} title="Les parents et leur lien" sub={c.partage ? 'Lien actif' : 'Lien pas encore créé'} end={c.partage ? undefined : <span class="tag afaire">À faire</span>} />
-          <ListLink href="#/carnet" title="Son carnet" sub={journee ? `${journee} note${journee > 1 ? 's' : ''} aujourd’hui` : 'Aucune note aujourd’hui'} />
+          <ListLink href={`#/carnet/${c.id}`} title="Son carnet" sub={journee ? `${journee} note${journee > 1 ? 's' : ''} aujourd’hui` : 'Aucune note aujourd’hui'} />
           {/* 9.8 : « Historique » et « Bulletins d'avant Arvela » sont le même écran : une seule ligne. */}
           {avant && <ListLink href={`#/historique/${c.id}`} title="Bulletins d’avant Arvela" end={<span>Facultatif</span>} sub={`Avant le ${shortDate(c.trackedFrom)} · ${c.history.length} saisi${c.history.length > 1 ? 's' : ''}`} />}
           <ListLink title="Couleur" onClick={() => setCouleur(true)} end={<Gommette name={c.child} color={c.color} size="sm" />} />

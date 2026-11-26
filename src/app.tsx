@@ -123,7 +123,7 @@ export function App() {
   let screen;
   switch (p) {
     case '': screen = <Today />; break;
-    case 'carnet': screen = <Carnet />; break;
+    case 'carnet': screen = <Carnet key={hash} cid={parts[1]} />; break;
     case 'mois': screen = <Mois month={parts[1]} cid={parts[2]} />; break;
     case 'plus': screen = <Plus />; break;
     // T-122 : un nouveau contrat passe par l'assistant ; l'écran Contrat sert à corriger un contrat existant.
