@@ -30,7 +30,7 @@ const ouiNon = (b: boolean | undefined): 'oui' | 'non' | undefined => (b === und
 let montrerLienDe: string | undefined;
 
 /** Conditions venues du simulateur (lues une seule fois) : son planning, ou des journées égales à partir de 8 h (anciennes versions). */
-function brouillon(): Partial<Contract> | null {
+export function brouillon(): Partial<Contract> | null {
   try {
     const raw = sessionStorage.getItem(BROUILLON_CONTRAT);
     if (!raw) return null;
@@ -364,7 +364,7 @@ export function Contrat({ id }: { id?: string }) {
  * alsaceMoselle et mayotte en sont déduits, comme le faisaient les trois choix d'avant. Un contrat saisi avant garde sa
  * réponse : l'écran propose de préciser le département sans bloquer le calcul.
  */
-function ChoixDepartement({ c, set }: { c: Contract; set: (p: Partial<Contract>) => void }) {
+export function ChoixDepartement({ c, set }: { c: Contract; set: (p: Partial<Contract>) => void }) {
   // Réponse trouvée à l'ouverture : un contrat d'avant la T-079 la retrouve si la saisie ne mène à aucun département.
   const [origine] = useState(() => ({ departement: c.departement, alsaceMoselle: c.alsaceMoselle, mayotte: c.mayotte }));
   const [saisie, setSaisie] = useState(c.departement ? libelleDepartement(c.departement) : '');
@@ -391,7 +391,7 @@ function ChoixDepartement({ c, set }: { c: Contract; set: (p: Partial<Contract>)
  * jour, horaires prévus de chaque jour de la semaine (vides si le contrat n'en fixe pas : les heures notées sont alors payées
  * comme heures normales, sans heures complémentaires).
  */
-function AccueilsOccasionnels({ c, set }: { c: Contract; set: (p: Partial<Contract>) => void }) {
+export function AccueilsOccasionnels({ c, set }: { c: Contract; set: (p: Partial<Contract>) => void }) {
   const ls = c.accueils ?? [];
   const maj = (i: number, p: Partial<AccueilOcc>) => set({ accueils: ls.map((a, k) => (k === i ? { ...a, ...p } : a)) });
   return (
@@ -443,7 +443,7 @@ export function PlanDay({ d, plages, onChange, onCopy }: { d: number; plages: Pl
   );
 }
 
-function WeeksOff({ c, onChange }: { c: Contract; onChange: (w: string[]) => void }) {
+export function WeeksOff({ c, onChange }: { c: Contract; onChange: (w: string[]) => void }) {
   const [d, setD] = useState('');
   const list = [...c.weeksOff].sort();
   const attendu = Math.max(0, 52 - Math.min(46, c.weeks));
