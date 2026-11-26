@@ -152,8 +152,12 @@ export const sequestreOuvrir = onCall(opts, async (req) => {
   return contenu;
 });
 
-/** Suppression du compte : demandes, suivi d'adresse et journal du compte effacés (relecture T-125, m6 ; registre). */
-export const sequestreNettoyage = functionsV1.runWith({ serviceAccount: COMPTE }).region('europe-west9').auth.user().onDelete(async (u) => {
+/**
+ * Suppression du compte : demandes, suivi d'adresse et journal du compte effacés (relecture T-125, m6 ; registre).
+ * 1re génération (seule à offrir ce déclencheur) : absente de europe-west9, donc placée en europe-west1 (Belgique, UE) ; elle ne
+ * reçoit que l'identifiant du compte supprimé.
+ */
+export const sequestreNettoyage = functionsV1.runWith({ serviceAccount: COMPTE }).region('europe-west1').auth.user().onDelete(async (u) => {
   await demandeRef(u.uid).delete();
   await compteRef(u.uid).delete();
   const j = await db.collection('sequestre-journal').where('uid', '==', u.uid).get();
