@@ -33,7 +33,7 @@ export function CongesDepart({ c, mode = 'enregistrer', onSoldes }: { c: Contrac
   const soldes = (): StartBalances => ({ ...c.balances, cpRestants: d.cpRestants, cpEnCours: d.cpEnCours, cpSaisi: true });
   // En mode formulaire, les soldes du formulaire suivent chaque réponse ; ils sont enregistrés avec le contrat.
   useEffect(() => {
-    if (mode === 'formulaire' && onSoldes && !d.aConfirmer && (d.cpRestants !== c.balances.cpRestants || d.cpEnCours !== c.balances.cpEnCours || !c.balances.cpSaisi)) onSoldes(soldes());
+    if (mode === 'formulaire' && onSoldes && !d.aConfirmer) onSoldes(soldes());
   }, [mode, d.cpRestants, d.cpEnCours, d.aConfirmer]);
   if (d.aConfirmer) {
     return (

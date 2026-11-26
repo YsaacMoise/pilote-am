@@ -69,13 +69,7 @@ async function run(scheme) {
   await p.getByRole('radio', { name: /^CDI/ }).click();
   // T-115 (R3) : le brut se calcule seul depuis le net (F2 : 4,49 € redonne 3,50 € net, cotisation par cotisation) ;
   // un lien ouvre le champ brut pour écrire celui du contrat, un autre revient au brut calculé.
-  // Constat T-119 : juste après la création du compte, une saisie du formulaire peut être perdue (au second passage du
-  // parcours) ; la saisie est refaite jusqu'à trois fois. Défaut noté au rapport T-115, section T-119, à examiner à part.
-  for (let essai = 0; essai < 3; essai++) {
-    await p.getByLabel('Taux horaire net').fill('3,50');
-    await p.getByLabel('Taux horaire net').press('Tab');
-    if (await p.locator('.brut-calcule', { hasText: /Soit 4,49\s€ brut/ }).waitFor({ timeout: 5000 }).then(() => true, () => false)) break;
-  }
+  await p.getByLabel('Taux horaire net').fill('3,50');
   await p.locator('.brut-calcule', { hasText: /Soit 4,49\s€ brut/ }).waitFor();
   assert(true, 'contrat : net 3,50 € saisi, brut 4,49 € affiché sans saisie');
   await p.getByRole('button', { name: 'Mon contrat indique un autre brut' }).click();

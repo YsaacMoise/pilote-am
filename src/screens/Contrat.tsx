@@ -72,7 +72,8 @@ export function Contrat({ id }: { id?: string }) {
   const existing = id ? state.contracts.find((c) => c.id === id) : undefined;
   const [c, setC] = useState<Contract>(() => (existing ? structuredClone(existing) : blank()));
   const [errors, setErrors] = useState<string[]>([]);
-  const set = (p: Partial<Contract>) => setC({ ...c, ...p });
+  // Contrôle qualité de la n° 72 (R1) : mise à jour depuis l'état le plus récent (une saisie rapide n'est jamais écrasée).
+  const set = (p: Partial<Contract>) => setC((prev) => ({ ...prev, ...p }));
   // Couleurs des autres enfants en cours de contrat : une couleur = un enfant
   const prises = couleursPrises(state.contracts, c.id, today());
   const isNew = !existing;
@@ -94,6 +95,9 @@ export function Contrat({ id }: { id?: string }) {
   const suiviDepuis = isNew ? (reprise ? curMonthStart : c.start) : c.trackedFrom;
   const depart = c.start && suiviDepuis > c.start && wk > 0 ? congesDeDepart({ ...c, trackedFrom: suiviDepuis }, suiviDepuis, {}, state.settings.enfantsACharge, state.settings.amMoins21Jusqu) : undefined;
   const departCalculable = !!depart && !depart.aConfirmer;
+  // Contrôle qualité de la n° 72 (R1) : les soldes de la carte restent hors du contrat pendant la saisie ; ils ne sont écrits,
+  // case cochée, qu'à l'enregistrement (aucune écriture différée dans le formulaire, aucune case cochée à la seule ouverture).
+  const [soldesDepart, setSoldesDepart] = useState<{ cpRestants: number; cpEnCours: number } | undefined>(undefined);
 
   function setDay(d: number, plages: Plage[]) {
     set({ planning: { ...c.planning, [d]: plages } });
@@ -136,8 +140,8 @@ export function Contrat({ id }: { id?: string }) {
     if (errs.length) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const toSave: Contract = {
       ...c,
-      // T-119 : les soldes calculés par l'app (CongesDepart, mode formulaire) sont déjà dans c.balances, case cochée.
-      balances: c.balances,
+      // T-119 : soldes calculés par l'app (carte affichée, réponses de l'AM) : écrits à l'enregistrement, case cochée.
+      balances: !cpManuel && departCalculable && soldesDepart ? { ...c.balances, ...soldesDepart, cpSaisi: true } : c.balances,
       child: c.child.trim(),
       family: c.family.trim(),
       weeks: c.yearType === 'complete' ? 52 : c.weeks,
@@ -336,8 +340,8 @@ export function Contrat({ id }: { id?: string }) {
               <p class="hint">Le contrat a commencé avant l’app. L’app calcule à partir du {shortDate(isNew ? curMonthStart : c.trackedFrom)} ; pour le passé, reprends tes compteurs et tes bulletins.</p>
               {!cpManuel && departCalculable ? (
                 <>
-                  <CongesDepart c={{ ...c, trackedFrom: suiviDepuis }} mode="formulaire" onSoldes={(b) => set({ balances: b })} />
-                  <button type="button" class="btn btn-ghost" onClick={() => setCpManuel(true)}>Ces chiffres sont faux : les saisir moi-même</button>
+                  <CongesDepart c={{ ...c, trackedFrom: suiviDepuis }} mode="formulaire" onSoldes={(b) => setSoldesDepart({ cpRestants: b.cpRestants, cpEnCours: b.cpEnCours })} />
+                  <button type="button" class="btn btn-ghost" onClick={() => { if (soldesDepart) set({ balances: { ...c.balances, ...soldesDepart, cpSaisi: true } }); setCpManuel(true); }}>Ces chiffres sont faux : les saisir moi-même</button>
                 </>
               ) : (
                 <>
