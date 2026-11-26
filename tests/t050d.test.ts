@@ -38,8 +38,10 @@ function contract(over: Partial<Contract> = {}): Contract {
 // Congés non pris : 0 (congés de juin pris et payés). Assiette : 8 450,75 + 768,25 = 9 219,00 € ; 9 219,00 ÷ 80 = 115,24 €.
 // Variante « fin le 01/08/2026 » : samedi, semaine sans accueil (8 semaines à partir du 06/07) : aucun salaire en plus,
 // même régularisation : 115,24 € aussi.
-const ASSIETTE = 921900;
-const RUPTURE = 11524;
+// T-115 (R3) : brut calculé depuis le net par F1 (net ÷ 0,7811975, au centime ; calculateur-arvela, regles/t115-net-brut.md) :
+// 600,00 € net = 768,05 € brut (au lieu de 768,25 €) ; assiette 12 × 768,05 = 9 216,60 € ; 9 216,60 ÷ 80 = 115,2075 → 115,21 €.
+const ASSIETTE = 921660;
+const RUPTURE = 11521;
 
 describe('T-050d, B-1, revu par la T-103 : une seule date de fin, l’ICCP et la régularisation comptées une fois', () => {
   const ctx = () => makeCtx(contract(), [], [], '2027-12-31');
@@ -68,8 +70,9 @@ describe('T-050d, B-1, revu par la T-103 : une seule date de fin, l’ICCP et la
   });
   it('brut du bulletin de juillet lu (régularisation comprise) : rien n’est compté deux fois', () => {
     const parMois: Record<string, number> = {};
-    for (const m of ['2025-09', '2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06']) parMois[m] = 76825;
-    parMois['2026-07'] = 153650;
+    // T-115 (R3) : bruts des bulletins lus = 768,05 € (F1), juillet 1 536,10 € (salaire et régularisation).
+    for (const m of ['2025-09', '2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06']) parMois[m] = 76805;
+    parMois['2026-07'] = 153610;
     const r = finDeContrat(ctx(), '2026-07-17', 'retrait', 0, undefined, { parMois });
     expect(r.totalBrut).toBe(ASSIETTE);
     expect(r.indemniteRupture).toBe(RUPTURE);

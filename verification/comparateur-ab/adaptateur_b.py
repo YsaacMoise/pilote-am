@@ -2215,6 +2215,14 @@ def composition(s):
                 res = {"brut_estime": appel("brut_depuis_net", k["net"], d_(k["date"]), ctx.region)["resultat"]["brut_estime_centimes"]}
             except Refus as e:
                 res = {"brut_estime": e}
+        elif t == "brut_horaire":
+            # T-115 (R3) : brut horaire depuis le net (F2, regles/t115-net-brut.md § 5.2) ; region du calcul, sinon du contrat.
+            try:
+                reg = region_valide(k.get("region") or ctx.region)
+                res = {"brut_horaire": appel("brut_horaire_depuis_net", k["net"], d_(k["date"]),
+                                             reg)["resultat"]["brut_horaire_centimes"]}
+            except Refus as e:
+                res = {"brut_horaire": e}
         elif t == "minimum_conventionnel":
             # T-077 (R2) : minimum brut (grille ; 0,281 x SMIC de la region) et repere net Urssaf de la region.
             res = {}

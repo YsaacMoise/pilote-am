@@ -314,6 +314,11 @@ main {
 .gommette.lg { width: 64px; height: 64px; font-size: 36px; }
 
 /* ---------- Aujourd'hui ---------- */
+/* T-115 (R3) : brut calculé à côté du net, lien discret pour écrire un autre brut. */
+.brut-calcule { margin: -4px 0 0; font-size: 15px; color: var(--ink-2); }
+.brut-calcule b { color: var(--ink); font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.brut-lien { min-height: 44px; padding-left: 0; padding-right: 0; justify-content: flex-start; }
+
 /* T-115 (R1) : flèches d'une semaine à l'autre, au-dessus de la bande ; cibles de 44 px au moins. */
 .daynav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
 .daynav-arrow {

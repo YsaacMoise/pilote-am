@@ -8,6 +8,7 @@ import { entretienPlancher, MESSAGE_PERIODE_NON_GEREE, netToBrut } from './rates
 import { statutJourEvenement } from './evenements';
 import { controleKm, indemniteKmJour } from './km';
 import { euros } from './money';
+import { partNette } from './brut';
 import { cpDemandesEntre, cpDroitsInconnus, cpExces, MESSAGE_SOLDE_CONGES, soldeCongesInconnu } from './conges';
 import { nonGeresPeriode } from './nonGeres';
 import { ferieDe, MESSAGE_IJ_MAINTIEN_LOCAL, MESSAGE_IJ_MAINTIEN_LOCAL_SUSPENSION, MESSAGE_MAINTIEN_LOCAL, MESSAGE_MAINTIEN_LOCAL_SUSPENSION, regionDe } from './regions';
@@ -1336,17 +1337,18 @@ export function monthBrut(ctx: Ctx, m: Month): number {
 }
 
 /**
- * T-103 (D1) : brut d'une somme nette du salaire. Avec le taux horaire brut du contrat : net × brut ÷ net (CCN 107, 109 : le
- * salaire se calcule sur le salaire horaire brut, les heures et majorations suivent le même taux). Sans lui : estimation
- * interne (part fixe, rates.ts), jamais affichée comme un montant (`brutConnu`).
+ * T-103 (D1) : brut d'une somme nette du salaire. Avec le taux horaire brut écrit par l'AM : net × brut ÷ net (CCN 107, 109 :
+ * le salaire se calcule sur le salaire horaire brut, les heures et majorations suivent le même taux).
+ * T-115 (R3) : sans lui, le brut est calculé depuis le net comme Pajemploi (brut.ts : net ÷ part nette, au centime).
+ * Avant les taux vérifiés : estimation interne (rates.ts), jamais affichée comme un montant (`brutConnu`).
  */
 export function brutDuNet(c: Contract, net: number, d: ISODate): number {
   const t = termsAt(c, d);
   if (t.rateBrut && t.rateNet) return Math.round((net * t.rateBrut) / t.rateNet);
   return netToBrut(net, d, regionDe(c));
 }
-/** T-103 (D1) : le brut de la date `d` se calcule exactement (taux horaire brut du contrat saisi) */
-export const brutConnu = (c: Contract, d: ISODate): boolean => !!termsAt(c, d).rateBrut;
+/** T-103 (D1), T-115 (R3) : le brut de la date `d` est connu : brut écrit par l'AM, ou calculé depuis le net (taux vérifiés). */
+export const brutConnu = (c: Contract, d: ISODate): boolean => !!termsAt(c, d).rateBrut || partNette(d, regionDe(c)) !== undefined;
 /** T-103 (D1) : donnée demandée quand le brut n'est pas connu */
 export const MESSAGE_TAUX_BRUT = 'Indique dans le contrat ton salaire horaire brut (il est écrit dans ton contrat, à côté du net : convention, article 41.1). L’app en a besoin pour donner ton salaire brut exact.';
 

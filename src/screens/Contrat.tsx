@@ -10,6 +10,7 @@ import { euros, eurosTexte, hoursLabel } from '../engine/money';
 import type { AccueilOcc, Avenant, Contract, Plage, Planning, Terms } from '../engine/model';
 import { manquesOccasionnel } from '../engine/occasionnel';
 import { EntretienSaisie, libelleEntretien } from './EntretienSaisie';
+import { BrutSaisie } from './BrutSaisie';
 import { Banner, CHILD_COLORS, Choices, COLOR_NAMES, couleurLibre, couleursPrises, DateInput, EuroInput, Gommette, NumberInput, Seg, Switch, TextInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { BROUILLON_CONTRAT } from './Simulateur';
@@ -277,9 +278,9 @@ export function Contrat({ id }: { id?: string }) {
             {!!c.avenants?.length && <p class="hint">Ce sont les conditions de départ. Les changements datés sont dans les avenants, plus bas.</p>}
             <EuroInput label="Taux horaire net" hint={rates.minConvNet !== undefined ? `Minimum conventionnel : ${euros(rates.minConvNet)} net (${euros(rates.minConvBrut)} brut)` : `Minimum conventionnel : ${euros(rates.minConvBrut)} brut`} cents={c.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
             {c.rateNet > 0 && rates.minConvNet !== undefined && c.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel. Vérifie le contrat.</Banner>}
-            {/* T-103 (D1) : CCN 41.1, le salaire horaire est au contrat ; CCN 107 et 109, le salaire se calcule sur le brut. */}
-            <EuroInput label="Taux horaire brut" hint="Écrit dans ton contrat, à côté du net. Il donne ton salaire brut exact (indemnité de rupture, impôts, contrôle du bulletin)." cents={c.rateBrut} allowEmpty onChange={(v) => set({ rateBrut: v ?? undefined })} />
-            {c.rateBrut != null && c.rateBrut > 0 && c.rateBrut < c.rateNet && <Banner tone="warn">Le brut ne peut pas être plus bas que le net. Vérifie le contrat.</Banner>}
+            {/* T-103 (D1) : CCN 41.1, le salaire horaire est au contrat ; CCN 107 et 109, le salaire se calcule sur le brut.
+                T-115 (R3) : le brut est calculé depuis le net (comme Pajemploi) ; l'AM peut écrire celui du contrat. */}
+            <BrutSaisie net={c.rateNet} brut={c.rateBrut} date={today()} region={regionDe(c)} set={(v) => set({ rateBrut: v })} />
             {rates.minConvNet !== undefined && <p class="hint">{MINIMUM_SANS_TITRE}</p>}
             {isNew
               ? <EntretienSaisie t={c} set={set} hint={`Laisse vide si le contrat ne fixe pas de montant : l’app applique le minimum légal. Un montant plus bas que ce minimum (${euros(entretienPlancher(today(), 540)!)} pour 9 h) est remplacé par le minimum.`} />
@@ -502,7 +503,7 @@ function WeeksOff({ c, onChange }: { c: Contract; onChange: (w: string[]) => voi
 export function avenantSummary(before: Contract, ch: Partial<Terms>): string[] {
   const out: string[] = [];
   if (ch.rateNet != null && ch.rateNet !== before.rateNet) out.push(`Taux : ${euros(before.rateNet)} → ${euros(ch.rateNet)} net de l’heure`);
-  if (ch.rateBrut != null && ch.rateBrut !== before.rateBrut) out.push(`Taux brut : ${before.rateBrut ? euros(before.rateBrut) : 'non saisi'} → ${euros(ch.rateBrut)} brut de l’heure`);
+  if (ch.rateBrut != null && ch.rateBrut !== before.rateBrut) out.push(`Taux brut : ${before.rateBrut ? euros(before.rateBrut) : 'calculé depuis le net'} → ${euros(ch.rateBrut)} brut de l’heure`);
   if (ch.planning) out.push(`Planning : ${hoursLabel(weeklyMinutes(before.planning))} → ${hoursLabel(weeklyMinutes(ch.planning))} par semaine`);
   // T-044 : tarif par jour ou par heure.
   if (ch.entretienJour != null || ch.entretienHeure != null || ch.entretienMode != null) {

@@ -116,7 +116,9 @@ export function releveDonnees(
   if (feries) totaux.push({ label: 'Jours fériés chômés', value: `${feries}` });
   const montants: ReleveDonnees['montants'] = [
     { label: 'Salaire net', value: euros(r.netTotal) },
-    ...(reductionVersee(r) ? [{ label: 'Réduction de cotisations des heures complémentaires et majorées', value: euros(reductionVersee(r)) }] : []),
+    // T-115 : le relevé n'est pas un bulletin de salaire (ni brut ni cotisations) ; la réduction de la T-109 y est dite
+    // par ce qu'elle est pour la famille : une somme versée en plus du salaire net.
+    ...(reductionVersee(r) ? [{ label: 'Heures complémentaires et majorées : somme versée en plus du salaire net', value: euros(reductionVersee(r)) }] : []),
     { label: 'Indemnités d’entretien', value: euros(r.entretien) },
     { label: 'Repas', value: euros(r.repas) },
     { label: 'Kilomètres', value: euros(r.km) },

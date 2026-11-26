@@ -151,3 +151,35 @@ describe('T-116 : revue des alertes de l’écran Mois (information ou vrai prob
       '3 jours de congés pris au-delà de tes droits acquis : retenus comme congés sans solde.']) expect(estInformation(m), m).toBe(false);
   });
 });
+
+import { brutDepuisNet, brutHoraireDepuisNet, netLigneParLigne } from '../src/engine/brut';
+
+describe('T-115 (R3) : brut calculé depuis le net (calculateur-arvela, regles/t115-net-brut.md, sections 3 et 6)', () => {
+  const d = '2026-11-15';
+  it('F1, convertisseur officiel net → brut : 17 sorties recopiées', () => {
+    const cas: [number, number][] = [[300, 384], [328, 420], [340, 435], [391, 501], [400, 512], [745, 954], [13410, 17166], [13836, 17711],
+      [37639, 48181], [39113, 50068], [76050, 97351], [85844, 109888], [100000, 128009], [145275, 185964], [182914, 234146], [184388, 236033]];
+    for (const [net, brut] of cas) expect(brutDepuisNet(net, d, 'metropole'), String(net)).toBe(brut);
+    expect(brutDepuisNet(328, d, 'alsaceMoselle')).toBe(427);
+  });
+  it('brut → net ligne par ligne : couples publiés (Urssaf, DREETS)', () => {
+    const cas: [number, number, 'metropole' | 'alsaceMoselle', string][] = [[420, 328, 'metropole', d], [437, 341, 'metropole', d],
+      [420, 323, 'alsaceMoselle', d], [437, 335, 'alsaceMoselle', d], [364, 286, 'metropole', '2026-03-01'], [364, 281, 'alsaceMoselle', '2026-03-01'],
+      [379, 296, 'metropole', '2026-03-01'], [379, 291, 'alsaceMoselle', '2026-03-01'], [500, 391, 'metropole', d],
+      [345, 269, 'metropole', '2024-02-01'], [345, 265, 'alsaceMoselle', '2024-02-01'], [359, 281, 'metropole', '2024-02-01'], [359, 276, 'alsaceMoselle', '2024-02-01'],
+      [350, 274, 'metropole', '2025-02-01']];
+    for (const [brut, net, r, dd] of cas) expect(netLigneParLigne(brut, dd, r), `${brut} ${r}`).toBe(net);
+  });
+  it('F2, brut horaire affiché : retrouve le brut de chaque couple publié', () => {
+    const cas: [number, number, 'metropole' | 'alsaceMoselle', string][] = [[328, 420, 'metropole', d], [341, 437, 'metropole', d],
+      [323, 420, 'alsaceMoselle', d], [335, 437, 'alsaceMoselle', d], [286, 364, 'metropole', '2026-03-01'], [281, 364, 'alsaceMoselle', '2026-03-01'],
+      [296, 379, 'metropole', '2026-03-01'], [291, 379, 'alsaceMoselle', '2026-03-01'], [391, 500, 'metropole', d],
+      [269, 345, 'metropole', '2024-02-01'], [265, 345, 'alsaceMoselle', '2024-02-01'], [281, 359, 'metropole', '2024-02-01'], [276, 359, 'alsaceMoselle', '2024-02-01'],
+      [274, 350, 'metropole', '2025-02-01']];
+    for (const [net, brut, r, dd] of cas) expect(brutHoraireDepuisNet(net, dd, r), `${net} ${r}`).toBe(brut);
+  });
+  it('Mayotte et avant 2024 : aucun brut calculé, le brut est demandé', () => {
+    expect(brutDepuisNet(370, d, 'mayotte')).toBeUndefined();
+    expect(brutHoraireDepuisNet(286, '2023-06-01', 'metropole')).toBeUndefined();
+  });
+});

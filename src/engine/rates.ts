@@ -2,6 +2,7 @@
 // Montants en centimes entiers. Sources dans le README.
 import { MOIS_NOMS, type ISODate } from './dates';
 import { minConvNetRegion, MINIMUM_SANS_TITRE_MAYOTTE, netSurBrutRegion, smicMayotte, type Region } from './regions';
+import { brutDepuisNet } from './brut';
 
 export interface Rates {
   from: ISODate;
@@ -202,8 +203,11 @@ export function entretienPlancher(d: ISODate, min: number): number | undefined {
   return Math.max(r.entretienPlancherJour, Math.ceil((r.mg * min) / 600 - 1e-9));
 }
 
-/** Brut estimé à partir du net */
+/** Brut à partir du net : F1 (brut.ts) quand les taux sont vérifiés, sinon estimation interne */
 export function netToBrut(net: number, d: ISODate, region: Region = 'metropole'): number {
+  // T-115 (R3) : depuis 2024 (métropole, DROM, Alsace-Moselle), brut calculé comme le convertisseur officiel (brut.ts, F1).
+  const f1 = brutDepuisNet(net, d, region);
+  if (f1 !== undefined) return f1;
   // Estimation, pas un barème : même part net/brut pour toutes les périodes (choix signalé dans correctifs-t023.md).
   // T-077 (R1) : part propre à l'Alsace-Moselle et à Mayotte (regions.ts).
   return Math.round((net * 10000) / netSurBrutRegion(region, d, ratesAt(d)?.netSurBrut ?? NET_BRUT));

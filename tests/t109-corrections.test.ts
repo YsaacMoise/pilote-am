@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AmLeave, Contract, DayRec, Planning } from '../src/engine/model';
 import { makeCtx } from '../src/engine/payroll';
+import { addDays } from '../src/engine/dates';
 import { computeMonth, declarationText, totalAVerser } from '../src/engine/month';
 import { entretienPlancher } from '../src/engine/rates';
 
@@ -34,8 +35,19 @@ describe('C1 : réduction de cotisations des heures complémentaires dans le tot
     const t = declarationText(makeCtx(ct({ rateBrut: 640 } as Partial<Contract>), recs, [], '2026-12-31'), r, 'Ana');
     expect(t).toMatch(/Réduction de cotisations des heures complémentaires et majorées, versée en plus du salaire net : 2,90\s€/);
   });
-  it('brut inconnu : rien d’estimé dans le total, le taux horaire brut est demandé', () => {
+  it('T-115 (R3) : sans taux brut au contrat, le brut se calcule depuis le net (F1) : la réduction entre dans le total', () => {
+    // 20,00 € net d'heures complémentaires ÷ 0,7811975 = 25,60 € brut ; 11,31 % × 25,60 = 2,895 → 2,90 €.
     const r = mois(ct(), recs);
+    expect(r.reductionHS).toBe(290);
+    expect(r.reductionHSManquante).toBe(false);
+    expect(totalAVerser(r)).toBe(r.netTotal + 290 + r.entretien + r.repas + r.km);
+  });
+  it('brut inconnu (contrat d’avant 2024, sans taux brut) : rien d’estimé dans le total, le taux horaire brut est demandé', () => {
+    // T-115 (R3) : depuis 2024 le brut se calcule ; le cas « brut inconnu » reste pour les périodes d'avant 2024 et Mayotte.
+    // Mêmes pointages 156 semaines plus tôt (mêmes jours de la semaine) : semaine du lundi 16/10/2023.
+    const ans = (d: string) => d.replace(/\d{4}-\d\d-\d\d/, (x) => addDays(x, -1092));
+    const r = computeMonth(makeCtx(ct({ start: '2023-01-02', trackedFrom: '2023-01-02' }), recs.map((x) => ({ ...x, date: ans(x.date), key: ans(x.key) })), [], '2023-12-31'), '2023-10');
+    expect(r.complAmount).toBe(2000);
     expect(totalAVerser(r)).toBe(r.netTotal + r.entretien + r.repas + r.km);
     expect(r.reductionHSManquante).toBe(true);
   });

@@ -148,6 +148,9 @@ CODES = {
     "A77-MAINTIEN-LOCAL": "Alsace-Moselle, maladie de l'AM ou enfant de l'AM malade : maintien du droit local moins les IJ (C. trav. L1226-23, lecture A) ou retenue (CCN annexe 3 art. 3.1, lecture B), question DDETS (T-077, R4).",
     "A77-TITRE-MAYOTTE": "Majoration de 4 % du titre AM-AP a Mayotte : l'Urssaf l'ecarte (« Non concerne »), aucun texte lu ne l'ecarte (T-077, R2).",
     "REPERE-NET-ABSENT": "Aucun repere net Urssaf du minimum avant le 01/01/2025 (T-077, R2).",
+    # T-115 (R3) : regles/t115-net-brut.md (depot calculateur-arvela).
+    "T115-AVANT-2024": "Brut horaire depuis le net (F2) ou net ligne par ligne avant le 01/01/2024 : taux salariaux de 2022 et 2023 non relus (T-115, § 2.5, A5). Saisir le brut ecrit au contrat.",
+    "T115-MAYOTTE": "Brut horaire depuis le net (F2) ou net ligne par ligne a Mayotte : l'Urssaf n'applique pas la meme methode sur ses deux tableaux, aucun brut n'est sur au centime (T-115, A4). Saisir le brut ecrit au contrat.",
     "EXCLU-OCCASIONNEL": "Accueil occasionnel exclu de la version 0.",
     "EXCLU-ALTERNEES": "Semaines alternees exclues de la version 0.",
     "EXCLU-MATERNITE": "Maternite, paternite, adoption et conges de naissance exclus de la version 0.",

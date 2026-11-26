@@ -45,12 +45,13 @@ export function controle(b: Bulletin, r: MonthResult, rateNet: number, region: R
   // T-103 (D1, D6) : avec le taux horaire brut du contrat, le brut attendu est exact : brut calculé par l'app (r.brutEstime,
   // net × brut ÷ net du contrat). Sans lui, le brut n'est pas contrôlé et l'app demande le taux.
   if (b.brut != null && b.brut > 0) {
-    if (!r.brutConnu || !rateBrut) {
+    // T-115 (R3) : sans brut écrit par l'AM, le brut du mois est calculé depuis le net (brut.ts, F1) : il se contrôle aussi.
+    if (!r.brutConnu) {
       out.push({ level: 'info', title: 'Brut non contrôlé', detail: 'Indique ton salaire horaire brut dans le contrat (il est écrit à côté du net) : l’app contrôlera le brut du bulletin.' });
     } else {
       const diff = b.brut - r.brutEstime;
-      if (Math.abs(diff) <= tol) out.push({ level: 'ok', title: 'Salaire brut conforme', detail: `${euros(b.brut)} sur le bulletin, ${euros(r.brutEstime)} calculé avec le taux brut du contrat.` });
-      else out.push({ level: diff < 0 ? 'warn' : 'info', title: 'Salaire brut différent', detail: `${euros(b.brut)} sur le bulletin, ${euros(r.brutEstime)} calculé avec le taux brut du contrat (${euros(rateBrut)} de l’heure). Vérifie le taux déclaré à Pajemploi.` });
+      if (Math.abs(diff) <= tol) out.push({ level: 'ok', title: 'Salaire brut conforme', detail: `${euros(b.brut)} sur le bulletin, ${euros(r.brutEstime)} calculé par l’app.` });
+      else out.push({ level: diff < 0 ? 'warn' : 'info', title: 'Salaire brut différent', detail: `${euros(b.brut)} sur le bulletin, ${euros(r.brutEstime)} calculé par l’app${rateBrut ? ` (${euros(rateBrut)} brut de l’heure)` : ''}. Vérifie le taux déclaré à Pajemploi.` });
     }
   }
   // T-025 C-3 : minimum = le plus haut de la grille et de 0,281 × SMIC (CASF D423-9), comparé au taux brut du contrat.

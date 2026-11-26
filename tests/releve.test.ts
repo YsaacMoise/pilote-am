@@ -49,13 +49,16 @@ describe('relevé du mois : données', () => {
       { label: 'Jours d’absence de l’enfant', value: '1' },
     ]);
   });
-  it('montants : 682,50 + 3,85 (1 h au-delà de 45 h) = 686,35 € ; entretien 20 × 3,92 + 4,35 = 82,75 € ; total 769,10 €', () => {
+  // T-115 (R3) : le brut se calcule depuis le net ; la réduction de cotisations de l'heure majorée (T-109, CSS L241-17) entre
+  // donc dans le total : 3,85 € net ÷ 0,7811975 = 4,93 € brut ; 11,31 % × 4,93 = 0,5576 → 0,56 €. Total 769,10 + 0,56.
+  it('montants : 682,50 + 3,85 (1 h au-delà de 45 h) = 686,35 € ; entretien 20 × 3,92 + 4,35 = 82,75 € ; réduction 0,56 € ; total 769,66 €', () => {
     const v = Object.fromEntries(d.montants.map((m) => [m.label, m.value.replace(/\s/g, ' ')]));
     expect(v['Salaire net']).toBe('686,35 €');
     expect(v['Indemnités d’entretien']).toBe('82,75 €');
     expect(v['Repas']).toBe('0,00 €');
     expect(v['Kilomètres']).toBe('0,00 €');
-    expect(v['Total à verser']).toBe('769,10 €');
+    expect(v['Heures complémentaires et majorées : somme versée en plus du salaire net']).toBe('0,56 €');
+    expect(v['Total à verser']).toBe('769,66 €');
   });
   it('lignes Pajemploi : exactement celles de l’écran Mois, dans le même ordre', () => {
     expect(d.declaration).toEqual(declarationLines(ctx, computeMonth(ctx, '2026-10')));

@@ -31,6 +31,8 @@ import { entretienPlancher, netToBrut, ratesAt } from '__A_RACINE__/src/engine/r
 // T-077 : fonctions régionales (absentes des versions de A d'avant T-077 : lues à l'exécution, sans import statique).
 import * as RATES_A from '__A_RACINE__/src/engine/rates';
 import * as REGIONS_A from '__A_RACINE__/src/engine/regions';
+// T-115 (R3) : brut horaire calculé depuis le net (F2).
+import * as BRUT_A from '__A_RACINE__/src/engine/brut';
 import { lastDay, monthOf } from '__A_RACINE__/src/engine/dates';
 // T-027 : fonctions publiques du moteur A pour les kilomètres et les événements familiaux (signatures seulement).
 import { controleKm } from '__A_RACINE__/src/engine/km';
@@ -390,6 +392,14 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       if ((RATES_A as any).ratesAtRegion) out.minimum_net = ok((RATES_A as any).ratesAtRegion(k.date, (REGIONS_A as any).regionDe(ctx.c)).minConvNet);
       if (out.minimum_net.valeur === undefined) out.minimum_net = absent('A : aucun repère net à cette date');
       break;
+    case 'brut_horaire': {
+      // T-115 (R3) : brut horaire affiché au contrat (F2) ; région donnée par la situation, sinon celle du contrat.
+      // Les situations nomment les régions comme le moteur B (« alsace_moselle ») : traduites vers les noms de A.
+      const region = k.region === 'alsace_moselle' ? 'alsaceMoselle' : k.region;
+      const b = (BRUT_A as any).brutHoraireDepuisNet(k.net, k.date, region ?? (REGIONS_A as any).regionDe?.(ctx.c) ?? 'metropole');
+      out.brut_horaire = b === undefined ? refus('A : brut demandé à l’AM (Mayotte ou avant 2024)') : ok(b);
+      break;
+    }
     case 'brut_depuis_net':
       out.brut_estime = ok((netToBrut as (...a: unknown[]) => number)(k.net, k.date, (REGIONS_A as any).regionDe?.(ctx.c) ?? 'metropole'));
       break;

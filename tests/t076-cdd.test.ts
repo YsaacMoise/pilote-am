@@ -93,7 +93,8 @@ describe('R-CDD-06 : ni préavis ni indemnité de rupture', () => {
 describe('R-CDD-07, R-CDD-09, R-CDD-10 : IFC puis ICCP, IFC dans la base du dixième', () => {
   // Direction T-076 : l'IFC est calculée sur le net (Urssaf : « La déclaration et le paiement doivent être réalisés sur la
   // base du net »). Assiette nette = 78788 + 3 × 86667 = 338789 (3 387,89 €).
-  // IFC nette = arrondi(10 % × 338789) = 33878,9 → 338,79 € (33879) ; brut affiché = n2b(33879) = 43379.
+  // IFC nette = arrondi(10 % × 338789) = 33878,9 → 338,79 € (33879) ; brut affiché = n2b(33879) = 43379 au rapport 0,781 ;
+  // T-115 (R3) : F1, 33879 ÷ 0,7811975 = 43368,03 → 433,68 € ; assiette brute 338789 + ... → voir brutCdd.
   // ICCP (dixième de la période, IFC comprise) : (338789 + 33879) / 10 = 372668 / 10 → 372,67 € (37267).
   // Maintien (T-103, F9 : le plus favorable est retenu) : 11 jours × 200 € la semaine / 6 = 366,67 € < 372,67 €.
   // Plancher L1242-16 (aucun congé pris) : 10 % × (salaires + IFC), même base : 372,67 €.
@@ -102,8 +103,8 @@ describe('R-CDD-07, R-CDD-09, R-CDD-10 : IFC puis ICCP, IFC dans la base du dixi
     const f = fin(cdd(), '2026-04-30', 'terme');
     expect(f.assietteNetteCdd).toBe(338789);
     expect(f.ifcNet).toBe(33879);
-    expect(f.ifc).toBe(43379);
-    expect(f.brutCdd).toBe(433789);
+    expect(f.ifc).toBe(43368);
+    expect(f.brutCdd).toBe(433679); // T-115 (R3) : F1, 338789 ÷ 0,7811975 = 433679,06 (avant 433789 au rapport 0,781)
     expect(f.cpIndemnite).toBe(37267);
     expect(f.regularisation).toBe(0);
   });
@@ -113,7 +114,7 @@ describe('R-CDD-07, R-CDD-09, R-CDD-10 : IFC puis ICCP, IFC dans la base du dixi
     // L'ancienne route par le brut donnait b2n(arrondi(10 % × (n2b(63030) + 2 × n2b(69333)))) = 201,69 € : un centime de moins.
     const f = fin(cdd({ rateNet: 400, cddTerme: '2026-03-31' }), '2026-03-31', 'terme');
     expect(f.ifcNet).toBe(20170);
-    expect(f.ifc).toBe(25826);
+    expect(f.ifc).toBe(25819); // T-115 (R3) : F1, 20170 ÷ 0,7811975 = 25819,3 (avant 25826 au rapport 0,781)
   });
   it('ordre R-CDD-09 : sans l’IFC dans la base, le dixième serait plus bas (338,79 €) ; l’IFC ne compte pas l’ICCP', () => {
     // Dixième sans IFC : 338789 / 10 = 33878,9 → 338,79 €. Avec : 372,67 €. Écart = 10 % de l'IFC nette (33,88 €).
@@ -292,15 +293,18 @@ describe('R-CDD-08 : IFC selon la façon dont le CDD finit', () => {
 describe('C-FIN-11 (Urssaf, Virginie) : 1 600 € brut, IFC 160 €', () => {
   it('du 1er janvier au 28 février, 800 € brut par mois : IFC 160,00 € brut', () => {
     // Urssaf : « 800 € + 800 € = 1 600 € brut ; la prime de précarité sera alors de 1 600 € × 10 % = 160 € brut ».
-    // L'app calcule en net : 800 € brut = 624,80 € net au rapport de l'app (7810 / 10000). Contrat choisi pour un salaire
-    // mensualisé de 624,80 € : 26 h 48 par semaine (4 jours de 8 h à 14 h 42), 5,38 € net : 1608 min × 5,38 × 52 / 12 / 60
-    // = 624,80 €. Du jeudi 01/01 au samedi 28/02 : deux mois complets. Assiette nette 124960 ; IFC nette 12496 ;
-    // brut = n2b(12496) = 16000 (160,00 €) ; assiette brute n2b(124960) = 160000 (1 600,00 €).
-    const c = cdd({ start: '2026-01-01', trackedFrom: '2026-01-01', cddTerme: '2026-02-28', planning: week('08:00', '14:42', [1, 2, 4, 5]), rateNet: 538 });
+    // L'app calcule en net. T-115 (R3) : le brut se calcule depuis le net par F1 (net ÷ 0,7811975, au centime) ; 800 € brut
+    // = 624,96 € net (avant : 624,80 € au rapport 7810 / 10000, contrat de 5,38 € de 8 h à 14 h 42). Contrat choisi pour un
+    // salaire mensualisé de 624,96 € : 25 h 48 par semaine (4 jours de 8 h à 14 h 27), 5,59 € net : 1548 min × 5,59 × 52 / 12
+    // / 60 = 624,962 → 624,96 €. Du jeudi 01/01 au samedi 28/02 : deux mois complets. Assiette nette 124992 ; IFC nette
+    // 12499,2 → 12499 ; brut = F1(12499) = 15999,8 → 16000 (160,00 €, le montant officiel). Assiette brute : F1 sur le net
+    // des deux mois, 124992 ÷ 0,7811975 = 160000,5 → 1 600,01 € ; aucun net entier ne donne 1 600,00 € par F1 (124991 →
+    // 1 599,99 €). Chaque mois seul donne bien 800,00 € (62496 → 80000,3). Écart d'un centime noté au rapport T-115.
+    const c = cdd({ start: '2026-01-01', trackedFrom: '2026-01-01', cddTerme: '2026-02-28', planning: week('08:00', '14:27', [1, 2, 4, 5]), rateNet: 559 });
     const f = finDeCdd(ctxDe(c), '2026-02-28', 'terme', 0);
-    expect(f.assietteNetteCdd).toBe(124960);
-    expect(f.brutCdd).toBe(160000);
-    expect(f.ifcNet).toBe(12496);
+    expect(f.assietteNetteCdd).toBe(124992);
+    expect(f.brutCdd).toBe(160001);
+    expect(f.ifcNet).toBe(12499);
     expect(f.ifc).toBe(16000);
   });
 });
@@ -390,6 +394,8 @@ describe('Non-régression : un CDI donne exactement les mêmes sorties qu’avan
     const HORS = new Set(['brutConnu', 'reductionHSManquante', 'periodeDecesFin', 'normalesPlusMin', 'normalesPlusAmount', 'evenementAConfirmer', 'ferieLocalAConfirmer', 'joursCpAConfirmer', 'joursEvenementAConfirmer', 'joursFerieLocalAConfirmer', 'joursMaintienAConfirmer', 'joursMaladieAConfirmer', 'kmAConfirmer']);
     const filtre = (x: unknown) => JSON.parse(JSON.stringify(x, (k, v) => (HORS.has(k) ? undefined : v)));
     // Recapture (T-103, après relecture des écarts) : T076_RECAPTURE=1 npx vitest run tests/t076-cdd.test.ts
+    // Recapture T-115 (R3, brut calculé depuis le net par F1) : écarts relus, tous liés au brut (brutEstime 28, brutsEstimes 12
+    // vidés, totalBrut 10, indemniteRupture 3 (−5 centimes au plus), reductionHSManquante 2, hsBrut 1) ; rapport T-115.
     if (process.env.T076_RECAPTURE === '1') writeFileSync(new URL('./fixtures/t076-cdi-avant.json', import.meta.url), JSON.stringify(apres));
     expect(filtre(apres)).toEqual(filtre(avant));
   });
