@@ -170,19 +170,17 @@ describe('T-121 : conservation de 5 ans', () => {
 });
 
 describe('T-121 : rappel de sauvegarde (ajout du DG)', () => {
-  const base = { contrats: 1, maintenant: 100 * 86400000, compte: false, copieAJour: false, cleOk: false, cleManquante: false };
+  const base = { contrats: 1, maintenant: 100 * 86400000, compte: false, copieAJour: false, cleOk: false, cleManquante: false, filet: false };
   it('sans compte : rappel de la semaine comme avant', () => {
     expect(rappelDuJour(base)).toBe('sauvegarde');
     expect(rappelDuJour({ ...base, derniereSauvegarde: base.maintenant - 86400000 })).toBeNull();
     expect(rappelDuJour({ ...base, derniereSauvegarde: base.maintenant - 8 * 86400000 })).toBe('sauvegarde');
     expect(rappelDuJour({ ...base, contrats: 0 })).toBeNull();
   });
-  it('avec un compte et une copie à jour : plus de rappel de la semaine ; invite à garder la clé tant qu’elle ne l’est pas', () => {
+  it('avec un compte et une copie à jour : plus de rappel de la semaine ; carte tant qu’aucun filet ne protège la clé (T-125)', () => {
     const c = { ...base, compte: true, copieAJour: true, cleOk: true };
     expect(rappelDuJour(c)).toBe('cle');
-    expect(rappelDuJour({ ...c, cleGardee: '2026-11-26' })).toBeNull();
-    expect(rappelDuJour({ ...c, inviteEcartee: c.maintenant - 86400000 })).toBeNull();
-    expect(rappelDuJour({ ...c, inviteEcartee: c.maintenant - 31 * 86400000 })).toBe('cle');
+    expect(rappelDuJour({ ...c, filet: true })).toBeNull();
   });
   it('compte dont la copie n’est pas à jour : rappel de la semaine ; clé absente de ce téléphone : invite à l’entrer', () => {
     expect(rappelDuJour({ ...base, compte: true, copieAJour: false, cleOk: true })).toBe('sauvegarde');

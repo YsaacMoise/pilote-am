@@ -58,7 +58,7 @@ const note = (id, kind, detail, extra = {}) => ({ id, cid: 'c1', date: today, ti
 const j1 = note('j1', 'soin', 'Température 38,4 °C (fièvre)', { temp: 38.4 });
 const j2 = note('j2', 'note', 'A toussé toute la matinée', { time: '10:30' });
 const j4 = note('j4', 'repas', 'A tout mangé', { time: '12:00' });
-const reglages = { k: 'settings', v: { amName: 'Sonia', enfantsACharge: 0, onboarded: true, conditionsAcceptees: { version: '2026-11-26', date: today } } };
+const reglages = { k: 'settings', v: { amName: 'Sonia', enfantsACharge: 0, onboarded: true, conditionsAcceptees: { version: '2026-11-26-2', date: today } } };
 const stable = (v) => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, x[k]])) : x));
 const SANTE = /38,4|fièvre|Température|toussé|majoreFiscal|SecretDuLien|4827/;
 
@@ -129,7 +129,7 @@ const lireLocal = (p, s, k) => p.evaluate(async ({ s, k }) => {
     await a.evaluate((t) => localStorage.setItem('pam-theme', t), theme);
     await a.goto(base + '#/');
     await a.reload();
-    await a.getByText('Garde ta clé de secours').waitFor();
+    await a.getByText('Protège ta clé de secours').waitFor();
     await a.screenshot({ path: path.join(out, `apres-aujourdhui-cle-${theme === 'light' ? 'clair' : 'sombre'}.png`) });
   }
   assert(!(await a.getByText('Pense à ta sauvegarde de la semaine').isVisible()), 'compte à jour : invite à garder la clé, plus de rappel de la semaine');
@@ -141,10 +141,10 @@ const lireLocal = (p, s, k) => p.evaluate(async ({ s, k }) => {
   assert(await a.getByText(code).isVisible(), 'la clé s’affiche à la demande');
   await a.getByRole('heading', { name: 'Ta clé de secours' }).scrollIntoViewIfNeeded();
   await a.screenshot({ path: path.join(out, 'apres-compte-cle-sombre.png') });
-  await a.getByRole('button', { name: 'Je l’ai gardée' }).click();
+  await a.getByRole('button', { name: 'Je l’ai notée' }).click();
   await a.goto(base + '#/');
   await a.waitForTimeout(800);
-  assert(!(await a.getByText('Garde ta clé de secours').isVisible()) && !(await a.getByText('Pense à ta sauvegarde de la semaine').isVisible()), 'clé gardée : plus aucun rappel');
+  assert(!(await a.getByText('Protège ta clé de secours').isVisible()) && !(await a.getByText('Pense à ta sauvegarde de la semaine').isVisible()), 'clé gardée : plus aucun rappel');
   await a.evaluate(() => localStorage.setItem('pam-theme', 'light'));
 
   console.log('\n== Note de soin : accord des parents, puis envoi chiffré ==');
@@ -182,12 +182,12 @@ const lireLocal = (p, s, k) => p.evaluate(async ({ s, k }) => {
   assert(cSansCle.sante && !('majoreFiscal' in cSansCle) && !('code' in cSansCle.partage), 'B sans clé : le nouveau taux part, la case et le code du lien restent chiffrés');
   await bb.goto(base + '#/compte');
   await bb.getByRole('textbox', { name: 'Clé de secours' }).fill('0000-0000-0000-0000-0000-0000-00');
-  await bb.getByRole('button', { name: 'Ouvrir mes données' }).click();
+  await bb.getByRole('button', { name: 'Ouvrir', exact: true }).click();
   await bb.getByText(/Ce n’est pas la clé de secours de ce compte/).waitFor();
   assert(true, 'mauvaise clé refusée, en français');
   await bb.screenshot({ path: path.join(out, 'apres-compte-entrer-cle-clair.png') });
   await bb.getByRole('textbox', { name: 'Clé de secours' }).fill(code.toLowerCase());
-  await bb.getByRole('button', { name: 'Ouvrir mes données' }).click();
+  await bb.getByRole('button', { name: 'Ouvrir', exact: true }).click();
   await attendre(bb, () => !!localStorage.getItem('pam-coffre'), 15000);
   await bb.waitForTimeout(1000);
   const bJ1b = await lireLocal(bb, 'journal', 'j1');

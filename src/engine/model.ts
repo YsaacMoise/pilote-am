@@ -496,6 +496,8 @@ export interface Settings {
   departement?: string;
   /** T-121 : date (AAAA-MM-JJ) où l'AM a dit avoir gardé sa clé de secours */
   cleGardee?: string;
+  /** T-125 : filets de la clé de secours faits par l'AM (dates AAAA-MM-JJ) : envoyée par e-mail, imprimée, enregistrée en fichier */
+  filets?: { email?: string; impression?: string; fichier?: string };
 }
 
 export interface Bulletin {

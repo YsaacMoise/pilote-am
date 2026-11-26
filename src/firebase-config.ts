@@ -22,3 +22,10 @@ export const RECAPTCHA_SITE_KEY = '6LdxAg8uAAAAAAahu93N7aNBjnG80EIM2QhxyJG-';
 export function appCheckActif(hostname: string): boolean {
   return hostname === 'arvela.fr';
 }
+
+/**
+ * T-125, point 4 : clé PUBLIQUE de la clé Cloud KMS de la copie scellée (RSA-OAEP 3072, SHA-256, niveau HSM, europe-west9),
+ * au format PEM. Vide tant que le DG ne l'a pas créée (docs/sequestre-kms.md) : la copie scellée reste alors désactivée.
+ * Une clé publique n'est pas un secret.
+ */
+export const SEQUESTRE_PEM = '';

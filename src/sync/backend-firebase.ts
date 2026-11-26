@@ -11,7 +11,7 @@ import {
   query, runTransaction, serverTimestamp, Timestamp, waitForPendingWrites, where, writeBatch, type DocumentData,
 } from 'firebase/firestore';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
-import { appCheckActif, firebaseConfig, RECAPTCHA_SITE_KEY } from '../firebase-config';
+import { appCheckActif, firebaseConfig, RECAPTCHA_SITE_KEY, SEQUESTRE_PEM } from '../firebase-config';
 import { errCode, type Backend, type CloudUser, type SharedDoc } from './backend';
 import { docId, isSyncedStore, type RemoteDoc } from './plan';
 import { deviceId } from '../cloud-state';
@@ -61,6 +61,12 @@ function rejected(e: unknown, docs: Array<{ s: RemoteDoc['s']; k: string }>) {
   console.warn('envoi refusé', e);
   const code = errCode(e);
   rejSubs.forEach((f) => f(code, docs));
+}
+
+/** T-125 : fonctions serveur de la copie scellée (functions/sequestre.js, région europe-west9), chargées à la demande. */
+async function appel(nom: string): Promise<unknown> {
+  const { getFunctions, httpsCallable } = await import('firebase/functions');
+  return (await httpsCallable(getFunctions(app, 'europe-west9'), nom)()).data;
 }
 
 function toRemote(data: DocumentData): RemoteDoc | null {
@@ -151,6 +157,21 @@ export const backend: Backend = {
       });
       track(p);
     }
+  },
+  async sequestreClePublique() {
+    return SEQUESTRE_PEM || null;
+  },
+  async sequestreDemander() {
+    return ((await appel('sequestreDemander')) as { pret: number }).pret;
+  },
+  async sequestreEtat() {
+    return ((await appel('sequestreEtat')) as { pret: number | null }).pret;
+  },
+  async sequestreAnnuler() {
+    await appel('sequestreAnnuler');
+  },
+  async sequestreOuvrir() {
+    return (await appel('sequestreOuvrir')) as { s: string; u: string; c: string };
   },
   async creerCoffre(uid, v) {
     const ref = doc(col(uid), docId('kv', 'coffre'));

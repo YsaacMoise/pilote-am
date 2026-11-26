@@ -1,6 +1,12 @@
 // Faux service en ligne, en mémoire, pour les tests automatisés de la synchronisation.
 // Usage : node scripts/fake-cloud.mjs 4180
 import { createServer } from 'node:http';
+import { generateKeyPairSync, privateDecrypt, constants } from 'node:crypto';
+
+// T-125 : clé du faux « KMS » de la copie scellée (RSA-OAEP 3072, SHA-256, comme la clé Cloud KMS), et délai de test.
+const kms = generateKeyPairSync('rsa', { modulusLength: 3072 });
+const DELAI = Number(process.env.FAKE_DELAI_MS ?? 3000);
+const demandes = new Map(); // uid -> { pret, ouverte, annulee }
 
 const port = Number(process.argv[2] ?? 4180);
 const users = new Map(); // email -> { uid, password }
@@ -117,6 +123,31 @@ createServer(async (req, res) => {
         n++;
       }
       return send(res, 200, { n });
+    }
+    // T-125 : copie scellée (comme functions/sequestre.js, avec la clé du faux KMS)
+    case '/sequestre-cle': return send(res, 200, { pem: kms.publicKey.export({ type: 'spki', format: 'pem' }) });
+    case '/sequestre-demander': {
+      const cur = demandes.get(body.uid);
+      if (cur && !cur.annulee && !cur.ouverte) return send(res, 200, { pret: cur.pret });
+      const pret = Date.now() + DELAI;
+      demandes.set(body.uid, { pret, ouverte: false, annulee: false });
+      return send(res, 200, { pret });
+    }
+    case '/sequestre-etat': {
+      const cur = demandes.get(body.uid);
+      return send(res, 200, { pret: cur && !cur.annulee && !cur.ouverte ? cur.pret : null });
+    }
+    case '/sequestre-annuler': { const cur = demandes.get(body.uid); if (cur) cur.annulee = true; return send(res, 200, {}); }
+    case '/sequestre-ouvrir': {
+      const cur = demandes.get(body.uid);
+      if (!cur || cur.annulee || cur.ouverte || Date.now() < cur.pret) return send(res, 400, { code: 'failed-precondition' });
+      const doc = (data.get(body.uid) ?? new Map()).get('kv~sequestre');
+      if (!doc?.v) return send(res, 400, { code: 'failed-precondition' });
+      const v = JSON.parse(doc.v).v;
+      const contenu = JSON.parse(privateDecrypt({ key: kms.privateKey, padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' }, Buffer.from(v.c, 'base64url')).toString('utf8'));
+      if (contenu.u !== body.uid || contenu.c !== v.coffre) return send(res, 403, { code: 'permission-denied' });
+      cur.ouverte = true;
+      return send(res, 200, contenu);
     }
     // Pour les tests : contenu d'un compte, tel qu'il est en ligne
     case '/dump': return send(res, 200, { docs: [...(data.get(url.searchParams.get('uid')) ?? new Map()).values()] });

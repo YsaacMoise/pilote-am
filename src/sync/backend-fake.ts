@@ -107,6 +107,21 @@ export const backend: Backend = {
     writeQ([...readQ(), { uid, docs }]);
     void flush();
   },
+  async sequestreClePublique() {
+    return (await call<{ pem: string }>('/sequestre-cle')).pem;
+  },
+  async sequestreDemander() {
+    return (await call<{ pret: number }>('/sequestre-demander', { uid: current?.uid })).pret;
+  },
+  async sequestreEtat() {
+    return (await call<{ pret: number | null }>('/sequestre-etat', { uid: current?.uid })).pret;
+  },
+  async sequestreAnnuler() {
+    await call('/sequestre-annuler', { uid: current?.uid });
+  },
+  async sequestreOuvrir() {
+    return call<{ s: string; u: string; c: string }>('/sequestre-ouvrir', { uid: current?.uid });
+  },
   async creerCoffre(uid, v) {
     return (await call<{ v: string }>('/creer-coffre', { uid, v, d: deviceId() })).v;
   },

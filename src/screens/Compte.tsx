@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { appareilsAnciens, cleLocale, cloudInfo, statusLine, useCloud, type CloudStatus } from '../cloud-state';
 import { saveSettings, state, toast, useStore } from '../store';
 import { shareFile } from '../share';
+import { BoutonCleAcces, useSupportPrf } from '../ui/CleAcces';
 import { today } from '../engine/dates';
 import { Banner, Sheet, TextInput, Topbar, useErreurAffichee } from '../ui/kit';
 import { Icon } from '../ui/icons';
@@ -233,57 +234,107 @@ function DeleteSheet({ onClose }: { onClose: () => void }) {
 }
 
 /**
- * T-121 (option b) : clé de secours. Elle protège le carnet (soins, températures, notes), la case « handicap ou maladie » et
- * le code du lien des parents, chiffrés de bout en bout dans le compte. Elle reste sur les appareils de l'AM.
+ * T-121 (option b) : clé de secours du carnet chiffré. T-125 (consignes/t125-cle-sans-perte.md) : ses filets (clé d'accès
+ * Face ID ou empreinte, e-mail à soi-même, impression, fichier, copie scellée chez Arvela) et leur état. Point 5 du DG :
+ * aucun texte d'explication ici, un état et des boutons ; la page Confidentialité dit les faits.
  */
 function CleSecours() {
   useStore();
+  const cl = useCloud();
+  const support = useSupportPrf();
   const [voir, setVoir] = useState(false);
+  const [confirmer, setConfirmer] = useState<null | 'email' | 'impression'>(null);
+  const [imprimer, setImprimer] = useState(false);
   const code = cleLocale();
   if (!code) return null;
-  const gardee = state.settings.cleGardee;
+  const f = state.settings.filets ?? {};
+  const jour = (d?: string) => (d ? d.split('-').reverse().join('/') : '');
+  const noter = (k: 'email' | 'impression' | 'fichier') => saveSettings({ filets: { ...(state.settings.filets ?? {}), [k]: today() } });
+  const texte = `Ma clé de secours Arvela : ${code}\nArvela › Plus › Compte › Entre ta clé de secours.`;
+  const mailto = `mailto:${encodeURIComponent(cl.email ?? '')}?subject=${encodeURIComponent('Ma clé de secours Arvela')}&body=${encodeURIComponent(texte)}`;
+  const etat = (fait: boolean | string | undefined) => (typeof fait === 'string' ? jour(fait) : fait ? 'oui' : 'non');
+  const imprimerMaintenant = () => {
+    setImprimer(true);
+    document.body.classList.add('impression-cle');
+    const fin = () => { document.body.classList.remove('impression-cle'); window.removeEventListener('afterprint', fin); setImprimer(false); setConfirmer('impression'); };
+    window.addEventListener('afterprint', fin);
+    setTimeout(() => { window.print(); setTimeout(() => { if (document.body.classList.contains('impression-cle')) fin(); }, 1500); }, 50);
+  };
   return (
     <section class="card stack-sm" aria-labelledby="cle-t">
       <h2 id="cle-t" class="row"><Icon name="lock" />Ta clé de secours</h2>
-      <p>Le carnet (soins, températures, notes), la case « handicap ou maladie » et le code du lien des parents sont chiffrés avant de partir : ni Arvela ni personne d’autre ne peut les lire en ligne. La clé reste sur tes appareils.</p>
-      <p>Garde-la hors de ce téléphone (papier, autre appareil, gestionnaire de mots de passe). Elle sert à tout retrouver sur un nouveau téléphone.</p>
-      <p class="hint warn"><b>Si tu perds cette clé et tous tes appareils, ces données ne peuvent plus être lues, par personne.</b> Le reste (contrats, journées, montants) se retrouve avec ton compte.</p>
-      {voir ? <p class="share-code" style={{ fontSize: '1.1rem', wordBreak: 'break-all' }} aria-label="Clé de secours">{code}</p> : <button class="btn btn-outline btn-block" onClick={() => setVoir(true)}>Afficher la clé</button>}
+      <dl class="kv" aria-label="État des filets">
+        <dt>Face ID</dt><dd>{(cl.paquets ?? 0) > 0 ? 'oui' : 'non'}</dd>
+        <dt>E-mail</dt><dd>{etat(f.email)}</dd>
+        <dt>Imprimée</dt><dd>{etat(f.impression)}</dd>
+        <dt>Fichier</dt><dd>{etat(f.fichier)}</dd>
+        <dt>Notée</dt><dd>{etat(state.settings.cleGardee)}</dd>
+        <dt>Copie Arvela</dt><dd>{cl.sequestre ? 'oui' : 'non'}</dd>
+      </dl>
+      {support !== 'non' && <BoutonCleAcces mode="proteger" block />}
+      <a class="btn btn-outline btn-block" href={mailto} onClick={() => setTimeout(() => setConfirmer('email'), 300)}>M’envoyer ma clé par e-mail</a>
+      <button class="btn btn-outline btn-block" onClick={imprimerMaintenant}>Imprimer ma clé</button>
       <button class="btn btn-outline btn-block" onClick={async () => {
-        const r = await shareFile(new File([`Clé de secours Arvela (données de santé chiffrées)\n${code}\nGarde ce fichier hors de ton téléphone. Sans lui ni aucun de tes appareils, ces données ne peuvent plus être lues.\n`], 'cle-de-secours-arvela.txt', { type: 'text/plain' }));
-        if (r === 'downloaded' || r === 'shared') toast('Fichier de la clé enregistré. Garde-le hors de ce téléphone.');
-      }}>Enregistrer la clé dans un fichier</button>
-      {gardee
-        ? <p class="hint">Tu as dit l’avoir gardée le {gardee.split('-').reverse().join('/')}.</p>
-        : <button class="btn btn-primary btn-block" onClick={() => void saveSettings({ cleGardee: today() })}>Je l’ai gardée</button>}
+        const r = await shareFile(new File([`Clé de secours Arvela\n${code}\n`], 'cle-de-secours-arvela.txt', { type: 'text/plain' }));
+        if (r === 'downloaded' || r === 'shared') await noter('fichier');
+      }}>Enregistrer ma clé dans un fichier</button>
+      {voir ? <p class="share-code" style={{ fontSize: '1.1rem', wordBreak: 'break-all' }} aria-label="Clé de secours">{code}</p> : <button class="btn btn-ghost btn-block" onClick={() => setVoir(true)}>Afficher la clé</button>}
+      {!state.settings.cleGardee && voir && <button class="btn btn-ghost btn-block" onClick={() => void saveSettings({ cleGardee: today() })}>Je l’ai notée</button>}
+      {cl.ouverture && <Banner tone="warn">Demande de récupération par Arvela en cours</Banner>}
+      {cl.ouverture && <button class="btn btn-danger btn-block" onClick={async () => {
+        try { await (await cloud()).annulerOuverture(); toast('Demande annulée.'); } catch (e) { toast((e as Error).message || 'Ça n’a pas marché. Réessaie.', undefined, 'warn'); }
+      }}>Annuler la demande</button>}
+      {imprimer && (
+        <div class="feuille-cle" aria-hidden="true">
+          <h1>Arvela : ma clé de secours</h1>
+          <p class="feuille-code">{code}</p>
+          <p>{cl.email ?? ''}</p>
+          <p>Arvela › Plus › Compte › Entre ta clé de secours</p>
+          <p>{jour(today())}</p>
+        </div>
+      )}
+      {confirmer && (
+        <Sheet title={confirmer === 'email' ? 'E-mail envoyé ?' : 'Page imprimée ?'} onClose={() => setConfirmer(null)}>
+          <div class="stack">
+            <button class="btn btn-primary btn-block" onClick={async () => { await noter(confirmer); setConfirmer(null); }}>{confirmer === 'email' ? 'Oui, envoyé' : 'Oui, imprimée'}</button>
+            <button class="btn btn-outline btn-block" onClick={() => setConfirmer(null)}>Pas encore</button>
+          </div>
+        </Sheet>
+      )}
     </section>
   );
 }
 
-/** T-121 : ce téléphone n'a pas la clé de secours du compte : il la demande (tapée, collée ou lue dans un fichier). */
+/** T-121 : ce téléphone n'a pas la clé de secours du compte. T-125 : Face ID, clé tapée ou fichier, ou copie scellée Arvela. */
 function EntrerCle() {
+  const cl = useCloud();
   const [texte, setTexte] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const essayer = async (t: string) => {
+  const run = async (f: (c: typeof import('../cloud')) => Promise<void>) => {
     setBusy(true); setError('');
-    try { await (await cloud()).entrerCle(t); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    try { await f(await cloud()); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   };
+  const pret = cl.ouverture ?? null;
+  const quand = pret ? new Date(pret).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
   return (
     <section class="card stack-sm" aria-labelledby="entrer-cle-t">
       <h2 id="entrer-cle-t" class="row"><Icon name="lock" />Entre ta clé de secours</h2>
-      <p>Ton compte garde le carnet, la case « handicap ou maladie » et le code du lien des parents chiffrés. Ce téléphone ne peut pas les lire sans ta clé de secours (26 lettres et chiffres, par groupes de 4). Tes contrats, journées et montants, eux, sont déjà là. Tant que la clé manque, les notes du carnet que tu ajoutes ici restent sur ce téléphone, sans copie dans ton compte.</p>
+      <BoutonCleAcces mode="ouvrir" block />
       <TextInput label="Clé de secours" value={texte} onChange={setTexte} placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XX" />
       {error && <p class="hint warn" role="alert">{error}</p>}
-      <button class="btn btn-primary btn-block" disabled={busy || !texte.trim()} onClick={() => void essayer(texte)}>{busy ? 'Vérification…' : 'Ouvrir mes données'}</button>
+      <button class="btn btn-primary btn-block" disabled={busy || !texte.trim()} onClick={() => void run((c) => c.entrerCle(texte))}>{busy ? 'Vérification…' : 'Ouvrir'}</button>
       <label class="btn btn-outline btn-block">
         Ouvrir le fichier de la clé
         <input type="file" accept=".txt,text/plain" style={{ display: 'none' }} onChange={async (e) => {
-          const f = (e.target as HTMLInputElement).files?.[0];
-          if (f) await essayer(await f.text());
+          const fi = (e.target as HTMLInputElement).files?.[0];
+          if (fi) { const t = await fi.text(); await run((c) => c.entrerCle(t)); }
         }} />
       </label>
-      <p class="hint">Tu ne l’as plus ? Elle s’affiche dans Compte sur un autre appareil où tu es connectée. Sans elle ni aucun appareil, le carnet et la case ne peuvent plus être lus ; tout le reste marche.</p>
+      {!pret && cl.sequestre && <button class="btn btn-ghost btn-block" disabled={busy} onClick={() => void run((c) => c.demanderOuverture())}>Récupérer par Arvela</button>}
+      {pret && pret > Date.now() && <p role="status">Récupération possible le {quand}</p>}
+      {pret && pret <= Date.now() && <button class="btn btn-primary btn-block" disabled={busy} onClick={() => void run((c) => c.ouvrirSequestre())}>Récupérer ma clé</button>}
+      {pret && <button class="btn btn-ghost btn-block" disabled={busy} onClick={() => void run((c) => c.annulerOuverture())}>Annuler la demande</button>}
     </section>
   );
 }

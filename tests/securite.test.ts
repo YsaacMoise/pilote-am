@@ -26,10 +26,10 @@ describe('règle CSP de firebase.json', () => {
     expect(directive('frame-src')).toContain('https://www.google.com/recaptcha/');
     expect(directive('connect-src')).toContain('https://www.google.com/recaptcha/');
   });
-  it('laisse passer Firebase et la mesure PostHog UE, et rien d’autre', () => {
+  it('laisse passer Firebase, ses fonctions de Paris (T-125, copie scellée) et la mesure PostHog UE, et rien d’autre', () => {
     const connect = directive('connect-src').split(' ').slice(1);
     expect(connect.sort()).toEqual(
-      ["'self'", 'https://*.googleapis.com', 'https://eu.i.posthog.com', 'https://www.google.com/recaptcha/'].sort(),
+      ["'self'", 'https://*.googleapis.com', 'https://eu.i.posthog.com', 'https://www.google.com/recaptcha/', 'https://europe-west9-arvela-app.cloudfunctions.net'].sort(),
     );
   });
   it('index.html ne contient plus de script écrit dans la page', () => {
