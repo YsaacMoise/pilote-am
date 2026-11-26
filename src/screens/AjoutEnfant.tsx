@@ -144,6 +144,8 @@ export function erreursEcran(e: Ecran, c: Contract, r: ReponsesAssistant, o: { d
     } else {
       const m = manquesPV(c);
       if (m.length) x.pv = `Indique ${m.join(', ')}.`;
+      // Relecture D2 : un jour coché sans horaires est signalé, jamais enregistré.
+      for (const pl of [...(c.cycle ?? []), ...Object.values(c.planningsSemaines ?? {})]) for (let d = 1; d <= 7; d++) for (const p of pl[d] ?? []) if (!x.pv && (!p.start || !p.end || p.end <= p.start)) x.pv = `${JOUR_NOMS[d - 1].replace(/^./, (y) => y.toUpperCase())} : indique l’heure d’arrivée et de départ.`;
     }
     const duree = erreursDureeContrat({ ...c, planning: planningRempli(c.planning) });
     if (duree.length && !Object.keys(x).length) x.duree = duree.join(' ');

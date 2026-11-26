@@ -4,7 +4,11 @@ import { useState } from 'preact/hooks';
 import { mondayOf, shortDate, today } from '../engine/dates';
 import { hoursLabel } from '../engine/money';
 import type { Contract, Plage, Planning } from '../engine/model';
-import { formePV, minutesPlanning, rangCycle } from '../engine/planningVariable';
+import { formePV, minutesPlanning as minutesBrutes, rangCycle } from '../engine/planningVariable';
+import { planningComplet } from './contrat-validation';
+
+/** T-122 (relecture D2) : un jour coché arrive sans horaires ; seules les plages complètes comptent dans les chiffres affichés. */
+const minutesPlanning = (pl: Planning) => minutesBrutes(planningComplet(pl));
 import { Choices, DateInput, NumberInput, Seg } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { PlanDay } from './Contrat';

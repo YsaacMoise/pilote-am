@@ -66,7 +66,7 @@ async function run(scheme) {
   assert(await p.locator('.field .err', { hasText: 'Indique le prénom de l’enfant.' }).isVisible(), 'assistant : erreur sous le champ et rappel au-dessus de « Continuer »');
   await p.getByLabel('Prénom de l’enfant').fill('Lou');
   await p.getByLabel('Nom de famille de l’employeur').fill('Petit');
-  await p.getByLabel('E-mail du parent employeur (facultatif)').fill('parent@exemple.fr');
+  await p.getByLabel('E-mail du parent employeur (facultatif)').fill('claire.martin.petit@exemple.fr');
   await A.continuer(p);
   // Étape 2 : rien de coché ni de daté d'avance (décision 1 du DG).
   assert((await p.getByLabel('Date de début du contrat').inputValue()) === '' && (await p.locator('[role=radio][aria-checked=true]').count()) === 0, 'contrat : aucune date ni aucun choix d’avance');
@@ -137,6 +137,10 @@ async function run(scheme) {
   await A.continuer(p);
   await p.getByRole('heading', { name: 'Récapitulatif · Lou' }).waitFor();
   await shot('01b-recapitulatif');
+  // Relecture M1 : les valeurs longues (e-mail, département) restent dans leur carte.
+  const deborde = await p.evaluate(() => [...document.querySelectorAll('.kv-recap dd')].filter((dd) => dd.getBoundingClientRect().right > dd.closest('.card').getBoundingClientRect().right + 1).map((dd) => dd.textContent));
+  assert(deborde.length === 0, 'récapitulatif : aucune valeur ne sort de sa carte' + (deborde.length ? ' : ' + deborde.join(', ') : ''));
+  // Relecture M2 : novembre n'est pas le mois du parcours (15/10/2026) : octobre, sans férié ; le calcul jour par jour est testé dans les captures.
   await p.getByRole('button', { name: 'Créer le contrat de Lou' }).click();
   await p.getByRole('heading', { name: 'Contrat de Lou créé' }).waitFor();
   assert(await p.getByText('Accueil prévu').isVisible(), 'contrat créé : le mois en cours, calculé');
@@ -163,7 +167,7 @@ async function run(scheme) {
   assert(await p.getByRole('link', { name: /^Absences et congés/ }).isVisible() && await p.getByRole('link', { name: /^Fin du contrat/ }).isVisible(), 'fiche de l’enfant : contrat, parents, absences, avenant, fin');
   await shot('01c-fiche');
   await p.getByRole('link', { name: /^Les parents et leur lien/ }).click();
-  assert((await p.getByLabel('E-mail du parent employeur (facultatif)').inputValue()) === 'parent@exemple.fr', 'parents : contact gardé avec le contrat');
+  assert((await p.getByLabel('E-mail du parent employeur (facultatif)').inputValue()) === 'claire.martin.petit@exemple.fr', 'parents : contact gardé avec le contrat');
   await p.getByRole('heading', { name: 'Lien pour les parents' }).waitFor();
   await p.getByRole('link', { name: 'Retour' }).click();
   await p.getByRole('link', { name: /^Absences et congés/ }).click();

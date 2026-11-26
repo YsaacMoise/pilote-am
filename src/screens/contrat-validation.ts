@@ -7,19 +7,34 @@ import { weeklyMinutes } from '../engine/payroll';
 import { manquesOccasionnel } from '../engine/occasionnel';
 import { NON_GERE_47_51, semaines4751 } from '../engine/nonGeres';
 import { manquesPV } from '../engine/planningVariable';
-import type { Contract, StartBalances } from '../engine/model';
+import type { Contract, Plage, Planning, StartBalances } from '../engine/model';
+
+/** T-122 (relecture D2) : plages dont l'arrivée et le départ sont saisis (les autres ne sont jamais lues ni enregistrées). */
+export function planningComplet(pl: Planning): Planning {
+  const out: Planning = {};
+  for (let d = 1; d <= 7; d++) if (pl[d]) out[d] = pl[d].filter((p) => p.start && p.end && p.end > p.start);
+  return out;
+}
+
+const Jour = (d: number) => JOUR_NOMS[d - 1].replace(/^./, (x) => x.toUpperCase());
+/** Message d'une plage vide ou inversée (undefined : plage juste) */
+function erreurPlage(d: number, p: Plage, ou = ''): string | undefined {
+  if (!p.start || !p.end) return `${Jour(d)}${ou} : indique l’heure d’arrivée et de départ.`;
+  if (p.end <= p.start) return `${JOUR_NOMS[d - 1]}${ou} : l’heure de fin doit être après le début.`;
+  return undefined;
+}
 
 /** Erreurs qui empêchent d'enregistrer le contrat (liste vide : il peut l'être). */
 export function erreursContrat(c: Contract, isNew: boolean): string[] {
   const errs: string[] = [];
-  const wk = weeklyMinutes(c.planning);
+  const wk = weeklyMinutes(planningComplet(c.planning));
   if (!c.child.trim()) errs.push('Indique le prénom de l’enfant.');
   if (!c.start) errs.push('Indique la date de début du contrat.');
   if (!c.planningVariable && !c.accueilOccasionnel && wk <= 0) errs.push('Le planning est vide : ajoute au moins un jour d’accueil.');
   // T-104 (cas 2) : accueil occasionnel, périodes d'accueil (dates et horaires prévus au contrat, CCN 98.2).
   for (const m of manquesOccasionnel(c)) errs.push(`Accueil occasionnel : indique ${m}.`);
-  if (c.accueilOccasionnel) for (const a of c.accueils ?? []) for (let d = 1; d <= 7; d++) for (const p of a.planning[d] ?? []) if (p.end <= p.start) errs.push(`${JOUR_NOMS[d - 1]} (accueil du ${shortDate(a.du)}) : l’heure de fin doit être après le début.`);
-  for (let d = 1; d <= 7; d++) for (const p of c.planning[d] ?? []) if (p.end <= p.start) errs.push(`${JOUR_NOMS[d - 1]} : l’heure de fin doit être après le début.`);
+  if (c.accueilOccasionnel) for (const a of c.accueils ?? []) for (let d = 1; d <= 7; d++) for (const p of a.planning[d] ?? []) { const e = erreurPlage(d, p, ` (accueil du ${shortDate(a.du)})`); if (e) errs.push(e); }
+  for (let d = 1; d <= 7; d++) for (const p of c.planning[d] ?? []) { const e = erreurPlage(d, p); if (e) errs.push(e); }
   if (semaines4751(c.yearType, c.weeks)) errs.push(NON_GERE_47_51);
   else if (c.yearType === 'incomplete' && (c.weeks < 1 || c.weeks > 46)) errs.push('En année incomplète, le nombre de semaines va de 1 à 46.');
   // Audit C-002 : les semaines sans accueil manquantes sont signalées dans le formulaire (bandeau) sans bloquer,
@@ -31,7 +46,7 @@ export function erreursContrat(c: Contract, isNew: boolean): string[] {
   if (c.planningVariable === undefined) errs.push('Indique si le planning est le même chaque semaine.');
   // T-076 : horaires qui changent, données à compléter (cycle, semaine de départ, heures payées chaque mois).
   for (const m of manquesPV(c)) errs.push(`Horaires qui changent : indique ${m}.`);
-  if (c.planningVariable) for (const pl of [...(c.cycle ?? []), ...Object.values(c.planningsSemaines ?? {})]) for (let d = 1; d <= 7; d++) for (const p of pl[d] ?? []) if (p.end <= p.start) errs.push(`${JOUR_NOMS[d - 1]} : l’heure de fin doit être après le début.`);
+  if (c.planningVariable) for (const pl of [...(c.cycle ?? []), ...Object.values(c.planningsSemaines ?? {})]) for (let d = 1; d <= 7; d++) for (const p of pl[d] ?? []) { const e = erreurPlage(d, p); if (e) errs.push(e); }
   if (c.accueilOccasionnel === undefined) errs.push('Indique si l’accueil est régulier ou occasionnel.');
   if (c.cdd === undefined) errs.push('Indique si le contrat est un CDI ou un CDD.');
   // T-076 : le CDD est calculé ; sa date de fin prévue (ou de durée minimale) et son motif sont demandés.

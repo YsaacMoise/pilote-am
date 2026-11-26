@@ -3,7 +3,7 @@
 import { NON_GERE_47_51, semaines4751 } from '../engine/nonGeres';
 import { useState } from 'preact/hooks';
 import { logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
-import { firstDay, monthLabel, monthOf, shortDate, today, type Month } from '../engine/dates';
+import { firstDay, monthLabel, monthOf, shortDate, today, JOUR_NOMS, type Month } from '../engine/dates';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, termsAt, weeklyMinutes } from '../engine/payroll';
 import { libelleMinimumBrut, MESSAGE_PERIODE_NON_GEREE, minimumBrut, ratesAtRegion } from '../engine/rates';
 import { regionDe } from '../engine/regions';
@@ -14,6 +14,7 @@ import { BrutSaisie } from './BrutSaisie';
 import { Banner, Choices, DateInput, EuroInput, NumberInput, Seg, Switch, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { PlanDay, WeeksOff, avenantSummary } from './Contrat';
+import { planningComplet } from './contrat-validation';
 import { AIDE_COMPLEMENTAIRES, AIDE_SEMAINES, TITRE_AM_AP } from './textes-contrat';
 import { PlanningVariableSaisie } from './PlanningVariableSaisie';
 import { manquesPV } from '../engine/planningVariable';
@@ -75,7 +76,9 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
     for (const k of TERM_KEYS) if (k in reste) (termes as any)[k] = (reste as any)[k];
     set(termes);
   };
-  const wk = weeklyMinutes(tRetenu.planning);
+  // Relecture D2 : chiffres affichés sur les plages complètes ; une plage vide bloque l'enregistrement.
+  const previewAff: Contract = { ...preview, planning: planningComplet(tRetenu.planning) };
+  const wk = weeklyMinutes(previewAff.planning);
   // T-077 (R2) : repère net, minimum légal et texte du titre AM-GE de la région du contrat.
   const rates = ratesAtRegion(jour, regionDe(c));
   const changes: Partial<Terms> = {};
@@ -100,7 +103,8 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
     else if (tRetenu.yearType === 'incomplete' && (tRetenu.weeks < 1 || tRetenu.weeks > 46)) errs.push('En année incomplète, le nombre de semaines va de 1 à 46.');
     if (!tRetenu.planningVariable && wk <= 0) errs.push('Le planning est vide.');
     for (const m of tRetenu.planningVariable ? manquesPV(preview) : []) errs.push(`Horaires qui changent : indique ${m}.`);
-    for (let d = 1; d <= 7; d++) for (const p of tRetenu.planning[d] ?? []) if (p.end <= p.start) errs.push('Une heure de fin est avant le début.');
+    for (let d = 1; d <= 7; d++) for (const p of tRetenu.planning[d] ?? []) errs.push(...(!p.start || !p.end ? [`${JOUR_NOMS[d - 1].replace(/^./, (x) => x.toUpperCase())} : indique l’heure d’arrivée et de départ.`] : p.end <= p.start ? ['Une heure de fin est avant le début.'] : []));
+    for (const pl of tRetenu.planningVariable ? [...(tRetenu.cycle ?? []), ...Object.values(plans ?? {})] : []) for (let d = 1; d <= 7; d++) for (const p of pl[d] ?? []) if (!p.start || !p.end || p.end <= p.start) errs.push(`${JOUR_NOMS[d - 1].replace(/^./, (x) => x.toUpperCase())} : indique l’heure d’arrivée et de départ.`);
     if (avec('fin') && cddTerme && cddTerme < c!.start) errs.push('La date de fin du CDD est avant le début du contrat.');
     setErrors(errs);
     // C-101 : chaque enregistrement refusé est noté (relecture contradictoire : le deuxième refus passait inaperçu).
@@ -193,8 +197,8 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
               {!t.planningVariable && <div class="banner info">
                 <span class="b-ico"><Icon name="clock" /></span>
                 <div class="b-body">
-                  <span><b>{hoursLabel(wk)}</b> par semaine sur {daysPerWeek(tRetenu.planning)} jours</span>
-                  <span>Soit <b>{hoursLabel(Math.round(mensuelMinutes(preview)))}</b> et <b>{joursMensualises(preview)} jours</b> par mois, pour <b>{euros(salaireMensualise(preview))}</b> net.</span>
+                  <span><b>{hoursLabel(wk)}</b> par semaine sur {daysPerWeek(previewAff.planning)} jours</span>
+                  <span>Soit <b>{hoursLabel(Math.round(mensuelMinutes(previewAff)))}</b> et <b>{joursMensualises(previewAff)} jours</b> par mois, pour <b>{euros(salaireMensualise(previewAff))}</b> net.</span>
                 </div>
               </div>}
             </fieldset>

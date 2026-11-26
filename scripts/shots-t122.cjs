@@ -33,10 +33,15 @@ async function run(scheme) {
   await shot('04-etape1-erreurs');
   await p.getByLabel('Prénom de l’enfant').fill('Lou');
   await p.getByLabel('Nom de famille de l’employeur').fill('Petit');
+  await p.getByLabel('E-mail du parent employeur (facultatif)').fill('claire.martin.petit@exemple.fr');
+  await p.getByLabel('Téléphone du parent employeur (facultatif)').fill('06 12 34 56 78');
   await A.continuer(p);
   await shot('05b-etape2-rien-coche');
   await p.goto(base + '#/');
   await shot('24-aujourdhui-reprise');
+  await p.getByRole('button', { name: 'Supprimer' }).click();
+  await shot('24b-suppression-confirmee');
+  await p.getByRole('button', { name: 'Garder' }).click();
   await p.goto(base + '#/plus');
   await shot('22-plus-enfants');
   await p.locator('a.li', { hasText: 'Contrat en cours de saisie' }).click();
@@ -89,6 +94,9 @@ async function run(scheme) {
   await p.getByRole('link', { name: /^Absences et congés/ }).click();
   await shot('14-absences-conges', true);
   await p.getByRole('button', { name: 'Déclarer une absence de Lou' }).click();
+  await p.getByLabel('Jour de l’absence').fill('2026-12-03');
+  await shot('21a-absence-de-lou-jour');
+  await p.locator('dialog').getByRole('button', { name: 'Continuer' }).click();
   await shot('21-absence-de-lou');
   await p.keyboard.press('Escape');
   await p.getByRole('link', { name: 'Retour' }).click();

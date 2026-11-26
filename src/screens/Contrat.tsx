@@ -22,7 +22,7 @@ import { DEPARTEMENTS, libelleDepartement, reponseSaisie, trouverDepartement } f
 import { AIDE_ANNEE, AIDE_COMPLEMENTAIRES, AIDE_SEMAINES, TITRE_AM_AP } from './textes-contrat';
 import { PlanningVariableSaisie } from './PlanningVariableSaisie';
 import { CDD_A_COMPLETER, messagesCdd } from '../engine/cdd';
-import { contratAEnregistrer, erreursContrat } from './contrat-validation';
+import { contratAEnregistrer, erreursContrat, planningComplet } from './contrat-validation';
 
 const ouiNon = (b: boolean | undefined): 'oui' | 'non' | undefined => (b === undefined ? undefined : b ? 'oui' : 'non');
 
@@ -78,7 +78,9 @@ export function Contrat({ id }: { id?: string }) {
   const isNew = !existing;
   const curMonthStart = firstDay(monthOf(today()));
   const reprise = c.start < curMonthStart;
-  const wk = weeklyMinutes(c.planning);
+  // Plages complètes seulement pour les chiffres affichés (relecture D2).
+  const cc: Contract = { ...c, planning: planningComplet(c.planning) };
+  const wk = weeklyMinutes(cc.planning);
   // T-077 (R2) : repère net du minimum et texte du titre AM-GE de la région choisie.
   const rates = ratesAtRegion(today(), regionDe(c)) ?? ratesConnus(today());
   useEffect(() => {
@@ -91,7 +93,7 @@ export function Contrat({ id }: { id?: string }) {
   const [cpManuel, setCpManuel] = useState(!isNew && !!existing && !soldeCongesInconnu(existing));
   const infos48h = isNew ? [] : informationsDurees(state.contracts.map((x) => ctxFor(x)), today());
   const suiviDepuis = isNew ? (reprise ? curMonthStart : c.start) : c.trackedFrom;
-  const depart = c.start && suiviDepuis > c.start && wk > 0 ? congesDeDepart({ ...c, trackedFrom: suiviDepuis }, suiviDepuis, {}, state.settings.enfantsACharge, state.settings.amMoins21Jusqu) : undefined;
+  const depart = c.start && suiviDepuis > c.start && wk > 0 ? congesDeDepart({ ...cc, trackedFrom: suiviDepuis }, suiviDepuis, {}, state.settings.enfantsACharge, state.settings.amMoins21Jusqu) : undefined;
   const departCalculable = !!depart && !depart.aConfirmer;
   // Contrôle qualité de la n° 72 (R1) : les soldes de la carte restent hors du contrat pendant la saisie ; ils ne sont écrits,
   // case cochée, qu'à l'enregistrement (aucune écriture différée dans le formulaire, aucune case cochée à la seule ouverture).
@@ -229,8 +231,8 @@ export function Contrat({ id }: { id?: string }) {
             <div class="banner info" style={{ marginTop: '4px' }}>
               <span class="b-ico"><Icon name="clock" /></span>
               <div class="b-body">
-                <span><b>{hoursLabel(wk)}</b> par semaine sur {daysPerWeek(c.planning)} jours</span>
-                <span>Soit <b>{hoursLabel(Math.round(mensuelMinutes(c)))}</b> et <b>{joursMensualises(c)} jours</b> par mois, pour <b>{euros(salaireMensualise(c))}</b> net.</span>
+                <span><b>{hoursLabel(wk)}</b> par semaine sur {daysPerWeek(cc.planning)} jours</span>
+                <span>Soit <b>{hoursLabel(Math.round(mensuelMinutes(cc)))}</b> et <b>{joursMensualises(cc)} jours</b> par mois, pour <b>{euros(salaireMensualise(cc))}</b> net.</span>
               </div>
             </div>
           </fieldset>
@@ -238,7 +240,7 @@ export function Contrat({ id }: { id?: string }) {
 
         {/* T-116 (A3) : dépassement qui n'existe que tous parents réunis : dit une fois, ici, à côté de l'accord écrit
             (regles/t116-48h.md), pas chaque jour sur « Aujourd'hui ». */}
-        {((dureeMoyenneContrat(c) ?? 0) > SEUIL_ACCORD_MIN || infos48h.length > 0) && <section class="card">
+        {((dureeMoyenneContrat(cc) ?? 0) > SEUIL_ACCORD_MIN || infos48h.length > 0) && <section class="card">
           {infos48h.map((x) => <Banner tone="info">{x}</Banner>)}
           <Switch label="J’ai donné mon accord écrit pour plus de 48 h par semaine" hint="Code de l’action sociale et des familles, article L423-22 : sans ton accord, pas plus de 48 h par semaine en moyenne sur quatre mois ; avec, pas plus de 2 250 h par an, tous contrats confondus." checked={!!c.accord48h} onChange={(v) => set({ accord48h: v })} />
         </section>}
@@ -421,7 +423,8 @@ export function PlanDay({ d, plages, onChange, onCopy }: { d: number; plages: Pl
   const name = JOUR_NOMS[d - 1];
   return (
     <div class="plan-day">
-      <Switch label={name.replace(/^./, (x) => x.toUpperCase())} checked={on} onChange={(v) => onChange(v ? [{ start: '08:30', end: '17:30' }] : [])} />
+      {/* T-122 (relecture D2, décision 1 du DG) : un jour coché arrive sans horaires. */}
+      <Switch label={name.replace(/^./, (x) => x.toUpperCase())} checked={on} onChange={(v) => onChange(v ? [{ start: '', end: '' }] : [])} />
       {plages.map((p, i) => (
         <div class="plan-range">
           <input class="input num" type="time" aria-label={`${name}, début ${i ? 'de la 2e plage' : ''}`} value={p.start} onInput={(e) => onChange(plages.map((x, j) => (j === i ? { ...x, start: (e.target as HTMLInputElement).value } : x)))} />
@@ -434,7 +437,7 @@ export function PlanDay({ d, plages, onChange, onCopy }: { d: number; plages: Pl
       ))}
       {on && (
         <div class="btn-row">
-          {plages.length < 2 && <button class="btn btn-ghost" onClick={() => onChange([...plages, { start: '16:30', end: '18:30' }])}><Icon name="plus" />2e plage</button>}
+          {plages.length < 2 && <button class="btn btn-ghost" onClick={() => onChange([...plages, { start: '', end: '' }])}><Icon name="plus" />2e plage</button>}
           {onCopy && <button class="btn btn-ghost" onClick={onCopy}>Copier sur mardi → vendredi</button>}
         </div>
       )}
@@ -478,7 +481,7 @@ export function avenantSummary(before: Contract, ch: Partial<Terms>): string[] {
   const out: string[] = [];
   if (ch.rateNet != null && ch.rateNet !== before.rateNet) out.push(`Taux : ${euros(before.rateNet)} → ${euros(ch.rateNet)} net de l’heure`);
   if (ch.rateBrut != null && (ch.rateBrut || 0) !== (before.rateBrut || 0)) out.push(`Taux brut : ${before.rateBrut ? euros(before.rateBrut) : 'calculé depuis le net'} → ${ch.rateBrut ? `${euros(ch.rateBrut)} brut de l’heure` : 'calculé depuis le net'}`);
-  if (ch.planning) out.push(`Planning : ${hoursLabel(weeklyMinutes(before.planning))} → ${hoursLabel(weeklyMinutes(ch.planning))} par semaine`);
+  if (ch.planning) out.push(`Planning : ${hoursLabel(weeklyMinutes(before.planning))} → ${hoursLabel(weeklyMinutes(planningComplet(ch.planning)))} par semaine`);
   // T-044 : tarif par jour ou par heure.
   if (ch.entretienJour != null || ch.entretienHeure != null || ch.entretienMode != null) {
     const apres = { ...before, ...ch };
@@ -496,7 +499,7 @@ export function avenantSummary(before: Contract, ch: Partial<Terms>): string[] {
   // T-104 (cas 3) : horaires variables.
   if (ch.planningVariable != null && ch.planningVariable !== !!before.planningVariable) out.push(ch.planningVariable ? 'Passage à des horaires qui changent d’une semaine à l’autre' : 'Retour à un planning qui se répète chaque semaine');
   if (ch.pvForme != null && ch.pvForme !== before.pvForme) out.push(ch.pvForme === 'cycle' ? 'Horaires : cycle écrit au contrat' : 'Horaires : planning remis par les parents');
-  if (ch.cycle) out.push(`Cycle : ${ch.cycle.length} semaines (${ch.cycle.map((p) => hoursLabel(weeklyMinutes(p))).join(', ')})`);
+  if (ch.cycle) out.push(`Cycle : ${ch.cycle.length} semaines (${ch.cycle.map((p) => hoursLabel(weeklyMinutes(planningComplet(p)))).join(', ')})`);
   if (ch.cycleAncre && ch.cycleAncre !== before.cycleAncre) out.push(`Semaine A : celle du ${shortDate(ch.cycleAncre)}`);
   if (ch.heuresMensualisees != null && ch.heuresMensualisees !== before.heuresMensualisees) out.push(`Heures payées chaque mois : ${before.heuresMensualisees ?? '—'} → ${ch.heuresMensualisees}`);
   return out;
