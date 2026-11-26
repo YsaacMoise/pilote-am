@@ -30,16 +30,16 @@ export function lignesDetail(c: Contract, month: Month, r: MonthResult): LigneDe
       out.push({ label: `Salaire du ${jjmm(s.from)} au ${jjmm(s.to)} : ${euros(s.salaireMens)} par mois, au prorata de la période`, montant: prorata });
     }
   } else {
-    out.push({ label: 'Salaire de base (le même chaque mois)', montant: r.salaireMens });
+    out.push({ label: 'Salaire mensualisé', montant: r.salaireMens });
     const prorata = r.base + r.retenue + (r.ijDeduites ?? 0);
     if (prorata !== r.salaireMens) {
       const debut = c.start > firstDay(month) ? c.start : undefined;
       const fin = c.end && c.end < lastDay(month) ? c.end : undefined;
       const quoi = debut && fin ? `contrat du ${jjmm(debut)} au ${jjmm(fin)}` : debut ? `contrat commencé le ${jjmm(debut)}` : fin ? `contrat terminé le ${jjmm(fin)}` : 'mois incomplet';
-      out.push({ label: `Prorata : ${quoi} (${complete ? 'heures' : 'jours'} du mois hors contrat, art. 111)`, montant: prorata - r.salaireMens });
+      out.push({ label: `Prorata : ${quoi} (${complete ? 'heures' : 'jours'} du mois hors contrat, convention, article 111)`, montant: prorata - r.salaireMens });
     }
   }
-  if (r.retenue > 0) out.push({ label: `Retenue (${complete ? hoursLabel(r.deductedMin) : `${r.deductedDays} j`} non payés)`, montant: -r.retenue });
+  if (r.retenue > 0) out.push({ label: `Retenue (${complete ? `${hoursLabel(r.deductedMin)} non payées` : `${r.deductedDays} j non payés`})`, montant: -r.retenue });
   if ((r.ijDeduites ?? 0) > 0) out.push({ label: 'Indemnités journalières de la Sécurité sociale déduites', montant: -(r.ijDeduites ?? 0) });
   if (r.regulAvenant) out.push({ label: 'Régularisation à l’avenant', montant: r.regulAvenant });
   if ((r.normalesPlusAmount ?? 0) > 0) out.push({ label: `Heures en plus la semaine d’une absence (${hoursLabel(r.normalesPlusMin ?? 0)}, taux du contrat)`, montant: r.normalesPlusAmount ?? 0 });

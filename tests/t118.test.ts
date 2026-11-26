@@ -56,7 +56,7 @@ describe('T-118 (D-23) : les lignes du détail font le salaire net', () => {
     const c = contract({ avenants: [{ id: 'a1', from: '2026-10-15', changes: { rateNet: 400 } }] });
     const l = lignesDetail(c, '2026-10', computeMonth(makeCtx(c, [], [], '2026-12-15'), '2026-10'));
     expect(l.filter((x) => x.label.startsWith('Salaire du '))).toHaveLength(2);
-    expect(l.some((x) => x.label.includes('le même chaque mois'))).toBe(false);
+    expect(l.some((x) => x.label === 'Salaire mensualisé')).toBe(false);
     expect(l[0].label).toContain('du 01/10 au 14/10');
     expect(l[1].label).toContain('du 15/10 au 31/10');
   });
@@ -251,11 +251,36 @@ describe('T-118 (ajout du DG) : mois en cours, mention neutre et montant final a
   });
   it('texte : neutre, date de fin du mois, montant attendu', async () => {
     const { euros } = await import('../src/engine/money');
-    expect(texteMoisEnCours('2026-11', 86012)).toBe(`Montant provisoire : l’entretien et les repas s’ajoutent jour après jour, jusqu’au 30/11. Si les jours restants se passent comme prévu : ${euros(86012)} au 30/11.`);
-    expect(texteMoisEnCours('2026-02')).toBe('Montant provisoire : l’entretien et les repas s’ajoutent jour après jour, jusqu’au 28/02.');
+    expect(texteMoisEnCours('2026-11', 86012)).toBe(`Montant provisoire : l’indemnité d’entretien et les frais de repas s’ajoutent jour après jour, jusqu’au 30/11. Si les jours restants se passent comme prévu : ${euros(86012)} au 30/11.`);
+    expect(texteMoisEnCours('2026-02')).toBe('Montant provisoire : l’indemnité d’entretien et les frais de repas s’ajoutent jour après jour, jusqu’au 28/02.');
   });
   it('plus de pastille orange dans la carte', () => {
     const src = readFileSync('src/screens/Mois.tsx', 'utf8');
     expect(src).not.toContain('class="summary-note"');
+  });
+});
+
+describe('T-118 : corrections de la relecture', async () => {
+  const { montantFinDeMois, texteMoisEnCours } = await import('../src/engine/resume');
+  const { totalAVerser } = await import('../src/engine/month');
+  const { joursCalendrier } = await import('../src/engine/compteurs-cp');
+  it('B1 : accueil occasionnel, le salaire des jours restants compte dans le montant attendu', () => {
+    const pl: Planning = { 1: [{ start: '08:00', end: '16:00' }], 2: [{ start: '08:00', end: '16:00' }], 3: [{ start: '08:00', end: '16:00' }], 4: [{ start: '08:00', end: '16:00' }], 5: [{ start: '08:00', end: '16:00' }] };
+    const c = contract({ start: '2026-11-02', trackedFrom: '2026-11-02', rateNet: 500, accueilOccasionnel: true, accueils: [{ id: 'a', du: '2026-11-02', au: '2026-11-27', planning: pl }], entretienJour: 400, entretienMode: 'jour', repasPrix: 300, repasParJour: 1, repasParents: false } as Partial<Contract>);
+    const r = computeMonth(makeCtx(c, [], [], '2026-11-10'), '2026-11');
+    const fin = computeMonth(makeCtx(c, [], [], '2026-11-30'), '2026-11');
+    expect(r.nonGere).toEqual([]);
+    expect(fin.netTotal).toBeGreaterThan(r.netTotal);
+    expect(montantFinDeMois(totalAVerser(r), r, fin, true)).toBe(totalAVerser(fin));
+    expect(texteMoisEnCours('2026-11', 1, true)).toContain('le salaire des heures d’accueil, l’indemnité d’entretien et les frais de repas s’ajoutent');
+  });
+  it('M4 : le calendrier marque les jours décomptés, samedi compris, comme le compteur', () => {
+    const c = contract({ start: '2024-01-08', trackedFrom: '2024-01-08' });
+    const leaves: AmLeave[] = [{ id: 'cp', type: 'cp', from: '2025-12-08', to: '2025-12-12' }];
+    const ctx = makeCtx(c, [], leaves, '2025-12-01');
+    const j = Object.fromEntries(joursCalendrier('2025-12', leaves, '2025-12-01', undefined, [ctx]).map((x) => [x.d.slice(8), x.type]));
+    expect(['08', '09', '10', '11', '12', '13'].map((d) => j[d])).toEqual(['pose', 'pose', 'pose', 'pose', 'pose', 'pose']);
+    expect(j['14']).toBe('dimanche');
+    expect(j['15']).toBe('normal');
   });
 });

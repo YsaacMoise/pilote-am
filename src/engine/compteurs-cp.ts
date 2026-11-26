@@ -41,14 +41,17 @@ export function compteursCP(ctx: Ctx, t: ISODate, enfants = 0): CompteursCP {
 export type JourCalendrier = 'pris' | 'pose' | 'ferie' | 'dimanche' | 'normal';
 
 /**
- * Jours du mois `m` pour le calendrier « tous contrats » : un jour de congé payé posé par l'AM (lundi au samedi, sans les
- * fériés : jours ouvrables, CCN 48.1.1.3) est « pris » s'il est passé ou aujourd'hui, « posé » s'il est à venir.
+ * Jours du mois `m` pour le calendrier « tous contrats » : un jour de congé payé décompté (jours ouvrables du premier jour
+ * qui aurait été travaillé à la veille de la reprise, CCN 48.1.1.3 : le samedi compris) est « pris » s'il est passé ou
+ * aujourd'hui, « posé » s'il est à venir. Relecture T-118 (M4) : les jours décomptés viennent du décompte de la paie
+ * (`cpPrisEntre`, réunion des contrats), comme les compteurs ; sans contrat, les dates saisies du congé.
  */
-export function joursCalendrier(m: Month, leaves: AmLeave[], t: ISODate, ctxRegion?: Parameters<typeof ferieDe>[0]): { d: ISODate; type: JourCalendrier; ferie?: string }[] {
+export function joursCalendrier(m: Month, leaves: AmLeave[], t: ISODate, ctxRegion?: Parameters<typeof ferieDe>[0], ctxs: Ctx[] = []): { d: ISODate; type: JourCalendrier; ferie?: string }[] {
   const region = ctxRegion ?? 'metropole';
+  const decomptes = new Set(ctxs.flatMap((x) => cpPrisEntre(x, firstDay(m), lastDay(m))));
   return eachDay(firstDay(m), lastDay(m)).map((d) => {
     const ferie = ferieDe(region, d);
-    const cp = leaves.some((l) => l.type === 'cp' && l.from <= d && l.to >= d);
+    const cp = ctxs.length ? decomptes.has(d) : leaves.some((l) => l.type === 'cp' && l.from <= d && l.to >= d);
     if (weekday(d) === 7) return { d, type: 'dimanche' as const };
     if (ferie) return { d, type: 'ferie' as const, ferie };
     if (cp) return { d, type: d <= t ? ('pris' as const) : ('pose' as const) };

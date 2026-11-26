@@ -99,7 +99,7 @@ function MonthView({ c, month, onEdit, paieVue, setPaieVue }: { c: Contract; mon
   // s'ajoutent par jour d'accueil. Montant final attendu si les jours restants se passent comme prévu : le même mois calculé au
   // dernier jour du mois, en ne reprenant que la différence d'entretien et de repas.
   const enCours = current && !!moisEnCoursAu(ctx.today, month);
-  const finAttendue = enCours ? montantFinDeMois(totalVerse, r, computeMonth(ctxFor(c, lastDay(month)), month, state.settings.enfantsACharge)) : undefined;
+  const finAttendue = enCours ? montantFinDeMois(totalVerse, r, computeMonth(ctxFor(c, lastDay(month)), month, state.settings.enfantsACharge), !!c.accueilOccasionnel) : undefined;
   const [occupe, setOccupe] = useState(false);
   const [pret, setPret] = useState<File | null>(null);
   const [partage, setPartage] = useState(false);
@@ -194,7 +194,7 @@ function MonthView({ c, month, onEdit, paieVue, setPaieVue }: { c: Contract; mon
         {r.brutConnu && r.reductionHS > 0 && <span class="summary-sub">et réduction de cotisations des heures complémentaires et majorées {euros(r.reductionHS)}</span>}
         {/* T-118 (ajout du DG du 26/11) : informations neutres, sans couleur d'alerte (plus de pastille orange). */}
         {!r.brutConnu && <span class="summary-info"><Icon name="info" size={16} /><span>Brut non affiché : <a href={`#/contrat/${c.id}`}>indique ton taux horaire brut dans le contrat</a>.</span></span>}
-        {enCours && <span class="summary-info"><Icon name="info" size={16} /><span>{texteMoisEnCours(month, finAttendue)}</span></span>}
+        {enCours && <span class="summary-info"><Icon name="info" size={16} /><span>{texteMoisEnCours(month, finAttendue, !!c.accueilOccasionnel)}</span></span>}
       </TonMois>
 
       {!c.pajemploiPlus && (!c.end || c.end >= PAJEMPLOI_PLUS_DATE) && <Banner tone="info">{PAJEMPLOI_PLUS_RAPPEL}</Banner>}
@@ -339,9 +339,17 @@ function TonMois({ c, month, vue, setVue, total, titre, children }: { c: Contrac
     setVue(true);
     logUsage('paie_vue', 'mois');
     if (!reduit) { setAffiche(0); setAnim(true); }
-    requestAnimationFrame(() => totalRef.current?.focus());
+    focusApres.current = 'total';
   };
-  const cacher = () => { setVue(false); requestAnimationFrame(() => voirRef.current?.focus()); };
+  const cacher = () => { setVue(false); focusApres.current = 'voir'; };
+  // Relecture T-118 (M2) : le focus suit le changement de face une fois la face rendue active (sans `inert`), avec ou sans
+  // mouvement réduit.
+  const focusApres = useRef<'total' | 'voir' | null>(null);
+  useEffect(() => {
+    const cible = focusApres.current === 'total' ? totalRef.current : focusApres.current === 'voir' ? voirRef.current : null;
+    focusApres.current = null;
+    cible?.focus();
+  }, [vue]);
   return (
     <div class={`ton-mois${vue ? ' retourne' : ''}${reduit ? ' sans-mouvement' : ''}`}>
       <section class="card tm-face tm-avant" aria-labelledby="tm-t" inert={vue}>

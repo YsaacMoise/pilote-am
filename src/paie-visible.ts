@@ -8,7 +8,6 @@ export function paieToujoursVisible(): boolean {
 
 export function setPaieToujoursVisible(v: boolean) {
   try { if (v) localStorage.setItem(KEY, '1'); else localStorage.removeItem(KEY); } catch { /* stockage indisponible */ }
-  window.dispatchEvent(new Event('pam-paie-visible'));
 }
 
 /** Le téléphone demande moins de mouvement : pas de carte qui tourne, pas de montant qui monte */

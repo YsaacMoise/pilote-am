@@ -2096,6 +2096,10 @@ def situations_t118():
                         {"absences_am": [{"type": "am_malade", "du": "2025-10-06", "au": "2025-11-14"}]}),
         "C52-SANS-SOLDE": (contrat_grille("C52", "H40", "T420", debut="2024-09-02"),
                            {"absences_am": [{"type": "sans_solde", "du": "2025-11-17", "au": "2025-11-19"}]}),
+        # Relecture T-118 (M7) : suivi commence le 01/11/2025 ; solde de depart en cours d'acquisition donne a 12,5 jours
+        # (juin a octobre, 5 mois de travail). Les mois d'avant le suivi : A ne montre pas de compteur (refus).
+        "C52-SUIVI": (contrat_grille("C52", "H40", "T420", debut="2024-09-02", suivi_depuis="2025-11-01",
+                                     soldes={"cp_restants": 30, "cp_en_cours": 12.5}), {}),
     }
     mois_periode = [f"2025-{m:02d}" for m in range(6, 13)] + [f"2026-{m:02d}" for m in range(1, 6)]
     for nom, (k, ev) in variantes.items():

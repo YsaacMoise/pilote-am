@@ -23,7 +23,8 @@ export function Conges() {
   const list = s.contracts.filter((c) => !c.end || c.end >= t);
   const suivis = list.filter((c) => !c.accueilOccasionnel);
   // T-118 : calendrier de suivi des congés, tous contrats réunis (« tous ») ou un contrat.
-  const [vue, setVue] = useState<string>(suivis.length > 1 ? 'tous' : suivis[0]?.id ?? 'tous');
+  // Relecture T-118 (M3) : un seul contrat, ou seulement des accueils occasionnels : la fiche du premier contrat s'ouvre.
+  const [vue, setVue] = useState<string>(suivis.length > 1 ? 'tous' : (suivis[0] ?? list[0])?.id ?? 'tous');
   const choisi = list.find((c) => c.id === vue);
   return (
     <>
@@ -39,7 +40,7 @@ export function Conges() {
           </div>
         )}
         {/* Un seul contrat : le calendrier, puis les compteurs du contrat (pas de tableau « tous contrats »). */}
-        {suivis.length <= 1 && <CongesTous contrats={suivis} t={t} enfants={s.settings.enfantsACharge} leaves={s.leaves} onChoisir={setVue} tableau={false} />}
+        {suivis.length === 1 && <CongesTous contrats={suivis} t={t} enfants={s.settings.enfantsACharge} leaves={s.leaves} onChoisir={setVue} tableau={false} />}
         {(vue === 'tous' || !choisi) && suivis.length > 1
           ? <CongesTous contrats={suivis} t={t} enfants={s.settings.enfantsACharge} leaves={s.leaves} onChoisir={setVue} />
           : choisi && <CongesContrat c={choisi} t={t} enfants={s.settings.enfantsACharge} leaves={s.leaves} />}
@@ -72,7 +73,7 @@ export function Conges() {
   );
 }
 
-const JJ = (d: string) => `${Number(d.slice(8, 10))} ${MOIS_NOMS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}`;
+const JJ = (d: string) => `${d.slice(8, 10) === '01' ? '1er' : Number(d.slice(8, 10))} ${MOIS_NOMS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}`;
 const MOIS_NOMS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 const nb = (n: number | undefined) => (n === undefined ? '—' : String(n));
 
@@ -81,7 +82,9 @@ function CongesTous({ contrats, t, enfants, leaves, onChoisir, tableau = true }:
   const y = cpPeriodStartYear(t);
   const [m, setM] = useState<Month>(monthOf(t));
   const debut = `${y}-06` as Month, fin = `${y + 1}-05` as Month;
-  const jours = joursCalendrier(m, leaves, t, contrats[0] ? regionDe(contrats[0]) : undefined);
+  const jours = joursCalendrier(m, leaves, t, contrats[0] ? regionDe(contrats[0]) : undefined, contrats.map((c) => ctxFor(c)));
+  const prisMois = jours.filter((j) => j.type === 'pris').map((j) => Number(j.d.slice(8, 10)));
+  const posesMois = jours.filter((j) => j.type === 'pose').map((j) => Number(j.d.slice(8, 10)));
   const decalage = (weekday(firstDay(m)) + 6) % 7;
   const lignes = tableau ? contrats.map((c) => ({ c, x: compteursCP(ctxFor(c), t, enfants) })) : [];
   return (
@@ -93,16 +96,17 @@ function CongesTous({ contrats, t, enfants, leaves, onChoisir, tableau = true }:
           <h2 aria-live="polite">{monthLabel(m).replace(/^./, (x) => x.toUpperCase())}</h2>
           <button class="icon-btn" aria-label="Mois suivant" disabled={m >= fin} onClick={() => setM(addMonths(m, 1))}><Icon name="right" /></button>
         </div>
-        <div class="cal-cp" role="grid" aria-label={`Congés de ${monthLabel(m)}`}>
+        {/* Relecture T-118 (M8) : la grille est une image pour le lecteur d'écran ; le texte qui suit dit les jours. */}
+        <div class="cal-cp" aria-hidden="true">
           {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((x) => <span class="cal-h" aria-hidden="true">{x}</span>)}
           {Array.from({ length: decalage }, () => <span class="cal-d vide" aria-hidden="true" />)}
           {jours.map((j) => (
-            <span class={`cal-d ${j.type}${j.d === t ? ' auj' : ''}`} role="gridcell"
-              aria-label={`${dayLabel(j.d)}${j.type === 'pris' ? ', congé pris' : j.type === 'pose' ? ', congé posé' : j.type === 'ferie' ? `, férié (${j.ferie})` : ''}${j.d === t ? ', aujourd’hui' : ''}`}>
+            <span class={`cal-d ${j.type}${j.d === t ? ' auj' : ''}`}>
               {Number(j.d.slice(8, 10))}
             </span>
           ))}
         </div>
+        <p class="sr-only">{monthLabel(m)} : {prisMois.length ? `congés pris les ${prisMois.join(', ')}` : 'aucun congé pris'} ; {posesMois.length ? `congés posés les ${posesMois.join(', ')}` : 'aucun congé posé'}.</p>
         <div class="cal-legende" aria-hidden="true">
           <span><i class="l-pris" />pris</span><span><i class="l-pose" />posé, à venir</span><span><i class="l-auj" />aujourd’hui</span><span><i class="l-ferie" />férié</span>
         </div>
@@ -122,7 +126,7 @@ function CongesTous({ contrats, t, enfants, leaves, onChoisir, tableau = true }:
               ))}
             </tbody>
           </table>
-          <p class="hint">Droits acquis du 1er juin {y - 1} au 31 mai {y}, à prendre avant le {JJ(lignes[0].x.dateLimite)}. Chaque contrat a ses propres droits : un jour de congé compte pour chaque contrat où c’est un jour ouvrable. « — » : nombre non calculé faute d’une donnée ; le détail est sur la fiche du contrat (touche le prénom).</p>
+          <p class="hint">Droits acquis du 1er juin {y - 1} au 31 mai {y}, à prendre d’ici le {JJ(lignes[0].x.dateLimite)} (fin de la période suivie par l’app ; les dates se fixent d’un commun accord avec les parents, au plus tard le 1er mars : convention, article 102.1.1). Chaque contrat a ses propres droits : un jour de congé compte pour chaque contrat où c’est un jour ouvrable. « — » : nombre non calculé faute d’une donnée ; le détail est sur la fiche du contrat (touche le prénom).</p>
           <details class="more" style={{ boxShadow: 'none', border: '1px solid var(--line)' }}>
             <summary>Comment c’est calculé</summary>
             <div class="more-body">
@@ -155,6 +159,9 @@ function CongesContrat({ c, t, enfants, leaves }: { c: Contract; t: string; enfa
   const maxMois = Math.max(2.5, ...x.mois.map((a) => a.duMois));
   const finAcquis = x.mois.filter((a) => a.passe && !a.avantSuivi).pop();
   const debutSuivi = y === cpPeriodStartYear(c.trackedFrom) && c.trackedFrom > c.start;
+  // Relecture T-118 (M5) : un contrat commencé après le 1er juin acquiert depuis son premier jour.
+  const debutAcq = c.start > `${y}-06-01` ? c.start : `${y}-06-01`;
+  const debutPrec = c.start > `${y - 1}-06-01` ? c.start : `${y - 1}-06-01`;
   const congesPeriode = leaves.filter((l) => l.type === 'cp' && l.to >= `${y}-06-01` && l.from <= x.dateLimite);
   return (
     <section class="card stack" aria-label={`Congés, contrat ${de(c.child)}`}>
@@ -166,7 +173,7 @@ function CongesContrat({ c, t, enfants, leaves }: { c: Contract; t: string; enfa
         <div><b class="num">{nb(x.droits)}</b><span>droits à prendre</span></div>
         <div><b class="num">{nb(x.pris)}</b><span>déjà pris</span></div>
         <div><b class="num">{nb(x.poses)}</b><span>posés, à venir</span></div>
-        <div><b class={`num${x.reste !== undefined && x.reste < 0 ? ' neg' : ''}`}>{nb(x.reste)}</b><span>reste à poser avant le {JJ(x.dateLimite)}</span></div>
+        <div><b class={`num${x.reste !== undefined && x.reste < 0 ? ' neg' : ''}`}>{nb(x.reste)}</b><span>reste à poser d’ici le {JJ(x.dateLimite)}</span></div>
       </div>
       {[...new Set([k.enCours.aConfirmer?.message, k.aPrendreAConfirmer?.message, ...k.decompteAConfirmer].filter(Boolean))].map((m) => <Banner tone="warn">{m}</Banner>)}
       {k.fractionnementNonGere && <Banner tone="warn">{k.fractionnementNonGere}</Banner>}
@@ -179,16 +186,16 @@ function CongesContrat({ c, t, enfants, leaves }: { c: Contract; t: string; enfa
         <div class="more-body">
           <p><b>Droits à prendre ({nb(x.droits)})</b> : {y === cpPeriodStartYear(c.trackedFrom)
             ? (c.trackedFrom > c.start ? `solde de départ du contrat : congés acquis avant le 1er juin ${y} et pas encore pris au début du suivi par l’app.` : `contrat commencé pendant cette période : aucun droit de la période précédente.`)
-            : `jours acquis du 1er juin ${y - 1} au 31 mai ${y} : 2,5 jours ouvrables par mois de travail, arrondis au jour supérieur, 30 au plus${enfants ? ', plus 2 jours par enfant à charge' : ''} (convention, articles 48.1.1.2 et 48.1.3.3).`}</p>
+            : `jours acquis du ${JJ(debutPrec)} au 31 mai ${y} : 2,5 jours ouvrables par mois de travail, arrondis au jour supérieur, 30 au plus${enfants ? ', plus 2 jours par enfant à charge' : ''} (convention, articles 48.1.1.2 et 48.1.3.3).`}</p>
           <p><b>Déjà pris ({nb(x.pris)})</b> et <b>posés ({nb(x.poses)})</b> : jours ouvrables (lundi au samedi, sans les fériés) de tes congés payés, du premier jour qui aurait été travaillé à la veille de la reprise (article 48.1.1.3){congesPeriode.length ? ` ; congés de la période : ${congesPeriode.map((l) => `du ${shortDate(l.from)} au ${shortDate(l.to)}`).join(', ')}` : ''}.</p>
-          <p><b>Reste ({nb(x.reste)})</b> = droits − pris − posés{x.reste !== undefined ? ` = ${nb(x.droits)} − ${nb(x.pris)} − ${nb(x.poses)}` : ''}. Date limite : le {JJ(x.dateLimite)}, fin de la période suivie par l’app. Le congé principal se prend entre le 1er mai et le 31 octobre (article 48.1.1.3).</p>
+          <p><b>Reste ({nb(x.reste)})</b> = droits − pris − posés{x.reste !== undefined ? ` = ${nb(x.droits)} − ${nb(x.pris)} − ${nb(x.poses)}` : ''}. Le {JJ(x.dateLimite)} est la fin de la période suivie par l’app, pas une échéance fixée par un texte. Les dates de congés se fixent d’un commun accord avec les parents, au plus tard le 1er mars (convention, article 102.1.1). Le congé principal se prend entre le 1er mai et le 31 octobre (article 48.1.1.3).</p>
         </div>
       </details>
       {k.enCours.aConfirmer
         ? <p>En cours d’acquisition : <b>non calculé</b> (voir ci-dessus).</p>
         : (
           <div class="stack-sm">
-            <span class="tm-eyebrow">Acquis du 1er juin {y} au 31 mai {y + 1}, mois par mois</span>
+            <span class="tm-eyebrow">Acquis du {JJ(debutAcq)} au 31 mai {y + 1}, mois par mois</span>
             <div class="cp-barres" aria-hidden="true">
               {x.mois.map((a) => <div class={a.avantSuivi ? 'avant' : a.passe ? 'passe' : 'futur'} style={{ height: `${Math.round((a.duMois / maxMois) * 100)}%` }} />)}
             </div>
@@ -210,7 +217,7 @@ function CongesContrat({ c, t, enfants, leaves }: { c: Contract; t: string; enfa
                     ))}
                   </tbody>
                 </table>
-                <p class="muted small">Cumul : jours acquis du 1er juin au dernier jour du mois, arrondis au jour supérieur (convention, article 48.1.1.2). Méthode de la Cour de cassation (10 janvier 1980) : mois complets de travail, puis semaines, puis jours, au prorata. Avec une absence dans la période, l’app retient le décompte le plus favorable (par mois, par semaines ou par jours ; code du travail, L3141-4). Mois à venir : si le contrat continue comme prévu. {debutSuivi ? `Le cumul comprend le solde de départ (${c.balances.cpEnCours.toLocaleString('fr-FR')} jours acquis avant l’app, depuis le 1er juin).` : ''} Les jours pour tes enfants à charge s’ajoutent au 31 mai (article 48.1.3.3).</p>
+                <p class="muted small">Cumul : jours acquis du {JJ(debutAcq)} au dernier jour du mois, arrondis au jour supérieur (convention, article 48.1.1.2). Méthode de la Cour de cassation (10 janvier 1980) : mois complets de travail, puis semaines, puis jours, au prorata. Avec une absence dans la période, l’app retient le décompte le plus favorable (par mois, par semaines ou par jours ; code du travail, L3141-4). Mois à venir : si le contrat continue comme prévu. {debutSuivi ? `Le cumul comprend le solde de départ (${c.balances.cpEnCours.toLocaleString('fr-FR')} jours acquis avant l’app, depuis le 1er juin).` : ''} Les jours pour tes enfants à charge s’ajoutent au 31 mai (article 48.1.3.3).</p>
               </div>
             </details>
           </div>

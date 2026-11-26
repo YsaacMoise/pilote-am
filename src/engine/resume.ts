@@ -4,7 +4,7 @@
 import { addMonths, eachDay, firstDay, lastDay, type ISODate, type Month } from './dates';
 import { AM_ABS_LABEL, type AmAbs, type ChildAbs } from './model';
 import { dayInfo, inContract, type Ctx } from './payroll';
-import type { MonthResult } from './month';
+import { totalAVerser, type MonthResult } from './month';
 import { euros } from './money';
 
 export interface ResumeTravail {
@@ -59,7 +59,7 @@ const s = (n: number) => (n > 1 ? 's' : '');
 const ABSENCE_AM: Partial<Record<AmAbs, string>> = {
   cp: 'congés payés',
   am_malade: 'arrêt maladie',
-  am_enfant_malade: 'absence pour enfant malade',
+  am_enfant_malade: 'congé pour enfant malade',
   evenement: 'congé pour événement familial',
   sans_solde: 'congé sans solde',
   formation: 'formation obligatoire',
@@ -71,7 +71,7 @@ const ABSENCE_ENFANT: Record<ChildAbs, string> = {
   malade_certif: 'enfant malade avec certificat',
   malade: 'enfant malade sans certificat',
   parents: 'enfant absent à la demande des parents',
-  sans_solde_enfant: 'enfant absent, noté « sans solde »',
+  sans_solde_enfant: 'absence de l’enfant notée « sans solde » (ancienne saisie)',
 };
 
 /** Lignes de la carte, en français simple (« 1 jour malade avec certificat, retenu ») */
@@ -109,17 +109,20 @@ export function etatDeclaration(m: Month, t: ISODate): string {
 
 /**
  * T-118 (ajout du DG du 26/11) : montant final attendu d'un mois en cours, si les jours restants se passent comme prévu.
- * `fin` : le même mois calculé au dernier jour du mois. Seuls l'entretien et les repas changent (payés par jour d'accueil,
- * CCN 114.1 et 114.2) ; le salaire mensualisé est fixe. Undefined si le mois ne se calcule pas au dernier jour.
+ * `fin` : le même mois calculé au dernier jour du mois. Salaire mensualisé : il est fixe, seuls l'entretien et les repas
+ * s'ajoutent (payés par jour d'accueil, CCN 114.1 et 114.2). Accueil occasionnel : le salaire suit aussi les heures d'accueil
+ * (CCN 108.2, 109.3) : le total du mois calculé au dernier jour (relecture T-118, B1). Undefined si le mois ne se calcule pas
+ * au dernier jour.
  */
-export function montantFinDeMois(total: number, r: MonthResult, fin: MonthResult): number | undefined {
+export function montantFinDeMois(total: number, r: MonthResult, fin: MonthResult, occasionnel = false): number | undefined {
   if (fin.nonGere.length) return undefined;
+  if (occasionnel) return totalAVerser(fin);
   return total + Math.max(0, fin.entretien - r.entretien) + Math.max(0, fin.repas - r.repas);
 }
 
 /** Mention neutre du mois en cours (sans couleur d'alerte) */
-export function texteMoisEnCours(m: Month, finAttendue?: number): string {
+export function texteMoisEnCours(m: Month, finAttendue?: number, occasionnel = false): string {
   const fin = lastDay(m);
   const jj = `${fin.slice(8, 10)}/${fin.slice(5, 7)}`;
-  return `Montant provisoire : l’entretien et les repas s’ajoutent jour après jour, jusqu’au ${jj}.${finAttendue !== undefined ? ` Si les jours restants se passent comme prévu : ${euros(finAttendue)} au ${jj}.` : ''}`;
+  return `Montant provisoire : ${occasionnel ? 'le salaire des heures d’accueil, l’indemnité d’entretien et les frais de repas s’ajoutent' : 'l’indemnité d’entretien et les frais de repas s’ajoutent'} jour après jour, jusqu’au ${jj}.${finAttendue !== undefined ? ` Si les jours restants se passent comme prévu : ${euros(finAttendue)} au ${jj}.` : ''}`;
 }

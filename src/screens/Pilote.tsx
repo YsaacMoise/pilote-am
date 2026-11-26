@@ -22,7 +22,7 @@ export function Pilote() {
       <Topbar title="Données du pilote" back="#/plus" screen="pilote" />
       <main>
         <p>Ici, tes remarques « Ça coince » et un export pseudonymisé de ton utilisation. Tu n’as rien à envoyer : si l’équipe d’Arvela te le demande, tu peux le partager. Il ne contient <b>aucun prénom</b> (les enfants deviennent A, B, C) et <b>aucune note du carnet</b>.</p>
-                <section class="card stack">
+        <section class="card stack">
           <div class="month-nav">
             <button class="icon-btn" aria-label="Mois précédent" onClick={() => setM(addMonths(m, -1))}><Icon name="left" /></button>
             <h2 aria-live="polite">{monthLabel(m).replace(/^./, (x) => x.toUpperCase())}</h2>
