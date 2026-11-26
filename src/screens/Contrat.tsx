@@ -3,7 +3,7 @@ import { ctxFor, deleteContract, logErreur, logUsage, putContract, state, toast,
 import { addMonthsToDate, deMois, firstDay, mondayOf, monthOf, shortDate, today, JOUR_NOMS, type Month } from '../engine/dates';
 import { dureeMoyenneContrat, informationsDurees, SEUIL_ACCORD_MIN } from '../engine/durees';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, semainesSansAccueilAnnee, termsAt, weeklyMinutes } from '../engine/payroll';
-import { entretienPlancher, minimumSansTitre, ratesAtRegion, ratesConnus, repasAvantageAu } from '../engine/rates';
+import { entretienPlancher, ratesAtRegion, ratesConnus, repasAvantageAu } from '../engine/rates';
 import { regionDe } from '../engine/regions';
 import { congesDeDepart, MESSAGE_SOLDE_CONGES, soldeCongesInconnu } from '../engine/conges';
 import { CongesDepart } from './CongesDepart';
@@ -19,7 +19,7 @@ import { de } from '../engine/texte';
 import { PAJEMPLOI_PLUS_AIDE } from '../legal';
 import { MESSAGE_REPOS_HEBDO, NON_GERE_47_51, nonGeresContrat, planningAvecDimanche, semaines4751 } from '../engine/nonGeres';
 import { DEPARTEMENTS, libelleDepartement, reponseSaisie, trouverDepartement } from '../engine/departements';
-import { AIDE_ANNEE, AIDE_COMPLEMENTAIRES, AIDE_SEMAINES } from './textes-contrat';
+import { AIDE_ANNEE, AIDE_COMPLEMENTAIRES, AIDE_SEMAINES, TITRE_AM_AP } from './textes-contrat';
 import { PlanningVariableSaisie } from './PlanningVariableSaisie';
 import { CDD_A_COMPLETER, messagesCdd } from '../engine/cdd';
 import { contratAEnregistrer, erreursContrat } from './contrat-validation';
@@ -81,7 +81,6 @@ export function Contrat({ id }: { id?: string }) {
   const wk = weeklyMinutes(c.planning);
   // T-077 (R2) : repère net du minimum et texte du titre AM-GE de la région choisie.
   const rates = ratesAtRegion(today(), regionDe(c)) ?? ratesConnus(today());
-  const MINIMUM_SANS_TITRE = minimumSansTitre(regionDe(c));
   useEffect(() => {
     if (!existing || montrerLienDe !== existing.id) return;
     montrerLienDe = undefined;
@@ -253,7 +252,7 @@ export function Contrat({ id }: { id?: string }) {
             {/* T-103 (D1) : CCN 41.1, le salaire horaire est au contrat ; CCN 107 et 109, le salaire se calcule sur le brut.
                 T-115 (R3) : le brut est calculé depuis le net (comme Pajemploi) ; l'AM peut écrire celui du contrat. */}
             <BrutSaisie net={c.rateNet} brut={c.rateBrut} date={today()} region={regionDe(c)} set={(v) => set({ rateBrut: v })} debut={c.start} />
-            {rates.minConvNet !== undefined && <p class="hint">{MINIMUM_SANS_TITRE}</p>}
+            {rates.minConvNet !== undefined && <p class="hint">{TITRE_AM_AP}</p>}
             {isNew
               ? <EntretienSaisie t={c} set={set} hint={`Laisse vide si le contrat ne fixe pas de montant : l’app applique le minimum légal. Un montant plus bas que ce minimum (${euros(entretienPlancher(today(), 540)!)} pour 9 h) est remplacé par le minimum.`} />
               : (

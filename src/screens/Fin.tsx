@@ -251,7 +251,7 @@ export function Fin({ id }: { id?: string }) {
         {c.trackedFrom > c.start && surBrut && (
           <section class="card stack-sm" aria-labelledby="fin-bul">
             <h2 id="fin-bul">Bulletins d’avant Arvela</h2>
-            <p class="hint">Facultatifs. Le salaire brut de chaque bulletin compte dans les salaires sur lesquels se calcule l’indemnité de rupture (1/80, convention, article 121.1) ; un mois d’avant le {shortDate(c.trackedFrom)} sans bulletin n’y est pas compté.{f.manquants.length ? ` ${f.manquants.length} mois sans bulletin.` : ''}</p>
+            <p class="hint">Facultatifs. Le salaire brut de chaque bulletin entre dans le total des salaires sur lequel se calcule l’indemnité de rupture ; un mois d’avant le {shortDate(c.trackedFrom)} sans bulletin n’y est pas compté.{f.manquants.length ? ` ${f.manquants.length} mois sans bulletin.` : ''}</p>
             <a class="btn btn-outline" href={`#/historique/${c.id}`}>Ajouter des bulletins</a>
           </section>
         )}

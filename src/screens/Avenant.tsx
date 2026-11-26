@@ -5,7 +5,7 @@ import { useState } from 'preact/hooks';
 import { logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
 import { firstDay, monthLabel, monthOf, shortDate, today, type Month } from '../engine/dates';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, termsAt, weeklyMinutes } from '../engine/payroll';
-import { libelleMinimumBrut, MESSAGE_PERIODE_NON_GEREE, minimumBrut, minimumSansTitre, ratesAtRegion } from '../engine/rates';
+import { libelleMinimumBrut, MESSAGE_PERIODE_NON_GEREE, minimumBrut, ratesAtRegion } from '../engine/rates';
 import { regionDe } from '../engine/regions';
 import { euros, hoursLabel } from '../engine/money';
 import { TERM_KEYS, type Avenant as Av, type Contract, type Planning, type Terms } from '../engine/model';
@@ -14,7 +14,7 @@ import { BrutSaisie } from './BrutSaisie';
 import { Banner, Choices, DateInput, EuroInput, NumberInput, Seg, Switch, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { PlanDay, WeeksOff, avenantSummary } from './Contrat';
-import { AIDE_ANNEE, AIDE_COMPLEMENTAIRES, AIDE_SEMAINES } from './textes-contrat';
+import { AIDE_ANNEE, AIDE_COMPLEMENTAIRES, AIDE_SEMAINES, TITRE_AM_AP } from './textes-contrat';
 import { PlanningVariableSaisie } from './PlanningVariableSaisie';
 import { manquesPV } from '../engine/planningVariable';
 
@@ -78,7 +78,6 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
   const wk = weeklyMinutes(tRetenu.planning);
   // T-077 (R2) : repère net, minimum légal et texte du titre AM-GE de la région du contrat.
   const rates = ratesAtRegion(jour, regionDe(c));
-  const MINIMUM_SANS_TITRE = minimumSansTitre(regionDe(c));
   const changes: Partial<Terms> = {};
   for (const k of TERM_KEYS) if (!same(tRetenu[k], (before as any)[k])) (changes as any)[k] = structuredClone(tRetenu[k]);
   const summary = avenantSummary(before, changes);
@@ -167,7 +166,7 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
               {t.rateNet > 0 && rates?.minConvNet !== undefined && t.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel.</Banner>}
               {/* T-115 (R3) : brut calculé depuis le net, à la date de l'avenant ; l'AM peut écrire celui de l'avenant. */}
               <BrutSaisie net={t.rateNet} brut={t.rateBrut} date={jour} region={regionDe(c)} set={(v) => set({ rateBrut: v })} ecrit="l’avenant" debut={date} />
-              {rates?.minConvNet !== undefined && <p class="hint">{MINIMUM_SANS_TITRE}</p>}
+              {rates?.minConvNet !== undefined && <p class="hint">{TITRE_AM_AP}</p>}
               <NumberInput label="Majoration des heures au-delà de 45 h par semaine (%)" hint="10 % au moins." value={t.majoration} min={10} max={100} onChange={(v) => set({ majoration: v ?? 10 })} />
               <NumberInput label="Majoration des heures complémentaires (%)" hint={AIDE_COMPLEMENTAIRES} value={t.majorationCompl ?? 0} min={0} max={100} onChange={(v) => set({ majorationCompl: v ?? 0 })} />
             </fieldset>
@@ -180,7 +179,7 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
               <legend>Le planning</legend>
               <Seg label="Année complète ou incomplète ?" value={t.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(t.weeks, 46) || 46 })}
                 options={[{ v: 'complete', l: 'Année complète' }, { v: 'incomplete', l: 'Année incomplète' }]} />
-              <p class="hint">{AIDE_ANNEE}</p>
+              <p class="hint">Comme écrit à l’avenant.</p>
               {t.yearType === 'incomplete' && <NumberInput label="Semaines d’accueil programmées" hint={AIDE_SEMAINES} value={t.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />}
               {/* T-122 : semaines sans accueil de l'avenant (lues par payroll.ts, toutesSemainesSansAccueil). */}
               {t.yearType === 'incomplete' && <WeeksOff c={preview} onChange={(w) => set({ weeksOff: w })} />}

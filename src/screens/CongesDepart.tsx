@@ -54,11 +54,11 @@ export function CongesDepart({ c, mode = 'enregistrer', onSoldes, reponses, onRe
   const anneeJuin = d.depuis.slice(0, 4);
   return (
     <div class="conges-depart stack">
-      <p>Arvela a calculé tes congés depuis le début du contrat, le {shortDate(c.start)}, comme si l’accueil s’était passé comme prévu. Dis seulement ce qu’elle ne peut pas savoir.</p>
-      {demanderPris && <NumberInput label={`Jours de congés déjà pris depuis le 1er juin ${anneeJuin}`} hint="Du lundi au samedi, sans les jours fériés : une semaine de congés = 6 jours. Tu les trouves sur tes bulletins de salaire ou dans l’accord écrit avec les parents. 0 si tu n’en as pas pris." value={pris} step={1} max={60} onChange={(v) => setPris(v)} />}
+      <p>Arvela a calculé tes congés depuis le début du contrat, le {shortDate(c.start)}, sur le planning du contrat.</p>
+      {demanderPris && <NumberInput label={`Jours de congés déjà pris depuis le 1er juin ${anneeJuin}`} hint="Jours ouvrables. 0 si aucun." value={pris} step={1} max={60} onChange={(v) => setPris(v)} />}
       {demanderPris && (pris ?? 0) > d.droitsPrec && <p class="hint">Tu indiques {jours(pris ?? 0)} pris pour {jours(d.droitsPrec)} acquis : les jours en plus étaient des congés sans solde, ou pris par avance avec l’accord écrit des parents. Vérifie tes bulletins ; Arvela compte 0 jour restant.</p>}
-      <Choices label="As-tu eu une longue absence non payée avant d’utiliser l’app ?" value={absent}
-        options={[{ v: 'non', l: 'Non' }, { v: 'oui', l: 'Oui', sub: 'Congé sans solde, absence non payée par les parents : ces jours ne comptent pas pour les congés.' }]}
+      <Choices label="Congé sans solde ou absence non rémunérée avant le suivi ?" value={absent}
+        options={[{ v: 'non', l: 'Non' }, { v: 'oui', l: 'Oui', sub: 'Ces jours ne comptent pas pour les congés.' }]}
         onChange={(v) => setAbsent(v)} />
       {absent === 'oui' && d.precDu && <NumberInput label={`Jours d’accueil non travaillés et non payés du ${shortDate(d.precDu)} au ${shortDate(d.precAu!)}`} hint="Les jours où l’accueil était prévu au contrat. Tes bulletins les indiquent comme absence non rémunérée." value={absPrec} step={1} max={400} onChange={(v) => setAbsPrec(v ?? 0)} />}
       {absent === 'oui' && d.jusqua >= debutCours && <NumberInput label={`Jours d’accueil non travaillés et non payés du ${shortDate(debutCours)} au ${shortDate(d.jusqua)}`} value={absCours} step={1} max={400} onChange={(v) => setAbsCours(v ?? 0)} />}

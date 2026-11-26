@@ -2,20 +2,22 @@
 // congés (14), et les contrats en cours de saisie à reprendre (22, 24). Aucun calcul nouveau : les chiffres viennent du moteur.
 import { useState } from 'preact/hooks';
 import { ctxFor, logUsage, putContract, toast, useStore } from '../store';
-import { addDays, monthLabel, monthOf, shortDate, today } from '../engine/dates';
-import { joursMensualises, monthBase, termsAt, weeklyMinutes } from '../engine/payroll';
+import { addDays, eachDay, lastDay, monthLabel, monthOf, shortDate, today, MOIS_NOMS } from '../engine/dates';
+import { dayInfo, joursMensualises, monthBase, termsAt, weeklyMinutes } from '../engine/payroll';
 import { compteursCP } from '../engine/compteurs-cp';
 import { euros, hoursLabel } from '../engine/money';
 import { AM_ABS_LABEL, CHILD_ABS_LABEL, type Contract } from '../engine/model';
 import { de } from '../engine/texte';
-import { Banner, Gommette, ListLink, TextInput, Topbar } from '../ui/kit';
+import { Banner, DateInput, Gommette, ListLink, Sheet, TextInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { PartageCard } from './PartageCard';
 import { AmAbsenceSheet, DaySheet } from './Today';
 import { NOMS_ETAPES } from './AjoutEnfant';
-import { nbEtapes, supprimerBrouillon, useBrouillons } from '../brouillons';
+import { nbEtapes, useBrouillons } from '../brouillons';
+import { SupprimerBrouillon } from './BrouillonSuppression';
 
-const nb = (x: number | undefined) => (x === undefined ? '—' : x.toLocaleString('fr-FR', { maximumFractionDigits: 1 }));
+// Relecture m3 : jamais « -0 » (un reste nul s'affiche 0).
+const nb = (x: number | undefined) => (x === undefined ? '—' : (Math.abs(x) < 0.05 ? 0 : x).toLocaleString('fr-FR', { maximumFractionDigits: 1 }));
 const Maj = (x: string) => x.replace(/^./, (y) => y.toUpperCase());
 
 function Introuvable({ titre }: { titre: string }) {
@@ -37,7 +39,14 @@ export function ContratCree({ id }: { id: string }) {
   const c = s.contracts.find((x) => x.id === id);
   if (!c) return <Introuvable titre="Contrat créé" />;
   const m = monthOf(today());
-  const b = monthBase(ctxFor(c), m);
+  const ctx = ctxFor(c);
+  const b = monthBase(ctx, m);
+  // Relecture M2 : jours et heures prévus comme l'écran Mois, jour par jour (dayInfo) : fériés chômés retirés et nommés.
+  const debutMois = c.trackedFrom > `${m}-01` ? c.trackedFrom : `${m}-01`;
+  const jours = eachDay(debutMois, lastDay(m)).filter((d) => !c.end || d <= c.end).map((d) => dayInfo(ctx, d));
+  const prevus = jours.filter((di) => di.kind !== 'hors' && di.kind !== 'ferie' && di.plannedMin > 0);
+  const feries = jours.filter((di) => di.kind === 'ferie');
+  const minPrevues = prevus.reduce((t, di) => t + di.plannedMin, 0);
   const avant = c.trackedFrom > c.start;
   return (
     <>
@@ -47,8 +56,8 @@ export function ContratCree({ id }: { id: string }) {
           <h2>{Maj(monthLabel(m))}</h2>
           <p class="hint">Premier mois suivi par Arvela, depuis le {shortDate(c.trackedFrom > `${m}-01` ? c.trackedFrom : `${m}-01`)}.</p>
           <dl class="kv">
-            <dt>Accueil prévu</dt><dd>{b.contractDays} jour{b.contractDays > 1 ? 's' : ''}, {hoursLabel(b.contractMin)}</dd>
-            {b.ferieDays.length > 0 && <><dt>Jour{b.ferieDays.length > 1 ? 's' : ''} férié{b.ferieDays.length > 1 ? 's' : ''}</dt><dd>{b.ferieDays.map((d) => shortDate(d).slice(0, 5)).join(', ')}</dd></>}
+            <dt>Accueil prévu</dt><dd>{prevus.length} jour{prevus.length > 1 ? 's' : ''}, {hoursLabel(minPrevues)}</dd>
+            {feries.length > 0 && <><dt>Jour{feries.length > 1 ? 's' : ''} férié{feries.length > 1 ? 's' : ''}</dt><dd>{feries.map((di) => `${Number(di.date.slice(8))} ${MOIS_NOMS[Number(di.date.slice(5, 7)) - 1]}`).join(', ')}</dd></>}
             {!c.accueilOccasionnel && <><dt>Mensualisation</dt><dd>{hoursLabel(Math.round(b.mensuelMin))}, {joursMensualises(termsAt(c, today()))} jours</dd></>}
             {!c.accueilOccasionnel && <><dt>Salaire de base</dt><dd>{euros(b.salaireMens)} net</dd></>}
           </dl>
@@ -137,7 +146,8 @@ export function ParentsEnfant({ id }: { id: string }) {
 export function AbsencesEnfant({ id }: { id: string }) {
   const s = useStore();
   const c = s.contracts.find((x) => x.id === id);
-  const [sheet, setSheet] = useState<null | 'enfant' | 'am'>(null);
+  const [sheet, setSheet] = useState<null | 'jour' | 'enfant' | 'am'>(null);
+  const [jourAbs, setJourAbs] = useState('');
   if (!c) return <Introuvable titre="Absences et congés" />;
   const t = today();
   const cp = c.accueilOccasionnel ? undefined : compteursCP(ctxFor(c), t, s.settings.enfantsACharge);
@@ -166,10 +176,17 @@ export function AbsencesEnfant({ id }: { id: string }) {
         {aVenir.length ? <div class="list">{aVenir}</div> : <p class="hint">Aucune absence prévue.</p>}
         <h2 class="section-title">Passées (3 derniers mois)</h2>
         {passees.length ? <div class="list">{passees}</div> : <p class="hint">Aucune absence.</p>}
-        <button class="btn btn-primary btn-block" onClick={() => setSheet('enfant')}>Déclarer une absence {de(c.child)}</button>
+        <button class="btn btn-primary btn-block" onClick={() => { setJourAbs(''); setSheet('jour'); }}>Déclarer une absence {de(c.child)}</button>
         <button class="btn btn-outline btn-block" onClick={() => setSheet('am')}><Icon name="calendar" />Déclarer mon absence (tous mes contrats)</button>
       </main>
-      {sheet === 'enfant' && <DaySheet c={c} day={t} onClose={() => setSheet(null)} />}
+      {/* Relecture m2 : le jour d'abord (passé ou à venir), puis la feuille existante de ce jour. */}
+      {sheet === 'jour' && (
+        <Sheet title={`Absence ${de(c.child)}`} onClose={() => setSheet(null)}>
+          <DateInput label="Jour de l’absence" value={jourAbs} min={c.start} max={c.end} onChange={setJourAbs} />
+          <button class="btn btn-primary btn-block" disabled={!jourAbs} onClick={() => setSheet('enfant')}>Continuer</button>
+        </Sheet>
+      )}
+      {sheet === 'enfant' && jourAbs && <DaySheet c={c} day={jourAbs} onClose={() => setSheet(null)} />}
       {sheet === 'am' && <AmAbsenceSheet start={t} onClose={() => setSheet(null)} />}
     </>
   );
@@ -196,7 +213,7 @@ export function BrouillonsEnCours({ liste = false }: { liste?: boolean }) {
           <span>{texte(b)}.</span>
           <div class="btn-row">
             <a class="btn btn-outline" href={`#/ajout/${b.id}`}>Reprendre</a>
-            <button class="btn btn-ghost" onClick={() => { supprimerBrouillon(b.id); logUsage('brouillon_supprime', 'aujourdhui'); }}>Supprimer</button>
+            <SupprimerBrouillon b={b} ecran="aujourdhui" />
           </div>
         </Banner>
       ))}

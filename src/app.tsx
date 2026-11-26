@@ -168,7 +168,7 @@ export function App() {
       )}
       {!isDemo() && <RefusBanner />}
       <ConditionsBanner />
-      <div class="app">
+      <div class={assistant ? 'app sans-onglets' : 'app'}>
         {screen}
         {/* T-122 : pendant l'ajout d'un enfant, « Continuer » est le seul bouton principal (la croix du haut ferme, tout est gardé). */}
         {!assistant && <nav class="tabbar" aria-label="Navigation principale">
