@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'preact/hooks';
 import * as db from './db';
 import type { AmLeave, Bulletin, Contract, DayRec, Journal, Settings } from './engine/model';
-import { brutDuNet, makeCtx, monthBase, type Ctx } from './engine/payroll';
+import { makeCtx, monthBrut, type Ctx } from './engine/payroll';
 import { addMonths, firstDay, lastDay, monthOf, today, type Month } from './engine/dates';
 import { computeMonth } from './engine/month';
 import { liensApresSuppression, normaliserAbsences, ruptureSansSante, type AbsenceLue } from './engine/absences';
@@ -317,7 +317,7 @@ export function partIJContrat(c: Contract, l: AmLeave): number | undefined {
   // (période de référence en cours) est coupé : le mois est alors lu sans ses congés (monthBase).
   const brutMois = (x: Contract, m: Month) => {
     const cle = `${l.id}|${x.id}|${m}`;
-    if (ijEnCours.has(cle)) return brutDuNet(x, monthBase(ctxFor(x), m).net, lastDay(m));
+    if (ijEnCours.has(cle)) return monthBrut(ctxFor(x), m); // relecture T-118 (M1) : brut d'un mois d'avenant période par période
     ijEnCours.add(cle);
     try { const r = computeMonth(ctxFor(x), m); return r.nonGere.length ? 0 : r.brutEstime; } finally { ijEnCours.delete(cle); }
   };

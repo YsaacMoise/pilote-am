@@ -3,7 +3,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { activeContracts, ctxFor, logUsage, putLeave, saveSettings, state, toast, uid, updateDay, useStore } from '../store';
 import { addDays, dayLabel, minutes, nowHHMM, today, weekday, JOUR_NOMS, MOIS_NOMS, daysBetween } from '../engine/dates';
 import { dayInfo, libelleFerie, type Ctx, type DayInfo } from '../engine/payroll';
-import { alertesDurees } from '../engine/durees';
+import { alertesDurees, AMPLITUDE_MAX_MIN, messageAmplitude } from '../engine/durees';
 import { AM_ABS_LABEL, CHILD_ABS_LABEL, NATURE_ATMP_LABEL, type NatureAtMp, type ChildAbs, type Contract, type DayRec, type NatureEvenement, type Plage, type Presence } from '../engine/model';
 import { regionDe } from '../engine/regions';
 import { estSuspension } from '../engine/suspensions';
@@ -216,6 +216,11 @@ export function Today() {
 export const SEUIL_ARRIVEE_MIN = 30;
 /** Départ : plus de 15 minutes après la fin prévue (chaque minute après la fin prévue est payée en plus). */
 export const SEUIL_DEPART_MIN = 15;
+/**
+ * T-118 (D-18) : arrivée plus de 60 minutes AVANT le début prévu (un appui à 3 h 19 pour un accueil à 7 h 30) : l'app demande
+ * aussi quelle heure est vraie, au lieu de noter l'heure de l'appui sans question.
+ */
+export const SEUIL_AVANCE_MIN = 60;
 
 /** Heure lisible des textes T-048 : « 8 h 15 », « 17 h » (sans « 00 », sans zéro devant l'heure). */
 export function heureLisible(t: string): string {
@@ -282,7 +287,8 @@ export function choixPointage(planned: Plage[], na: { idx: number; kind: 'a' | '
   const prevue = na.kind === 'a' ? plage.start : plage.end;
   const ecartMin = minutes(maintenant) - minutes(prevue);
   const seuil = na.kind === 'a' ? SEUIL_ARRIVEE_MIN : SEUIL_DEPART_MIN;
-  if (ecartMin <= seuil) return null;
+  const tropTot = na.kind === 'a' && -ecartMin > SEUIL_AVANCE_MIN;
+  if (ecartMin <= seuil && !tropTot) return null;
   return { kind: na.kind, idx: na.idx, prevue, maintenant, ecartMin };
 }
 
@@ -290,7 +296,7 @@ export function choixPointage(planned: Plage[], na: { idx: number; kind: 'a' | '
 export function textesChoix(ch: ChoixPointage): { titre: string; prevue: string; maintenant: string; autre: string } {
   const arr = ch.kind === 'a';
   return {
-    titre: `${arr ? 'Arrivée' : 'Départ'} prévu${arr ? 'e' : ''} à ${heureLisible(ch.prevue)}`,
+    titre: `${arr ? 'Arrivée' : 'Départ'} prévu${arr ? 'e' : ''} à ${heureLisible(ch.prevue)}${ch.ecartMin < 0 ? `, dans ${hoursLabel(-ch.ecartMin)}` : ''}`,
     prevue: `À ${heureLisible(ch.prevue)}`,
     maintenant: `Maintenant, ${heureLisible(ch.maintenant)}${!arr && (ch.payeesMin ?? 0) > 0 ? ` (+${ch.payeesMin} min payées)` : ''}`,
     autre: 'Autre heure',
@@ -575,11 +581,14 @@ function ChoixHeure({ ch, child, arrivee, pointer, onAutre, onFait }: { ch: Choi
   return (
     <div class="pointage-choix" role="group" aria-label={`${quoi} : quelle heure est vraie ?`}>
       <p class="pointage-choix-titre">{tx.titre}</p>
-      <button class="btn btn-primary btn-lg btn-block" disabled={!!refusPrevue} onClick={() => choisir(ch.prevue, 'prevue')} aria-label={`${quoi} ${tx.prevue.replace(/^À/, 'à')}`}>
-        <Icon name={ch.kind === 'a' ? 'in' : 'out'} />{tx.prevue}
-      </button>
-      {refusPrevue && <p class="err">{refusPrevue}</p>}
-      <button class="btn btn-secondary btn-lg btn-block" onClick={() => choisir(nowHHMM(), 'maintenant')} aria-label={`${quoi} : ${tx.maintenant}`}>
+      {/* T-118 (D-18) : arrivée bien avant l'heure prévue : l'heure prévue n'est pas encore passée, seuls « Maintenant » et « Autre heure » restent. */}
+      {ch.ecartMin >= 0 && (
+        <button class="btn btn-primary btn-lg btn-block" disabled={!!refusPrevue} onClick={() => choisir(ch.prevue, 'prevue')} aria-label={`${quoi} ${tx.prevue.replace(/^À/, 'à')}`}>
+          <Icon name={ch.kind === 'a' ? 'in' : 'out'} />{tx.prevue}
+        </button>
+      )}
+      {ch.ecartMin >= 0 && refusPrevue && <p class="err">{refusPrevue}</p>}
+      <button class={`btn ${ch.ecartMin < 0 ? 'btn-primary' : 'btn-secondary'} btn-lg btn-block`} onClick={() => choisir(nowHHMM(), 'maintenant')} aria-label={`${quoi} : ${tx.maintenant}`}>
         {tx.maintenant}
       </button>
       <button class="btn btn-outline btn-block" onClick={onAutre} aria-haspopup="dialog" aria-label={`${quoi} : ${tx.autre}`}>
@@ -593,7 +602,8 @@ function ChoixHeure({ ch, child, arrivee, pointer, onAutre, onFait }: { ch: Choi
 /** T-048 : la seule heure à choisir, réglée d'avance sur l'heure prévue. Rien n'est enregistré avant « Enregistrer ». */
 function AutreHeureSheet({ ch, child, arrivee, pointer, onClose }: { ch: ChoixPointage; child: string; arrivee?: string; pointer: Pointer; onClose: () => void }) {
   const arr = ch.kind === 'a';
-  const [heure, setHeure] = useState(ch.prevue);
+  // T-118 (D-18) : arrivée en avance, l'heure prévue n'est pas encore passée : l'heure du moment est proposée.
+  const [heure, setHeure] = useState(ch.ecartMin < 0 ? ch.maintenant : ch.prevue);
   const [err, setErr] = useState('');
   useErreurAffichee('depart_avant_arrivee', err === MSG_DEPART_AVANT_ARRIVEE);
   useErreurAffichee('saisie', !!err && err !== MSG_DEPART_AVANT_ARRIVEE);
@@ -719,6 +729,13 @@ export function verifierSaisieT103(f: { abs: string; km: number; kmPartage: bool
   return '';
 }
 
+/** T-118 (D-09) : minutes entre la première arrivée et le dernier départ saisis dans la fiche (0 si incomplet) */
+export function amplitudeFiche(pres: Presence[]): number {
+  const a = pres.filter((p) => p.a && p.d);
+  if (!a.length) return 0;
+  return Math.max(...a.map((p) => minutes(p.d!))) - Math.min(...a.map((p) => minutes(p.a!)));
+}
+
 export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClose: () => void }) {
   const di = dayInfo(ctxFor(c), day);
   const rec = di.rec;
@@ -806,6 +823,8 @@ export function DaySheet({ c, day, onClose }: { c: Contract; day: string; onClos
             </div>
           ))}
           {err && !errT103 && <p class="err" role="alert">{err}</p>}
+          {/* T-118 (D-09) : journée de plus de 13 h saisie dans la fiche : alerte, sans blocage. */}
+          {amplitudeFiche(pres) > AMPLITUDE_MAX_MIN && <Banner tone="warn">{messageAmplitude(amplitudeFiche(pres)).replace(', tous contrats notés dans l’app', '')}</Banner>}
           {pres.length < 2 && <button class="btn btn-ghost" onClick={() => setPres([...pres, { a: '', d: '' }])}><Icon name="plus" />Ajouter une plage</button>}
           {di.planned.length > 0 && (
             <button class="btn btn-ghost" onClick={() => setPres(di.planned.map((p) => ({ a: p.start, d: p.end })))}><Icon name="undo" />Revenir au planning</button>

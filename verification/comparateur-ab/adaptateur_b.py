@@ -2245,6 +2245,14 @@ def composition(s):
                 res = {"brut_horaire": e}
         elif t == "conges_depart":
             res = conges_depart_b(ctx, k)  # T-119 : regles/t119-conges-depart.md, § 3
+        elif t == "cp_acquis_mois":
+            # T-118 : jours acquis (hors enfants) du 1er juin au dernier jour du mois `mois` : ce qu'acquiert, chez B, le
+            # meme contrat s'il finissait ce jour-la (CCN 48.1.1.2 ; Cass. soc. 10/01/1980). Aucun calcul nouveau dans B.
+            fin_m = dernier(k["mois"])
+            fin_k = d_(s["contrat"]["fin"]) if s["contrat"].get("fin") else None
+            s2 = dict(s, contrat=dict(s["contrat"], fin=str(min(fin_m, fin_k) if fin_k else fin_m)))
+            r = acquisition_b(Ctx(s2), k["periode"])
+            res = {"acquis_fin_mois": r["jours_acquis_hors_enfants"]}
         elif t == "minimum_conventionnel":
             # T-077 (R2) : minimum brut (grille ; 0,281 x SMIC de la region) et repere net Urssaf de la region.
             res = {}

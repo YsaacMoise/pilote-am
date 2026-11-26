@@ -119,6 +119,21 @@ async function run(scheme) {
 
   // T-119 : le mois d'octobre du contrat repris a son montant (plus de mois bloqué faute de solde de congés).
   await p.goto(base + '#/mois');
+  // T-118 : carte « Ton mois » : le travail d'abord, la paie cachée, montrée d'un geste.
+  await p.getByRole('button', { name: 'Voir ma paie du mois' }).waitFor();
+  assert(await p.locator('#tm-paie').evaluate((e) => e.inert), 'mois : paie cachée d’emblée (face arrière inerte)');
+  await p.getByRole('button', { name: 'Voir ma paie du mois' }).click();
+  await p.waitForTimeout(1100);
+  assert(!(await p.locator('#tm-paie').evaluate((e) => e.inert)) && /€/.test(await p.locator('.summary .total').first().textContent()), 'mois : paie montrée d’un geste');
+  assert(await p.evaluate(() => !!document.activeElement?.closest('#tm-paie')), 'mois : focus sur la paie après le geste');
+  // Contre-relecture T-118 (M2) : même geste quand le téléphone demande moins de mouvement.
+  await p.emulateMedia({ reducedMotion: 'reduce' });
+  await p.goto(base + '#/plus');
+  await p.goto(base + '#/mois');
+  await p.getByRole('button', { name: 'Voir ma paie du mois' }).click();
+  await p.waitForTimeout(150);
+  assert(!(await p.locator('#tm-paie').evaluate((e) => e.inert)) && await p.evaluate(() => !!document.activeElement?.closest('#tm-paie')), 'mois, mouvement réduit : paie montrée tout de suite, focus sur la paie');
+  await p.emulateMedia({ reducedMotion: 'no-preference' });
   await p.locator('.summary .total').first().waitFor();
   assert(!(await p.getByText('Ce mois n’est pas calculé').isVisible()) && !(await p.getByText('Indique ton solde de congés').isVisible()), 'congés de départ : montant du mois affiché, aucune demande de solde');
 
@@ -289,6 +304,11 @@ async function run(scheme) {
   const ex = fs.readFileSync(await dl2.path(), 'utf8');
   assert(!/Lou|Petit|Sonia|soleil|bien mangé/.test(ex), 'export : aucun prénom ni note du carnet');
   assert(JSON.parse(ex).enfants[0].enfant === 'A', 'export : enfant renommé A');
+
+  // T-118 : calendrier de suivi des congés
+  await p.goto(base + '#/conges');
+  await p.getByText(/Tes congés payés, du 1er juin/).waitFor();
+  assert((await p.locator('.cal-cp .cal-d:not(.vide)').count()) >= 28, 'congés : calendrier du mois affiché');
 
   // Écrans annexes
   for (const h of ['conges', 'fin', 'fiscal', 'regles', 'reglages', 'installer']) {

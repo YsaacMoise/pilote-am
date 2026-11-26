@@ -140,14 +140,29 @@ function depassementsDurees(ctxs: Ctx[], d: ISODate): { certains: string[]; poss
 /** T-116 (A3) : informations sur la durée du travail (dépassement seulement tous parents réunis, sans texte qui tranche) */
 export const informationsDurees = (ctxs: Ctx[], d: ISODate): string[] => depassementsDurees(ctxs, d).possibles;
 
+/** T-118 (D-09) : 11 h de repos de suite par jour (CASF L423-21, CCN 96.1) laissent au plus 13 h entre le début et la fin du travail. */
+export const AMPLITUDE_MAX_MIN = 13 * 60;
+
+/** Minutes entre le début et la fin du travail du jour `d`, tous contrats notés ; undefined sans travail ce jour-là */
+export function amplitudeJour(ctxs: Ctx[], d: ISODate): number | undefined {
+  const s = debutJour(ctxs, d), f = finJour(ctxs, d);
+  return Number.isFinite(s) && Number.isFinite(f) ? f - s : undefined;
+}
+
+/** Message de la journée trop longue (fiche du jour et Aujourd'hui) */
+export const messageAmplitude = (min: number, jour?: ISODate): string =>
+  `Journée de ${Math.floor(min / 60)} h${min % 60 ? String(min % 60).padStart(2, '0') : ''} entre le début et la fin du travail${jour ? ` le ${jour.slice(8, 10)}/${jour.slice(5, 7)}` : ''}, tous contrats notés dans l’app : avec 11 heures de repos de suite chaque jour, une journée ne dépasse pas 13 h (code de l’action sociale et des familles, article L423-21 ; convention, article 96.1).`;
+
 /**
- * Alertes du jour `d`, sans blocage : repos de moins de 11 h la veille ou le lendemain (CASF L423-21, CCN 96.1) ; plus de 48 h
+ * Alertes du jour `d`, sans blocage : journée de plus de 13 h (T-118, D-09) ; repos de moins de 11 h la veille ou le lendemain (CASF L423-21, CCN 96.1) ; plus de 48 h
  * par semaine en moyenne sur les quatre mois qui finissent ce jour-là (CASF L423-22, CCN 96.3), ou, avec l'accord écrit de
  * l'AM sur un contrat, plus de 2 250 h sur les douze mois (L423-22).
  */
 export function alertesDurees(ctxs: Ctx[], d: ISODate): string[] {
   const out: string[] = [];
   const h = (m: number) => `${Math.floor(m / 60)} h${m % 60 ? String(m % 60).padStart(2, '0') : ''}`;
+  const amp = amplitudeJour(ctxs, d);
+  if (amp !== undefined && amp > AMPLITUDE_MAX_MIN) out.push(messageAmplitude(amp, d));
   for (const [x, y] of [[addDays(d, -1), d], [d, addDays(d, 1)]] as const) {
     const r = reposApres(ctxs, x);
     if (r !== undefined && r < REPOS_QUOTIDIEN_MIN) out.push(`Repos de ${h(r)} seulement entre la fin du travail du ${x.slice(8, 10)}/${x.slice(5, 7)} et la reprise du ${y.slice(8, 10)}/${y.slice(5, 7)}, tous contrats notés dans l’app : la loi demande au moins 11 heures de suite (code de l’action sociale et des familles, article L423-21 ; convention, article 96.1).`);
