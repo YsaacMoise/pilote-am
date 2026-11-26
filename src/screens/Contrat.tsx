@@ -122,12 +122,12 @@ export function Contrat({ id }: { id?: string }) {
       // Juste après la création, la page du contrat s'ouvre sur « Lien pour les parents » : c'est le moment de l'envoyer.
       montrerLienDe = toSave.id;
       location.hash = `#/contrat/${toSave.id}`;
-    } else location.hash = '#/plus';
+    } else location.hash = `#/enfant/${toSave.id}`;
   }
 
   return (
     <>
-      <Topbar title={isNew ? 'Nouvel enfant accueilli' : c.child || 'Contrat'} back="#/plus" screen="contrat" />
+      <Topbar title={isNew ? 'Nouvel enfant accueilli' : c.child || 'Contrat'} sub={isNew ? undefined : 'Le contrat'} back={isNew ? '#/plus' : `#/enfant/${c.id}`} screen="contrat" />
       <main>
         {errors.length > 0 && (
           <Banner tone="warn">

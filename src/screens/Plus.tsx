@@ -1,7 +1,8 @@
 import { useStore } from '../store';
 import { isDemo } from '../db';
 import { statusLine, useCloud } from '../cloud-state';
-import { today, shortDate } from '../engine/dates';
+import { today } from '../engine/dates';
+import { BrouillonsEnCours, libelleDebut } from './Fiche';
 import { Gommette, ListLink, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { VIDEOS_PRETES, nbVideos } from '../ui/VideoGuide';
@@ -21,12 +22,13 @@ export function Plus() {
           <div class="list">
             {s.contracts.map((c) => (
               <ListLink
-                href={`#/contrat/${c.id}`}
+                href={`#/enfant/${c.id}`}
                 icon={<Gommette name={c.child} color={c.color} />}
                 title={c.child}
-                sub={`${c.family ? c.family + ', ' : ''}${c.end && c.end < t ? `terminé le ${shortDate(c.end)}` : `depuis le ${shortDate(c.start)}`}`}
+                sub={libelleDebut(c, t)}
               />
             ))}
+            <BrouillonsEnCours liste />
             <a class="li" href="#/contrat/nouveau">
               <span class="li-ico"><Icon name="plus" /></span>
               <span class="li-main"><span class="li-title">Ajouter un enfant accueilli</span></span>
@@ -36,9 +38,8 @@ export function Plus() {
         <section class="stack-sm" aria-labelledby="argent">
           <h2 id="argent" class="section-title">Paie et droits</h2>
           <div class="list">
-            <ListLink href="#/conges" icon="sun" title="Congés payés et absences" sub="Compteur, indemnité, tes absences" />
+            <ListLink href="#/conges" icon="sun" title="Tous mes congés" sub="Compteur de chaque contrat, tes absences" />
             <ListLink href="#/controle" icon="receipt" title="Contrôler un bulletin" sub="Le net, le brut, les heures déclarées" />
-            <ListLink href="#/fin" icon="door" title="Fin de contrat" sub="Préavis, indemnités, régularisation" />
             <ListLink href="#/fiscal" icon="chart" title="Impôts" sub="Abattement et revenu imposable" />
             <ListLink href="#/simulateur" icon="euro" title="Simuler un accueil" sub="Pour une nouvelle famille : coût, aide de la CAF" />
           </div>

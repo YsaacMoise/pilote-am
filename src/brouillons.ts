@@ -17,6 +17,10 @@ export interface ReponsesAssistant {
   /** Congés de départ saisis à la main (« Ces chiffres sont faux ») */
   cpManuel?: boolean;
   soldes?: { cpRestants: number; cpEnCours: number };
+  /** Pajemploi+ : adhérents, non adhérents, non renseigné */
+  pajemploi?: 'oui' | 'non' | 'nr';
+  /** Jours d'enfant malade déjà retenus (avant Arvela) */
+  maladie?: number;
 }
 
 export interface Brouillon {
