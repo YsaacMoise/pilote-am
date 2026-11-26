@@ -27,7 +27,7 @@ from .fin_contrat import (date_fin_preavis_avec_conges, indemnite_preavis_non_fa
                           indemnite_precarite_cdd, solde_de_tout_compte)
 from .evenements import EVENEMENTS, conge_evenement_familial, jours_conge_evenement, conge_deuil
 from .perimetre import verifier_perimetre, convertir_brut_net
-from .regions import REGIONS, brut_depuis_net, repere_net_minimum, feries_locaux, region_du_departement
+from .regions import REGIONS, brut_depuis_net, brut_horaire_depuis_net, net_ligne_par_ligne, repere_net_minimum, feries_locaux, region_du_departement
 from .planning_variable import (semaine_prevue, mensualisation_planning_variable,
                                 heures_en_plus_semaine_planning_variable, mois_de_rattachement_semaine,
                                 prevu_du_mois_planning_variable, ferie_chome_planning_variable,

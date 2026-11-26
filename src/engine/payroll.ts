@@ -8,7 +8,8 @@ import { entretienPlancher, MESSAGE_PERIODE_NON_GEREE, netToBrut } from './rates
 import { statutJourEvenement } from './evenements';
 import { controleKm, indemniteKmJour } from './km';
 import { euros } from './money';
-import { cpDemandesEntre, cpDroitsInconnus, cpExces } from './conges';
+import { partNette } from './brut';
+import { cpDemandesEntre, cpDroitsInconnus, cpExces, MESSAGE_SOLDE_CONGES, soldeCongesInconnu } from './conges';
 import { nonGeresPeriode } from './nonGeres';
 import { ferieDe, MESSAGE_IJ_MAINTIEN_LOCAL, MESSAGE_IJ_MAINTIEN_LOCAL_SUSPENSION, MESSAGE_MAINTIEN_LOCAL, MESSAGE_MAINTIEN_LOCAL_SUSPENSION, regionDe } from './regions';
 import { jourDispense } from './preavis';
@@ -285,6 +286,10 @@ function computeDay(ctx: Ctx, d: ISODate): DayInfo {
         // par le dixième versé au terme de l'accueil (CCN 102.1.2.3).
         info.inDivisor = true;
         info.deducted = true;
+      } else if (amLeave === 'cp' && termsAt(c, d).yearType === 'complete' && cpExces(ctx).has(d) && soldeCongesInconnu(c)) {
+        // T-116 (A2) : solde de départ jamais donné, lu 0 par défaut : pas de congé sans solde ; une seule invite, le mois attend.
+        info.inDivisor = true;
+        info.donneeManquante = MESSAGE_SOLDE_CONGES;
       } else if (amLeave === 'cp' && termsAt(c, d).yearType === 'complete' && cpExces(ctx).has(d)) {
         info.deducted = true;
         info.inDivisor = true;
@@ -1110,7 +1115,9 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
         const brutJour = parHeure ? ((c.entretienHeure ?? 0) * duree) / 60 : c.entretienJour;
         entretienExact += Math.round(Math.max(brutJour, plancher ?? 0));
         // T-034 (ENTRETIEN-SOUS-MINIMUM) : tarif du contrat sous le minimum.
-        if (plancher !== undefined && brutJour < plancher) { entretienSousMin++; entretienMinVerse += plancher - brutJour; }
+        // T-116 (A1) : montant laissé vide au contrat (0) = minimum légal appliqué d'office, sans alerte. L'alerte reste
+        // seulement pour un montant écrit par l'AM et inférieur au minimum.
+        if (plancher !== undefined && brutJour > 0 && brutJour < plancher) { entretienSousMin++; entretienMinVerse += plancher - brutJour; }
         const nbRepas = di.rec?.repas ?? c.repasParJour;
         r.repas += nbRepas * c.repasPrix;
       }
@@ -1185,7 +1192,7 @@ function computeRange(ctx: Ctx, m: Month, segFrom: ISODate, segTo: ISODate): Mon
   if (kmJours && c.kmTaux > 0) for (const m of controleKm(ctx.c.kmCv, c.kmTaux, segFrom, { kmAn: ctx.kmAnnee?.[segFrom.slice(0, 4)], electrique: ctx.c.kmElectrique }).messages) if (!r.alerts.includes(m)) r.alerts.push(m);
   // CCN art. 114.1 : « le montant journalier de cette indemnité ne peut pas être inférieur à 2,65 € » et le montant horaire
   // ne peut être « inférieur à 90 % du minimum garanti lorsque la durée de travail journalière est de 9 heures ».
-  if (entretienSousMin) r.alerts.push(`Indemnité d’entretien : le montant du contrat (${c.entretienHeure ? `${euros(c.entretienHeure)} par heure` : `${euros(c.entretienJour)} par jour`}) est sous le minimum de la convention (article 114.1) pour ${dayCountLabel(entretienSousMin)}. L’app verse le minimum, soit ${euros(Math.round(entretienMinVerse))} de plus que le contrat ce mois-ci. Fais corriger le contrat avec les parents, par un avenant.`);
+  if (entretienSousMin) r.alerts.push(`${PREFIXE_ENTRETIEN_SOUS_MIN} (${c.entretienHeure ? `${euros(c.entretienHeure)} par heure` : `${euros(c.entretienJour)} par jour`}) est sous le minimum de la convention (article 114.1) pour ${dayCountLabel(entretienSousMin)}. L’app verse le minimum, soit ${euros(Math.round(entretienMinVerse))} de plus que le contrat ce mois-ci. Fais corriger le contrat avec les parents, par un avenant.`);
   if (entretienNonVerifie) r.alerts.push(`${MESSAGE_PERIODE_NON_GEREE} Indemnité d’entretien : l’app retient le montant du contrat, sans contrôle du minimum légal ; vérifie-le avec les parents.`);
   // R-CP-09 : un congé dont le décompte reste ambigu est signalé, pas tranché (T-019).
   if (cpSansDroits) {
@@ -1320,6 +1327,9 @@ function appliquerOccasionnel(ctx: Ctx, r: MonthBase, m: Month, inSeg: (d: ISODa
   r.alerts.unshift(MESSAGE_OCCASIONNEL_SALAIRE);
 }
 
+/** T-116 (A1) : début du message d'un montant d'entretien écrit sous le minimum ; l'écran Mois y joint le geste qui corrige. */
+export const PREFIXE_ENTRETIEN_SOUS_MIN = 'Indemnité d’entretien : le montant du contrat';
+
 export function monthBrut(ctx: Ctx, m: Month): number {
   const b = monthBase(ctx, m);
   if (b.brut) return b.brut;
@@ -1327,17 +1337,18 @@ export function monthBrut(ctx: Ctx, m: Month): number {
 }
 
 /**
- * T-103 (D1) : brut d'une somme nette du salaire. Avec le taux horaire brut du contrat : net × brut ÷ net (CCN 107, 109 : le
- * salaire se calcule sur le salaire horaire brut, les heures et majorations suivent le même taux). Sans lui : estimation
- * interne (part fixe, rates.ts), jamais affichée comme un montant (`brutConnu`).
+ * T-103 (D1) : brut d'une somme nette du salaire. Avec le taux horaire brut écrit par l'AM : net × brut ÷ net (CCN 107, 109 :
+ * le salaire se calcule sur le salaire horaire brut, les heures et majorations suivent le même taux).
+ * T-115 (R3) : sans lui, le brut est calculé depuis le net comme Pajemploi (brut.ts : net ÷ part nette, au centime).
+ * Avant les taux vérifiés : estimation interne (rates.ts), jamais affichée comme un montant (`brutConnu`).
  */
 export function brutDuNet(c: Contract, net: number, d: ISODate): number {
   const t = termsAt(c, d);
   if (t.rateBrut && t.rateNet) return Math.round((net * t.rateBrut) / t.rateNet);
   return netToBrut(net, d, regionDe(c));
 }
-/** T-103 (D1) : le brut de la date `d` se calcule exactement (taux horaire brut du contrat saisi) */
-export const brutConnu = (c: Contract, d: ISODate): boolean => !!termsAt(c, d).rateBrut;
+/** T-103 (D1), T-115 (R3) : le brut de la date `d` est connu : brut écrit par l'AM, ou calculé depuis le net (taux vérifiés). */
+export const brutConnu = (c: Contract, d: ISODate): boolean => !!termsAt(c, d).rateBrut || partNette(d, regionDe(c)) !== undefined;
 /** T-103 (D1) : donnée demandée quand le brut n'est pas connu */
 export const MESSAGE_TAUX_BRUT = 'Indique dans le contrat ton salaire horaire brut (il est écrit dans ton contrat, à côté du net : convention, article 41.1). L’app en a besoin pour donner ton salaire brut exact.';
 

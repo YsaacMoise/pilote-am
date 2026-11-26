@@ -196,11 +196,13 @@ Refus : A-02, A-06, A-19, A-21, PREAVIS-DEMISSION-3-12, A-45, ASSIETTE-A-CONFIRM
 
 ### Régions (`regions.py`, T-077, MB7)
 
-Spécification : `regles/t077-decisions.md` (R0 à R4) du dépôt calculateur-arvela ; rapport `T-077-MB.md`.
+Spécification : `regles/t077-decisions.md` (R0 à R4) du dépôt calculateur-arvela ; rapport `T-077-MB.md`. T-115 (R3, net → brut) : `regles/t115-net-brut.md` ; rapport `T-115-MB.md`.
 
 | Fonction | Entrées | Sortie | Règles |
 |---|---|---|---|
-| `brut_depuis_net(net, d, region)` | net en centimes, mois de salaire | `brut_estime_centimes` (estimation, part 7 810 ; Alsace-Moselle 7 660 jusqu'à mars 2022 puis 7 680 ; Mayotte 8 820) | T077-R1 |
+| `brut_depuis_net(net, d, region)` | net en centimes, mois de salaire | `brut_estime_centimes`. Depuis le 01/01/2024 (métropole, Alsace-Moselle) : F1 de T-115, arrondi de net ÷ (1 − 21,88025 %), Alsace-Moselle 23,18025 %. Avant 2024 et Mayotte : estimation T-077 inchangée (part 7 810 ; Alsace-Moselle 7 660 jusqu'à mars 2022 puis 7 680 ; Mayotte 8 820) | T115-F1, T077-R1 |
+| `brut_horaire_depuis_net(net, d, region)` | net horaire en centimes, date | `brut_horaire_centimes` : F2 de T-115 (brut b tel que le net ligne par ligne de b vaut le net ; le plus proche de net ÷ part nette ; sinon F1). Refus T115-AVANT-2024, T115-MAYOTTE | T115-F2 |
+| `net_ligne_par_ligne(brut, d, region)` | brut en centimes, date | `net_centimes`, `cotisations` (chaque ligne Urssaf arrondie au centime). Mêmes refus | T115-F2 |
 | `repere_net_minimum(d, region)` | date | `repere_net_centimes` (Urssaf) ; avant 2025 : REPERE-NET-ABSENT | T077-R2 |
 | `feries_locaux(annee, region)` | | {date: nom} : 26/12 et Vendredi saint ; 27/04 à Mayotte | T077-R3 |
 | `ferie_local_travaille(d, region, minutes, taux)` | | toujours refus A77-FERIE-LOCAL-TRAVAILLE, majoration de la lecture A dans `details` | T077-R3 |

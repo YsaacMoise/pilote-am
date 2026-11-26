@@ -55,7 +55,8 @@ describe('instantané pour les parents', () => {
   it('mois précédent terminé puis mois en cours ; cases Pajemploi dans l’ordre', () => {
     expect(snap.mois.map((m) => [m.month, m.termine])).toEqual([['2026-10', true], ['2026-11', false]]);
     expect(snap.mois[0].lignes[0].label).toBe('Heures normales');
-    expect(snap.mois[0].total).toBe(snap.mois[0].net + snap.mois[0].entretien + snap.mois[0].repas + snap.mois[0].km);
+    // T-115 (R3) : brut calculé depuis le net, la réduction des heures complémentaires (T-109, champ déjà existant) compte.
+    expect(snap.mois[0].total).toBe(snap.mois[0].net + (snap.mois[0].reduction ?? 0) + snap.mois[0].entretien + snap.mois[0].repas + snap.mois[0].km);
     expect(snap.mois[1].absences).toBe(1);
   });
 

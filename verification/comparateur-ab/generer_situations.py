@@ -866,6 +866,7 @@ def grille():
     S += situations_t076_d()  # T-076 : decisions D1 a D11, fins de contrat a planning variable (verification B)
     S += situations_t076_e()  # T-076 : decisions D15 a D19 et R2 (relecteur independant)
     S += situations_t103()  # T-103 : regles du tableau rapports/T-103-inventaire.md (calculateur-arvela)
+    S += situations_t115()  # T-115 (R3) : brut depuis le net, F1 et F2 (regles/t115-net-brut.md)
     return S
 
 
@@ -2008,6 +2009,40 @@ def situations_t103():
         ajoute(f"T103-D3-MINIMUM-{d}", "minimum", contrat_grille("C52", "H40", "T420", debut="2022-01-03"),
                [{"id": "mn", "type": "minimum_conventionnel", "date": d, "sorties": ["minimum_brut"]}],
                theme="T-103 minimum légal au centime supérieur (D3)")
+    return S
+
+
+def situations_t115():
+    """T-115 (R3) : brut depuis le net (regles/t115-net-brut.md, calculateur-arvela).
+    - « brut_depuis_net » : brut mensuel F1 (§ 5.2, 5.3 point 2), region du contrat.
+    - « brut_horaire » {type, net, date, region} : brut horaire F2 (§ 5.2, 5.3 point 1), sortie brut_horaire ;
+      region donnee par le calcul. Mayotte (A4) et avant 2024 (A5) : B refuse.
+    Aucun resultat attendu n'est calcule ici."""
+    S = []
+    c52 = contrat_grille("C52", "H40", "T500", debut="2025-09-01")
+    nets = [328, 391, 100000, 145275, 286]
+    for reg, suf in ((None, "ME"), ("alsace_moselle", "AM")):
+        k = dict(c52, region=reg) if reg else dict(c52)
+        calc = [{"id": f"b{i}", "type": "brut_depuis_net", "net": n, "date": "2026-03-01"} for i, n in enumerate(nets)]
+        # Bornes du 01/01/2024 (F1 a partir de cette date, estimation T-077 avant) et autres mois.
+        calc += [{"id": f"b{len(nets) + i}", "type": "brut_depuis_net", "net": n, "date": d}
+                 for i, (n, d) in enumerate([(100000, "2023-12-15"), (100000, "2024-01-15"), (274, "2025-02-01"),
+                                             (300, "2026-10-01"), (184388, "2026-10-01")])]
+        S.append(sit(f"S115-BRUT-{suf}", "brut et net", k, calc, theme="T-115 brut mensuel depuis le net (F1)"))
+    hor = [(286, "2026-01-01"), (296, "2026-01-01"), (328, "2026-06-01"), (341, "2026-06-01"), (391, "2026-03-01"),
+           (400, "2026-03-01"), (340, "2026-03-01"), (269, "2024-02-01"), (281, "2024-02-01"), (274, "2025-01-01")]
+    hor_am = [(281, "2026-01-01"), (291, "2026-01-01"), (323, "2026-06-01"), (335, "2026-06-01"), (384, "2026-10-01"),
+              (265, "2024-02-01"), (276, "2024-02-01"), (328, "2026-03-01")]
+    calc = [{"id": f"h{i}", "type": "brut_horaire", "net": n, "date": d, "region": "metropole"}
+            for i, (n, d) in enumerate(hor)]
+    calc += [{"id": f"h{len(hor) + i}", "type": "brut_horaire", "net": n, "date": d, "region": "alsace_moselle"}
+             for i, (n, d) in enumerate(hor_am)]
+    S.append(sit("S115-HORAIRE", "brut et net", c52, calc, theme="T-115 brut horaire depuis le net (F2)"))
+    refus = [(370, "2026-06-01", "mayotte"), (391, "2023-12-01", "metropole"), (391, "2023-06-01", "alsace_moselle")]
+    S.append(sit("S115-HORAIRE-REFUS", "brut et net", c52,
+                 [{"id": f"r{i}", "type": "brut_horaire", "net": n, "date": d, "region": r}
+                  for i, (n, d, r) in enumerate(refus)],
+                 theme="T-115 brut horaire : Mayotte (A4) et avant 2024 (A5)"))
     return S
 
 

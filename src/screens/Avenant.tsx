@@ -9,6 +9,7 @@ import { regionDe } from '../engine/regions';
 import { euros, hoursLabel } from '../engine/money';
 import { TERM_KEYS, type Avenant as Av, type Contract, type Planning, type Terms } from '../engine/model';
 import { EntretienSaisie } from './EntretienSaisie';
+import { BrutSaisie } from './BrutSaisie';
 import { Banner, Choices, DateInput, EuroInput, NumberInput, Seg, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { PlanDay, avenantSummary } from './Contrat';
@@ -117,7 +118,8 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
             <legend>La rémunération</legend>
             <EuroInput label="Taux horaire net" hint={!rates ? MESSAGE_PERIODE_NON_GEREE : rates.minConvNet === undefined ? `Minimum en ${monthLabel(month)} : ${libelleMinimumBrut(minimumBrut(date, regionDe(c))!)} (pas de repère net dans l’app)` : `Minimum conventionnel en ${monthLabel(month)} : ${euros(rates.minConvNet)} net`} cents={t.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
             {t.rateNet > 0 && rates?.minConvNet !== undefined && t.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel.</Banner>}
-            <EuroInput label="Taux horaire brut" hint="Écrit dans l’avenant, à côté du net (convention, article 41.1)." cents={t.rateBrut} allowEmpty onChange={(v) => set({ rateBrut: v ?? undefined })} />
+            {/* T-115 (R3) : brut calculé depuis le net, à la date de l'avenant ; l'AM peut écrire celui de l'avenant. */}
+            <BrutSaisie net={t.rateNet} brut={t.rateBrut} date={date || today()} region={regionDe(c)} set={(v) => set({ rateBrut: v })} ecrit="l’avenant" debut={date} />
             {rates?.minConvNet !== undefined && <p class="hint">{MINIMUM_SANS_TITRE}</p>}
             {/* T-044b (C2-1) : un avenant daté dans le passé recalcule les mois depuis sa date : le dire. */}
             <EntretienSaisie t={t} set={set} passe={date < firstDay(monthOf(today())) && (changes.entretienJour != null || changes.entretienHeure != null || changes.entretienMode != null)} />

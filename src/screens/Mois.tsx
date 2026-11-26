@@ -3,7 +3,9 @@ import { useState } from 'preact/hooks';
 import { ctxFor, logUsage, toast, useStore, state } from '../store';
 import { addMonths, dayLabel, eachDay, firstDay, lastDay, monthLabel, monthOf, today, type Month } from '../engine/dates';
 import { computeMonth, declarationLines, declarationText, MESSAGE_REDUCTION_HS_BRUT, moisEnCoursAu, totalAVerser } from '../engine/month';
-import { dayInfo, termsAt } from '../engine/payroll';
+import { dayInfo, PREFIXE_ENTRETIEN_SOUS_MIN, termsAt } from '../engine/payroll';
+import { MESSAGE_SOLDE_CONGES } from '../engine/conges';
+import { estInformation } from '../engine/alertes';
 import { euros, hoursLabel } from '../engine/money';
 import { baremesAttendus, messageBaremesAttendus } from '../engine/rates';
 import { CHILD_ABS_LABEL, AM_ABS_LABEL, type Contract } from '../engine/model';
@@ -134,6 +136,18 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
     );
   }
 
+  // T-116 (A2) : seul le solde de congés manque : une invite, pas une alerte.
+  if (r.nonGere.length === 1 && r.nonGere[0] === MESSAGE_SOLDE_CONGES) {
+    return (
+      <section class="card stack" aria-labelledby="solde-t">
+        <h2 id="solde-t">Indique ton solde de congés</h2>
+        <p>Des congés de ce mois dépassent les droits que l’app connaît. Le contrat a commencé avant le suivi par l’app et ton solde de départ n’a pas été donné : l’app ne retient aucun jour sans solde tant qu’elle ne le connaît pas.</p>
+        <p class="hint">{MESSAGE_SOLDE_CONGES}</p>
+        <a class="btn btn-primary" href={`#/contrat/${c.id}`}>Indiquer mon solde</a>
+      </section>
+    );
+  }
+
   // T-031 : cas non géré ou donnée à saisir (T-103) : aucun montant, aucune case, pas d'envoi au parent.
   if (r.nonGere.length) {
     return (
@@ -162,7 +176,9 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
       </section>
 
       {!c.pajemploiPlus && (!c.end || c.end >= PAJEMPLOI_PLUS_DATE) && <Banner tone="info">{PAJEMPLOI_PLUS_RAPPEL}</Banner>}
-      {r.alerts.map((a) => <Banner tone="warn">{a}</Banner>)}
+      {r.alerts.map((a) => a.startsWith(PREFIXE_ENTRETIEN_SOUS_MIN)
+        ? <Banner tone="warn"><span>{a}</span><a class="btn btn-outline" href={`#/avenant/${c.id}/nouveau`}>Faire l’avenant</a></Banner>
+        : <Banner tone={estInformation(a) ? 'info' : 'warn'}>{a}</Banner>)}
       {r.cpNote && <Banner tone="info" icon="sun">{r.cpNote}</Banner>}
 
       <section class="card" aria-labelledby="decl-t">

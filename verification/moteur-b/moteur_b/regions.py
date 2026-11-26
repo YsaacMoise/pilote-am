@@ -107,19 +107,173 @@ def part_net_brut(region, d):
     raise ErreurSaisie("part net/brut introuvable.")  # pragma: no cover
 
 
-@api("T077-R1")
+# ------------------------------------------------------------------ T-115 (R3) : net -> brut, F1 et F2
+# Source : regles/t115-net-brut.md (depot calculateur-arvela), rapport du juriste du 26/11/2026.
+# Le code du moteur A n'a pas ete lu.
+
+DEBUT_T115 = date(2024, 1, 1)  # § 2.5 et A5 : taux 2026 retenus par concordance des nets publies en 2024 et 2025
+FIN_TAUX_CONNUS = date(2026, 12, 31)  # § 2.1 : taux « au 1er janvier 2026 » ; apres 2026 : resultat provisoire
+
+# § 2.1 (tableau Urssaf « Taux salariaux applicables aux assistants maternels agrees », au 01/01/2026) et § 5.2.
+# (libelle, taux en fraction, assiette en fraction du brut). Une ligne = un arrondi au centime (§ 5.2, 5.4).
+ASSIETTE_CSG = Fraction(9825, 10000)  # § 2.3 : 98,25 % du brut
+LIGNES_SALARIALES = [
+    ("vieillesse plafonnee", Fraction(690, 10000), Fraction(1)),
+    ("vieillesse deplafonnee", Fraction(40, 10000), Fraction(1)),
+    ("Ircem retraite complementaire T1", Fraction(315, 10000), Fraction(1)),
+    ("CEG T1", Fraction(86, 10000), Fraction(1)),
+    ("prevoyance", Fraction(104, 10000), Fraction(1)),               # § 2.2 : CCN annexe 3, annexe B
+    ("CSG non imposable", Fraction(680, 10000), ASSIETTE_CSG),
+    ("CSG imposable et CRDS", Fraction(290, 10000), ASSIETTE_CSG),  # § 5.2 : UNE seule ligne a 2,90 %
+]
+# § 2.1 (derniere ligne) et § 0 : regime local d'Alsace-Moselle, sur le brut total, 1,50 % avant avril 2022.
+DEBUT_REGIME_LOCAL_130 = date(2022, 4, 1)
+
+_SRC_F1 = ("T-115 F1 (regles/t115-net-brut.md § 5.2, 5.4) : arrondi au centime le plus proche, demi vers le haut, "
+           "de net / part nette ; part nette = 1 - {taux} % (taux salariaux Urssaf au 01/01/2026, § 2.1 ; "
+           "memes taux en 2024 et 2025 par concordance des nets publies, § 2.5 et A5) ; formule lue dans les "
+           "17 sorties du convertisseur officiel Urssaf (§ 3.3).")
+
+
+def lignes_salariales(region, d):
+    """Lignes du § 2.1 pour la region et le mois d : liste de (libelle, taux, assiette)."""
+    lignes = list(LIGNES_SALARIALES)
+    if region == "alsace_moselle":
+        t = Fraction(130, 10000) if d >= DEBUT_REGIME_LOCAL_130 else Fraction(150, 10000)
+        lignes.append(("regime local Alsace-Moselle", t, Fraction(1)))
+    return lignes
+
+
+def taux_salarial_global(region, d):
+    """Somme des taux du § 2.1 (calcul de controle du rapport : 21,88025 % ; 23,18025 % en Alsace-Moselle)."""
+    return sum((t * a for _, t, a in lignes_salariales(region, d)), Fraction(0))
+
+
+def part_nette_t115(region, d):
+    """Part nette exacte p = 1 - taux global (§ 5.2) : 0,7811975 ; Alsace-Moselle 0,7681975."""
+    return 1 - taux_salarial_global(region, d)
+
+
+def _arrondi_centime(x):
+    """Centime le plus proche, demi vers le haut (§ 5.4 ; montants positifs)."""
+    y = Fraction(x) + Fraction(1, 2)
+    return y.numerator // y.denominator
+
+
+def _texte_exact(f):
+    """Fraction en ecriture decimale exacte (la fraction est decimale ici)."""
+    f = Fraction(f)
+    if f.denominator == 1:
+        return str(f.numerator)
+    k = 0
+    while (f * 10 ** k).denominator != 1:
+        k += 1
+        if k > 12:
+            return f"{f.numerator}/{f.denominator}"
+    n = f * 10 ** k
+    s = str(abs(n.numerator)).rjust(k + 1, "0")
+    return ("-" if f < 0 else "") + s[:-k] + "." + s[-k:].rstrip("0")
+
+
+def _date_t115(d):
+    if not isinstance(d, date):
+        raise ErreurSaisie("date du mois de salaire attendue (datetime.date).")
+    return date(d.year, d.month, 1)
+
+
+def _perimetre_t115(region, d):
+    """F2 et net ligne par ligne : refus avant le 01/01/2024 (A5 : taux de 2022 et 2023 non relus) et a Mayotte
+    (A4 : aucun brut sur au centime)."""
+    if region == "mayotte":
+        raise NonGere("T115-MAYOTTE", ["T115-F2"], precision=f"Date {d.isoformat()}.")
+    if d < DEBUT_T115:
+        raise NonGere("T115-AVANT-2024", ["T115-F2"], precision=f"Date {d.isoformat()}.")
+
+
+@api("T077-R1", "T115-F1")
 def brut_depuis_net(net_centimes, d, region="metropole"):
-    """Brut ESTIME depuis le net (R1) : arrondi(net x 10 000 / part), demi-centime
-    vers le haut. C'est une convention d'estimation retenue par la direction (le
-    moteur B ne convertit toujours pas le brut en net, A-34) ; elle sert a
-    l'assiette en brut du 1/80 (CCN art. 121.1) quand le bulletin n'est pas saisi.
-    Sortie : brut_estime_centimes, part_net_pour_dix_mille, source."""
+    """Brut depuis le net (mois de salaire d).
+    - A partir du 01/01/2024, metropole et Alsace-Moselle : F1 du rapport T-115 (§ 5.2, 5.4), brut = arrondi au
+      centime le plus proche (demi vers le haut) de net / p, p = 1 - 21,88025 % (Alsace-Moselle 1 - 23,18025 %),
+      une seule division exacte, aucun arrondi intermediaire. C'est la sortie du convertisseur officiel (§ 3.3) et,
+      tres probablement, le brut du bulletin Pajemploi (§ 3.5, A1, non prouve).
+    - Avant le 01/01/2024, et a Mayotte (A4) : estimation T-077 R1 inchangee (part en pour-dix-mille, meme arrondi).
+    Sortie : brut_estime_centimes, part_net_pour_dix_mille (entier ; chaine exacte pour F1), source, estimation.
+    Au-dela du plafond mensuel (4 005 EUR brut en 2026, § 4.3, 5.4, A6) : note « a verifier sur le bulletin »."""
     n = entier(net_centimes, "net_centimes", -10 ** 12)
-    part, src = part_net_brut(region, d)
-    x = Fraction(n * 10000, part) + Fraction(1, 2)
-    brut = x.numerator // x.denominator
-    return resultat_ok(brut_depuis_net.regles, {"brut_estime_centimes": brut, "part_net_pour_dix_mille": part,
-                                                "source": src, "estimation": True})
+    region = region_valide(region)
+    m = _date_t115(d)
+    if region == "mayotte" or m < DEBUT_T115:
+        part, src = part_net_brut(region, d)
+        x = Fraction(n * 10000, part) + Fraction(1, 2)
+        brut = x.numerator // x.denominator
+        return resultat_ok(["T077-R1"], {"brut_estime_centimes": brut, "part_net_pour_dix_mille": part,
+                                         "source": src, "estimation": True})
+    p = part_nette_t115(region, m)
+    taux = taux_salarial_global(region, m)
+    brut = _arrondi_centime(Fraction(n) / p)
+    notes = []
+    if m.year == 2026 and brut > 400500:
+        notes.append("Brut au-dela du plafond mensuel de la securite sociale (4 005 EUR en 2026) : ni F1 ni F2 ne "
+                     "valent, a verifier sur le bulletin (t115-net-brut.md § 4.3, 5.4, A6).")
+    res = {"brut_estime_centimes": brut, "part_net_pour_dix_mille": _texte_exact(p * 10000),
+           "part_nette": _texte_exact(p), "taux_salarial_pour_cent": _texte_exact(taux * 100),
+           "source": _SRC_F1.format(taux=_texte_exact(taux * 100).replace(".", ",")), "estimation": True,
+           "methode": "F1"}
+    return resultat_ok(["T115-F1"], res, provisoire=m > FIN_TAUX_CONNUS, notes=notes or None)
+
+
+def _net_ligne_par_ligne(brut, region, d):
+    cotis = [(lib, _arrondi_centime(brut * t * a)) for lib, t, a in lignes_salariales(region, d)]
+    return brut - sum(c for _, c in cotis), cotis
+
+
+@api("T115-F2")
+def net_ligne_par_ligne(brut_centimes, d, region="metropole"):
+    """Net d'un brut, chaque cotisation du § 2.1 arrondie au centime le plus proche (demi vers le haut), puis
+    retiree du brut (t115-net-brut.md § 3.3 fin, § 5.2, 5.4). Lignes : 6,90 ; 0,40 ; 3,15 ; 0,86 ; 1,04 % du
+    brut ; 6,80 % et 2,90 % (une ligne) de 98,25 % du brut ; Alsace-Moselle 1,30 % du brut (1,50 % avant avril
+    2022). Plafond de la securite sociale non applique (montant horaire, § 4.3). Refus avant 2024 et a Mayotte.
+    Sortie : net_centimes, cotisations (libelle -> centimes)."""
+    b = entier(brut_centimes, "brut_centimes")
+    region = region_valide(region)
+    m = _date_t115(d)
+    _perimetre_t115(region, m)
+    net, cotis = _net_ligne_par_ligne(b, region, m)
+    return resultat_ok(net_ligne_par_ligne.regles, {"net_centimes": net, "cotisations": dict(cotis)},
+                       provisoire=m > FIN_TAUX_CONNUS)
+
+
+@api("T115-F2")
+def brut_horaire_depuis_net(net_centimes, d, region="metropole"):
+    """Brut HORAIRE depuis le net horaire : F2 du rapport T-115 (§ 5.2, 5.3 point 1, 5.4). Le brut b, au centime,
+    tel que net_ligne_par_ligne(b) = net ; s'il y en a plusieurs, le plus proche de net / p ; s'il n'y en a aucun,
+    F1. Egalite de distance (jamais observee, § 5.2) : le plus grand, comme l'arrondi demi vers le haut de F1.
+    Recherche : chaque ligne s'ecarte de moins d'un demi-centime de sa valeur exacte, donc
+    |net_ligne_par_ligne(b) - b x p| <= 8 x 1/2 = 4 centimes, et |b - net/p| <= 4 / 0,76 < 6 : on essaie
+    net/p +- 8 centimes. Refus avant le 01/01/2024 (A5) et a Mayotte (A4), sans estimation.
+    Sortie : brut_horaire_centimes, methode (F2 ou F1), antecedents (tous les b trouves), brut_f1_centimes."""
+    n = entier(net_centimes, "net_centimes")
+    region = region_valide(region)
+    m = _date_t115(d)
+    _perimetre_t115(region, m)
+    p = part_nette_t115(region, m)
+    c = Fraction(n) / p
+    bas = c.numerator // c.denominator
+    antecedents = [b for b in range(max(0, bas - 8), bas + 10) if _net_ligne_par_ligne(b, region, m)[0] == n]
+    f1 = _arrondi_centime(c)
+    if antecedents:
+        brut = min(antecedents, key=lambda b: (abs(b - c), -b))
+        methode = "F2"
+    else:
+        brut, methode = f1, "F1"
+    return resultat_ok(brut_horaire_depuis_net.regles,
+                       {"brut_horaire_centimes": brut, "methode": methode, "antecedents": antecedents,
+                        "brut_f1_centimes": f1, "part_nette": _texte_exact(p),
+                        "source": "T-115 F2 (regles/t115-net-brut.md § 5.2, 5.3, 5.4) : brut inverse du net ligne par "
+                                  "ligne (taux Urssaf au 01/01/2026, § 2.1) ; deduit des sorties officielles, non "
+                                  "publie (A2)."},
+                       provisoire=m > FIN_TAUX_CONNUS)
 
 
 # ------------------------------------------------------------------ R2 : repere net du minimum

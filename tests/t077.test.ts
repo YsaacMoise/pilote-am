@@ -61,11 +61,15 @@ describe('T-077 R0 : région et périmètre', () => {
 
 describe('T-077 R1 : brut estimé depuis le net', () => {
   it('métropole inchangée, Alsace-Moselle 76,80 % (76,60 % avant avril 2022), Mayotte 88,20 %', () => {
-    expect(netToBrut(78100, '2026-01-15')).toBe(100000);
-    expect(netToBrut(78100, '2026-01-15', 'metropole')).toBe(100000);
-    expect(netToBrut(78100, '2026-01-15', 'alsaceMoselle')).toBe(101693); // 78 100 ÷ 0,768 = 101 692,7
+    // T-115 (R3) : depuis 2024 (métropole et Alsace-Moselle), F1 du convertisseur officiel (brut.ts) remplace l'estimation :
+    // 78 100 ÷ 0,7811975 = 99 974,7 ; Alsace-Moselle 78 100 ÷ 0,7681975 = 101 666,6. Avant 2024 et à Mayotte : inchangé.
+    expect(netToBrut(78100, '2026-01-15')).toBe(99975);
+    expect(netToBrut(78100, '2026-01-15', 'metropole')).toBe(99975);
+    expect(netToBrut(78100, '2023-12-31', 'metropole')).toBe(100000); // estimation d'avant 2024, 78 100 ÷ 0,781
+    expect(netToBrut(78100, '2026-01-15', 'alsaceMoselle')).toBe(101667);
+    expect(netToBrut(78100, '2023-12-31', 'alsaceMoselle')).toBe(101693); // 78 100 ÷ 0,768 = 101 692,7
     expect(netToBrut(78100, '2022-03-31', 'alsaceMoselle')).toBe(101958); // 78 100 ÷ 0,766 = 101 958,2
-    expect(netToBrut(78100, '2022-04-01', 'alsaceMoselle')).toBe(101693);
+    expect(netToBrut(78100, '2022-04-01', 'alsaceMoselle')).toBe(101693); // avant 2024 : estimation inchangée
     expect(netToBrut(78100, '2026-01-15', 'mayotte')).toBe(88549); // 78 100 ÷ 0,882 = 88 548,8
   });
   it('le brut estimé du mois suit la région', () => {

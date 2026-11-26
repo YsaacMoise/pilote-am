@@ -64,7 +64,7 @@ export function Historique({ id }: { id: string }) {
           <>
             <p>Le contrat a commencé avant l’app. Ajoute les bulletins Pajemploi des mois passés : ils servent au calcul des congés et de la fin de contrat.</p>
             {missing.length > 0 ? (
-              <Banner tone="warn"><strong>{missing.length} mois sans bulletin</strong><span>Tu peux les ajouter plus tard. L’app te le rappellera à la fin du contrat.</span></Banner>
+              <Banner tone="info"><strong>{missing.length} mois sans bulletin</strong><span>Tu peux les ajouter plus tard. L’app te le rappellera à la fin du contrat.</span></Banner>
             ) : (
               <Banner tone="ok">Historique complet.</Banner>
             )}

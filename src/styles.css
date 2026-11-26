@@ -314,6 +314,21 @@ main {
 .gommette.lg { width: 64px; height: 64px; font-size: 36px; }
 
 /* ---------- Aujourd'hui ---------- */
+/* T-115 (R3) : brut calculé à côté du net, lien discret pour écrire un autre brut. */
+.brut-calcule { margin: -4px 0 0; font-size: 15px; color: var(--ink-2); }
+.brut-calcule b { color: var(--ink); font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.brut-lien { min-height: 44px; padding-left: 0; padding-right: 0; justify-content: flex-start; }
+
+/* T-115 (R1) : flèches d'une semaine à l'autre, au-dessus de la bande ; cibles de 44 px au moins. */
+.daynav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.daynav-arrow {
+  min-width: 44px; min-height: 44px; border: 0; border-radius: var(--r-btn); background: var(--surface-2); color: var(--ink);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
+}
+.daynav-arrow:disabled { opacity: 0.35; cursor: default; }
+.daynav-range { flex: 1; text-align: center; font-size: 15px; font-weight: 600; color: var(--ink-2); }
+.daynav-back { margin: 4px 0 0; text-align: center; }
+.daynav-back .btn { min-height: 44px; }
 .daystrip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
 .daystrip button {
   min-height: 60px; border: 0; background: transparent; color: var(--ink-2);

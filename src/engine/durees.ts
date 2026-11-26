@@ -76,12 +76,69 @@ export function reposApres(ctxs: Ctx[], d: ISODate): number | undefined {
   return 24 * 60 - f + s;
 }
 
-/** Travail (minutes) de tous les contrats entre `a` et `b` inclus */
+/**
+ * T-116 (A3) : temps de travail de l'AM entre `a` et `b` inclus, tous contrats notés dans l'app. Le temps où elle accueille
+ * plusieurs enfants en même temps ne compte qu'une fois : réunion des plages de travail de chaque jour (calculateur-arvela,
+ * regles/t116-48h.md). Avant la T-116, les plages de chaque contrat s'additionnaient (trois enfants accueillis de 8 h à
+ * 17 h comptaient 27 h pour une journée de 9 h).
+ */
 export function travailEntre(ctxs: Ctx[], a: ISODate, b: ISODate): number {
   let t = 0;
-  for (let d = a; d <= b; d = addDays(d, 1)) for (const x of ctxs) for (const [s, f] of plagesTravail(x, d)) t += Math.max(0, f - s);
+  for (let d = a; d <= b; d = addDays(d, 1)) t += dureeReunion(ctxs.flatMap((x) => plagesTravail(x, d)));
   return t;
 }
+
+/** Durée (minutes) de la réunion de plages [début, fin] : un temps couvert par plusieurs plages compte une fois. */
+export function dureeReunion(plages: [number, number][]): number {
+  const p = plages.filter(([s, f]) => f > s).sort((x, y) => x[0] - y[0]);
+  let t = 0, cs = -Infinity, cf = -Infinity;
+  for (const [s, f] of p) {
+    if (s > cf) { if (cf > cs) t += cf - cs; cs = s; cf = f; } else if (f > cf) cf = f;
+  }
+  if (cf > cs) t += cf - cs;
+  return t;
+}
+
+/**
+ * Employeur d'un contrat : la famille (des frères et sœurs accueillis ensemble ont le même employeur). Le nom de famille n'est
+ * pas obligatoire : sans nom, chaque contrat compte comme un employeur à part (jamais deux familles sans nom réunies).
+ */
+const employeur = (x: Ctx) => x.c.family.trim().toLocaleLowerCase('fr') || `#${x.c.id}`;
+/** « chez la famille Martin », ou « pour Lucas » quand le nom de famille n'est pas saisi */
+const chezQui = (xs: Ctx[]) => (xs[0].c.family.trim() ? `chez la famille ${xs[0].c.family.trim()}` : `pour ${xs[0].c.child.trim() || 'cet enfant'}`);
+
+/**
+ * T-116 (A3) : limite de 48 h en moyenne sur quatre mois (CASF L423-22, CCN 96.3) et plafond de 2 250 h avec l'accord.
+ * Règle : calculateur-arvela, regles/t116-48h.md. Le temps qui se chevauche compte une fois (QE AN n° 4964, JO 25/07/2023 ;
+ * QE Sénat n° 8851, JO 16/05/2024 : « elle ne compte qu'une seule fois »). Aucun texte ne dit si la limite s'apprécie tous
+ * employeurs ensemble ou employeur par employeur : un dépassement chez un même employeur est certain (alerte) ; un dépassement
+ * qui n'existe qu'en réunissant tous les employeurs est dit comme une information, sans le présenter comme une infraction.
+ */
+function depassementsDurees(ctxs: Ctx[], d: ISODate): { certains: string[]; possibles: string[] } {
+  const h = (m: number) => `${Math.floor(m / 60)} h${m % 60 ? String(m % 60).padStart(2, '0') : ''}`;
+  const certains: string[] = [], possibles: string[] = [];
+  const familles = [...new Set(ctxs.map(employeur))];
+  const a4 = addDays(addMonthsToDate(d, -4), 1), a12 = addDays(addMonthsToDate(d, -12), 1);
+  const moy4 = (xs: Ctx[]) => (travailEntre(xs, a4, d) * 7) / (daysBetween(a4, d) + 1);
+  const an = (xs: Ctx[]) => travailEntre(xs, a12, d) / 60;
+  const parFamille = familles.map((f) => ctxs.filter((x) => employeur(x) === f));
+  // L'accord écrit est donné à l'employeur qui le demande (CASF D423-12) : contrôle de chaque famille selon son accord.
+  const aAccord = (xs: Ctx[]) => xs.some((x) => x.c.accord48h);
+  for (const xs of parFamille) {
+    if (!aAccord(xs) && moy4(xs) > SEUIL_ACCORD_MIN) certains.push(`En moyenne ${h(Math.round(moy4(xs)))} de travail par semaine sur les quatre derniers mois ${chezQui(xs)} : sans ton accord écrit, la limite est 48 h (code de l’action sociale et des familles, article L423-22 ; convention, article 96.3).`);
+    if (aAccord(xs) && an(xs) > PLAFOND_ANNUEL_H) certains.push(`${Math.round(an(xs))} h de travail sur les douze derniers mois ${chezQui(xs)} : même avec ton accord écrit, la limite est ${PLAFOND_ANNUEL_H} h par an (code de l’action sociale et des familles, article L423-22).`);
+  }
+  if (!certains.length && familles.length > 1) {
+    const accord = ctxs.some((x) => x.c.accord48h);
+    const tous4 = moy4(ctxs), tousAn = an(ctxs);
+    if (!accord && tous4 > SEUIL_ACCORD_MIN) possibles.push(`Tous parents réunis, ${h(Math.round(tous4))} de travail par semaine en moyenne sur les quatre derniers mois (le temps où plusieurs enfants sont là ensemble compte une fois). Aucune famille seule ne dépasse 48 h. Les textes ne disent pas si la limite de 48 h se compte tous parents réunis. Avec ton accord écrit (article L423-22), la limite passe à 2 250 h par an.`);
+    if (accord && tousAn > PLAFOND_ANNUEL_H) possibles.push(`Tous parents réunis, ${Math.round(tousAn)} h de travail sur les douze derniers mois (le temps où plusieurs enfants sont là ensemble compte une fois). Aucune famille seule ne dépasse ${PLAFOND_ANNUEL_H} h. Les textes ne disent pas si ce plafond se compte tous parents réunis.`);
+  }
+  return { certains, possibles };
+}
+
+/** T-116 (A3) : informations sur la durée du travail (dépassement seulement tous parents réunis, sans texte qui tranche) */
+export const informationsDurees = (ctxs: Ctx[], d: ISODate): string[] => depassementsDurees(ctxs, d).possibles;
 
 /**
  * Alertes du jour `d`, sans blocage : repos de moins de 11 h la veille ou le lendemain (CASF L423-21, CCN 96.1) ; plus de 48 h
@@ -95,14 +152,6 @@ export function alertesDurees(ctxs: Ctx[], d: ISODate): string[] {
     const r = reposApres(ctxs, x);
     if (r !== undefined && r < REPOS_QUOTIDIEN_MIN) out.push(`Repos de ${h(r)} seulement entre la fin du travail du ${x.slice(8, 10)}/${x.slice(5, 7)} et la reprise du ${y.slice(8, 10)}/${y.slice(5, 7)}, tous contrats notés dans l’app : la loi demande au moins 11 heures de suite (code de l’action sociale et des familles, article L423-21 ; convention, article 96.1).`);
   }
-  const accord = ctxs.some((x) => x.c.accord48h);
-  if (!accord) {
-    const a = addDays(addMonthsToDate(d, -4), 1);
-    const moy = (travailEntre(ctxs, a, d) * 7) / (daysBetween(a, d) + 1);
-    if (moy > SEUIL_ACCORD_MIN) out.push(`En moyenne ${h(Math.round(moy))} de travail par semaine sur les quatre derniers mois, tous contrats notés dans l’app : sans ton accord écrit, la limite est 48 h (code de l’action sociale et des familles, article L423-22 ; convention, article 96.3).`);
-  } else {
-    const an = travailEntre(ctxs, addDays(addMonthsToDate(d, -12), 1), d) / 60;
-    if (an > PLAFOND_ANNUEL_H) out.push(`${Math.round(an)} h de travail sur les douze derniers mois, tous contrats notés dans l’app : même avec ton accord écrit, la limite est ${PLAFOND_ANNUEL_H} h par an (code de l’action sociale et des familles, article L423-22).`);
-  }
+  out.push(...depassementsDurees(ctxs, d).certains);
   return out;
 }

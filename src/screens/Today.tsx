@@ -15,6 +15,7 @@ import { evAnnulation, evCorrections, evPointage, type GestePointage } from '../
 import { AideVideo, BienvenueDemo } from '../ui/VideoGuide';
 import { isDemo } from '../db';
 import { Icon } from '../ui/icons';
+import { bornesBande, decaler, finParDefaut, finPourJour, joursBande, libelleBande, peutAvancer, peutReculer } from '../ui/bandeJours';
 import { de } from '../engine/texte';
 
 const fmtH = (t: string) => t.replace(/^0(\d)/, '$1').replace(':', ' h ');
@@ -38,7 +39,10 @@ function PlanLine({ di }: { di: DayInfo }) {
 export function Today() {
   const s = useStore();
   const t = today();
-  const [day, setDay] = useState(t);
+  const [day, setJour] = useState(t);
+  // T-115 (R1) : la bande de sept jours se déplace d'une semaine à l'autre (dernier jour montré).
+  const [finBande, setFinBande] = useState(finParDefaut(t));
+  const setDay = (d: string) => { setJour(d); setFinBande((f) => finPourJour(d, f, t)); };
   const [edit, setEdit] = useState<Contract | null>(null);
   const [amSheet, setAmSheet] = useState(false);
   // T-048 (question sur le matin) : plages auxquelles l'AM a répondu « Non », par contrat et par jour.
@@ -64,8 +68,14 @@ export function Today() {
     return () => { clearTimeout(id); document.removeEventListener('visibilitychange', retour); window.removeEventListener('focus', tic); };
   }, []);
   const kids = s.contracts.filter((c) => c.start <= day && (!c.end || c.end >= day));
-  const base = day < addDays(t, -5) ? addDays(day, 5) : t;
-  const days = Array.from({ length: 7 }, (_, i) => addDays(base, i - 5));
+  const bornes = bornesBande(s.contracts.map((c) => c.start), t);
+  const days = joursBande(finBande);
+  const semaine = (sens: 1 | -1) => {
+    const x = decaler(finBande, day, sens, bornes);
+    if (!x) return;
+    setFinBande(x.fin); setJour(x.jour);
+  };
+  const retourAujourdhui = () => { setJour(t); setFinBande(finParDefaut(t)); };
 
   // Départs oubliés sur les 14 derniers jours
   const forgotten: { c: Contract; d: string }[] = [];
@@ -84,10 +94,15 @@ export function Today() {
 
   return (
     <>
-      <Topbar title={day === t ? 'Aujourd’hui' : dayLabel(day).replace(/^./, (x) => x.toUpperCase())} sub={day === t ? dayLabel(day) : day < t ? `il y a ${daysBetween(day, t)} jour${daysBetween(day, t) > 1 ? 's' : ''}` : 'à venir'} screen="aujourdhui" />
+      <Topbar title={day === t ? 'Aujourd’hui' : dayLabel(day).replace(/^./, (x) => x.toUpperCase())} sub={day === t ? dayLabel(day) : day < t ? `il y a ${daysBetween(day, t)} jour${daysBetween(day, t) > 1 ? 's' : ''}` : `dans ${daysBetween(t, day)} jour${daysBetween(t, day) > 1 ? 's' : ''}`} screen="aujourdhui" />
       <main>
         {isDemo() && <BienvenueDemo />}
         <AideVideo id="pointer" />
+        <div class="daynav">
+          <button class="daynav-arrow" aria-label="Semaine précédente" disabled={!peutReculer(finBande, bornes)} onClick={() => semaine(-1)}><Icon name="left" /></button>
+          <span class="daynav-range" aria-live="polite">{libelleBande(days)}</span>
+          <button class="daynav-arrow" aria-label="Semaine suivante" disabled={!peutAvancer(finBande, bornes)} onClick={() => semaine(1)}><Icon name="right" /></button>
+        </div>
         <nav aria-label="Choisir le jour" class="daystrip">
           {days.map((d) => {
             const flag = s.contracts.some((c) => dayInfo(ctxFor(c), d).departOublie);
@@ -101,6 +116,9 @@ export function Today() {
             );
           })}
         </nav>
+        {(day !== t || !days.includes(t)) && (
+          <p class="daynav-back"><button class="btn btn-ghost" onClick={retourAujourdhui}><Icon name="undo" />Revenir à aujourd’hui</button></p>
+        )}
 
         {amToday && (
           <Banner tone="info" icon="sun">

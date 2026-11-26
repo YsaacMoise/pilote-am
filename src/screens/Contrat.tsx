@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'preact/hooks';
-import { deleteContract, logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
+import { ctxFor, deleteContract, logErreur, logUsage, putContract, state, toast, uid, useStore } from '../store';
 import { addMonthsToDate, deMois, firstDay, mondayOf, monthOf, shortDate, today, JOUR_NOMS, type Month } from '../engine/dates';
-import { dureeMoyenneContrat, erreursDureeContrat, SEUIL_ACCORD_MIN } from '../engine/durees';
+import { dureeMoyenneContrat, erreursDureeContrat, informationsDurees, SEUIL_ACCORD_MIN } from '../engine/durees';
 import { daysPerWeek, joursMensualises, mensuelMinutes, salaireMensualise, semainesSansAccueilAnnee, termsAt, weeklyMinutes } from '../engine/payroll';
 import { entretienPlancher, minimumSansTitre, ratesAtRegion, ratesConnus, repasAvantageAu } from '../engine/rates';
 import { regionDe } from '../engine/regions';
-import { soldesDeDepart } from '../engine/conges';
+import { MESSAGE_SOLDE_CONGES, soldeCongesInconnu, soldesDeDepart } from '../engine/conges';
 import { euros, eurosTexte, hoursLabel } from '../engine/money';
 import type { AccueilOcc, Avenant, Contract, Plage, Planning, Terms } from '../engine/model';
 import { manquesOccasionnel } from '../engine/occasionnel';
 import { EntretienSaisie, libelleEntretien } from './EntretienSaisie';
+import { BrutSaisie } from './BrutSaisie';
 import { Banner, CHILD_COLORS, Choices, COLOR_NAMES, couleurLibre, couleursPrises, DateInput, EuroInput, Gommette, NumberInput, Seg, Switch, TextInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { BROUILLON_CONTRAT } from './Simulateur';
@@ -87,6 +88,7 @@ export function Contrat({ id }: { id?: string }) {
   }, [existing?.id]);
   // Saisie simplifiée des congés à la reprise : seulement les jours déjà pris depuis le 1er juin (nouveaux contrats).
   const [cpManuel, setCpManuel] = useState(!isNew);
+  const infos48h = isNew ? [] : informationsDurees(state.contracts.map((x) => ctxFor(x)), today());
   const [prisDepuisJuin, setPris] = useState(0);
   const suiviDepuis = isNew ? (reprise ? curMonthStart : c.start) : c.trackedFrom;
   const soldes = c.start && suiviDepuis > c.start && wk > 0 ? soldesDeDepart(c, suiviDepuis, prisDepuisJuin, state.settings.enfantsACharge, state.settings.amMoins21Jusqu) : undefined;
@@ -134,7 +136,8 @@ export function Contrat({ id }: { id?: string }) {
     if (errs.length) { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
     const toSave: Contract = {
       ...c,
-      balances: !cpManuel && soldesProposes ? { ...c.balances, cpRestants: soldesProposes.cpRestants, cpEnCours: soldesProposes.cpEnCours } : c.balances,
+      // T-116 (A2) : soldes proposés par l'app et vus par l'AM à la création : solde donné.
+      balances: !cpManuel && soldesProposes ? { ...c.balances, cpRestants: soldesProposes.cpRestants, cpEnCours: soldesProposes.cpEnCours, cpSaisi: true } : c.balances,
       child: c.child.trim(),
       family: c.family.trim(),
       weeks: c.yearType === 'complete' ? 52 : c.weeks,
@@ -266,7 +269,10 @@ export function Contrat({ id }: { id?: string }) {
           </fieldset>
         </section>}
 
-        {(dureeMoyenneContrat(c) ?? 0) > SEUIL_ACCORD_MIN && <section class="card">
+        {/* T-116 (A3) : dépassement qui n'existe que tous parents réunis : dit une fois, ici, à côté de l'accord écrit
+            (regles/t116-48h.md), pas chaque jour sur « Aujourd'hui ». */}
+        {((dureeMoyenneContrat(c) ?? 0) > SEUIL_ACCORD_MIN || infos48h.length > 0) && <section class="card">
+          {infos48h.map((x) => <Banner tone="info">{x}</Banner>)}
           <Switch label="J’ai donné mon accord écrit pour plus de 48 h par semaine" hint="Code de l’action sociale et des familles, article L423-22 : sans ton accord, pas plus de 48 h par semaine en moyenne sur quatre mois ; avec, pas plus de 2 250 h par an, tous contrats confondus." checked={!!c.accord48h} onChange={(v) => set({ accord48h: v })} />
         </section>}
 
@@ -276,12 +282,12 @@ export function Contrat({ id }: { id?: string }) {
             {!!c.avenants?.length && <p class="hint">Ce sont les conditions de départ. Les changements datés sont dans les avenants, plus bas.</p>}
             <EuroInput label="Taux horaire net" hint={rates.minConvNet !== undefined ? `Minimum conventionnel : ${euros(rates.minConvNet)} net (${euros(rates.minConvBrut)} brut)` : `Minimum conventionnel : ${euros(rates.minConvBrut)} brut`} cents={c.rateNet} onChange={(v) => set({ rateNet: v ?? 0 })} />
             {c.rateNet > 0 && rates.minConvNet !== undefined && c.rateNet < rates.minConvNet && <Banner tone="warn">Ce taux est sous le minimum conventionnel. Vérifie le contrat.</Banner>}
-            {/* T-103 (D1) : CCN 41.1, le salaire horaire est au contrat ; CCN 107 et 109, le salaire se calcule sur le brut. */}
-            <EuroInput label="Taux horaire brut" hint="Écrit dans ton contrat, à côté du net. Il donne ton salaire brut exact (indemnité de rupture, impôts, contrôle du bulletin)." cents={c.rateBrut} allowEmpty onChange={(v) => set({ rateBrut: v ?? undefined })} />
-            {c.rateBrut != null && c.rateBrut > 0 && c.rateBrut < c.rateNet && <Banner tone="warn">Le brut ne peut pas être plus bas que le net. Vérifie le contrat.</Banner>}
+            {/* T-103 (D1) : CCN 41.1, le salaire horaire est au contrat ; CCN 107 et 109, le salaire se calcule sur le brut.
+                T-115 (R3) : le brut est calculé depuis le net (comme Pajemploi) ; l'AM peut écrire celui du contrat. */}
+            <BrutSaisie net={c.rateNet} brut={c.rateBrut} date={today()} region={regionDe(c)} set={(v) => set({ rateBrut: v })} debut={c.start} />
             {rates.minConvNet !== undefined && <p class="hint">{MINIMUM_SANS_TITRE}</p>}
             {isNew
-              ? <EntretienSaisie t={c} set={set} hint={`Si le montant est plus bas, l’app verse le minimum légal (${euros(entretienPlancher(today(), 540)!)} pour 9 h).`} />
+              ? <EntretienSaisie t={c} set={set} hint={`Laisse vide si le contrat ne fixe pas de montant : l’app applique le minimum légal. Un montant plus bas que ce minimum (${euros(entretienPlancher(today(), 540)!)} pour 9 h) est remplacé par le minimum.`} />
               : (
                 <div class="field">
                   <span class="label">Indemnité d’entretien</span>
@@ -332,13 +338,19 @@ export function Contrat({ id }: { id?: string }) {
                 <>
                   <NumberInput label={`Jours de congés déjà pris depuis le ${shortDate(soldesProposes.depuis)}`} hint="Compte les jours du lundi au samedi, sans les jours fériés : une semaine de congés = 6 jours. 0 si tu n’en as pas pris." value={prisDepuisJuin} step={1} max={60} onChange={(v) => setPris(v ?? 0)} />
                   <p class="hint">Calculé par l’app à partir du début du contrat : {soldesProposes.droitsAnDernier} jours de droits de l’an dernier, donc <b>{soldesProposes.cpRestants} jours restants</b> ; et {soldesProposes.cpEnCours.toLocaleString('fr-FR')} jours gagnés depuis le {shortDate(soldesProposes.depuis)}.</p>
-                  <button type="button" class="btn btn-ghost" onClick={() => { set({ balances: { ...c.balances, cpRestants: soldesProposes.cpRestants, cpEnCours: soldesProposes.cpEnCours } }); setCpManuel(true); }}>Ces chiffres sont faux : les saisir moi-même</button>
+                  <button type="button" class="btn btn-ghost" onClick={() => { set({ balances: { ...c.balances, cpRestants: soldesProposes.cpRestants, cpEnCours: soldesProposes.cpEnCours, cpSaisi: true } }); setCpManuel(true); }}>Ces chiffres sont faux : les saisir moi-même</button>
                 </>
               ) : (
                 <>
                   {soldes?.aConfirmer && <p class="hint">{soldes.aConfirmer}</p>}
-                  <NumberInput label="Congés restants de l’an dernier (jours)" hint="Acquis avant le dernier 1er juin et pas encore pris" value={c.balances.cpRestants} step={0.5} max={60} onChange={(v) => set({ balances: { ...c.balances, cpRestants: v ?? 0 } })} />
-                  <NumberInput label="Congés en cours d’acquisition (jours)" hint="Acquis depuis le 1er juin, avant le suivi par l’app" value={c.balances.cpEnCours} step={0.5} max={30} onChange={(v) => set({ balances: { ...c.balances, cpEnCours: v ?? 0 } })} />
+                  <NumberInput label="Congés restants de l’an dernier (jours)" hint="Acquis avant le dernier 1er juin et pas encore pris" value={c.balances.cpRestants} step={0.5} max={60} onChange={(v) => set({ balances: { ...c.balances, cpRestants: v ?? 0, cpSaisi: true } })} />
+                  <NumberInput label="Congés en cours d’acquisition (jours)" hint="Acquis depuis le 1er juin, avant le suivi par l’app" value={c.balances.cpEnCours} step={0.5} max={30} onChange={(v) => set({ balances: { ...c.balances, cpEnCours: v ?? 0, cpSaisi: true } })} />
+                  {soldeCongesInconnu(c) && (
+                    <>
+                      <p class="hint">{MESSAGE_SOLDE_CONGES}</p>
+                      <button type="button" class="btn btn-outline" onClick={() => set({ balances: { ...c.balances, cpSaisi: true } })}>Je n’ai aucun congé de départ</button>
+                    </>
+                  )}
                 </>
               )}
               <NumberInput label="Jours d’absence de l’enfant malade déjà déduits" hint="Avec certificat médical, retenus sur ton salaire depuis le début de l’année de contrat en cours" value={c.balances.maladieDeduits} max={14} onChange={(v) => set({ balances: { ...c.balances, maladieDeduits: v ?? 0, ...(v ? {} : { maladieDeduitsLongue: undefined }) } })} />
@@ -495,7 +507,7 @@ function WeeksOff({ c, onChange }: { c: Contract; onChange: (w: string[]) => voi
 export function avenantSummary(before: Contract, ch: Partial<Terms>): string[] {
   const out: string[] = [];
   if (ch.rateNet != null && ch.rateNet !== before.rateNet) out.push(`Taux : ${euros(before.rateNet)} → ${euros(ch.rateNet)} net de l’heure`);
-  if (ch.rateBrut != null && ch.rateBrut !== before.rateBrut) out.push(`Taux brut : ${before.rateBrut ? euros(before.rateBrut) : 'non saisi'} → ${euros(ch.rateBrut)} brut de l’heure`);
+  if (ch.rateBrut != null && (ch.rateBrut || 0) !== (before.rateBrut || 0)) out.push(`Taux brut : ${before.rateBrut ? euros(before.rateBrut) : 'calculé depuis le net'} → ${ch.rateBrut ? `${euros(ch.rateBrut)} brut de l’heure` : 'calculé depuis le net'}`);
   if (ch.planning) out.push(`Planning : ${hoursLabel(weeklyMinutes(before.planning))} → ${hoursLabel(weeklyMinutes(ch.planning))} par semaine`);
   // T-044 : tarif par jour ou par heure.
   if (ch.entretienJour != null || ch.entretienHeure != null || ch.entretienMode != null) {
