@@ -803,7 +803,7 @@ export interface MonthBase {
   /** Heures normales non arrondies (minutes) */
   normalesMin?: number;
   /** Périodes du mois quand un avenant tombe en cours de mois */
-  segments?: { from: ISODate; salaireMens: number; base: number }[];
+  segments?: SegmentMois[];
   brut?: number;
   alerts: string[];
   forgotten: ISODate[];
@@ -813,6 +813,25 @@ export interface MonthBase {
    * gérée). Non vide : le mois est refusé, aucun montant ne doit être affiché, envoyé ni additionné.
    */
   nonGere: string[];
+}
+
+/**
+ * Période d'un mois coupé par un avenant. T-118 (D-23, D-24) : dates, salaire du mois entier, part payée (prorata), salaire
+ * de base proratisé, net de la période et ses heures en plus (complémentaires et majorées), pour le détail et le brut.
+ */
+export interface SegmentMois {
+  from: ISODate;
+  to: ISODate;
+  salaireMens: number;
+  base: number;
+  /** Retenue des absences de la période */
+  retenue: number;
+  /** Salaire net de la période (hors congés payés et régularisation) */
+  net: number;
+  /** Net des heures complémentaires et majorées de la période */
+  hsNet: number;
+  /** Indemnités journalières déduites du salaire de la période */
+  ij: number;
 }
 
 export function monthBase(ctx: Ctx, m: Month): MonthBase {
@@ -1025,11 +1044,17 @@ function mergeParts(m: Month, parts: MonthBase[], cuts: ISODate[]): MonthBase {
   r.divisorDays = last.divisorDays;
   r.divisorMin = last.divisorMin;
   r.paidFraction = 1;
+  // T-118 (D-23) : indemnités journalières déduites, période par période (absentes de la somme avant la T-118).
+  const ij = parts.reduce((a, p) => a + (p.ijDeduites ?? 0), 0);
+  if (ij) r.ijDeduites = ij;
   r.heuresNormales = Math.round((r.normalesMin ?? 0) / 60);
   // Parts fractionnaires des jours mensualisés (C-003) : arrondies une seule fois, à l'entier supérieur,
   // comme la règle Pajemploi des jours mensualisés (joursMensualises).
   r.joursActivite = Math.ceil(r.joursActivite - 1e-9);
-  r.segments = parts.map((p, i) => ({ from: i === 0 ? firstDay(m) : cuts[i - 1], salaireMens: p.salaireMens, base: p.base }));
+  r.segments = parts.map((p, i) => ({
+    from: i === 0 ? firstDay(m) : cuts[i - 1], to: i + 1 < parts.length ? addDays(cuts[i], -1) : lastDay(m),
+    salaireMens: p.salaireMens, base: p.base, retenue: p.retenue, net: p.net, hsNet: p.complAmount + p.majAmount + p.majContratAmount, ij: p.ijDeduites ?? 0,
+  }));
   r.alerts.unshift(`Avenant au ${cuts.map((d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`).join(', ')} : le salaire du mois est calculé au prorata de chaque période.`);
   return r;
 }
@@ -1341,7 +1366,28 @@ export const PREFIXE_ENTRETIEN_SOUS_MIN = 'Indemnité d’entretien : le montant
 export function monthBrut(ctx: Ctx, m: Month): number {
   const b = monthBase(ctx, m);
   if (b.brut) return b.brut;
-  return brutDuNet(ctx.c, b.net, lastDay(m));
+  return brutDuNetMois(ctx.c, b, b.net, (s) => s.net);
+}
+
+/** Rapport brut ÷ net du jour `d` (taux horaire brut écrit par l'AM, sinon part nette de Pajemploi) : clé de comparaison */
+const cleBrut = (c: Contract, d: ISODate): string => {
+  const t = termsAt(c, d);
+  return t.rateBrut && t.rateNet ? `${t.rateBrut}/${t.rateNet}` : `p${partNette(d, regionDe(c)) ?? '?'}`;
+};
+
+/**
+ * T-118 (D-24) : brut d'une somme nette du mois. Mois coupé par un avenant qui change le rapport brut ÷ net : chaque période
+ * passe au brut avec son propre rapport (`parSegment` donne la part nette de la période) ; le reste (congés payés,
+ * régularisation) au rapport du dernier jour. Avant la T-118, tout le mois prenait le rapport du dernier jour (843,32 € au lieu
+ * de 843,26 € sur le cas S9 du relevé T-111). Sans changement de rapport dans le mois : calcul d'avant, inchangé.
+ */
+export function brutDuNetMois(c: Contract, b: MonthBase, net: number, parSegment: (s: SegmentMois) => number): number {
+  const segs = b.segments;
+  const fin = lastDay(b.month);
+  if (!segs || segs.length < 2 || new Set(segs.map((x) => cleBrut(c, x.to))).size < 2) return brutDuNet(c, net, fin);
+  let reste = net, brut = 0;
+  for (const x of segs) { const n = parSegment(x); reste -= n; brut += brutDuNet(c, n, x.to); }
+  return brut + brutDuNet(c, reste, fin);
 }
 
 /**

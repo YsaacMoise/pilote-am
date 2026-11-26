@@ -112,8 +112,8 @@ describe('T-048 : « Autre heure »', () => {
     expect(corps.match(/enregistrerChoix\(/g)).toHaveLength(1);
     expect(corps).not.toMatch(/pointer\(/);
     expect(corps).toMatch(/onClick=\{save\}>Enregistrer</);
-    // Heure réglée d'avance sur l'heure prévue
-    expect(corps).toContain('useState(ch.prevue)');
+    // Heure réglée d'avance sur l'heure prévue (T-118, D-18 : sur l'heure du moment pour une arrivée en avance)
+    expect(corps).toContain('useState(ch.ecartMin < 0 ? ch.maintenant : ch.prevue)');
   });
   it('heure future refusée', () => {
     expect(verifierHeure('a', '09:06', '09:05')).toBe(MSG_HEURE_FUTURE);

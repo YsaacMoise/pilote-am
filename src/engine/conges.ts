@@ -495,6 +495,44 @@ function semainesSaisiesCP(c: Contract, a: ISODate, b: ISODate): boolean {
   return true;
 }
 
+/**
+ * T-118 : jours acquis à la fin de chaque mois de la période qui commence le 1er juin `y` (calendrier de suivi des congés).
+ * Même calcul que `acquisition` (joursAcquis : Cass. soc. 10/01/1980, CCN 48.1.1.2, décompte le plus favorable avec une
+ * absence), arrêté au dernier jour du mois, arrondi au jour supérieur, sans les jours pour enfants à charge (acquis au
+ * 31 mai seulement, CCN 48.1.3.3). C'est ce qu'acquerrait un contrat qui finirait ce jour-là : le second moteur le recalcule
+ * ainsi (comparateur, calcul « cp_acquis_mois »). Mois futurs : si le contrat continue comme prévu. Suivi commencé en cours de
+ * période : solde de départ saisi ou calculé (`cpEnCours`) plus les jours suivis ; mois d'avant le suivi : `avantSuivi`.
+ */
+export interface AcquisMois {
+  m: Month;
+  /** Cumul non arrondi au dernier jour du mois */
+  brut: number;
+  /** Cumul arrondi au jour supérieur (30 au plus) */
+  jours: number;
+  /** Jours acquis pendant ce mois (différence des cumuls non arrondis) */
+  duMois: number;
+  /** Mois terminé (dernier jour passé) */
+  passe: boolean;
+  avantSuivi?: boolean;
+}
+export function acquisFinDeMois(ctx: Ctx, y: number): AcquisMois[] {
+  const { c } = ctx;
+  const p = cpPeriod(y);
+  const suiviEnCours = y === cpPeriodStartYear(c.trackedFrom) && c.trackedFrom > c.start;
+  const out: AcquisMois[] = [];
+  let prec = 0;
+  for (const m of monthsBetween(monthOf(p.from), monthOf(p.to))) {
+    const fin = lastOf(m);
+    const avantSuivi = suiviEnCours && fin < c.trackedFrom;
+    const brut = avantSuivi ? 0 : suiviEnCours ? c.balances.cpEnCours + joursAcquis(ctx, c.trackedFrom, fin) : joursAcquis(ctx, p.from, fin);
+    // Premier mois suivi : le solde de départ n'est pas un acquis du mois (il est dit à part, `cpEnCours`).
+    const depuis = suiviEnCours && !avantSuivi && prec === 0 && !out.some((x) => !x.avantSuivi) ? c.balances.cpEnCours : prec;
+    out.push({ m, brut, jours: round(Math.max(0, brut)) || 0, duMois: avantSuivi ? 0 : Math.max(0, brut - depuis), passe: fin < ctx.today, ...(avantSuivi ? { avantSuivi } : {}) });
+    if (!avantSuivi) prec = brut;
+  }
+  return out;
+}
+
 /** T-103 (B) : donnée du contrat qui manque pour compter les jours de congés d'une année incomplète */
 export const MESSAGE_SEMAINES_SANS_ACCUEIL = 'Indique dans le contrat toutes tes semaines sans accueil de l’année : l’app en a besoin pour compter tes jours de congés (convention, article 48.1.1.2).';
 

@@ -868,6 +868,7 @@ def grille():
     S += situations_t103()  # T-103 : regles du tableau rapports/T-103-inventaire.md (calculateur-arvela)
     S += situations_t115()  # T-115 (R3) : brut depuis le net, F1 et F2 (regles/t115-net-brut.md)
     S += situations_t119()  # T-119 : conges de depart (regles/t119-conges-depart.md)
+    S += situations_t118()  # T-118 : calendrier des conges, acquis a la fin de chaque mois
     return S
 
 
@@ -2078,6 +2079,32 @@ def situations_t119():
     S.append(sit("S119-14M-5J-JUIN", "congés de départ", k,
                  [{"id": "cd", "type": "conges_depart", "suivi": "2026-06-01", "pris": 0, "absence_prec": 3,
                    "absence_cours": 0}], theme="T-119 congés de départ : suivi au 1er juin"))
+    return S
+
+
+def situations_t118():
+    """T-118 : calendrier de suivi des conges (ecran Conges). Type « cp_acquis_mois » {periode, mois} : jours acquis
+    (hors enfants) du 1er juin au dernier jour du mois. B le calcule comme l'acquisition d'un contrat qui finirait ce
+    jour-la. Annee complete et incomplete, entree en cours de periode, arret maladie, conge sans solde (decompte le plus
+    favorable). Les 12 mois de la periode 2025. Aucun resultat attendu n'est calcule ici."""
+    S = []
+    variantes = {
+        "C52": (contrat_grille("C52", "H40", "T420", debut="2024-09-02"), {}),
+        "I46": (contrat_grille("I46", "H40", "T420"), {}),
+        "C52-ENTREE": (contrat_grille("C52", "H32", "T420", debut="2025-09-15"), {}),
+        "C52-MALADIE": (contrat_grille("C52", "H40", "T420", debut="2024-09-02"),
+                        {"absences_am": [{"type": "am_malade", "du": "2025-10-06", "au": "2025-11-14"}]}),
+        "C52-SANS-SOLDE": (contrat_grille("C52", "H40", "T420", debut="2024-09-02"),
+                           {"absences_am": [{"type": "sans_solde", "du": "2025-11-17", "au": "2025-11-19"}]}),
+        # Relecture T-118 (M7) : suivi commence le 01/11/2025 ; solde de depart en cours d'acquisition donne a 12,5 jours
+        # (juin a octobre, 5 mois de travail). Les mois d'avant le suivi : A ne montre pas de compteur (refus).
+        "C52-SUIVI": (contrat_grille("C52", "H40", "T420", debut="2024-09-02", suivi_depuis="2025-11-01",
+                                     soldes={"cp_restants": 30, "cp_en_cours": 12.5}), {}),
+    }
+    mois_periode = [f"2025-{m:02d}" for m in range(6, 13)] + [f"2026-{m:02d}" for m in range(1, 6)]
+    for nom, (k, ev) in variantes.items():
+        calc = [{"id": f"am{m.replace('-', '')}", "type": "cp_acquis_mois", "periode": 2025, "mois": m} for m in mois_periode]
+        S.append(sit(f"S118-{nom}", "congés payés", k, calc, evenements=ev, theme="T-118 calendrier des congés : acquis à fin de mois"))
     return S
 
 
