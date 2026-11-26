@@ -315,7 +315,12 @@ export interface Contract {
   balances: StartBalances;
   history: HistoryMonth[];
   createdAt: number;
-  /** Lien privé pour les parents (clés gardées dans le compte de l'AM, jamais en clair en ligne ailleurs) */
+  /**
+   * T-121 (option b) : date (AAAA-MM-JJ) de l'accord écrit des parents pour noter la santé de l'enfant dans Arvela (soins,
+   * températures) et la leur montrer sur le lien (RGPD art. 9.2.a). Absent : pas d'accord, aucune note de soin.
+   */
+  accordSante?: string;
+  /** Lien privé pour les parents. T-121 : le secret et le code partent chiffrés de bout en bout (sync/coffre.ts) */
   partage?: { id: string; secret: string; code: string; salt: string; createdAt: number };
 }
 
@@ -489,6 +494,8 @@ export interface Settings {
    * nouveaux contrats (Contract.departement, alsaceMoselle, mayotte) ; jamais lu par le calcul. Absent : comptes d'avant T-122.
    */
   departement?: string;
+  /** T-121 : date (AAAA-MM-JJ) où l'AM a dit avoir gardé sa clé de secours */
+  cleGardee?: string;
 }
 
 export interface Bulletin {

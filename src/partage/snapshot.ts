@@ -7,7 +7,7 @@ import { dayInfo, inContract, type Ctx } from '../engine/payroll';
 import { computeMonth, declarationLines, reductionVersee, totalAVerser } from '../engine/month';
 import { baremesAttendus } from '../engine/rates';
 import { CHILD_ABS_LABEL, type Journal, type Plage, type Presence } from '../engine/model';
-import { detailReveilOublie, reveilOublie } from '../engine/carnet';
+import { detailReveilOublie, estNoteSante, reveilOublie } from '../engine/carnet';
 
 export const SNAPSHOT_VERSION = 1;
 /** Jours de carnet et de présences envoyés (aujourd'hui compris) */
@@ -122,7 +122,8 @@ export function buildSnapshot(o: { ctx: Ctx; journal: Journal[]; amName: string;
     if (j) jours.push(j);
   }
   const carnet = o.journal
-    .filter((j) => j.cid === c.id && j.date >= from && j.date <= t)
+    // T-121 : les notes de santé seulement avec l'accord écrit des parents ; jamais une note encore scellée (sans la clé).
+    .filter((j) => j.cid === c.id && j.date >= from && j.date <= t && !('sante' in j) && (!!c.accordSante || !estNoteSante(j)))
     .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
     .map((j) => ({ date: j.date, time: j.time, kind: j.kind, detail: reveilOublie(j, t) ? detailReveilOublie(j.time) : j.detail }));
   const cur = monthOf(t);

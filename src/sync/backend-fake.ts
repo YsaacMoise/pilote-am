@@ -107,6 +107,12 @@ export const backend: Backend = {
     writeQ([...readQ(), { uid, docs }]);
     void flush();
   },
+  async creerCoffre(uid, v) {
+    return (await call<{ v: string }>('/creer-coffre', { uid, v, d: deviceId() })).v;
+  },
+  async remplacerSi(uid, docs) {
+    return (await call<{ n: number }>('/remplacer-si', { uid, docs, d: deviceId() })).n;
+  },
   listen(uid, since, cb, onError) {
     let s = since;
     let stop = false;

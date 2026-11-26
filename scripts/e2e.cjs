@@ -286,6 +286,8 @@ async function run(scheme) {
   assert(true, 'carnet : biberon noté en ml');
   // Température : fièvre signalée
   await p.getByRole('button', { name: 'Soin' }).click();
+  // T-121 : la première note de soin d'un enfant demande l'accord écrit des parents.
+  await p.getByRole('button', { name: 'Oui, j’ai leur accord écrit' }).click();
   await p.getByRole('button', { name: 'Prise de température' }).click();
   await p.getByLabel('Température (°C)').fill('38,4');
   await p.getByText('c’est de la fièvre').waitFor();

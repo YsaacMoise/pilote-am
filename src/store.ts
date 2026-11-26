@@ -7,6 +7,7 @@ import { addMonths, firstDay, lastDay, monthOf, today, type Month } from './engi
 import { computeMonth } from './engine/month';
 import { liensApresSuppression, normaliserAbsences, ruptureSansSante, type AbsenceLue } from './engine/absences';
 import { ecranDe, evErreur, type ErreurCode } from './usage-events';
+import { contratsEchus } from './sync/coffre';
 
 export interface Feedback { id: string; ts: number; screen: string; text: string }
 export interface Usage { id: string; ts: number; ev: string; screen?: string }
@@ -91,6 +92,31 @@ export async function load(): Promise<void> {
   state.usage = usage;
   state.ready = true;
   emit();
+  void purgerConservation().catch(() => {});
+}
+
+/**
+ * T-121 (option b), décision du DG du 26/11/2026 : 5 ans après la fin du dernier contrat d'un enfant, son carnet et la case
+ * « handicap ou maladie » sont supprimés, sur le téléphone et dans le compte (Code civil, art. 2224 : prescription de cinq
+ * ans). Rend le nombre de notes supprimées.
+ */
+export async function purgerConservation(aujourdhui = today()): Promise<number> {
+  if (db.isDemo()) return 0;
+  const ids = new Set(contratsEchus(state.contracts, aujourdhui));
+  if (!ids.size) return 0;
+  const notes = state.journal.filter((j) => ids.has(j.cid));
+  // Copie automatique du téléphone d'abord (Sauvegarde, copies automatiques) : une date de fin fausse se rattrape.
+  if (notes.length) await autoCopy(true).catch(() => {});
+  for (const j of notes) await db.del('journal', j.id);
+  state.journal = state.journal.filter((j) => !ids.has(j.cid));
+  for (const c of state.contracts.filter((x) => ids.has(x.id) && (x.majoreFiscal !== undefined || x.accordSante))) {
+    const { majoreFiscal: _m, accordSante: _a, ...sans } = c;
+    await db.put('contracts', sans);
+    state.contracts = state.contracts.map((x) => (x.id === c.id ? (sans as Contract) : x));
+  }
+  if (notes.length) toast(`Carnet supprimé pour ${notes.length} note${notes.length > 1 ? 's' : ''} : 5 ans après la fin du contrat de l’enfant.`);
+  emit();
+  return notes.length;
 }
 
 // ---------- Annulation ----------

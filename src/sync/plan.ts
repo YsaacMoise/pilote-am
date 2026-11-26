@@ -14,6 +14,8 @@ export interface RemoteDoc {
   v: string | null;
   /** Heure serveur en millisecondes (0 si pas encore attribuée) */
   t: number;
+  /** T-121 : identifiant de l'appareil qui l'a écrit (lu par fetchAll seulement), pour repérer un appareil pas à jour */
+  d?: string;
 }
 
 export interface LocalRecord {
