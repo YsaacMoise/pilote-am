@@ -141,7 +141,7 @@ export function Compte() {
               <Banner tone={c.refus ? 'warn' : TONE[c.status]} icon={c.status === 'synced' && !c.refus ? 'cloud' : undefined}>{statusLine(c)}</Banner>
               {c.status !== 'choice' && <p class="hint">Chaque changement est rangé sur le téléphone puis copié dans ton compte dès qu’il y a du réseau. Sur un autre appareil, connecte-toi avec la même adresse pour tout retrouver.</p>}
             </section>
-            {appareilsAnciens() > 0 && <Banner tone="warn">{appareilsAnciens() === 1 ? 'Un autre appareil utilise' : `${appareilsAnciens()} autres appareils utilisent`} une ancienne version d’Arvela. Ouvre l’app dessus et touche « Mettre à jour » : une ancienne version ne lit pas ce qui est chiffré (carnet, case handicap, lien des parents).</Banner>}
+            {appareilsAnciens() > 0 && <Banner tone="warn">{appareilsAnciens() === 1 ? 'Un autre appareil utilise' : `${appareilsAnciens()} autres appareils utilisent`} une ancienne version d’Arvela. Ouvre l’app dessus et touche « Mettre à jour » : une ancienne version ne lit pas ce qui est chiffré (carnet, case handicap, lien des parents), et peut afficher « envoi refusé » jusqu’à sa mise à jour.</Banner>}
             {c.cleManquante && <EntrerCle />}
             {c.cleOk && <CleSecours />}
             {c.verified === false && <ConfirmAddress email={c.email!} />}
