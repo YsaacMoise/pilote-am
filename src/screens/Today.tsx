@@ -119,28 +119,29 @@ export function Today() {
       <main class="today">
         {isDemo() && <BienvenueDemo />}
         <div class="semaine">
+          <nav aria-label="Choisir le jour" class="daystrip">
+            {days.map((d) => {
+              const flag = s.contracts.some((c) => dayInfo(ctxFor(c), d).departOublie);
+              return (
+                <button aria-pressed={d === day} onClick={() => setDay(d)}>
+                  <span class="d-name">{d === t ? 'auj.' : JOUR_NOMS[weekday(d) - 1].slice(0, 3) + '.'}</span>{' '}
+                  <span class="d-num">{Number(d.slice(8))}</span>
+                  <span class="sr-only"> {MOIS_NOMS[Number(d.slice(5, 7)) - 1]}{flag ? ', départ non pointé' : ''}</span>
+                  <span class={`d-dot ${flag ? 'on' : ''}`} aria-hidden="true" />
+                </button>
+              );
+            })}
+          </nav>
+          {/* Flèches de semaine sous la bande : chaque jour garde 44 px de large au moins (consigne 3). */}
           <div class="daynav">
             <button class="daynav-arrow" aria-label="Semaine précédente" disabled={!peutReculer(finBande, bornes)} onClick={() => semaine(-1)}><Icon name="left" size={20} /></button>
-            <nav aria-label="Choisir le jour" class="daystrip">
-              {days.map((d) => {
-                const flag = s.contracts.some((c) => dayInfo(ctxFor(c), d).departOublie);
-                return (
-                  <button aria-pressed={d === day} onClick={() => setDay(d)}>
-                    <span class="d-name">{d === t ? 'auj.' : JOUR_NOMS[weekday(d) - 1].slice(0, 3) + '.'}</span>{' '}
-                    <span class="d-num">{Number(d.slice(8))}</span>
-                    <span class="sr-only"> {MOIS_NOMS[Number(d.slice(5, 7)) - 1]}{flag ? ', départ non pointé' : ''}</span>
-                    <span class={`d-dot ${flag ? 'on' : ''}`} aria-hidden="true" />
-                  </button>
-                );
-              })}
-            </nav>
+            <p class="daynav-range"><span aria-live="polite">{libelleBande(days)}</span>
+              {(day !== t || !days.includes(t)) && (
+                <button class="btn btn-ghost btn-sm" onClick={retourAujourdhui}><Icon name="undo" size={18} />Revenir à aujourd’hui</button>
+              )}
+            </p>
             <button class="daynav-arrow" aria-label="Semaine suivante" disabled={!peutAvancer(finBande, bornes)} onClick={() => semaine(1)}><Icon name="right" size={20} /></button>
           </div>
-          <p class="daynav-range"><span aria-live="polite">{libelleBande(days)}</span>
-            {(day !== t || !days.includes(t)) && (
-              <button class="btn btn-ghost btn-sm" onClick={retourAujourdhui}><Icon name="undo" size={18} />Revenir à aujourd’hui</button>
-            )}
-          </p>
         </div>
 
         {amToday && (

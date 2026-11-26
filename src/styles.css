@@ -336,11 +336,11 @@ main {
 .semaine { display: flex; flex-direction: column; gap: 2px; }
 .daynav { display: flex; align-items: center; gap: 2px; }
 .daynav-arrow {
-  width: 32px; min-height: 56px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink);
+  width: 44px; min-height: 44px; border: 0; border-radius: 50%; background: transparent; color: var(--ink);
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; flex: none;
 }
 .daynav-arrow:disabled { opacity: 0.3; cursor: default; }
-.daynav-range { margin: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0 8px; min-height: 28px; font-size: 15px; color: var(--ink-2); text-align: center; }
+.daynav-range { flex: 1; margin: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0 8px; min-height: 44px; font-size: 15px; color: var(--ink-2); text-align: center; }
 .daynav-range .btn { min-height: 44px; padding: 0 8px; }
 .daystrip { flex: 1; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
 .daystrip button {
