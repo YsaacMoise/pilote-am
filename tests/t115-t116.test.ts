@@ -6,7 +6,7 @@ import { makeCtx } from '../src/engine/payroll';
 import { computeMonth } from '../src/engine/month';
 import { entretienPlancher } from '../src/engine/rates';
 import { alertesDurees, dureeReunion, informationsDurees, travailEntre } from '../src/engine/durees';
-import { MESSAGE_SOLDE_CONGES, soldeCongesInconnu } from '../src/engine/conges';
+import { congesDeDepart, MESSAGE_CONGES_DEPART, soldeCongesInconnu } from '../src/engine/conges';
 import { bornesBande, decaler, finParDefaut, finPourJour, joursBande, libelleBande, peutAvancer, peutReculer } from '../src/ui/bandeJours';
 import { libelleEntretien } from '../src/screens/EntretienSaisie';
 
@@ -97,7 +97,13 @@ describe('T-116 (A2) : contrat commencé avant le suivi, solde de congés jamais
     expect(soldeCongesInconnu(base)).toBe(true);
     const r = computeMonth(makeCtx(base, [], leaves, '2026-12-31'), '2026-11');
     expect(r.alerts.some((a) => a.includes('sans solde'))).toBe(false);
-    expect(r.nonGere).toEqual([MESSAGE_SOLDE_CONGES]);
+    // T-119 : l'app calcule les congés de départ ; la seule question est celle des jours déjà pris (un geste).
+    expect(r.nonGere).toEqual([MESSAGE_CONGES_DEPART]);
+  });
+  it('calcul impossible (année incomplète sans les semaines sans accueil) : le solde est demandé comme avant', () => {
+    const inc = { ...base, yearType: 'incomplete', weeks: 40 } as Contract;
+    const r = computeMonth(makeCtx(inc, [], leaves, '2026-12-31'), '2026-11');
+    expect(r.alerts.some((a) => a.includes('sans solde'))).toBe(false);
   });
   it('solde donné (même 0, confirmé) : le calcul d’avant revient', () => {
     const c = { ...base, balances: { ...base.balances, cpSaisi: true } };
@@ -220,5 +226,57 @@ describe('Relecture T-115 : corrections m3, m4, m5', () => {
     expect(brutConnu(c, '2026-11-30')).toBe(true);
     // La sauvegarde JSON garde le 0 (une valeur vide disparaîtrait).
     expect(JSON.parse(JSON.stringify(c)).avenants[0].changes.rateBrut).toBe(0);
+  });
+});
+
+describe('T-119 : congés de départ calculés par Arvela (calculateur-arvela, regles/t119-conges-depart.md)', () => {
+  // Suivi depuis le 01/11/2026 : période y = 2026 (01/06/2026 – 31/05/2027), précédente 01/06/2025 – 31/05/2026.
+  const T = '2026-11-01';
+  const sans = { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 };
+  it('14 mois avant (01/09/2025), 5 jours : septembre à mai, 9 mois → 22,5 → 23 jours ; juin à octobre, 5 mois → 12,5', () => {
+    const d = congesDeDepart(ct({ start: '2025-09-01', trackedFrom: T, balances: sans }), T);
+    expect(d).toMatchObject({ droitsPrec: 23, cpRestants: 23, cpEnCours: 12.5, precDu: '2025-09-01', precAu: '2026-05-31', depuis: '2026-06-01', jusqua: '2026-10-31' });
+    expect(d.aConfirmer).toBeUndefined();
+    // 5 jours déjà pris depuis le 1er juin : reste 18.
+    expect(congesDeDepart(ct({ start: '2025-09-01', trackedFrom: T, balances: sans }), T, { pris: 5 }).cpRestants).toBe(18);
+  });
+  it('3 mois avant (01/08/2026) : aucune période précédente ; août à octobre, 3 mois → 7,5', () => {
+    const d = congesDeDepart(ct({ start: '2026-08-01', trackedFrom: T, balances: sans }), T);
+    expect(d).toMatchObject({ droitsPrec: 0, cpRestants: 0, cpEnCours: 7.5 });
+    expect(d.precDu).toBeUndefined();
+  });
+  it('3 ans avant (01/11/2023) : période précédente entière, 12 mois → 30 ; 12,5 depuis le 1er juin', () => {
+    expect(congesDeDepart(ct({ start: '2023-11-01', trackedFrom: T, balances: sans }), T)).toMatchObject({ droitsPrec: 30, cpEnCours: 12.5 });
+  });
+  it('3 et 4 jours par semaine, sans absence : même acquisition (mois entiers)', () => {
+    for (const j of [[1, 2, 3], [1, 2, 4, 5]]) {
+      expect(congesDeDepart(ct({ start: '2025-09-01', trackedFrom: T, balances: sans, planning: week('08:00', '16:00', j) }), T)).toMatchObject({ droitsPrec: 23, cpEnCours: 12.5 });
+    }
+  });
+  it('longue absence non payée : 20 jours d’accueil en septembre 2025 ; octobre à mai restent (8 mois, 20 jours au moins), moins que 23', () => {
+    const d = congesDeDepart(ct({ start: '2025-09-01', trackedFrom: T, balances: sans }), T, { absencePrec: 20 });
+    expect(d.droitsPrec).toBeLessThan(23);
+    expect(d.droitsPrec).toBeGreaterThanOrEqual(20);
+    expect(d.cpEnCours).toBe(12.5);
+    // 10 jours d'absence en juin 2026 ne font rien perdre : décompte en jours d'accueil (110 − 10) ÷ 20 = 5 périodes → 12,5
+    // (le plus favorable, T-103 C10 bis) ; 30 jours : (110 − 30) ÷ 20 = 4 périodes, moins que 12,5.
+    expect(congesDeDepart(ct({ start: '2025-09-01', trackedFrom: T, balances: sans }), T, { absenceCours: 10 }).cpEnCours).toBe(12.5);
+    const e = congesDeDepart(ct({ start: '2025-09-01', trackedFrom: T, balances: sans }), T, { absenceCours: 30 });
+    expect(e.cpEnCours).toBeLessThan(12.5);
+    expect(e.droitsPrec).toBe(23);
+  });
+  it('sans réponse : le moteur prend les soldes calculés (0 jour pris) ; les mois sans congé gardent leur montant', () => {
+    const c = ct({ start: '2025-09-01', trackedFrom: T, balances: sans });
+    const ctx = makeCtx(c, [], [], '2026-12-31');
+    expect(ctx.c.balances.cpRestants).toBe(23);
+    expect(ctx.c.balances.cpEnCours).toBe(12.5);
+    expect(computeMonth(ctx, '2026-11').nonGere).toEqual([]);
+  });
+  it('réponse donnée (case cochée) : les chiffres enregistrés servent, plus de question', () => {
+    const c = ct({ start: '2025-09-01', trackedFrom: T, balances: { cpRestants: 18, cpEnCours: 12.5, maladieDeduits: 0, cpSaisi: true } });
+    const leaves: AmLeave[] = [{ id: 'l1', type: 'cp', from: '2026-11-09', to: '2026-11-14' } as AmLeave];
+    const r = computeMonth(makeCtx(c, [], leaves, '2026-12-31'), '2026-11');
+    expect(r.nonGere).toEqual([]);
+    expect(makeCtx(c, [], [], '2026-12-31').c.balances.cpRestants).toBe(18);
   });
 });
