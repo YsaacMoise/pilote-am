@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { joursLunette, joursPrevus, masquerMontants, MONTANT_CACHE, valeurACopier } from '../src/screens/Mois';
+import { joursFaits, joursLunette, joursPrevus, masquerMontants, MONTANT_CACHE, valeurACopier } from '../src/screens/Mois';
 import { abonnerPaie, paieVue, setPaieVue } from '../src/paie-visible';
 import type { Contract, Planning } from '../src/engine/model';
 import { euros } from '../src/engine/money';
@@ -81,3 +81,19 @@ describe('Paie cachée : un seul état pour toute l’app', () => {
     setPaieVue(false);
   });
 });
+
+describe('Centre du cercle : jours faits sur jours prévus (demande du DG du 26/11/2026)', () => {
+  const zoe = contrat('c9', 'Zoé', [1, 2, 3, 4, 5]);
+  it('mois passé sans changement : le planning fait foi, faits = prévus', () => {
+    expect(joursFaits([zoe], '2026-02', '2026-12-01', joursLunette([zoe], '2026-02', []))).toEqual({ faits: joursPrevus(joursLunette([zoe], '2026-02', [])), nonPrevus: 0 });
+  });
+  it('mois à venir : 0 jour fait', () => {
+    expect(joursFaits([zoe], '2026-12', '2026-11-26', joursLunette([zoe], '2026-12', [])).faits).toBe(0);
+  });
+  it('mois en cours : seulement les jours passés', () => {
+    const n = joursFaits([zoe], '2026-11', '2026-11-26', joursLunette([zoe], '2026-11', [])).faits;
+    expect(n).toBeGreaterThan(0);
+    expect(n).toBeLessThan(joursPrevus(joursLunette([zoe], '2026-11', [])));
+  });
+});
+
