@@ -137,33 +137,6 @@ describe('T-118 : textes', () => {
   });
 });
 
-describe('T-118 : contrat allégé', () => {
-  it('département du profil : celui du dernier contrat saisi qui en a un', async () => {
-    const { departementDesContrats } = await import('../src/engine/departements');
-    expect(departementDesContrats([])).toBeUndefined();
-    expect(departementDesContrats([{ departement: '31', createdAt: 1 }, { departement: '75', createdAt: 5 }, { createdAt: 9 }])).toBe('75');
-  });
-  it('nouveau contrat : CDI, régulier, entretien par jour cochés d’avance ; planning identique sans réponse', () => {
-    const src = readFileSync('src/screens/Contrat.tsx', 'utf8');
-    const b = src.slice(src.indexOf('function blank()'), src.indexOf('export function Contrat'));
-    expect(b).toContain("cdd: false, accueilOccasionnel: false, entretienMode: 'jour',");
-    expect(b).not.toContain('planningVariable');
-  });
-  it('récapitulatif : chaque réponse cochée d’avance y figure', async () => {
-    const { lignesRecap } = await import('../src/screens/Contrat');
-    const l = Object.fromEntries(lignesRecap(contract({ cdd: false, accueilOccasionnel: false, entretienMode: 'jour', entretienJour: 0, repasParents: true } as Partial<Contract>)));
-    expect(l['Contrat']).toBe('CDI');
-    expect(l['Accueil']).toBe('régulier');
-    expect(l['Département']).toBe('75 – Paris');
-    expect(l['Entretien']).toMatch(/^minimum légal/);
-    expect(l['Planning']).toMatch(/^le même chaque semaine \(45 h sur 5 jours\)/);
-    const vide = Object.fromEntries(lignesRecap(contract({ cdd: undefined, planningVariable: undefined, departement: undefined, alsaceMoselle: undefined } as Partial<Contract>)));
-    expect(vide['Contrat']).toBe('à indiquer');
-    expect(vide['Planning']).toBe('à indiquer');
-    expect(vide['Département']).toBe('à indiquer');
-  });
-});
-
 describe('T-118 : calendrier des congés, acquis mois par mois', async () => {
   const { acquisFinDeMois, acquisition } = await import('../src/engine/conges');
   const { compteursCP, joursCalendrier } = await import('../src/engine/compteurs-cp');

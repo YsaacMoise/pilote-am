@@ -917,10 +917,6 @@ h1.h-card { font-size: 25px; }
 .sim-sous:first-of-type { margin-top: 4px; padding-top: 0; border-top: 0; }
 .sim-resume { padding: 10px 14px; border-radius: var(--r-md); background: var(--primary-soft); font-weight: 600; }
 
-/* T-118 : récapitulatif du contrat ; ligne « valeur + Changer » */
-.row-between { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0; }
-.kv.recap dd { font-family: inherit; font-weight: 600; }
-.kv.recap dd.warn { color: var(--warn); }
 
 /* T-118 : carte « Ton mois » (écran Mois). Deux faces dans la même case de grille : la carte prend la hauteur de la plus
    haute. Rotation par transform seulement ; coupée si le téléphone demande moins de mouvement. */

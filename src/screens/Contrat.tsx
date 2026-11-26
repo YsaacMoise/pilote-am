@@ -19,7 +19,7 @@ import { PartageCard } from './PartageCard';
 import { de } from '../engine/texte';
 import { PAJEMPLOI_PLUS_AIDE } from '../legal';
 import { MESSAGE_REPOS_HEBDO, NON_GERE_47_51, nonGeresContrat, planningAvecDimanche, semaines4751 } from '../engine/nonGeres';
-import { DEPARTEMENTS, departementDesContrats, libelleDepartement, lieuDuDepartement, reponseSaisie, trouverDepartement } from '../engine/departements';
+import { DEPARTEMENTS, libelleDepartement, reponseSaisie, trouverDepartement } from '../engine/departements';
 import { AIDE_ANNEE, AIDE_COMPLEMENTAIRES, AIDE_SEMAINES } from './textes-contrat';
 import { manquesPV } from '../engine/planningVariable';
 import { PlanningVariableSaisie } from './PlanningVariableSaisie';
@@ -58,13 +58,7 @@ function blank(): Contract {
   const t = today();
   const pl: Planning = {};
   for (let d = 1; d <= 5; d++) pl[d] = [{ start: '08:30', end: '17:30' }];
-  // T-118 (ajout du DG du 26/11) : le département est demandé une seule fois : un nouveau contrat reprend celui des contrats
-  // déjà saisis (profil de l'AM). CDI, accueil régulier et entretien « par jour » cochés d'avance, visibles et modifiables,
-  // repris dans le récapitulatif ; « planning identique ou non » reste sans réponse par défaut.
-  const dep = departementDesContrats(state.contracts);
   return {
-    ...(dep ? { departement: dep, ...lieuDuDepartement(dep) } : {}),
-    cdd: false, accueilOccasionnel: false, entretienMode: 'jour',
     id: uid(), child: '', family: '', color: couleurLibre(couleursPrises(state.contracts, '', t)), start: t, yearType: 'complete', weeks: 52,
     weeksOff: [], planning: pl, rateNet: ratesConnus(t).minConvNet ?? 0, majoration: 10, entretienJour: 0, repasPrix: 0, repasParJour: 0,
     kmTaux: 0, cpMode: 'juin', majoreFiscal: false, trackedFrom: t, balances: { cpRestants: 0, cpEnCours: 0, maladieDeduits: 0 },
@@ -223,7 +217,7 @@ export function Contrat({ id }: { id?: string }) {
               </>
             )}
             {/* T-031 : cas que l'app ne gère pas. Une réponse est demandée : sans elle, l'app ne sait pas si ses montants valent. */}
-            <ChoixDepartement c={c} set={set} profil={isNew ? departementDesContrats(state.contracts) : undefined} />
+            <ChoixDepartement c={c} set={set} />
             {!c.accueilOccasionnel && <Choices label="Le planning est-il le même chaque semaine ?" value={ouiNon(c.planningVariable === undefined ? undefined : !c.planningVariable)} onChange={(v) => set({ planningVariable: v === 'non' })}
               options={[{ v: 'oui', l: 'Oui, une semaine type qui se répète', sub: 'Les semaines sans accueil prévues au contrat ne comptent pas.' }, { v: 'non', l: 'Non, il change d’une semaine à l’autre', sub: 'Semaines A et B, ou planning remis par les parents.' }]} />}
             <Choices label="L’accueil est-il régulier ou occasionnel ?" value={ouiNon(c.accueilOccasionnel === undefined ? undefined : !c.accueilOccasionnel)} onChange={(v) => set(v === 'non' ? { accueilOccasionnel: true, yearType: 'complete', weeks: 52, planningVariable: false } : { accueilOccasionnel: false })}
@@ -385,9 +379,6 @@ export function Contrat({ id }: { id?: string }) {
         {!isNew && <AvenantsCard c={c} />}
         {!isNew && <PartageCard cid={c.id} />}
 
-        {/* T-118 (ajout du DG du 26/11) : récapitulatif des réponses, réponses cochées d'avance comprises. */}
-        <RecapContrat c={c} />
-
         <button class="btn btn-primary btn-block btn-lg" onClick={save}>{isNew ? (reprise ? 'Enregistrer et reprendre l’historique' : 'Enregistrer le contrat') : 'Enregistrer'}</button>
         {!isNew && (
           <>
@@ -409,22 +400,7 @@ export function Contrat({ id }: { id?: string }) {
  * alsaceMoselle et mayotte en sont déduits, comme le faisaient les trois choix d'avant. Un contrat saisi avant garde sa
  * réponse : l'écran propose de préciser le département sans bloquer le calcul.
  */
-function ChoixDepartement({ c, set, profil }: { c: Contract; set: (p: Partial<Contract>) => void; profil?: string }) {
-  // T-118 : département déjà connu par les autres contrats : une ligne, et « Changer » pour un autre département.
-  const [changer, setChanger] = useState(false);
-  if (profil && c.departement === profil && !changer) {
-    return (
-      <div class="field">
-        <span class="label">Département où tu accueilles l’enfant</span>
-        <p class="row-between"><b>{libelleDepartement(profil)}</b><button type="button" class="btn-link" onClick={() => setChanger(true)}>Changer</button></p>
-        <span class="hint">Le même que pour tes autres contrats.</span>
-      </div>
-    );
-  }
-  return <ChoixDepartementSaisie c={c} set={set} />;
-}
-
-function ChoixDepartementSaisie({ c, set }: { c: Contract; set: (p: Partial<Contract>) => void }) {
+function ChoixDepartement({ c, set }: { c: Contract; set: (p: Partial<Contract>) => void }) {
   // Réponse trouvée à l'ouverture : un contrat d'avant la T-079 la retrouve si la saisie ne mène à aucun département.
   const [origine] = useState(() => ({ departement: c.departement, alsaceMoselle: c.alsaceMoselle, mayotte: c.mayotte }));
   const [saisie, setSaisie] = useState(c.departement ? libelleDepartement(c.departement) : '');
@@ -443,34 +419,6 @@ function ChoixDepartementSaisie({ c, set }: { c: Contract; set: (p: Partial<Cont
       <datalist id="departements-liste">{DEPARTEMENTS.map((d) => <option value={`${d.code} – ${d.nom}`} />)}</datalist>
       <span class={inconnu ? 'err' : 'hint'} id="departement-h" aria-live="polite">{inconnu ? 'Choisis un département dans la liste.' : ancien ? 'Précise ton département quand tu peux. En attendant, le calcul garde ta réponse d’avant.' : 'Tape le numéro ou le nom, puis choisis dans la liste.'}</span>
     </div>
-  );
-}
-
-/** T-118 : récapitulatif du contrat avant l'enregistrement. Rien n'est caché : chaque réponse se change plus haut. */
-export function lignesRecap(c: Contract): [string, string][] {
-  const out: [string, string][] = [];
-  out.push(['Département', c.departement ? libelleDepartement(c.departement) : c.alsaceMoselle !== undefined ? (c.alsaceMoselle ? 'Alsace-Moselle' : c.mayotte ? 'Mayotte' : 'réponse d’avant, à préciser') : 'à indiquer']);
-  out.push(['Contrat', c.cdd === undefined ? 'à indiquer' : c.cdd ? `CDD${c.cddTerme ? `, jusqu’au ${shortDate(c.cddTerme)}` : ''}` : 'CDI']);
-  out.push(['Accueil', c.accueilOccasionnel === undefined ? 'à indiquer' : c.accueilOccasionnel ? 'occasionnel' : 'régulier']);
-  if (!c.accueilOccasionnel) {
-    out.push(['Planning', c.planningVariable === undefined ? 'à indiquer' : c.planningVariable ? 'change d’une semaine à l’autre' : `le même chaque semaine (${hoursLabel(weeklyMinutes(c.planning))} sur ${daysPerWeek(c.planning)} jours)`]);
-    out.push(['Année', c.yearType === 'complete' ? 'complète (52 semaines)' : `incomplète (${c.weeks} semaines)`]);
-  }
-  out.push(['Salaire', c.rateNet ? `${euros(c.rateNet)} net de l’heure${!c.accueilOccasionnel && !c.planningVariable && weeklyMinutes(c.planning) > 0 ? `, ${euros(salaireMensualise(c))} net par mois` : ''}` : 'à indiquer']);
-  out.push(['Entretien', libelleEntretien(c)]);
-  out.push(['Repas', c.repasParents === undefined ? 'à indiquer' : c.repasParents ? 'fournis par les parents' : `fournis par toi${c.repasPrix ? `, ${euros(c.repasPrix)} le repas` : ''}`]);
-  return out;
-}
-
-function RecapContrat({ c }: { c: Contract }) {
-  return (
-    <section class="card" aria-labelledby="recap-t">
-      <h2 id="recap-t">Ton contrat en bref</h2>
-      <p class="hint">Vérifie avant d’enregistrer. Les réponses déjà cochées se changent plus haut.</p>
-      <dl class="kv recap">
-        {lignesRecap(c).map(([k, v]) => <><dt>{k}</dt><dd class={v === 'à indiquer' ? 'warn' : undefined}>{v}</dd></>)}
-      </dl>
-    </section>
   );
 }
 
