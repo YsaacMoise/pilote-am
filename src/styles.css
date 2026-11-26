@@ -205,8 +205,8 @@ main {
   padding-left: max(var(--gutter), env(safe-area-inset-left));
   padding-right: max(var(--gutter), env(safe-area-inset-right));
   padding-top: 4px;
-  /* Barre d'onglets flottante : rien n'est caché dessous */
-  padding-bottom: calc(var(--tabbar-h) + var(--tabbar-gap) + var(--safe-b) + 32px);
+  /* Barre d'onglets flottante et message bref au-dessus d'elle : le bas du contenu peut toujours remonter au-dessus des deux */
+  padding-bottom: calc(var(--tabbar-h) + var(--tabbar-gap) + var(--safe-b) + 96px);
 
   width: 100%; max-width: 640px; margin: 0 auto;
   display: flex; flex-direction: column; gap: 16px;
@@ -465,7 +465,7 @@ a.li:active, button.li:active { background: var(--select); }
 .decl-line { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 10px 0; border-bottom: 1px dashed var(--line); }
 .decl-line:last-child { border-bottom: 0; }
 .decl-label { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
-.decl-hint { font-size: 14px; color: var(--ink-2); }
+.decl-hint { font-size: 15px; color: var(--ink-2); }
 .decl-value { font-weight: 600; font-size: 18px; text-align: right; overflow-wrap: anywhere; max-width: 60%; }
 /* T-103 (M5) : bouton « Choisir un jour », champ date natif invisible par-dessus (iPhone ouvre son sélecteur au toucher). */
 .pick-day { position: relative; overflow: hidden; }
@@ -679,9 +679,125 @@ dialog.sheet[open] { animation: sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .stat-grid > div { background: var(--bg); border-radius: var(--r-btn); padding: 12px; border: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
 .stat-grid b { font-size: 24px; font-weight: 600; line-height: 1; }
-.stat-grid span { font-size: 14px; color: var(--ink-2); line-height: 1.25; }
+.stat-grid span { font-size: 15px; color: var(--ink-2); line-height: 1.25; }
 .month-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.month-nav h2 { text-align: center; flex: 1; }
+.month-nav h2 { text-align: center; flex: 1; font-size: 28px; }
+
+/* ---------- Plus (Vision 1.1) ---------- */
+.plus { gap: 20px; }
+.plus-enfants { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 12px 8px; }
+.plus .li.pe-enfant, .pe-enfant { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; min-height: 44px; padding: 0; border: 0; text-decoration: none; color: var(--ink); background: transparent; width: auto; }
+.pe-enfant .gommette { width: 56px; height: 56px; font-size: 22px; }
+.plus .pe-nom, .plus .li-title.pe-nom { font-size: 15px; font-weight: 400; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pe-enfant.termine .gommette { opacity: 0.45; }
+.pe-enfant.termine .pe-nom { color: var(--ink-2); }
+.pe-plus { width: 56px; height: 56px; border-radius: 50%; border: 1.5px dashed var(--line-strong); display: grid; place-items: center; color: var(--ink); }
+.pe-brouillons:empty { display: none; }
+.pe-brouillons { margin-top: 8px; }
+/* Tuiles : Simuler (encre), Mes congés (jauge), Compte, Impôts */
+.plus-tuiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tuile { display: flex; flex-direction: column; gap: 6px; min-height: 92px; padding: 14px 16px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-decoration: none; }
+.tuile-titre { font-size: 16px; font-weight: 600; }
+.tuile-valeur { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-family: var(--font-display); font-weight: 600; font-size: 20px; line-height: 1.15; }
+.tuile-valeur b { font-size: 26px; font-weight: 600; }
+.tuile-etat { font-family: var(--font-display); font-weight: 600; font-size: 17px; line-height: 1.2; }
+.tuile-sous { font-size: 15px; color: var(--ink-2); line-height: 1.25; }
+.tuile-email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tuile-encre { background: var(--primary); color: var(--primary-ink); border-color: var(--primary); }
+.tuile-encre .tuile-valeur svg { color: var(--or); }
+.jauge-piste { fill: none; stroke: var(--piste); stroke-width: 4; }
+.jauge-part { fill: none; stroke: var(--ink); stroke-width: 4; stroke-linecap: round; }
+
+/* ---------- Fiche de l'enfant (Vision 1.1) ---------- */
+.fiche-onglets { grid-auto-columns: 1fr; }
+.fiche-onglets a { min-height: 44px; display: grid; place-items: center; border-radius: 999px; color: var(--ink); text-decoration: none; font-weight: 400; }
+.cadran-contrat svg { width: 160px; height: 160px; display: block; margin: 4px auto 0; }
+.cadran-contrat line { stroke-width: 3; stroke-linecap: round; }
+.cc-sem { stroke: var(--ink); }
+.cc-off { stroke: var(--repere); }
+.cc-courante { stroke: var(--or); stroke-width: 4; }
+.cc-heures { font-family: var(--font-display); font-size: 30px; font-weight: 600; fill: var(--ink); }
+.cc-semaines { font-family: var(--font-body); font-size: 15px; fill: var(--ink-2); }
+.fiche-contrat { text-align: center; color: var(--ink-2); font-size: 15px; margin-top: -8px; }
+.fiche-occasionnel { text-align: center; font-family: var(--font-display); font-weight: 600; font-size: 20px; }
+.fiche-valeur { font-family: var(--font-display); font-weight: 600; font-size: 20px; color: var(--ink); }
+.fiche-valeur-sous { color: var(--ink-2); }
+.fiche-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.fiche-actions .btn { min-height: 52px; }
+.fiche-notes { text-align: center; margin-top: -8px; }
+.topbar .gommette { width: 44px; height: 44px; font-size: 19px; }
+/* Couleur de l'enfant (feuille) */
+.couleurs-feuille { grid-template-columns: repeat(4, 1fr); max-width: none; gap: 14px 8px; }
+.couleur-case { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.couleur-nom { font-size: 15px; color: var(--ink-2); text-align: center; }
+
+/* ---------- Mois (Vision 1.1) ---------- */
+/* Lunette : une pastille par jour d'accueil, semaines séparées ; au centre, les jours travaillés */
+.vue-mois { display: flex; flex-direction: column; gap: 14px; }
+.lunette svg { width: 100%; max-width: 340px; height: auto; display: block; margin: 0 auto; }
+.ln circle { stroke-width: 1.5; }
+.ln text { font-family: var(--font-display); font-size: 12.5px; font-weight: 600; }
+.ln-passe circle { fill: var(--ink); stroke: var(--ink); }
+.ln-passe text { fill: var(--bg); }
+.ln-avenir circle { fill: transparent; stroke: var(--ink); }
+.ln-avenir text { fill: var(--ink); }
+.ln-auj circle { fill: var(--or); stroke: var(--or); }
+.ln-auj text { fill: #1f1c1a; }
+.ln-ferie circle { fill: transparent; stroke: var(--line-strong); stroke-dasharray: 3 3; }
+.ln-ferie text { fill: var(--ink-2); }
+.ln-abs circle { stroke: transparent; }
+.ln-total { font-family: var(--font-display); font-size: 64px; font-weight: 600; fill: var(--ink); }
+.ln-total-label { font-family: var(--font-body); font-size: 16px; fill: var(--ink-2); }
+.ln-rappels { list-style: none; margin: -6px 0 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.ln-rappels li { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 2px 14px 2px 3px; border-radius: 18px; border: 1px solid var(--line); background: var(--surface); font-size: 15px; }
+.ln-rappels .gommette { width: 28px; height: 28px; font-size: 13px; }
+.ln-rappels .ln-plus { padding: 2px 14px; }
+.mp-eyebrow { font-family: var(--font-body); font-size: 15px; font-weight: 400; letter-spacing: 0; text-transform: none; margin: 4px 0 -6px; }
+/* Cartes « À déclarer sur Pajemploi » : une par enfant ; elles ouvrent la page de l'enfant */
+.mp-cartes { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(104px, 1fr); gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px; }
+.mp-cartes::-webkit-scrollbar { display: none; }
+.mp-carte { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 8px 12px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; text-align: center; min-height: 44px; }
+.mp-carte[aria-pressed='true'] { border-color: var(--ink); }
+.mp-carte .gommette { width: 32px; height: 32px; font-size: 14px; margin-bottom: 4px; }
+.mp-nom { font-family: var(--font-display); font-size: 17px; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-chiffres { font-size: 14px; color: var(--ink-2); white-space: nowrap; }
+.mp-etat { margin-top: 6px; font-size: 14px; min-height: 28px; padding: 2px 10px; }
+.mp-etat:not(.afaire) { background: transparent; }
+/* « Ta paie du mois » : cachée, puis « Voir ma paie » */
+.mp-paie { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 16px 16px 20px; }
+.mp-paie-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mp-paie-label { font-size: 15px; color: var(--ink-2); }
+.mp-total { font-family: var(--font-display); font-size: 26px; font-weight: 600; letter-spacing: 0.02em; }
+.mp-cache { letter-spacing: 0.12em; }
+.mp-paie-non { font-size: 16px; color: var(--ink); }
+.mp-paie .btn { flex: none; }
+/* Page de l'enfant, sous la vue d'ensemble */
+.mois-enfant { display: flex; flex-direction: column; gap: 16px; padding-top: 12px; border-top: 1px solid var(--line); scroll-margin-top: 72px; }
+.me-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.me-tete h2 { font-size: 28px; }
+.me-tete .gommette { width: 44px; height: 44px; font-size: 19px; }
+/* Cases Pajemploi : libellé, valeur, « Copier » ; puis « C'est déclaré » */
+.decl-carte { display: flex; flex-direction: column; gap: 8px; }
+.decl-carte h2 { font-family: var(--font-body); font-size: 15px; font-weight: 400; color: var(--ink-2); }
+.decl-carte .decl { border-top: 1px solid var(--line); }
+.decl-carte .decl-line { align-items: center; border-bottom: 1px solid var(--line); padding: 6px 0; min-height: 54px; }
+.decl-carte .decl-label { min-width: 0; flex: 1 1 auto; }
+.decl-carte .decl-value { font-family: var(--font-display); font-size: 20px; max-width: none; flex: none; white-space: nowrap; }
+.decl-copier { flex: none; min-height: 44px; min-width: 76px; padding: 0 12px; border-radius: 22px; background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-strong); font-size: 15px; }
+.declare-btn { min-height: 52px; margin-top: 4px; }
+.declare-fait { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; margin-top: 4px; border-radius: 26px; border: 1px solid var(--line); font-size: 17px; }
+.declare-fait .btn { color: var(--ink-2); }
+/* Lignes de la page : « Ce qui a changé » (avec le nombre), Contrôler, Relevé, Corriger un jour */
+.mois-liens .li, .mois-liens summary.li { min-height: 48px; }
+.li-details > summary { list-style: none; cursor: pointer; }
+.li-details > summary::-webkit-details-marker { display: none; }
+.li-details[open] > summary .li-end svg { transform: rotate(90deg); }
+.li-nombre { font-family: var(--font-display); font-weight: 600; color: var(--ink); }
+.li-sous { margin: 0 0 8px 12px; }
+.li-vide { padding: 4px 0 12px; }
+.mois-liens .pick-day { position: relative; }
+.mois-liens .pick-day input[type='date'] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+button.li[disabled] { opacity: 0.5; }
 
 .kid-actions .btn-edit { padding: 0 18px; }
 h1:focus { outline: none; }
@@ -793,10 +909,10 @@ h1.h-card { font-size: 25px; }
 
 /* Bloc de synthèse à l'encre (charte : « Clôture mensuelle estimée ») */
 .summary { background: var(--primary); color: var(--primary-ink); border-radius: var(--r-md); padding: 18px; }
-.summary-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.8; }
+.summary-label { font-size: 15px; font-weight: 600; opacity: 0.85; }
 .summary .total { color: var(--primary-ink); }
-.summary-sub { font-size: 14px; opacity: 0.8; }
-.summary-note { align-self: flex-start; font-size: 13px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--accent); color: #1f1c1a; }
+.summary-sub { font-size: 15px; opacity: 0.85; }
+.summary-note { align-self: flex-start; font-size: 15px; font-weight: 600; padding: 4px 12px; border-radius: 999px; background: var(--accent); color: #1f1c1a; }
 
 /* Page d'accueil : actions de l'en-tête, pied de page */
 .site-actions { display: flex; gap: 8px; align-items: center; }
@@ -1010,12 +1126,12 @@ h1.h-card { font-size: 25px; }
   .ton-mois .tm-face { transition: none; }
 }
 .tm-avant { display: flex; flex-direction: column; gap: 12px; }
-.tm-eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-2); }
+.tm-eyebrow { font-size: 15px; font-weight: 400; color: var(--ink-2); }
 .tm-titre { font-family: var(--font-display); font-weight: 600; font-size: 26px; line-height: 1.1; margin: -6px 0 0; }
 .tm-lignes { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
 .tm-lignes li { display: flex; gap: 8px; }
 .tm-lignes li::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--sauge); margin-top: 9px; }
-.tm-etat { display: inline-flex; gap: 6px; align-items: flex-start; align-self: flex-start; font-size: 14px; font-weight: 600; padding: 6px 12px; border-radius: 12px; background: var(--sauge-soft); color: var(--sauge); }
+.tm-etat { display: inline-flex; gap: 6px; align-items: flex-start; align-self: flex-start; font-size: 15px; font-weight: 600; padding: 6px 12px; border-radius: 14px; background: var(--surface-2); color: var(--ink); }
 .tm-etat svg { flex: none; margin-top: 2px; }
 .tm-arriere .total:focus { outline: none; }
 .tm-arriere .total:focus-visible { outline: 2px solid var(--primary-ink); outline-offset: 4px; border-radius: 6px; }
@@ -1061,7 +1177,7 @@ h1.h-card { font-size: 25px; }
 .cp-barres-l { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; font-size: 11px; color: var(--ink-2); text-align: center; }
 .ton-mois .tm-arriere { justify-content: center; }
 /* T-118 (ajout du DG du 26/11) : information neutre dans la carte de la paie (plus de pastille orange) */
-.summary-info { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; line-height: 1.4; opacity: 0.88; }
+.summary-info { display: flex; gap: 8px; align-items: flex-start; font-size: 15px; line-height: 1.4; opacity: 0.9; }
 .summary-info svg { flex: none; margin-top: 2px; }
 .summary-info a { color: inherit; text-decoration: underline; }
 

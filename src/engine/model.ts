@@ -322,6 +322,11 @@ export interface Contract {
   accordSante?: string;
   /** Lien privé pour les parents. T-121 : le secret et le code partent chiffrés de bout en bout (sync/coffre.ts) */
   partage?: { id: string; secret: string; code: string; salt: string; createdAt: number };
+  /**
+   * T-126 (décision du DG du 26/11/2026, « C'est déclaré ») : mois déclarés sur Pajemploi selon l'AM, mois (AAAA-MM) → date
+   * du geste (AAAA-MM-JJ). Gardé et synchronisé avec le contrat ; annulable. Jamais lu par le calcul de la paie.
+   */
+  declares?: Record<Month, ISODate>;
 }
 
 /** T-104 : une période d'accueil occasionnel (du premier au dernier jour, horaires prévus de chaque jour de la semaine) */
