@@ -1,5 +1,5 @@
 // T-125, point 4 (décision du DG du 26/11/2026) : fonctions serveur de la copie de secours scellée.
-// Non déployées par la session : le DG crée la clé KMS, donne les droits et déploie (docs/sequestre-kms.md).
+// Clé KMS, compte de service et droits créés par la direction le 26/11/2026 (docs/sequestre-kms.md).
 //
 // La clé privée KMS (asymétrique, RSA-OAEP 3072 SHA-256, niveau HSM, région europe-west9) ne sort jamais du boîtier. Ces
 // fonctions sont le seul chemin qui lui demande de déchiffrer, et seulement :
@@ -19,7 +19,9 @@ const db = getFirestore();
 const kms = new KeyManagementServiceClient();
 /** Version de la clé KMS : projects/arvela-app/locations/europe-west9/keyRings/arvela/cryptoKeys/sequestre/cryptoKeyVersions/1 */
 const CLE = process.env.SEQUESTRE_CLE_KMS;
-const opts = { region: 'europe-west9', enforceAppCheck: false };
+// T-129 : compte de service dédié (droits : déchiffrer avec cette seule clé, lire et écrire la base, écrire les journaux).
+const COMPTE = 'sequestre@arvela-app.iam.gserviceaccount.com';
+const opts = { region: 'europe-west9', enforceAppCheck: false, serviceAccount: COMPTE };
 
 /**
  * Compte connecté, avec une adresse e-mail confirmée (relecture T-125, M2 et M6) : sans elle, aucun e-mail de prévenance ne
@@ -125,7 +127,7 @@ export const sequestreOuvrir = onCall(opts, async (req) => {
 });
 
 /** Suppression du compte : demandes, suivi d'adresse et journal du compte effacés (relecture T-125, m6 ; registre). */
-export const sequestreNettoyage = functionsV1.region('europe-west9').auth.user().onDelete(async (u) => {
+export const sequestreNettoyage = functionsV1.runWith({ serviceAccount: COMPTE }).region('europe-west9').auth.user().onDelete(async (u) => {
   await demandeRef(u.uid).delete();
   await compteRef(u.uid).delete();
   const j = await db.collection('sequestre-journal').where('uid', '==', u.uid).get();

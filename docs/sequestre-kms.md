@@ -6,6 +6,9 @@ Décision du DG du 26/11/2026. Le code est prêt (app : src/sync/sequestre.ts ; 
 
 Sigles : KMS (Key Management Service, service de clés de Google Cloud), HSM (module matériel de sécurité, boîtier qui garde la clé), IAM (gestion des droits de Google Cloud).
 
+## État au 26/11/2026 (direction, autorisation du DG)
+Fait : API Cloud KMS ; trousseau `arvela` et clé `sequestre` (HSM, europe-west9, version 1 active) ; compte `sequestre@arvela-app.iam.gserviceaccount.com` avec `cloudkms.cryptoKeyDecrypter` sur la clé, `datastore.user` et `logging.logWriter` ; clé publique dans src/firebase-config.ts (T-125, activation). Service d'e-mails : Brevo (étape 4).
+
 ## 1. Prérequis
 - Projet Firebase `arvela-app` au forfait Blaze (paiement à l'usage) : obligatoire pour les fonctions serveur et pour KMS.
 - API Cloud KMS activée : `gcloud services enable cloudkms.googleapis.com --project arvela-app`.

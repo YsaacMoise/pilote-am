@@ -25,7 +25,19 @@ export function appCheckActif(hostname: string): boolean {
 
 /**
  * T-125, point 4 : clé PUBLIQUE de la clé Cloud KMS de la copie scellée (RSA-OAEP 3072, SHA-256, niveau HSM, europe-west9),
- * au format PEM. Vide tant que le DG ne l'a pas créée (docs/sequestre-kms.md) : la copie scellée reste alors désactivée.
+ * au format PEM. Clé créée le 26/11/2026 (version 1, empreinte MD5 du fichier PEM 567b1a49…). Vide : copie scellée désactivée.
  * Une clé publique n'est pas un secret.
  */
-export const SEQUESTRE_PEM = '';
+export const SEQUESTRE_PEM = [
+  '-----BEGIN PUBLIC KEY-----',
+  'MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAjxzfVpSmSdpjQpr0VV39',
+  'pP1B9/Sr2Boax24NA/2gUMnO4iWNjdwqHlHxaOM/B+x9P95IH75jYO9qBdYjagho',
+  '4Pc0lS0rQCCXCiSBYOriG5gQKqZx0VvbzpfgbVYTQ3TjonvfxPe3iidkJ9OpqABN',
+  'uxytM5PHlSPrs9xq7wKpYQDKgdZ64VZMQhZtQSL15711AKCSWAy4ZAwQdv9wiw7A',
+  'bF+x554HhIzPQLjTbjWFwsmijMW0W1gS3EUvMrqK3CFMsCk6cGxEwQSO4r2vYnlm',
+  'T5Qg1WLe5eomT/9DZ4flJVgtwp7SCXOOmzEDXDI+WmaJxxs3H6Huunn8q4QKbSOn',
+  'SMzNmY/GcaDJk/idKxPUMuOEvIAXJbAh7YDytq6e3szEZEciM0tWv5F5mUR6oKrv',
+  '1u8GHtEbfZojv4A9aTrX0kuwZ3UQNRNr1/c2gBvizt/+8gi0yFB3YuG/sueqIj+3',
+  '6hUrNni0KWTRuMZcDsd6fXHTGqLcwpjM3039t44iGl4NAgMBAAE=',
+  '-----END PUBLIC KEY-----',
+].join('\n');
