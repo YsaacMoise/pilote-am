@@ -511,6 +511,17 @@ export function droitsAPrendre(ctx: Ctx, y: number, enfantsACharge = ctx.enfants
  * Les droits sont consommés dans l'ordre chronologique : les premiers jours ouvrables pris sont payés,
  * les suivants deviennent des congés sans solde.
  */
+/** T-116 (A2) : invite unique quand le solde de congés au début du suivi n'a pas été donné. */
+export const MESSAGE_SOLDE_CONGES = 'Indique ton solde de congés au début du suivi. Tu le trouves sur ton dernier bulletin de salaire d’avant le suivi par l’app, ou dans le décompte des congés tenu avec les parents.';
+
+/**
+ * T-116 (A2) : contrat commencé avant le suivi par l'app, congés de départ jamais donnés (deux soldes à 0, jamais confirmés).
+ * Un 0 lu par défaut n'est pas un droit : les jours de congés au-delà de la borne ne sont pas retenus, le mois attend le solde.
+ */
+export function soldeCongesInconnu(c: Contract): boolean {
+  return c.trackedFrom > c.start && !c.balances.cpSaisi && !c.balances.cpRestants && !c.balances.cpEnCours;
+}
+
 export function cpExces(ctx: Ctx): Set<ISODate> {
   return memo(ctx, `cpx|${ctx.enfants ?? 0}`, () => {
     const out = new Set<ISODate>();

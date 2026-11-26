@@ -33,6 +33,11 @@ export interface StartBalances {
    * (faux) ? CCN 105. Demandé une fois, seulement si le calcul en dépend.
    */
   maladieDeduitsLongue?: boolean;
+  /**
+   * T-116 (A2) : l'AM a donné ou confirmé ses congés de départ (cpRestants, cpEnCours). Faux ou absent sur un contrat commencé
+   * avant le suivi, avec deux soldes à 0 : solde inconnu ; aucun congé n'est retenu « sans solde », l'app demande le solde.
+   */
+  cpSaisi?: boolean;
 }
 
 /** Conditions du contrat qu'un avenant peut changer */
