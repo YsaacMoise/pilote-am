@@ -76,10 +76,26 @@ export function reposApres(ctxs: Ctx[], d: ISODate): number | undefined {
   return 24 * 60 - f + s;
 }
 
-/** Travail (minutes) de tous les contrats entre `a` et `b` inclus */
+/**
+ * T-116 (A3) : temps de travail de l'AM entre `a` et `b` inclus, tous contrats notés dans l'app. Le temps où elle accueille
+ * plusieurs enfants en même temps ne compte qu'une fois : réunion des plages de travail de chaque jour (calculateur-arvela,
+ * regles/t116-48h.md). Avant la T-116, les plages de chaque contrat s'additionnaient (trois enfants accueillis de 8 h à
+ * 17 h comptaient 27 h pour une journée de 9 h).
+ */
 export function travailEntre(ctxs: Ctx[], a: ISODate, b: ISODate): number {
   let t = 0;
-  for (let d = a; d <= b; d = addDays(d, 1)) for (const x of ctxs) for (const [s, f] of plagesTravail(x, d)) t += Math.max(0, f - s);
+  for (let d = a; d <= b; d = addDays(d, 1)) t += dureeReunion(ctxs.flatMap((x) => plagesTravail(x, d)));
+  return t;
+}
+
+/** Durée (minutes) de la réunion de plages [début, fin] : un temps couvert par plusieurs plages compte une fois. */
+export function dureeReunion(plages: [number, number][]): number {
+  const p = plages.filter(([s, f]) => f > s).sort((x, y) => x[0] - y[0]);
+  let t = 0, cs = -Infinity, cf = -Infinity;
+  for (const [s, f] of p) {
+    if (s > cf) { if (cf > cs) t += cf - cs; cs = s; cf = f; } else if (f > cf) cf = f;
+  }
+  if (cf > cs) t += cf - cs;
   return t;
 }
 
