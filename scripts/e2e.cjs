@@ -125,6 +125,15 @@ async function run(scheme) {
   await p.getByRole('button', { name: 'Voir ma paie du mois' }).click();
   await p.waitForTimeout(1100);
   assert(!(await p.locator('#tm-paie').evaluate((e) => e.inert)) && /€/.test(await p.locator('.summary .total').first().textContent()), 'mois : paie montrée d’un geste');
+  assert(await p.evaluate(() => !!document.activeElement?.closest('#tm-paie')), 'mois : focus sur la paie après le geste');
+  // Contre-relecture T-118 (M2) : même geste quand le téléphone demande moins de mouvement.
+  await p.emulateMedia({ reducedMotion: 'reduce' });
+  await p.goto(base + '#/plus');
+  await p.goto(base + '#/mois');
+  await p.getByRole('button', { name: 'Voir ma paie du mois' }).click();
+  await p.waitForTimeout(150);
+  assert(!(await p.locator('#tm-paie').evaluate((e) => e.inert)) && await p.evaluate(() => !!document.activeElement?.closest('#tm-paie')), 'mois, mouvement réduit : paie montrée tout de suite, focus sur la paie');
+  await p.emulateMedia({ reducedMotion: 'no-preference' });
   await p.locator('.summary .total').first().waitFor();
   assert(!(await p.getByText('Ce mois n’est pas calculé').isVisible()) && !(await p.getByText('Indique ton solde de congés').isVisible()), 'congés de départ : montant du mois affiché, aucune demande de solde');
 

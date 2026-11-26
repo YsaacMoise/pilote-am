@@ -217,7 +217,7 @@ function CongesContrat({ c, t, enfants, leaves }: { c: Contract; t: string; enfa
                     ))}
                   </tbody>
                 </table>
-                <p class="muted small">Cumul : jours acquis du {JJ(debutAcq)} au dernier jour du mois, arrondis au jour supérieur (convention, article 48.1.1.2). Méthode de la Cour de cassation (10 janvier 1980) : mois complets de travail, puis semaines, puis jours, au prorata. Avec une absence dans la période, l’app retient le décompte le plus favorable (par mois, par semaines ou par jours ; code du travail, L3141-4). Mois à venir : si le contrat continue comme prévu. {debutSuivi ? `Le cumul comprend le solde de départ (${c.balances.cpEnCours.toLocaleString('fr-FR')} jours acquis avant l’app, depuis le 1er juin).` : ''} Les jours pour tes enfants à charge s’ajoutent au 31 mai (article 48.1.3.3).</p>
+                <p class="muted small">Cumul : jours acquis du {JJ(debutAcq)} au dernier jour du mois, arrondis au jour supérieur (convention, article 48.1.1.2). Méthode de la Cour de cassation (10 janvier 1980) : mois complets de travail, puis semaines, puis jours, au prorata. Avec une absence dans la période, l’app retient le décompte le plus favorable (par mois, par semaines ou par jours ; code du travail, L3141-4). Mois à venir : si le contrat continue comme prévu. {debutSuivi ? `Le cumul comprend le solde de départ (${c.balances.cpEnCours.toLocaleString('fr-FR')} jours acquis avant l’app, depuis le ${JJ(debutAcq)}).` : ''} Les jours pour tes enfants à charge s’ajoutent au 31 mai (article 48.1.3.3).</p>
               </div>
             </details>
           </div>

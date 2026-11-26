@@ -348,7 +348,10 @@ function TonMois({ c, month, vue, setVue, total, titre, children }: { c: Contrac
   useEffect(() => {
     const cible = focusApres.current === 'total' ? totalRef.current : focusApres.current === 'voir' ? voirRef.current : null;
     focusApres.current = null;
-    cible?.focus();
+    if (!cible) return;
+    // Contre-relecture T-118 (M2) : une image plus tard, la face est visible et peut prendre le focus.
+    cible.focus();
+    if (document.activeElement !== cible) requestAnimationFrame(() => cible.focus());
   }, [vue]);
   return (
     <div class={`ton-mois${vue ? ' retourne' : ''}${reduit ? ' sans-mouvement' : ''}`}>

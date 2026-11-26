@@ -925,7 +925,7 @@ h1.h-card { font-size: 25px; }
 .ton-mois .tm-arriere { transform: rotateY(180deg); }
 .ton-mois.retourne .tm-avant { transform: rotateY(-180deg); }
 .ton-mois.retourne .tm-arriere { transform: rotateY(0deg); }
-.ton-mois.sans-mouvement .tm-face { transition: none; }
+.ton-mois.sans-mouvement .tm-face, .ton-mois.sans-mouvement .tm-face * { transition: none !important; }
 .ton-mois.sans-mouvement .tm-avant, .ton-mois.sans-mouvement .tm-arriere { transform: none; }
 .ton-mois.sans-mouvement:not(.retourne) .tm-arriere, .ton-mois.sans-mouvement.retourne .tm-avant { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) {
