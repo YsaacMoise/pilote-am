@@ -67,7 +67,7 @@ export function buildPilotExport(month: Month = addMonths(monthOf(today()), -1))
   const scrub = (t: string) => {
     let s = t;
     for (const c of state.contracts) {
-      for (const n of [c.child, c.family, state.settings.amName]) {
+      for (const n of [c.child, c.family, state.settings.amName, c.parentEmail, c.parentTel]) {
         if (n && n.trim().length > 1) s = s.replace(new RegExp(n.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '[nom]');
       }
     }

@@ -17,6 +17,8 @@ import { isDemo } from '../db';
 import { Icon } from '../ui/icons';
 import { bornesBande, decaler, finParDefaut, finPourJour, joursBande, libelleBande, peutAvancer, peutReculer } from '../ui/bandeJours';
 import { de } from '../engine/texte';
+// T-122 : contrats en cours de saisie et accès à la fiche de l'enfant.
+import { BrouillonsEnCours } from './Fiche';
 import { hasCloudAccount, useCloud } from '../cloud-state';
 import { aUnFilet, copieAJour, rappelDuJour } from '../rappels';
 import { BoutonCleAcces } from '../ui/CleAcces';
@@ -108,6 +110,7 @@ export function Today() {
       <main>
         {isDemo() && <BienvenueDemo />}
         <AideVideo id="pointer" />
+        {day === t && <BrouillonsEnCours />}
         <div class="daynav">
           <button class="daynav-arrow" aria-label="Semaine précédente" disabled={!peutReculer(finBande, bornes)} onClick={() => semaine(-1)}><Icon name="left" /></button>
           <span class="daynav-range" aria-live="polite">{libelleBande(days)}</span>
@@ -529,7 +532,7 @@ function KidCard({ c, day, onEdit, compact, sautees = [], onNon }: { c: Contract
       <div class="kid-head">
         <Gommette name={c.child} color={c.color} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div class="kid-name">{c.child}</div>
+          <div class="kid-name"><a href={`#/enfant/${c.id}`} aria-label={`Fiche ${de(c.child)}`}>{c.child}</a></div>
           <div class="kid-plan"><PlanLine di={di} /></div>
         </div>
       </div>

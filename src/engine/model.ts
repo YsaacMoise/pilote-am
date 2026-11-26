@@ -240,6 +240,12 @@ export interface Contract {
    * (engine/departements.ts) et restent les seuls champs lus par le calcul. Absent : contrat saisi avant la T-079.
    */
   departement?: string;
+  /**
+   * T-122 (décision 4 du DG) : contact du parent employeur, facultatif. Gardé sur le téléphone et dans le compte en ligne avec
+   * le contrat ; jamais lu par le calcul, jamais dans la mesure d'usage ni sur la page des parents.
+   */
+  parentEmail?: string;
+  parentTel?: string;
   /** Horaires qui changent d'une semaine à l'autre (semaines A et B, planning remis par écrit, CCN art. 98.1.2) */
   planningVariable?: boolean;
   /**
@@ -483,6 +489,11 @@ export interface Settings {
    * confondus. Sert seulement au contrôle du tarif kilométrique (CCN 57 : barème de l'administration et barème fiscal).
    */
   kmAnnee?: Record<string, number>;
+  /**
+   * T-122 : département où l'AM accueille (code, « 75 », « 2A », « 976 »), donné une fois dans son profil. Repris par les
+   * nouveaux contrats (Contract.departement, alsaceMoselle, mayotte) ; jamais lu par le calcul. Absent : comptes d'avant T-122.
+   */
+  departement?: string;
   /** T-121 : date (AAAA-MM-JJ) où l'AM a dit avoir gardé sa clé de secours */
   cleGardee?: string;
   /** T-125 : filets de la clé de secours faits par l'AM (dates AAAA-MM-JJ) : envoyée par e-mail, imprimée, enregistrée en fichier */

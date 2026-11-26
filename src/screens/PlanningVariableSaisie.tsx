@@ -4,7 +4,11 @@ import { useState } from 'preact/hooks';
 import { mondayOf, shortDate, today } from '../engine/dates';
 import { hoursLabel } from '../engine/money';
 import type { Contract, Plage, Planning } from '../engine/model';
-import { formePV, minutesPlanning, rangCycle } from '../engine/planningVariable';
+import { formePV, minutesPlanning as minutesBrutes, rangCycle } from '../engine/planningVariable';
+import { planningComplet } from './contrat-validation';
+
+/** T-122 (relecture D2) : un jour coché arrive sans horaires ; seules les plages complètes comptent dans les chiffres affichés. */
+const minutesPlanning = (pl: Planning) => minutesBrutes(planningComplet(pl));
 import { Choices, DateInput, NumberInput, Seg } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { PlanDay } from './Contrat';
@@ -29,20 +33,14 @@ export function PlanningVariableSaisie({ c, set }: { c: Contract; set: (p: Parti
     <section class="card">
       <fieldset>
         <legend>Tes horaires qui changent</legend>
-        <p class="hint">Ton salaire est mensualisé même si tes horaires changent chaque semaine. Une semaine plus courte ne réduit pas ton salaire, sauf absence non payée.</p>
         <Choices label="Comment changent tes horaires ?" value={forme} onChange={(v) => set({ pvForme: v as 'cycle' | 'remis', ...(v === 'cycle' && !c.cycle?.length ? { cycle: [structuredClone(c.planning), {}] } : {}), ...(v === 'remis' && !c.planningsSemaines ? { planningsSemaines: {} } : {}) })}
           options={[
             { v: 'cycle', l: 'Mes semaines suivent un cycle écrit au contrat (semaine A, semaine B…)' },
-            { v: 'remis', l: 'Les parents me donnent un planning écrit', sub: 'Remis à l’avance, dans le délai prévu au contrat (article 98.1.2)' },
+            { v: 'remis', l: 'Les parents me donnent un planning écrit' },
           ]} />
         {forme === 'cycle' && <CycleSaisie c={c} set={set} />}
         {forme === 'remis' && <PlanningsRemis c={c} set={set} />}
-        <NumberInput label="Heures payées chaque mois, écrites dans ton contrat" hint="Le nombre d’heures mensualisées de ton contrat, par exemple 130 ou 151,67. C’est lui qui fixe ton salaire de chaque mois." value={c.heuresMensualisees} step={0.01} max={300} onChange={(v) => set({ heuresMensualisees: v })} />
-        <p class="hint">Les heures complémentaires se comptent semaine par semaine. Une semaine longue ne compense pas une semaine courte. Au-delà de 45 h dans une semaine, les heures sont majorées d’au moins 10 %.</p>
-        {c.yearType === 'complete'
-          ? <p class="hint">Toute l’année : à la fin du contrat, il n’y a pas de régularisation. Si tu as fait plus d’heures que le salaire lissé n’en paie, la différence n’est pas rattrapée.</p>
-          : <p class="hint">Année incomplète : garde tes plannings et tes heures réelles. Ils servent à la régularisation de chaque date anniversaire et de fin de contrat.</p>}
-        <p class="hint">Congés payés avec des horaires variables : le maintien de salaire se calcule sur tes heures prévues habituelles de la période (Cour de cassation, 9 mai 2019).</p>
+        <NumberInput label="Heures payées chaque mois, écrites dans ton contrat" hint="Par exemple 151,67." value={c.heuresMensualisees} step={0.01} max={300} onChange={(v) => set({ heuresMensualisees: v })} />
       </fieldset>
     </section>
   );
@@ -72,7 +70,7 @@ function CycleSaisie({ c, set }: { c: Contract; set: (p: Partial<Contract>) => v
       <span class="label">Semaine {NOMS_SEMAINES[k]}</span>
       <span class="hint">Laisse tous les jours éteints pour une semaine sans accueil.</span>
       <SemaineSaisie pl={cycle[k]} onChange={(p) => setSemaine(k, p)} />
-      <DateInput label="Un jour d’une semaine A" hint="Une semaine où tu fais les horaires de la semaine A. Le cycle suit ensuite le calendrier, même pendant tes congés et les semaines sans accueil." value={c.cycleAncre ?? ''} onChange={(v) => set({ cycleAncre: v ? mondayOf(v) : undefined })} />
+      <DateInput label="Un jour d’une semaine A" hint="Une semaine où tu fais les horaires de la semaine A." value={c.cycleAncre ?? ''} onChange={(v) => set({ cycleAncre: v ? mondayOf(v) : undefined })} />
       {c.cycleAncre && <p class="hint">Cette semaine (lundi {shortDate(mondayOf(today()))}) est une semaine {NOMS_SEMAINES[rangCycle({ ...c, cycle }, today())]}.</p>}
     </div>
   );
@@ -93,8 +91,8 @@ function PlanningsRemis({ c, set }: { c: Contract; set: (p: Partial<Contract>) =
   const liste = Object.keys(semaines).sort();
   return (
     <div class="stack-sm">
-      <p class="hint">Sans planning, l’app ne peut pas calculer un mois, une absence ni un jour de congé. Saisis chaque semaine, même une semaine de congé ou d’absence : celle que tu aurais faite.</p>
-      <DateInput label="Choisis un jour de la semaine" hint="L’app prend le lundi de cette semaine." value={jour} onChange={setJour} />
+      <p class="hint">Chaque semaine, même de congé ou d’absence : celle que tu aurais faite.</p>
+      <DateInput label="Choisis un jour de la semaine" value={jour} onChange={setJour} />
       {lundi && (
         <>
           <span class="label">Semaine du lundi {shortDate(lundi)}</span>

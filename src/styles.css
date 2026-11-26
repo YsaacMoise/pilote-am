@@ -987,6 +987,13 @@ h1.h-card { font-size: 25px; }
 .summary-info svg { flex: none; margin-top: 2px; }
 .summary-info a { color: inherit; text-decoration: underline; }
 
+/* T-122 : prénom de l'enfant vers sa fiche (Aujourd'hui), zone à toucher d'au moins 44 px (relecture m6) */
+.kid-name a { color: inherit; text-decoration: none; display: inline-flex; align-items: center; min-height: var(--tap); min-width: var(--tap); }
+/* T-122 (relecture M1) : récapitulatif, les valeurs longues (e-mail, téléphone, département) passent à la ligne */
+.kv-recap { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); }
+.kv-recap dd { min-width: 0; overflow-wrap: anywhere; }
+/* T-122 (relecture m9) : sans barre d'onglets (assistant d'ajout), les messages s'affichent en haut, pas sur « Continuer » */
+.app.sans-onglets ~ .toast-wrap { bottom: auto; top: calc(var(--safe-t) + var(--tap) + 24px); }
 /* T-125 : feuille de la clé de secours, seule imprimée (écran Compte, « Imprimer ma clé ») */
 .feuille-cle { display: none; }
 @media print {

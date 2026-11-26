@@ -1,10 +1,12 @@
 // Parcours automatisé du lien parent, avec le faux service en ligne (scripts/fake-cloud.mjs).
 // L'AM crée un lien, les parents l'ouvrent sur un autre appareil avec le code, voient le carnet
 // se remplir en direct, puis l'AM coupe le lien. Aucun compte réel n'est créé.
+// T-122 : SCHEME=dark pour le parcours en sombre (clair par défaut).
 // Usage :
 //   VITE_FAKE_CLOUD=http://localhost:4180 npm run build
 //   node scripts/fake-cloud.mjs 4180 & node scripts/serve.mjs 4173 & node scripts/e2e-parent.cjs
 const { chromium } = require('playwright');
+const Assistant = require('./e2e-assistant.cjs');
 const path = require('path');
 const fs = require('fs');
 const base = process.env.BASE || 'http://localhost:4173/pilote-am/';
@@ -18,7 +20,9 @@ function assert(cond, msg) {
 }
 
 async function phone(b, name) {
-  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: 'fr-FR', timezoneId: 'Europe/Paris', hasTouch: true, isMobile: true, serviceWorkers: 'block' });
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: process.env.SCHEME === 'dark' ? 'dark' : 'light', locale: 'fr-FR', timezoneId: 'Europe/Paris', hasTouch: true, isMobile: true, serviceWorkers: 'block' });
+  // T-122 : le thème suit le parcours (l'app est en version jour par défaut ; « sombre » = version nuit choisie).
+  if (process.env.SCHEME === 'dark') await ctx.addInitScript(() => { try { localStorage.setItem('pam-theme', 'dark'); } catch { /* rien */ } });
   await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(base).origin });
   // Un mercredi d'accueil ordinaire, en fin de journée (le carnet a du contenu, le jour a un statut)
   if (process.env.HEURE !== 'reelle') await ctx.clock.setFixedTime(new Date('2026-11-04T16:20:00+01:00'));
@@ -51,17 +55,10 @@ async function axe(p, label) {
   await a.getByLabel('Adresse e-mail').fill('sonia@exemple.fr');
   await a.getByLabel('Mot de passe').fill('Motdepasse-solide');
   await a.getByRole('button', { name: 'Créer mon compte' }).click();
-  await a.getByRole('button', { name: 'Continuer ici pour l’instant' }).click();
-  await a.getByLabel('Ton prénom').fill('Sonia');
-  await a.getByRole('button', { name: 'Ajouter un enfant que tu accueilles' }).click();
-  await a.getByLabel('Prénom de l’enfant').fill('Lou');
-  await a.getByLabel('Nom de la famille').fill('Petit');
-  await a.getByLabel('Taux horaire net').fill('3,50');
-  await a.getByRole('radio', { name: /^Les parents/ }).click();
-  await a.getByRole('button', { name: /^Enregistrer/ }).first().click();
-  await a.waitForTimeout(500);
-  await a.goto(base + '#/plus');
-  await a.locator('a.li', { hasText: 'Lou' }).first().click();
+  // T-122 : profil « Toi », puis l'assistant d'ajout ; le lien des parents est dans la fiche de l'enfant.
+  await Assistant.profil(a);
+  await Assistant.ajouterEnfant(a, { prenom: 'Lou', famille: 'Petit', debut: '2026-11-02' });
+  await a.getByRole('link', { name: /^Créer le lien des parents/ }).click();
   await a.getByRole('heading', { name: 'Lien pour les parents' }).waitFor();
   await a.getByRole('button', { name: 'Créer le lien' }).click();
   await a.locator('.share-code').waitFor();
@@ -133,6 +130,8 @@ async function axe(p, label) {
   console.log('\n== AM : couper le lien ==');
   await a.goto(base + '#/plus');
   await a.locator('a.li', { hasText: 'Lou' }).first().click();
+  // T-122 : le lien est dans la fiche de l'enfant, « Les parents et leur lien ».
+  await a.getByRole('link', { name: /^Les parents et leur lien/ }).click();
   await a.getByRole('button', { name: 'Couper ce lien' }).click();
   await a.getByRole('button', { name: 'Couper le lien' }).click();
   await a.getByRole('button', { name: 'Créer le lien' }).waitFor();

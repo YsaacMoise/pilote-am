@@ -158,6 +158,17 @@ export function Toaster() {
     });
     return () => { off(); clearTimeout(timer); };
   }, []);
+  // T-122 (relecture n2) : un message avec action (mesure d'usage) ne couvre pas l'assistant d'ajout : il revient à la sortie.
+  useEffect(() => {
+    let attente: ToastMsg | null = null;
+    const assistant = () => /^#\/(ajout|contrat\/nouveau)\b/.test(location.hash);
+    const f = () => {
+      if (assistant()) setT((cur) => { if (cur?.action) { attente = cur; return null; } return cur; });
+      else if (attente) { const m = attente; attente = null; toast(m.text, m.undo, m.tone, m.action); }
+    };
+    window.addEventListener('hashchange', f);
+    return () => window.removeEventListener('hashchange', f);
+  }, []);
   return (
     <div class="toast-wrap" aria-live="polite" role="status">
       {t && (
@@ -220,7 +231,7 @@ export function TextInput(props: { label: string; value: string; onChange: (v: s
 }
 
 /** Saisie d'un montant en euros, stocké en centimes */
-export function EuroInput({ label, cents, onChange, hint, allowEmpty }: { label: string; cents: number | undefined; onChange: (c: number | undefined) => void; hint?: string; allowEmpty?: boolean }) {
+export function EuroInput({ label, cents, onChange, hint, allowEmpty, error }: { label: string; cents: number | undefined; onChange: (c: number | undefined) => void; hint?: string; allowEmpty?: boolean; error?: string }) {
   const id = useId();
   const [txt, setTxt] = useState(cents == null ? '' : centsToInput(cents));
   const [err, setErr] = useState('');
@@ -229,11 +240,11 @@ export function EuroInput({ label, cents, onChange, hint, allowEmpty }: { label:
     if (cents == null ? txt !== '' && !allowEmpty : cur !== cents) setTxt(cents == null ? '' : centsToInput(cents));
   }, [cents]);
   return (
-    <Field label={label} hint={hint} error={err} id={id} pendantFrappe>
+    <Field label={label} hint={hint} error={err || error} id={id} pendantFrappe>
       <div class="input-euro">
         <input
-          id={id} class="input num" inputMode="decimal" value={txt} aria-invalid={err ? 'true' : undefined}
-          aria-describedby={[hint && `${id}-h`, err && `${id}-e`].filter(Boolean).join(' ') || undefined}
+          id={id} class="input num" inputMode="decimal" value={txt} aria-invalid={err || error ? 'true' : undefined}
+          aria-describedby={[hint && `${id}-h`, (err || error) && `${id}-e`].filter(Boolean).join(' ') || undefined}
           onInput={(e) => {
             const v = (e.target as HTMLInputElement).value;
             setTxt(v);
@@ -248,15 +259,15 @@ export function EuroInput({ label, cents, onChange, hint, allowEmpty }: { label:
   );
 }
 
-export function NumberInput({ label, value, onChange, hint, min = 0, max, step = 1 }: { label: string; value: number | undefined; onChange: (v: number | undefined) => void; hint?: string; min?: number; max?: number; step?: number }) {
+export function NumberInput({ label, value, onChange, hint, min = 0, max, step = 1, error }: { label: string; value: number | undefined; onChange: (v: number | undefined) => void; hint?: string; min?: number; max?: number; step?: number; error?: string }) {
   const id = useId();
   const [txt, setTxt] = useState(value == null ? '' : String(value).replace('.', ','));
   const [err, setErr] = useState('');
   return (
-    <Field label={label} hint={hint} error={err} id={id} pendantFrappe>
+    <Field label={label} hint={hint} error={err || error} id={id} pendantFrappe>
       <input
-        id={id} class="input num" inputMode={step < 1 ? 'decimal' : 'numeric'} value={txt} aria-invalid={err ? 'true' : undefined}
-        aria-describedby={[hint && `${id}-h`, err && `${id}-e`].filter(Boolean).join(' ') || undefined}
+        id={id} class="input num" inputMode={step < 1 ? 'decimal' : 'numeric'} value={txt} aria-invalid={err || error ? 'true' : undefined}
+        aria-describedby={[hint && `${id}-h`, (err || error) && `${id}-e`].filter(Boolean).join(' ') || undefined}
         onInput={(e) => {
           const v = (e.target as HTMLInputElement).value;
           setTxt(v);
@@ -270,11 +281,12 @@ export function NumberInput({ label, value, onChange, hint, min = 0, max, step =
   );
 }
 
-export function DateInput({ label, value, onChange, hint, min, max }: { label: string; value: string; onChange: (v: string) => void; hint?: string; min?: string; max?: string }) {
+export function DateInput({ label, value, onChange, hint, min, max, error }: { label: string; value: string; onChange: (v: string) => void; hint?: string; min?: string; max?: string; error?: string }) {
   const id = useId();
   return (
-    <Field label={label} hint={hint} id={id}>
-      <input id={id} class="input" type="date" value={value} min={min} max={max} onInput={(e) => onChange((e.target as HTMLInputElement).value)} />
+    <Field label={label} hint={hint} id={id} error={error}>
+      <input id={id} class="input" type="date" value={value} min={min} max={max} aria-invalid={error ? 'true' : undefined}
+        aria-describedby={[hint && `${id}-h`, error && `${id}-e`].filter(Boolean).join(' ') || undefined} onInput={(e) => onChange((e.target as HTMLInputElement).value)} />
     </Field>
   );
 }
@@ -293,12 +305,13 @@ export function Seg<T extends string>({ label, value, options, onChange }: { lab
   );
 }
 
-export function Choices<T extends string>({ label, value, options, onChange }: { label: string; value: T | undefined; options: { v: T; l: string; sub?: string }[]; onChange: (v: T) => void }) {
+export function Choices<T extends string>({ label, value, options, onChange, error }: { label: string; value: T | undefined; options: { v: T; l: string; sub?: string }[]; onChange: (v: T) => void; error?: string }) {
   const id = useId();
+  useErreurAffichee('saisie', !!error);
   return (
     <div class="field">
       <span class="label" id={id}>{label}</span>
-      <div class="choices" role="radiogroup" aria-labelledby={id}>
+      <div class="choices" role="radiogroup" aria-labelledby={id} aria-invalid={error ? 'true' : undefined} aria-describedby={error ? `${id}-e` : undefined}>
         {options.map((o) => (
           <button type="button" class="choice" role="radio" aria-checked={value === o.v} onClick={() => onChange(o.v)}>
             <span class="c-radio" aria-hidden="true" />
@@ -306,6 +319,7 @@ export function Choices<T extends string>({ label, value, options, onChange }: {
           </button>
         ))}
       </div>
+      {error && <span class="err" id={`${id}-e`}>{error}</span>}
     </div>
   );
 }

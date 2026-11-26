@@ -26,21 +26,21 @@ export const libelleEntretien = (t: Valeurs): string => {
   return t.entretienMode === undefined && !t.entretienJour && !t.entretienHeure ? libelleMinimumEntretien() : 'mode non choisi';
 };
 
-const AIDE_VIDE = 'Laisse vide si le contrat ne fixe pas de montant : l’app applique le minimum légal.';
+// T-122 (textes au strict minimum) : le minimum appliqué, avec ses chiffres, en une ligne.
+const aideVide = () => `Vide : ${libelleMinimumEntretien()}.`;
 
-export function EntretienSaisie({ t, set, hint, passe }: { t: Valeurs; set: (p: Partial<Valeurs>) => void; hint?: string; passe?: boolean }) {
+export function EntretienSaisie({ t, set, hint, passe, error }: { t: Valeurs; set: (p: Partial<Valeurs>) => void; hint?: string; passe?: boolean; error?: string }) {
   const mode = modeEntretien(t);
   return (
     <>
       <Choices label="Comment ton contrat fixe-t-il l’indemnité d’entretien ?" value={mode}
         options={[
-          { v: 'heure', l: 'Par heure d’accueil', sub: 'Le montant suit la durée réelle de chaque journée, comme le prévoit la convention (article 114.1).' },
-          { v: 'jour', l: 'Par jour d’accueil', sub: 'Un montant fixe par journée, quelle que soit sa durée. L’app verse au moins le minimum de la convention pour la durée du jour (article 114.1).' },
+          { v: 'heure', l: 'Par heure d’accueil' },
+          { v: 'jour', l: 'Par jour d’accueil' },
         ]}
-        onChange={(v) => set({ entretienMode: v, entretienJour: 0, entretienHeure: 0 })} />
-      {mode === 'heure' && <EuroInput key="h" label="Montant par heure d’accueil" hint={hint ?? AIDE_VIDE} cents={t.entretienHeure || undefined} allowEmpty onChange={(v) => set({ entretienHeure: v ?? 0, entretienJour: 0 })} />}
-      {mode === 'jour' && <EuroInput key="j" label="Montant par jour d’accueil" hint={hint ?? AIDE_VIDE} cents={t.entretienJour || undefined} allowEmpty onChange={(v) => set({ entretienJour: v ?? 0, entretienHeure: 0 })} />}
-      {mode && !(mode === 'heure' ? t.entretienHeure : t.entretienJour) && <p class="hint">Montant laissé vide : l’app applique le {libelleMinimumEntretien()}.</p>}
+        onChange={(v) => set({ entretienMode: v, entretienJour: 0, entretienHeure: 0 })} error={error} />
+      {mode === 'heure' && <EuroInput key="h" label="Montant par heure d’accueil" hint={hint ?? aideVide()} cents={t.entretienHeure || undefined} allowEmpty onChange={(v) => set({ entretienHeure: v ?? 0, entretienJour: 0 })} />}
+      {mode === 'jour' && <EuroInput key="j" label="Montant par jour d’accueil" hint={hint ?? aideVide()} cents={t.entretienJour || undefined} allowEmpty onChange={(v) => set({ entretienJour: v ?? 0, entretienHeure: 0 })} />}
       {passe && <Banner tone="warn">Ce changement touche des mois déjà passés : leur indemnité d’entretien sera recalculée. {MESSAGE_MOIS_DEJA_DECLARE}</Banner>}
     </>
   );

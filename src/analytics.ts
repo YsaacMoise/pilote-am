@@ -123,7 +123,7 @@ let cacheTable: Array<[RegExp, string]> = [];
 
 /** Table de remplacement construite à partir des contrats du moment (mise en cache) */
 function table(): Array<[RegExp, string]> {
-  const key = JSON.stringify([state.contracts.map((c) => [c.child, c.family, c.createdAt]), state.settings?.amName]);
+  const key = JSON.stringify([state.contracts.map((c) => [c.child, c.family, c.createdAt, c.parentTel]), state.settings?.amName]);
   if (key === cacheKey) return cacheTable;
   const out: Array<[RegExp, string]> = [];
   const cs = [...state.contracts].sort((a, b) => a.createdAt - b.createdAt);
@@ -132,6 +132,9 @@ function table(): Array<[RegExp, string]> {
     if (c.child?.trim()) out.push([new RegExp(`(?<!\\p{L})${esc(c.child.trim())}(?!\\p{L})`, 'giu'), `Enfant ${i + 1}`]);
     const f = c.family?.trim();
     if (f && !fams.includes(f.toLowerCase())) fams.push(f.toLowerCase());
+    // T-122 : téléphone du parent employeur, jamais envoyé (l'e-mail est masqué plus bas).
+    const tel = c.parentTel?.trim();
+    if (tel && tel.length > 5) out.push([new RegExp(esc(tel), 'g'), 'téléphone masqué']);
   });
   fams.forEach((f, i) => out.push([new RegExp(`(?<!\\p{L})${esc(f)}(?!\\p{L})`, 'giu'), `Famille ${i + 1}`]));
   const am = state.settings?.amName?.trim();
@@ -264,6 +267,12 @@ function page() {
 const INFO = 'pam-mesure-info';
 /** Une seule fois par téléphone : dire que la mesure est active et comment la couper. */
 export function informerUneFois() {
+  // T-122 (relecture n2) : jamais pendant l'ajout d'un enfant ; le message attend la sortie de l'assistant.
+  if (/^#\/(ajout|contrat\/nouveau)\b/.test(location.hash)) {
+    const apres = () => { if (!/^#\/(ajout|contrat\/nouveau)\b/.test(location.hash)) { window.removeEventListener('hashchange', apres); informerUneFois(); } };
+    window.addEventListener('hashchange', apres);
+    return;
+  }
   try {
     if (!utilisatrice() || !mesureActive() || localStorage.getItem(INFO) === '1') return;
     localStorage.setItem(INFO, '1');

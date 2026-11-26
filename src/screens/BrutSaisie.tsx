@@ -23,13 +23,13 @@ export function BrutSaisie({ net, brut, date, region, set, ecrit = 'ton contrat'
   const avant2024 = !!debut && debut < BRUT_CALCULE_DEPUIS && region !== 'mayotte';
   return (
     <div class="brut-saisie">
-      {ferme && calcule !== undefined && <p class="brut-calcule">Soit <b>{euros(calcule)}</b> brut de l’heure, calculé par l’app avec les taux de l’Urssaf.</p>}
+      {ferme && calcule !== undefined && <p class="brut-calcule">Soit <b>{euros(calcule)}</b> brut de l’heure.</p>}
       {ferme && avant2024 && !brut && <p class="hint">Pour les mois d’avant 2024, l’app n’a pas les taux des cotisations : pour les calculer en brut, écris le brut de {ecrit}.</p>}
       {ferme
         ? <button type="button" class="btn btn-ghost brut-lien" onClick={() => setOuvert(true)}>{ecrit === 'ton contrat' ? 'Mon contrat indique un autre brut' : 'L’avenant indique un autre brut'}</button>
         : (
           <>
-            <EuroInput label="Taux horaire brut" hint={sansCalcul ? `À Mayotte, l’app ne peut pas calculer le brut au centime près : écris celui de ${ecrit}, à côté du net.` : `Celui écrit dans ${ecrit}, à côté du net. Il remplace le brut calculé${calcule !== undefined ? ` (${euros(calcule)})` : ''}.`} cents={brut || undefined} allowEmpty onChange={(v) => set(v ?? 0)} />
+            <EuroInput label="Taux horaire brut" hint={sansCalcul ? `À Mayotte, l’app ne peut pas calculer le brut au centime près : écris celui de ${ecrit}, à côté du net.` : `Remplace le brut calculé${calcule !== undefined ? ` (${euros(calcule)})` : ''}.`} cents={brut || undefined} allowEmpty onChange={(v) => set(v ?? 0)} />
             {brut != null && brut > 0 && brut < net && <Banner tone="warn">Le brut ne peut pas être plus bas que le net. Vérifie {ecrit}.</Banner>}
             {!sansCalcul && calcule !== undefined && <button type="button" class="btn btn-ghost brut-lien" onClick={() => { set(0); setOuvert(false); }}>Revenir au brut calculé</button>}
           </>
