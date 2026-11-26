@@ -160,12 +160,21 @@ export function liensApresSuppression(id: string, leaves: AmLeave[]): AmLeave[] 
 
 /**
  * T-109 (contrôles qualité de la n° 67 ; décision de la direction du 26/11/2026 : rien n'est enregistré sur la grossesse à la
- * démission ; le congé maternité et l'accident du travail sont, eux, enregistrés et envoyés en ligne (décision du DG du 22/11/2026, base RGPD 9.2.b, déclarés au registre et dans l'AIPD)) : forme enregistrée de la
- * rupture. Les anciens champs `grossesse` et `sommeDuePreavis` (branche jamais publiée ; le second codait la réponse sur la
+ * démission) : forme enregistrée de la rupture. Les anciens champs `grossesse` et `sommeDuePreavis` (branche jamais publiée ; le second codait la réponse sur la
  * grossesse) sont retirés, sans rien garder à leur place. Rend le même objet si rien n'est à retirer.
  */
 export function ruptureSansSante<R extends object>(r: R): R {
   if (!('grossesse' in r) && !('sommeDuePreavis' in r)) return r;
   const { grossesse: _g, sommeDuePreavis: _s, ...reste } = r as R & { grossesse?: unknown; sommeDuePreavis?: unknown };
   return reste as R;
+}
+
+/**
+ * T-109 (décision du DG du 26/11/2026) : forme en ligne d'une absence de l'AM. L'examen médical de grossesse ne part jamais en
+ * ligne sous son type : il part en « absence payée » (`remuneree`), de même forme que les autres (identifiant, type, dates), sans
+ * motif ni champ propre. Le motif reste sur le téléphone de l'AM. Rend le même objet pour toute autre absence.
+ */
+export function absenceEnLigne(l: AmLeave): AmLeave {
+  if (l.type !== 'examen_grossesse') return l;
+  return { id: l.id, type: 'remuneree', from: l.from, to: l.to };
 }

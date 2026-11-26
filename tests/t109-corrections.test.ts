@@ -69,7 +69,7 @@ describe('C5 : formation obligatoire et examen médical de grossesse, absences p
   const jour = (type: AmLeave['type']): AmLeave[] => [{ id: 'l', type, from: '2026-10-12', to: '2026-10-12' }];
   it('sans retenue, contrairement au congé sans solde', () => {
     expect(mois(ct(), [], jour('sans_solde')).retenue).toBe(3939);
-    for (const t of ['formation', 'examen_grossesse'] as const) {
+    for (const t of ['formation', 'examen_grossesse', 'remuneree'] as const) {
       const r = mois(ct(), [], jour(t));
       expect(r.retenue, t).toBe(0);
       expect(r.net, t).toBe(86667);
@@ -298,5 +298,38 @@ describe('Troisième contrôle de la n° 67 : « sept jours ouvrés » d’avant
   it('contrat A : 7 jours payés, 10 jours retenus en janvier 2022 ; contrat B : aucun jour retenu', () => {
     expect(monthBase(makeCtx(a, [], [l], '2022-12-31'), '2022-01').deductedDays).toBe(10);
     expect(monthBase(makeCtx(b, [], [l], '2022-12-31'), '2022-01').deductedDays).toBe(0);
+  });
+});
+
+import { absenceEnLigne } from '../src/engine/absences';
+import { applyRemote, planMerge, stable } from '../src/sync/plan';
+
+describe('Décision du DG du 26/11/2026 : l’examen médical de grossesse ne part jamais en ligne', () => {
+  const examen: AmLeave = { id: 'g', type: 'examen_grossesse', from: '2026-10-12', to: '2026-10-12' };
+  const neutre: AmLeave = { id: 'g', type: 'remuneree', from: '2026-10-12', to: '2026-10-12' };
+  const doc = (v: unknown) => ({ s: 'leaves' as const, k: 'g', v: JSON.stringify(v), t: 1 });
+  it('en ligne : une « absence payée » sans motif, de même forme que les autres absences (identifiant, type, dates)', () => {
+    expect(forRemote('leaves', 'g', examen)).toEqual(neutre);
+    expect(absenceEnLigne({ id: 'f', type: 'formation', from: '2026-10-12', to: '2026-10-12' })).toEqual({ id: 'f', type: 'formation', from: '2026-10-12', to: '2026-10-12' });
+    expect(JSON.stringify(forRemote('leaves', 'g', examen))).not.toMatch(/examen|grossesse/);
+  });
+  it('paie inchangée : l’absence payée en ligne donne le même mois que l’examen sur le téléphone', () => {
+    const jours = MAR_VEN.map((d) => pres(d, '19:00'));
+    expect(stable(mois(ct(), jours, [neutre]))).toBe(stable(mois(ct(), jours, [examen])));
+  });
+  it('réunion avec le compte : le téléphone garde son motif, sans conflit ; une ancienne version en ligne est corrigée', () => {
+    const p1 = planMerge([{ s: 'leaves', k: 'g', value: examen }], [doc(neutre)]);
+    expect(p1).toMatchObject({ toLocal: [], toRemote: [], conflicts: 0 });
+    const p2 = planMerge([{ s: 'leaves', k: 'g', value: examen }], [doc(examen)]);
+    expect(p2.toLocal).toEqual([]);
+    expect(p2.toRemote.map((r) => forRemote(r.s, r.k, r.value))).toEqual([neutre]);
+    // Un autre appareil qui lit une ancienne version en ligne : il reçoit la forme neutre, et le compte est corrigé.
+    const p3 = planMerge([], [doc(examen)]);
+    expect(p3.toLocal.map((r) => r.value)).toEqual([neutre]);
+    expect(p3.toRemote.map((r) => r.value)).toEqual([neutre]);
+  });
+  it('en direct : l’écho de son propre envoi ne remplace pas le motif ; une ancienne version est lue neutre', () => {
+    expect(applyRemote(examen, doc(neutre))).toEqual({ op: 'none' });
+    expect(applyRemote(undefined, doc(examen))).toEqual({ op: 'put', value: neutre });
   });
 });

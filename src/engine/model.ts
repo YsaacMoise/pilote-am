@@ -323,8 +323,11 @@ export type ChildAbs = 'malade_certif' | 'malade' | 'parents' | 'sans_solde_enfa
  * « constitue un temps de travail effectif » (C. trav. L6321-2, applicable par CASF L423-2, 17°).
  * `examen_grossesse` : examens médicaux obligatoires de la grossesse (C. trav. L1225-16, applicable par CASF L423-2) : « Ces
  * absences n'entraînent aucune diminution de la rémunération ».
+ * `remuneree` (décision du DG du 26/11/2026) : absence payée par les parents, sans motif. C'est la seule forme qui part en
+ * ligne pour un examen de grossesse (le motif reste sur le téléphone de l'AM) ; l'AM peut aussi la choisir pour toute autre
+ * absence que les parents lui paient. Même calcul que l'examen : payée, hors du seuil des heures, comptée pour les congés.
  */
-export type AmAbsPayee = 'formation' | 'examen_grossesse';
+export type AmAbsPayee = 'formation' | 'examen_grossesse' | 'remuneree';
 export type AmAbs = 'cp' | 'am_malade' | 'am_enfant_malade' | 'evenement' | 'sans_solde' | 'non_gere' | AmAbsPayee | AmSuspension;
 /**
  * T-104 (regles/t104-absences-protegees.md ; décision du DG du 22/11/2026 : la raison est enregistrée pour ces absences) :
@@ -511,6 +514,7 @@ export const AM_ABS_LABEL: Record<AmAbs, string> = {
   non_gere: 'Absence à préciser',
   formation: 'Formation obligatoire',
   examen_grossesse: 'Examen médical de grossesse',
+  remuneree: 'Absence payée',
   maternite: 'Congé maternité',
   paternite: 'Congé paternité et d’accueil de l’enfant',
   naissance_supp: 'Congé supplémentaire de naissance',

@@ -5,7 +5,7 @@
 // Une suppression laisse une « pierre tombale » (v = null) pour que les autres appareils l'apprennent.
 
 import { SYNCED, type SyncedStore } from '../db';
-import { normaliserAbsence, ruptureSansSante, type AbsenceLue } from '../engine/absences';
+import { absenceEnLigne, normaliserAbsence, ruptureSansSante, type AbsenceLue } from '../engine/absences';
 
 export interface RemoteDoc {
   s: SyncedStore;
@@ -49,9 +49,8 @@ const DEVICE_SETTINGS = ['lastAutoCopy', 'persisted', 'lastBackup'];
  */
 export function forRemote(s: string, k: string, value: unknown): unknown {
   // Décision du DG du 21/11/2026 : jamais de nature d'événement ni de cas non géré envoyé en ligne (absences.ts).
-  if (s === 'leaves' && value && typeof value === 'object') return normaliserAbsence(value as AbsenceLue);
-  // T-109 (décision de la direction du 26/11/2026) : la rupture part sans rien sur la grossesse. Le congé maternité et l'accident
-  // du travail, eux, sont enregistrés et envoyés en ligne (décision du DG du 22/11/2026, RGPD 9.2.b ; registre et AIPD).
+  if (s === 'leaves' && value && typeof value === 'object') return absenceEnLigne(normaliserAbsence(value as AbsenceLue));
+  // T-109 (décision de la direction du 26/11/2026) : la rupture part sans rien sur la grossesse.
   if (s === 'contracts' && value && typeof value === 'object' && (value as { rupture?: object }).rupture) {
     const v = value as { rupture: Record<string, unknown> };
     const r = ruptureSansSante(v.rupture);
@@ -125,15 +124,30 @@ export function planMerge(local: LocalRecord[], remote: RemoteDoc[], opts: { mod
       continue;
     }
     const rv: unknown = JSON.parse(d.v);
-    if (stable(rv) === stable(r.value)) continue;
+    // T-109 (décision du DG du 26/11/2026) : la forme en ligne d'un enregistrement (forRemote) peut être plus pauvre que le
+    // téléphone (examen de grossesse envoyé en « absence payée ») : pas de conflit, le téléphone garde son motif. Une version en
+    // ligne qui contient encore une donnée qui ne doit pas y être est corrigée en ligne, sans rien perdre sur le téléphone.
+    const rvSain = forRemote(r.s, r.k, rv);
+    const aCorriger = stable(rvSain) !== stable(rv);
+    if (stable(rvSain) === stable(r.value) || stable(rvSain) === stable(forRemote(r.s, r.k, r.value))) {
+      if (aCorriger) plan.toRemote.push(r);
+      continue;
+    }
     plan.conflicts++;
     if (localFirst) plan.toRemote.push(r);
-    else plan.toLocal.push({ s: r.s, k: r.k, value: rv });
+    else {
+      plan.toLocal.push({ s: r.s, k: r.k, value: rvSain });
+      if (aCorriger) plan.toRemote.push({ s: r.s, k: r.k, value: rvSain });
+    }
   }
   for (const [id, d] of rem) {
     if (seen.has(id) || d.v === null) continue;
-    if (mode === 'phone') plan.deleteRemote.push({ s: d.s, k: d.k });
-    else plan.toLocal.push({ s: d.s, k: d.k, value: JSON.parse(d.v) });
+    if (mode === 'phone') { plan.deleteRemote.push({ s: d.s, k: d.k }); continue; }
+    // T-109 : une donnée qui ne doit pas être en ligne (ancien examen de grossesse) est retirée au chargement, puis corrigée en ligne.
+    const rv: unknown = JSON.parse(d.v);
+    const rvSain = forRemote(d.s, d.k, rv);
+    plan.toLocal.push({ s: d.s, k: d.k, value: rvSain });
+    if (stable(rvSain) !== stable(rv)) plan.toRemote.push({ s: d.s, k: d.k, value: rvSain });
   }
   return plan;
 }
@@ -157,7 +171,11 @@ export function applyRemote(localValue: unknown, d: RemoteDoc): { op: 'put'; val
     const merged = { k: 'settings', v: mergeSettings((localValue as { v?: Record<string, unknown> } | undefined)?.v, (rv as { v?: Record<string, unknown> }).v) };
     return stable(merged) === stable(localValue) ? { op: 'none' } : { op: 'put', value: merged };
   }
-  return stable(rv) === stable(localValue) ? { op: 'none' } : { op: 'put', value: rv };
+  // T-109 : version en ligne lue sous sa forme permise (ancien examen de grossesse → « absence payée ») ; le téléphone qui a la
+  // forme complète du même enregistrement la garde.
+  const sain = forRemote(d.s, d.k, rv);
+  if (localValue !== undefined && stable(sain) === stable(forRemote(d.s, d.k, localValue))) return { op: 'none' };
+  return stable(sain) === stable(localValue) ? { op: 'none' } : { op: 'put', value: sain };
 }
 
 /** Marge de recouvrement pour reprendre l'écoute : on relit la dernière minute, sans risque (l'application est idempotente). */
