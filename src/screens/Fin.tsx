@@ -272,6 +272,7 @@ function FinCddEcran({ c }: { c: Contract }) {
           {demanderTerme && <DateInput label="Date à laquelle la personne remplacée devait revenir" hint="Ton CDD de remplacement aurait fini ce jour-là." value={termeSinistre ?? ''} min={jour} onChange={(v) => setTermeSinistre(v || undefined)} />}
         </fieldset>
       </section>
+      {soldesDepartAConfirmer(ctxFor(c).c) && <section class="card stack" aria-labelledby="cdd-depart"><h2 id="cdd-depart">Tes congés au début du suivi</h2><CongesDepart c={c} /></section>}
       {f.nonGere ? (
         <section class="card stack" aria-labelledby="fincdd-ng" aria-live="polite">
           <h2 id="fincdd-ng">Fin du CDD non calculée</h2>
