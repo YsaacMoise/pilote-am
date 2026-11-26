@@ -141,7 +141,7 @@ export function Compte() {
               {(() => {
                 // T-121 : données de santé d'une ancienne version restées en ligne faute de copie identique sur ce téléphone.
                 const r = etatRetraitSante();
-                return r && r.gardes > 0 && <p class="hint">{r.gardes === 1 ? 'Une donnée de santé copiée par une ancienne version reste' : `${r.gardes} données de santé copiées par une ancienne version restent`} dans ton compte : ce téléphone n’en a pas la même copie, donc rien n’est retiré sans elle. Ouvre l’app sur l’appareil où tu les as notées : il les retirera.</p>;
+                return r && r.gardes > 0 && <p class="hint">{r.gardes === 1 ? 'Une donnée de santé copiée par une ancienne version reste' : `${r.gardes} données de santé copiées par une ancienne version restent`} dans ton compte : ce téléphone n’en a pas la même copie, donc rien n’est retiré sans elle. Ouvre l’app sur l’appareil où tu les as notées, mise à jour : il les retirera.</p>;
               })()}
             </section>
             {c.verified === false && <ConfirmAddress email={c.email!} />}

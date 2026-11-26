@@ -243,9 +243,15 @@ function envoyer(b: Backend, uid: string, docs: Array<{ s: db.SyncedStore; k: st
  * santé arrive du compte (`force` : envoyée par un appareil resté sur une ancienne version, relecture indépendante M1).
  */
 let retraitEnCours: Promise<void> | null = null;
+/** Retrait forcé demandé pendant un passage en cours : relancé juste après (contre-relecture R2). */
+let retraitARelancer = false;
 
 function retirerSante(u: CloudUser, force = false): Promise<void> {
-  retraitEnCours ??= (async () => {
+  if (retraitEnCours) {
+    if (force) retraitARelancer = true;
+    return retraitEnCours;
+  }
+  retraitEnCours = (async () => {
     const b = be;
     if (!b) return;
     const avant = etatRetraitSante();
@@ -268,7 +274,10 @@ function retirerSante(u: CloudUser, force = false): Promise<void> {
     const apres = envoye ? await lire() : null;
     const verifie = !!apres && apres.retirer.length === 0 && apres.corriger.length === 0;
     lsSet(LS.sante, JSON.stringify({ uid: u.uid, jour, retires: p.retirer.length + p.corriger.length, gardes: (apres ?? p).gardes.length, verifie } satisfies EtatRetraitSante));
-  })().catch((e) => console.warn('retrait santé', e)).finally(() => { retraitEnCours = null; });
+  })().catch((e) => console.warn('retrait santé', e)).finally(() => {
+    retraitEnCours = null;
+    if (retraitARelancer) { retraitARelancer = false; void retirerSante(u, true); }
+  });
   return retraitEnCours;
 }
 
