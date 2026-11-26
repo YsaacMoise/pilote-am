@@ -68,8 +68,9 @@ export async function load(): Promise<void> {
   ]);
   const s = kv.find((x) => x.k === 'settings');
   state.settings = { ...DEFAULT_SETTINGS, ...((s?.v as Settings) ?? {}) };
-  // T-109 (règle d'Arvela : aucune donnée de santé hébergée) : une rupture gardée avec l'ancien champ « grossesse » est ramenée
-  // au résultat neutre, puis réécrite (téléphone et compte en ligne).
+  // T-109 (décision de la direction du 26/11/2026 : rien sur la grossesse à la démission ; congé maternité et accident du
+  // travail, eux, enregistrés et envoyés en ligne, décision du DG du 22/11/2026, RGPD 9.2.b) : une rupture gardée avec les anciens
+  // champs « grossesse » ou « sommeDuePreavis » les perd, puis est réécrite (téléphone et compte en ligne).
   const contratsSains = contracts.map((c) => (c.rupture && ruptureSansSante(c.rupture) !== c.rupture ? { ...c, rupture: ruptureSansSante(c.rupture) as Contract['rupture'] } : c));
   for (const c of contratsSains.filter((c, i) => c !== contracts[i])) {
     try { await db.put('contracts', c); } catch { /* réécrit au prochain chargement */ }

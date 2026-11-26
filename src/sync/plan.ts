@@ -50,7 +50,8 @@ const DEVICE_SETTINGS = ['lastAutoCopy', 'persisted', 'lastBackup'];
 export function forRemote(s: string, k: string, value: unknown): unknown {
   // Décision du DG du 21/11/2026 : jamais de nature d'événement ni de cas non géré envoyé en ligne (absences.ts).
   if (s === 'leaves' && value && typeof value === 'object') return normaliserAbsence(value as AbsenceLue);
-  // T-109 (règle d'Arvela : aucune donnée de santé hébergée en ligne) : la rupture part sans réponse de santé.
+  // T-109 (décision de la direction du 26/11/2026) : la rupture part sans rien sur la grossesse. Le congé maternité et l'accident
+  // du travail, eux, sont enregistrés et envoyés en ligne (décision du DG du 22/11/2026, RGPD 9.2.b ; registre et AIPD).
   if (s === 'contracts' && value && typeof value === 'object' && (value as { rupture?: object }).rupture) {
     const v = value as { rupture: Record<string, unknown> };
     const r = ruptureSansSante(v.rupture);

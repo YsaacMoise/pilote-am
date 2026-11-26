@@ -313,7 +313,9 @@ def jour_evenement(ctx, d):
     dim = 6 in ctx.plan_min or (ctx.pv and any(6 in p for p in (ctx.pv_cycle or list((ctx.pv_semaines or {}).values()))))
     r = appel("jours_conge_evenement", NATURES_EVT[l["nature"]], l.get("date_evenement") and d_(l["date_evenement"])
               or l["du"], l["du"], l["au"], jour_repos_hebdomadaire=None if rh is None else int(rh) - 1,
-              planning_contient_dimanche=dim)
+              planning_contient_dimanche=dim,
+              # T-109 : jours de la semaine du planning du contrat (fait de la situation), pour les « sept jours ouvres ».
+              jours_travail=None if ctx.pv else sorted(j for j, m in ctx.plan_min.items() if m))
     st = r["resultat"]["jours"][d.isoformat()]
     if st == "ferie":
         return None  # T-103 (C7) : ferie pendant le conge : jour ferie (CCN 47), qualifie a part

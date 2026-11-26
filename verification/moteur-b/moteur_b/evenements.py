@@ -164,7 +164,8 @@ def _ouvrable(d):
 
 @api("R-ABS-06")
 def jours_conge_evenement(evenement, date_evenement, premier_jour, dernier_jour, deplacement_plus_600km=False,
-                          pathologie_ou_cancer=False, jour_repos_hebdomadaire=None, planning_contient_dimanche=False):
+                          pathologie_ou_cancer=False, jour_repos_hebdomadaire=None, planning_contient_dimanche=False,
+                          jours_travail=None):
     """Statut de chaque jour d'un conge pour evenement familial pris d'un seul
     tenant, du premier au dernier jour (T-027).
     Les jours ouvrables sont comptes dans l'ordre : les premiers, jusqu'a la duree
@@ -183,6 +184,9 @@ def jours_conge_evenement(evenement, date_evenement, premier_jour, dernier_jour,
     et que le jour de repos n'est pas donne : refus C8-REPOS-HEBDO-MANQUANT.
     Sortie : jours = {date iso : remunere | non_remunere | hors_droit |
     non_ouvrable | ferie}."""
+    if evenement == "deces_enfant_majore" and isinstance(date_evenement, date) and \
+            date(2020, 7, 1) <= date_evenement <= date(2021, 12, 31):
+        return _sept_jours_ouvres(premier_jour, dernier_jour, jours_travail)
     r = conge_evenement_familial.interne(evenement, date_evenement, deplacement_plus_600km, pathologie_ou_cancer)
     if not (isinstance(premier_jour, date) and isinstance(dernier_jour, date)) or dernier_jour < premier_jour:
         raise ErreurSaisie("premier_jour et dernier_jour : dates, dans l'ordre.")
@@ -216,3 +220,29 @@ def jours_conge_evenement(evenement, date_evenement, premier_jour, dernier_jour,
         d += timedelta(days=1)
     return resultat_ok(jours_conge_evenement.regles, {"jours": out, "duree_jours_ouvrables": duree},
                        notes=r.get("notes"))
+
+
+def _sept_jours_ouvres(premier_jour, dernier_jour, jours_travail):
+    """T-109 (troisieme controle qualite de la n° 67) : deces d'un enfant de moins de 25 ans, evenement du 01/07/2020 au
+    31/12/2021. C. trav. L3142-4, 4° (versions du 01/07/2020 au 20/07/2023, base LEGI de la DILA) : « sept jours ouvres
+    lorsque l'enfant est age de moins de vingt-cinq ans ». Ancienne convention des assistants maternels (IDCC 2395, art. 13,
+    en vigueur jusqu'au 01/01/2022) : 2 jours ouvrables pour le deces d'un enfant : la loi est plus favorable. Jours ouvres
+    lus comme les jours de travail prevus au contrat (regles/t107-evenements-avant-2022.md, R-EVT-02), comptes pour chaque
+    contrat : jours_travail = jours de la semaine du planning du contrat (0 = lundi). Feries : statut « ferie » (payes a
+    part, CCN 47). Sans jours_travail : refus EVT-OUVRES-PLANNING."""
+    if not (isinstance(premier_jour, date) and isinstance(dernier_jour, date)) or dernier_jour < premier_jour:
+        raise ErreurSaisie("premier_jour et dernier_jour : dates, dans l'ordre.")
+    if not jours_travail:
+        raise NonGere("EVT-OUVRES-PLANNING", ["R-ABS-06"], precision="Jours de travail du contrat inconnus.")
+    jt = {int(j) for j in jours_travail}
+    out, n, d = {}, 0, premier_jour
+    while d <= dernier_jour:
+        if d in jours_feries(d.year):
+            out[d.isoformat()] = "ferie"
+        elif d.weekday() not in jt:
+            out[d.isoformat()] = "non_ouvrable"
+        else:
+            n += 1
+            out[d.isoformat()] = "remunere" if n <= 7 else "hors_droit"
+        d += timedelta(days=1)
+    return resultat_ok(jours_conge_evenement.regles, {"jours": out, "duree_jours_ouvres": 7, "unite": "jours ouvres"})

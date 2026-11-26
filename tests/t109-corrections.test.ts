@@ -255,7 +255,7 @@ describe('Section 6, point 7 : décès du parent employeur (CCN 63.3.1, 119.1)',
 import { normaliserAbsence, ruptureSansSante } from '../src/engine/absences';
 import { forRemote } from '../src/sync/plan';
 
-describe('Contrôle qualité de la n° 67 : aucune donnée de santé hébergée, aucune marque qui révèle un événement', () => {
+describe('Contrôles qualité de la n° 67 : rien sur la grossesse à la démission, aucune marque qui révèle un événement', () => {
   const rupt = { motif: 'demission' as const, notif: '2026-10-01', preavis: 'am_sans_accord' as const, dernierJourTravaille: '2026-10-10' };
   it('aucun champ sur la grossesse, ni la réponse ni un résultat qui la code : retirés à la lecture et à l’envoi', () => {
     expect(ruptureSansSante({ ...rupt, grossesse: true })).toEqual(rupt);
@@ -275,7 +275,8 @@ describe('Contrôle qualité de la n° 67 : aucune donnée de santé hébergée,
   });
   it('les anciennes marques joursOuvres et joursEvenementContrat sont retirées à la lecture et à l’envoi ; le nombre de jours reste', () => {
     const m = { id: 'e', type: 'evenement' as const, from: '2021-12-31', to: '2022-01-11', joursEvenement: 7, joursEvenementContrat: { c1: 8, c2: 11 } };
-    expect(normaliserAbsence(m)).toEqual({ id: 'e', type: 'evenement', from: '2021-12-31', to: '2022-01-11', joursEvenement: 11 });
+    // T-109 (troisième contrôle) : le nombre redevient 7 (saisie), compté en jours ouvrés contrat par contrat.
+    expect(normaliserAbsence(m)).toEqual({ id: 'e', type: 'evenement', from: '2021-12-31', to: '2022-01-11', joursEvenement: 7 });
     const l = { id: 'e', type: 'evenement' as const, from: '2021-12-31', to: '2022-01-11', joursEvenement: 7, joursOuvres: true as const };
     expect(normaliserAbsence(l)).toEqual({ id: 'e', type: 'evenement', from: '2021-12-31', to: '2022-01-11', joursEvenement: 7 });
     expect(forRemote('leaves', 'e', l)).not.toHaveProperty('joursOuvres');
@@ -284,12 +285,18 @@ describe('Contrôle qualité de la n° 67 : aucune donnée de santé hébergée,
 
 import { absenceSaisie } from '../src/engine/absences';
 
-describe('Second contrôle de la n° 67 : « sept jours ouvrés » d’avant 2022, un seul nombre de jours', () => {
-  it('deux contrats (lundi au vendredi ; lundi et mardi) : le plus grand nombre de jours ouvrables (L3142-4 : un minimum)', () => {
-    // Du vendredi 31/12/2021. Contrat lundi-mardi : 7e jour travaillé le lundi 24/01/2022 ; jours ouvrables du 31/12 au 24/01,
-    // sans le 01/01 (férié) ni les dimanches : 1 + 6 + 6 + 6 + 1 = 20. Contrat lundi-vendredi : 8.
-    const a = ct({ start: '2021-09-01' });
-    const b = { ...ct({ start: '2021-09-01', planning: week('08:00', '16:00', [1, 2]) }), id: 'c2' } as Contract;
-    expect(absenceSaisie('evenement', 'deces_enfant_14', 'x', '2021-12-31', '2022-01-24', [a, b])).toEqual({ id: 'x', type: 'evenement', from: '2021-12-31', to: '2022-01-24', joursEvenement: 20 });
+describe('Troisième contrôle de la n° 67 : « sept jours ouvrés » d’avant 2022, comptés contrat par contrat (L3142-4, 4°)', () => {
+  // Absence du vendredi 31/12/2021 au lundi 24/01/2022 : un simple nombre de jours (7), aucun champ propre au cas.
+  // Contrat A, lundi au vendredi : jours ouvrés 31/12, 03 au 07/01, 10/01 (7e) : payés ; du 11 au 24/01, 10 jours retenus.
+  // Contrat B, lundi et mardi : jours ouvrés 03, 04, 10, 11, 17, 18 et 24/01 (7e) : tous payés.
+  const l = absenceSaisie('evenement', 'deces_enfant_14', 'x', '2021-12-31', '2022-01-24')!;
+  const a = ct({ start: '2021-09-01', trackedFrom: '2021-09-01' });
+  const b = { ...ct({ start: '2021-09-01', trackedFrom: '2021-09-01', planning: week('08:00', '16:00', [1, 2]) }), id: 'c2' } as Contract;
+  it('la saisie garde seulement le nombre 7', () => {
+    expect(l).toEqual({ id: 'x', type: 'evenement', from: '2021-12-31', to: '2022-01-24', joursEvenement: 7 });
+  });
+  it('contrat A : 7 jours payés, 10 jours retenus en janvier 2022 ; contrat B : aucun jour retenu', () => {
+    expect(monthBase(makeCtx(a, [], [l], '2022-12-31'), '2022-01').deductedDays).toBe(10);
+    expect(monthBase(makeCtx(b, [], [l], '2022-12-31'), '2022-01').deductedDays).toBe(0);
   });
 });

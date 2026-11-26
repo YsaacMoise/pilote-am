@@ -404,8 +404,9 @@ export interface AmLeave {
    */
   joursEvenement?: number;
   /*
-   * T-109 (second contrôle qualité de la n° 67) : aucune marque propre à un événement. Les « sept jours ouvrés » d'avant 2022
-   * (C. trav. L3142-4, 4°) sont convertis à la saisie en `joursEvenement` (jours ouvrables jusqu'au septième jour de travail).
+   * T-109 (contrôles qualité de la n° 67) : aucune marque propre à un événement. Les « sept jours ouvrés » d'avant 2022
+   * (C. trav. L3142-4, 4°) s'enregistrent comme tout événement (`joursEvenement` : 7) et se comptent au calcul, contrat par
+   * contrat, sur les jours de travail prévus (evenements.ts, dureeEnJoursOuvres).
    * Les anciennes marques `joursOuvres` et `joursEvenementContrat` sont retirées à la lecture et à l'envoi (absences.ts).
    */
   /**

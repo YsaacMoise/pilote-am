@@ -1036,6 +1036,16 @@ def situations_t027():
         S.append(sit(f"EVT-MOIS-2023-{nom}", "absences", k22, [mois("m", "2023-03")],
                      {"absences_am": [dict(conge("evenement", du, au), nature=nat)]},
                      theme="mois avec congé pour événement familial nommé (2023)"))
+    # 6. T-109 (troisieme controle qualite de la n° 67) : « sept jours ouvres » (L3142-4, 4°, deces d'un enfant de moins de 25
+    # ans, evenement du 01/07/2020 au 31/12/2021), comptes contrat par contrat. Meme absence du 31/12/2021 au 24/01/2022 pour
+    # deux contrats de la meme AM : lundi au vendredi (7e jour ouvre le 10/01) et lundi-mardi (7e jour ouvre le 24/01).
+    lm = {"1": [["08:00", "16:00"]], "2": [["08:00", "16:00"]]}
+    for nom, k21, au in (("LV", contrat_grille("C52", "H40", "T420", debut="2021-09-06"), "2022-01-10"),
+                         ("LM", contrat_grille("C52", "H40", "T420", debut="2021-09-06", planning=lm), "2022-01-24"),
+                         ("LV-SUITE", contrat_grille("C52", "H40", "T420", debut="2021-09-06"), "2022-01-24")):
+        S.append(sit(f"EVT-OUVRES-2021-{nom}", "absences", k21, [mois("m", "2022-01")],
+                     {"absences_am": [dict(conge("evenement", "2021-12-31", au), nature="deces_enfant_14")]},
+                     theme="sept jours ouvres comptes pour chaque contrat (T-109)"))
     for an in ("C52", "I46"):
         ka = contrat_grille(an, "H40", "T420")
         for nom, (nat, du, au) in conges_evt.items():

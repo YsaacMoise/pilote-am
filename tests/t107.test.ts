@@ -10,6 +10,7 @@ import { finDeContrat } from '../src/engine/fin';
 import { controleFinContrat } from '../src/engine/preavis';
 import { cpPendantPreavis, finPreavisProrogee } from '../src/engine/suspensions';
 import { dureeEvenement, libelleDureeSaisie, statutJourEvenement } from '../src/engine/evenements';
+import { weekday } from '../src/engine/dates';
 import { absenceSaisie } from '../src/engine/absences';
 
 const plage = [{ start: '08:00', end: '16:00' }];
@@ -132,20 +133,19 @@ describe('T-107, cas 6 : événement familial commencé avant 2022 (ancienne CCN
     expect(libelleDureeSaisie('deces_descendant', '2021-12-20')).toMatch(/Pas de congé.*congé payé ou sans solde/);
     expect(libelleDureeSaisie('mariage', '2021-12-20')).toBe('4 jours ouvrables payés');
     expect(libelleDureeSaisie('deces_enfant_14', '2021-12-20')).toMatch(/7 jours ouvrés/);
-    // T-109 : aucune marque qui révèle l'événement ; seulement le nombre de jours (8 jours ouvrables jusqu'au 7e jour travaillé).
-    const ouvres = absenceSaisie('evenement', 'deces_enfant_14', 'x', '2021-12-31', '2022-01-11', [contrat({ start: '2021-09-01' })])!;
-    // T-109 (second contrôle) : un seul nombre, sans champ propre à ce cas.
-    expect(ouvres).toEqual({ id: 'x', type: 'evenement', from: '2021-12-31', to: '2022-01-11', joursEvenement: 8 });
+    // T-109 : aucune marque qui révèle l'événement : un simple nombre de jours, 7, comme tout événement.
+    expect(absenceSaisie('evenement', 'deces_enfant_14', 'x', '2021-12-31', '2022-01-11')).toEqual({ id: 'x', type: 'evenement', from: '2021-12-31', to: '2022-01-11', joursEvenement: 7 });
   });
   it('sept jours ouvrés : jours de travail prévus (lundi au vendredi), fériés exclus : payé le 10/01, retenu le 11/01/2022', () => {
     // Du vendredi 31/12/2021 au mardi 11/01/2022. Jours ouvrés : 31/12 (1) ; samedi 01/01 férié et sans accueil ; 03 au 07/01
-    // (2 à 6) ; lundi 10/01 (7) : payés. Mardi 11/01 : 8e, retenu. T-109 : converti à la saisie en jours ouvrables jusqu'au
-    // 7e jour travaillé : 31/12, 03 au 08/01 et 10/01 = 8 jours ouvrables ; le calcul paie les mêmes jours.
-    const l = absenceSaisie('evenement', 'deces_enfant_14', 'e1', '2021-12-31', '2022-01-11', [contrat({ start: '2021-09-01' })])!;
-    expect(statutJourEvenement(l, '2022-01-10', [l], 7)).toEqual({ paye: true });
-    const st = statutJourEvenement(l, '2022-01-11', [l], 7);
+    // (2 à 6) ; lundi 10/01 (7) : payés. Mardi 11/01 : 8e, retenu. En jours ouvrables, le samedi 08/01 aurait été le 7e.
+    // T-109 : le nombre 7 et la date suffisent (aucun champ propre au cas) ; le planning du contrat donne les jours ouvrés.
+    const l = absenceSaisie('evenement', 'deces_enfant_14', 'e1', '2021-12-31', '2022-01-11')!;
+    const travaille = (x: string) => weekday(x) <= 5;
+    expect(statutJourEvenement(l, '2022-01-10', [l], 7, travaille)).toEqual({ paye: true });
+    const st = statutJourEvenement(l, '2022-01-11', [l], 7, travaille);
     expect(st.paye).toBe(false);
-    expect(!st.paye && st.raison).toMatch(/8 jours ouvrables au plus.*ancienne convention, article 13/);
+    expect(!st.paye && st.raison).toMatch(/7 jours ouvrés au plus.*ancienne convention, article 13/);
   });
   it('jours ouvrables (mariage du 31/12/2021) : 4 jours, samedi compris ; le 5e jour ouvrable est retenu', () => {
     // 31/12 (1), samedi 01/01 férié (ne compte pas), lundi 03/01 (2), 04/01 (3), 05/01 (4) ; 06/01 retenu.

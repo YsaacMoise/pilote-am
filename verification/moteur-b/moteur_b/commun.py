@@ -102,6 +102,7 @@ CODES = {
     "R-MENS-10": "Regle douteuse : lissage sur 12 mois du CDD de remplacement sans texte fondateur.",
     "R-PAJ-04": "Regle douteuse : passage au net non etabli.",
     "R-ABS-06": "Evenement familial sans nature precisee : la duree du conge depend de l'evenement (utiliser conge_evenement_familial).",
+    "EVT-OUVRES-PLANNING": "Sept jours ouvres (deces d un enfant de moins de 25 ans, 2020-2021) : jours de travail du contrat inconnus.",
     "EVT-OUVRES-2021": "Deces d'un enfant de moins de 25 ans avant le 21/07/2023 : la loi compte « sept jours ouvres », la CCN 9 jours ouvrables ; comparaison d'unites non ecrite.",
     "EVT-VERSION": "Evenement familial : les versions applicables de la CCN ou de la loi donnent des durees differentes a cette date.",
     "EVT-FERIE": "Jour ferie pendant un conge pour evenement familial : le texte ne dit pas s'il compte comme jour ouvrable.",
