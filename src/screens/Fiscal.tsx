@@ -48,10 +48,10 @@ export function Fiscal() {
           <p class="hint">Montants arrondis à l’euro, comme sur la déclaration.</p>
           <p class="hint">Avec le régime spécial des assistantes maternelles, tu déclares ce montant au lieu du salaire pré-rempli. Compare avec le pré-rempli : le plus favorable est à retenir.</p>
         </section>
-        {partiel && <Banner tone="warn">Des mois manquent dans l’historique : ajoute leurs bulletins. Le revenu imposable n’est pas calculé sans eux.</Banner>}
+        {partiel && <Banner tone="info">Des mois manquent dans l’historique : ajoute leurs bulletins. Le revenu imposable n’est pas calculé sans eux.</Banner>}
         {brutInconnu && <Banner tone="warn">{MESSAGE_TAUX_BRUT} Le salaire net imposable compte la CSG non déductible et la CRDS, calculées sur le brut.</Banner>}
         {nonGere.map((t) => <Banner tone="warn">{t}</Banner>)}
-        {moisHisto > 0 && <Banner tone="warn">{moisHisto} mois viennent de bulletins saisis : l’app n’y connaît ni les heures complémentaires et majorées, ni les kilomètres. Le revenu imposable est donc un peu trop haut, et le montant exonéré trop bas : pour la case 1GH, garde celui que Pajemploi a pré-rempli.</Banner>}
+        {moisHisto > 0 && <Banner tone="info">{moisHisto} mois viennent de bulletins saisis : l’app n’y connaît ni les heures complémentaires et majorées, ni les kilomètres. Le revenu imposable est donc un peu trop haut, et le montant exonéré trop bas : pour la case 1GH, garde celui que Pajemploi a pré-rempli.</Banner>}
         {rows.map(({ c, f }) => (
           <section class="card stack" aria-label={`Impôts, ${c.child}`}>
             <div class="row"><Gommette name={c.child} color={c.color} size="sm" /><h2>{c.child}</h2></div>

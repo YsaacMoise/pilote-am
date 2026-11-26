@@ -112,7 +112,7 @@ function PreciserAbsence({ l }: { l: AmLeave }) {
   const complet = !!type && (type !== 'at_mp' || (!!atmp && (atmp === 'maladie_pro' || !!jour)));
   return (
     <div class="stack-sm">
-      <Banner tone="warn">{donneeSuspensionManquante(l)}</Banner>
+      <Banner tone="info">{donneeSuspensionManquante(l)}</Banner>
       {l.type === 'non_gere' && (
         <Choices label="C’était :" value={type} onChange={setType}
           options={AM_SUSPENSIONS.map((v) => ({ v, l: AM_ABS_LABEL[v] }))} />

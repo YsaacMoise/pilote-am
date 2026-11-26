@@ -5,6 +5,7 @@ import { addMonths, dayLabel, eachDay, firstDay, lastDay, monthLabel, monthOf, t
 import { computeMonth, declarationLines, declarationText, MESSAGE_REDUCTION_HS_BRUT, moisEnCoursAu, totalAVerser } from '../engine/month';
 import { dayInfo, PREFIXE_ENTRETIEN_SOUS_MIN, termsAt } from '../engine/payroll';
 import { MESSAGE_SOLDE_CONGES } from '../engine/conges';
+import { estInformation } from '../engine/alertes';
 import { euros, hoursLabel } from '../engine/money';
 import { baremesAttendus, messageBaremesAttendus } from '../engine/rates';
 import { CHILD_ABS_LABEL, AM_ABS_LABEL, type Contract } from '../engine/model';
@@ -177,7 +178,7 @@ function MonthView({ c, month, onEdit }: { c: Contract; month: Month; onEdit: (d
       {!c.pajemploiPlus && (!c.end || c.end >= PAJEMPLOI_PLUS_DATE) && <Banner tone="info">{PAJEMPLOI_PLUS_RAPPEL}</Banner>}
       {r.alerts.map((a) => a.startsWith(PREFIXE_ENTRETIEN_SOUS_MIN)
         ? <Banner tone="warn"><span>{a}</span><a class="btn btn-outline" href={`#/avenant/${c.id}/nouveau`}>Faire l’avenant</a></Banner>
-        : <Banner tone="warn">{a}</Banner>)}
+        : <Banner tone={estInformation(a) ? 'info' : 'warn'}>{a}</Banner>)}
       {r.cpNote && <Banner tone="info" icon="sun">{r.cpNote}</Banner>}
 
       <section class="card" aria-labelledby="decl-t">

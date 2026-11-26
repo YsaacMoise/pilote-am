@@ -129,3 +129,25 @@ describe('T-116 (A3) : trois enfants accueillis aux mêmes heures', () => {
     expect(alertesDurees([makeCtx(a, [], [], '2026-12-31'), makeCtx(b, [], [], '2026-12-31')], '2026-11-26').join(' ')).toMatch(/quatre derniers mois/);
   });
 });
+
+import { estInformation } from '../src/engine/alertes';
+import { MESSAGE_ARRET_MOIS_ENTIER, MESSAGE_DISPENSE_PAJEMPLOI, messageMoisSansSoldeChange, messageSansSoldeEnfant } from '../src/engine/payroll';
+import { MESSAGE_REDUCTION_HS_MAYOTTE } from '../src/engine/month';
+import { MESSAGE_OCCASIONNEL_SALAIRE } from '../src/engine/occasionnel';
+import { MESSAGE_MAINTIEN_LOCAL } from '../src/engine/regions';
+import { messageTermeAVenir } from '../src/engine/cdd';
+
+describe('T-116 : revue des alertes de l’écran Mois (information ou vrai problème)', () => {
+  it('information : explication ou donnée à donner, bandeau d’information', () => {
+    for (const m of [MESSAGE_ARRET_MOIS_ENTIER, MESSAGE_DISPENSE_PAJEMPLOI, MESSAGE_REDUCTION_HS_MAYOTTE, MESSAGE_OCCASIONNEL_SALAIRE,
+      `${MESSAGE_MAINTIEN_LOCAL} 12,00 € d’indemnités journalières déduits du salaire de ce mois.`, messageTermeAVenir('2026-11-30'),
+      'Avenant au 15/11 : le salaire du mois est calculé au prorata de chaque période.', '2 départs non pointés : l’heure prévue a été retenue.',
+      'Régularisation à l’avenant du 15/11 : 12 h accueillies depuis le 01/01/2026 et pas encore payées.',
+      'Des jours d’enfant malade dépassent la limite de l’article 105 : ils restent payés.']) expect(estInformation(m), m).toBe(true);
+  });
+  it('vrai problème : alerte gardée', () => {
+    for (const m of [messageSansSoldeEnfant('2026-11-12'), messageMoisSansSoldeChange(2),
+      'Indemnité d’entretien : le montant du contrat (1,00 € par jour) est sous le minimum de la convention (article 114.1) pour 4 jours.',
+      '3 jours de congés pris au-delà de tes droits acquis : retenus comme congés sans solde.']) expect(estInformation(m), m).toBe(false);
+  });
+});
