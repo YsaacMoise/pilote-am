@@ -69,7 +69,7 @@ async function run(scheme) {
   assert(!(await p.locator('.toast p', { hasText: /maintenant dans « Ça coince »/ }).count()), 'le message n’est dit qu’une fois');
 
   // Note libre, puis modification
-  await p.getByRole('button', { name: 'Note libre' }).click();
+  await p.getByRole('button', { name: 'Note', exact: true }).click();
   await p.getByLabel('Ta note').fill('A dessiné un soleil');
   await p.getByRole('button', { name: 'Ajouter la note' }).click();
   await tl('soleil').waitFor();
@@ -141,7 +141,7 @@ async function run(scheme) {
   await shot('01-carnet');
 
   // Résumé : l'essentiel en tête
-  await p.getByRole('button', { name: 'Envoyer le résumé aux parents' }).click();
+  await p.getByRole('button', { name: 'Envoyer aux parents' }).click();
   await toastHas(/Résumé copié/);
   const clip = await p.evaluate(() => navigator.clipboard.readText().catch(() => ''));
   assert(clip.includes(titre), 'résumé : prénom de l’enfant (avec l’élision)');

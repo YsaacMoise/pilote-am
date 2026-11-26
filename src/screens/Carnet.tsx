@@ -7,7 +7,7 @@ import {
   A_APPORTER, KIND_LABEL, choseApporter, detailApporter, detailReveilOublie, estApporter, dureeLabel, insecable, reveilOublie, detailBiberon, detailSieste, detailTemperature, estFievre, hh, parseMl, parseTemperature, resumeJour,
   premierJourCarnet, siesteEnCours, temperatureLabel, estNoteSante, type Kind,
 } from '../engine/carnet';
-import { Gommette, Sheet, Topbar } from '../ui/kit';
+import { CHILD_COLORS, Gommette, Sheet, Topbar } from '../ui/kit';
 import { Icon, type IconName } from '../ui/icons';
 import { AideVideo } from '../ui/VideoGuide';
 import { shareText } from '../share';
@@ -55,7 +55,7 @@ const KINDS: KindDef[] = [
   { k: 'change', l: 'Change', icon: 'couche', ...avec(CHANGE_GROUPES) },
   { k: 'humeur', l: 'Humeur', icon: 'smile', ...avec(HUMEUR_GROUPES) },
   { k: 'soin', l: 'Soin', icon: 'pansement', ...avec(SOIN_GROUPES) },
-  { k: 'note', l: 'Note libre', icon: 'edit', options: [] },
+  { k: 'note', l: 'Note', icon: 'note', options: [] },
 ];
 // Ce que les parents doivent apporter : ce n'est pas un moment de la journée, donc une tuile à part.
 // Enregistré comme une note « À apporter : couches » (lisible tel quel partout, même par une ancienne version de l'app).
@@ -122,23 +122,25 @@ export function Carnet() {
   return (
     <>
       <Topbar title="Carnet" sub={dayLabel(jour)} screen="carnet" />
-      <main>
-        {kids.length > 0 && estAuj && <AideVideo id="carnet" />}
-        <nav class="spread day-nav" aria-label="Jour du carnet">
+      <main class="carnet">
+        <nav class="day-nav" aria-label="Jour du carnet">
           <button class="icon-btn" aria-label="Jour précédent" disabled={addDays(jour, -1) < plusAncien} onClick={() => changerJour(-1)}>
-            <Icon name="left" />
+            <Icon name="left" size={20} />
           </button>
-          <span class="day-nav-label">
-            <b>{estAuj ? 'Aujourd’hui' : cap(dayLabel(jour))}</b>
+          <b class="day-nav-jour">{estAuj ? 'Aujourd’hui' : cap(dayLabel(jour))}</b>
+          <button class="icon-btn" aria-label="Jour suivant" disabled={estAuj} onClick={() => changerJour(1)}>
+            <Icon name="right" size={20} />
+          </button>
+          <span class="day-nav-plus">
             {!estAuj && <button class="btn btn-ghost btn-sm" onClick={() => setJour(t)}>Revenir à aujourd’hui</button>}
             {plusAncien < t && (
-              <input class="input" type="date" aria-label="Aller à un autre jour du carnet" value={jour} min={plusAncien} max={t}
-                onInput={(e) => allerAu((e.target as HTMLInputElement).value as ISODate)} />
+              <span class="pick-day icon-btn day-nav-date">
+                <Icon name="calendar" size={20} />
+                <input type="date" aria-label="Aller à un autre jour du carnet" value={jour} min={plusAncien} max={t}
+                  onInput={(e) => allerAu((e.target as HTMLInputElement).value as ISODate)} />
+              </span>
             )}
           </span>
-          <button class="icon-btn" aria-label="Jour suivant" disabled={estAuj} onClick={() => changerJour(1)}>
-            <Icon name="right" />
-          </button>
         </nav>
         {oublis.length > 0 && (
           <section class="oublis" aria-label="Réveils non notés">
@@ -147,8 +149,9 @@ export function Carnet() {
               const quand = e.date === addDays(t, -1) ? 'hier' : dayLabel(e.date);
               return (
                 <div class="oubli-ligne">
+                  <span class="b-ico alerte" aria-hidden="true">!</span>
                   <span class="oubli-txt"><b>Réveil non noté</b><span>{k.child}, {quand} : endormissement à {hh(e.time)}</span></span>
-                  <button class="btn btn-secondary btn-sm" aria-label={`Corriger le sommeil ${de(k.child)} ${quand}`} onClick={() => setSheet({ kind: kindDef('sieste'), edit: e })}>Corriger</button>
+                  <button class="btn btn-outline btn-sm" aria-label={`Corriger le sommeil ${de(k.child)} ${quand}`} onClick={() => setSheet({ kind: kindDef('sieste'), edit: e })}>Corriger</button>
                 </div>
               );
             })}
@@ -160,7 +163,7 @@ export function Carnet() {
               const depuis = Math.max(0, minutes(nowHHMM()) - minutes(e.time));
               return (
                 <div class="dodo-ligne">
-                  <span class="dodo-ico"><Icon name="moon" /></span>
+                  <span class="dodo-ico"><Icon name="moon" size={16} /></span>
                   <span class="dodo-txt"><b>{k.child} dort</b><span>depuis {hh(e.time)}{depuis > 0 ? ` · ${dureeLabel(depuis)}` : ''}</span></span>
                   <button class="btn btn-primary btn-sm" aria-label={`Réveil ${de(k.child)} maintenant`} onClick={() => reveil(e)}>Réveil</button>
                 </div>
@@ -175,15 +178,17 @@ export function Carnet() {
           </div>
         )}
         {kids.length > 1 && (
-          <div class="chips" role="group" aria-label="Enfant">
+          <div class="carnet-enfants" role="group" aria-label="Enfant">
             {present.length > 1 && (
-              <button class="chip" aria-pressed={all} onClick={() => setCid('tous')}>
-                Tous les présents ({present.length})
+              <button class="ce-enfant" aria-pressed={all} aria-label={`Tous les présents (${present.length})`} onClick={() => setCid('tous')}>
+                <span class="ce-tous" aria-hidden="true">{present.length}</span>
+                <span class="ce-nom" aria-hidden="true">Tous</span>
               </button>
             )}
             {kids.map((k) => (
-              <button class="chip" aria-pressed={!all && k.id === c?.id} onClick={() => setCid(k.id)}>
-                <Gommette name={k.child} color={k.color} size="sm" />{k.child}
+              <button class="ce-enfant" aria-pressed={!all && k.id === c?.id} onClick={() => setCid(k.id)}>
+                <Gommette name={k.child} color={k.color} />
+                <span class="ce-nom">{k.child}</span>
               </button>
             ))}
           </div>
@@ -196,8 +201,8 @@ export function Carnet() {
         )}
         {c && (
           <>
-            <QuickButtons label={`Ajouter au carnet ${de(c.child)}`} onPick={(k) => setSheet({ kind: k })} />
-            <section class="card stack" aria-labelledby="tl-title">
+            <Reglette c={c} jour={jour} entries={entries} />
+            <section class="stack carnet-fil" aria-labelledby="tl-title">
               <div class="spread">
                 <h2 id="tl-title">La journée {de(c.child)}</h2>
                 <span class="muted small">{entries.length} note{entries.length > 1 ? 's' : ''}</span>
@@ -208,7 +213,7 @@ export function Carnet() {
                 <ul class="timeline" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                   {entries.map((e) => (
                     <li class="tl-item">
-                      <span class="tl-time">{hh(e.time)}</span>
+                      <span class="tl-time">{hl(e.time)}</span>
                       <button
                         class="tl-body ph-no-capture"
                         aria-label={`Modifier la note de ${hh(e.time)}`}
@@ -229,10 +234,12 @@ export function Carnet() {
               )}
             </section>
             <button class="btn btn-primary btn-block btn-lg" onClick={() => sendSummary(c)} disabled={!entries.length && !dayInfo(ctxFor(c), jour).rec}>
-              <Icon name="share" />{estAuj ? 'Envoyer le résumé aux parents' : 'Envoyer le résumé de ce jour'}
+              <Icon name="share" />{estAuj ? 'Envoyer aux parents' : 'Envoyer le résumé de ce jour'}
             </button>
+            <QuickButtons label={`Ajouter au carnet ${de(c.child)}`} onPick={(k) => setSheet({ kind: k })} />
           </>
         )}
+        {kids.length > 0 && estAuj && <AideVideo id="carnet" />}
       </main>
       {sheet && (sheet.edit ? true : targets.length > 0) && (
         <EntrySheet
@@ -246,6 +253,64 @@ export function Carnet() {
       )}
     </>
   );
+}
+
+/**
+ * Vision 1.1 (T-126) : réglette de la journée de l'enfant choisi. Un point par note, le sommeil en barre de sa teinte,
+ * le trait or = maintenant (aujourd'hui seulement). Les pointages n'y sont pas (consigne 9.5). Graphique : il double le
+ * fil écrit dessous (choix A) ; son aria-label cite tout.
+ */
+function Reglette({ c, jour, entries }: { c: Contract; jour: ISODate; entries: Journal[] }) {
+  const t = today();
+  const di = dayInfo(ctxFor(c), jour);
+  const now = minutes(nowHHMM());
+  const heures = [...di.planned.flatMap((p) => [minutes(p.start), minutes(p.end)]), ...entries.flatMap((e) => [minutes(e.time), ...(e.fin ? [minutes(e.fin)] : [])])];
+  if (!heures.length || !entries.length) return null;
+  const debut = Math.floor(Math.min(...heures) / 60) * 60;
+  const fin = Math.max(debut + 60, Math.ceil(Math.max(...heures) / 60) * 60);
+  const X0 = 10, X1 = 340, Y = 60;
+  const x = (m: number) => X0 + ((Math.min(Math.max(m, debut), fin) - debut) / (fin - debut)) * (X1 - X0);
+  const ticks: number[] = [];
+  for (let m = debut; m <= fin; m += 60) ticks.push(m);
+  const pas = fin - debut > 6 * 60 ? 180 : 120;
+  const teinte = CHILD_COLORS[c.color % CHILD_COLORS.length];
+  const sommeils = entries.filter((e) => e.kind === 'sieste' && e.sommeil);
+  const auj = jour === t && now >= debut && now <= fin;
+  const ICONES: Partial<Record<Kind, IconName>> = { repas: 'meal', sieste: 'moon', change: 'couche', soin: 'pansement' };
+  const label = `Journée ${de(c.child)}, de ${debut / 60} h à ${fin / 60} h : ${entries.map((e) => `${hl(e.time)} ${estApporter(e) ? 'à apporter' : KIND_LABEL[e.kind].toLowerCase()}${e.fin ? ` jusqu’à ${hl(e.fin)}` : ''}`).join(', ')}.${auj ? ` Il est ${hl(nowHHMM())}.` : ''}`;
+  return (
+    <div class="reglette">
+      <svg viewBox="0 0 350 96" role="img" aria-label={label}>
+        {sommeils.map((e) => {
+          const a = x(minutes(e.time)), b = x(e.fin ? minutes(e.fin) : jour === t ? now : minutes(e.time));
+          return b - a > 1 ? <rect x={a} y="52" width={b - a} height="16" rx="8" class="rg-sommeil" style={{ '--g': teinte } as any} /> : null;
+        })}
+        <line x1={X0} y1={Y} x2={X1} y2={Y} class="rg-axe" />
+        {ticks.map((m) => { const g = (m - debut) % pas === 0; return <line x1={x(m)} y1={g ? 54 : 57} x2={x(m)} y2={g ? 66 : 63} class="rg-axe" />; })}
+        <g class="rg-heures" text-anchor="middle">
+          {ticks.filter((m) => (m - debut) % pas === 0).map((m) => <text x={Math.min(Math.max(x(m), 14), 334)} y="88">{m / 60} h</text>)}
+        </g>
+        {entries.map((e) => <circle cx={x(minutes(e.time))} cy={Y} r="4.5" class="rg-point" />)}
+        {entries.filter((e) => ICONES[e.kind]).map((e) => (
+          <svg x={x(minutes(e.time)) - 8} y="30" width="16" height="16" class="rg-ico" aria-hidden="true">
+            <Icon name={ICONES[e.kind]!} size={16} fin />
+          </svg>
+        ))}
+        {auj && (
+          <>
+            <line x1={x(now)} y1="22" x2={x(now)} y2="70" class="rg-maintenant" />
+            <rect x={Math.min(Math.max(x(now) - 26, 0), 298)} y="2" width="52" height="20" rx="10" class="rg-bulle" />
+            <text x={Math.min(Math.max(x(now), 26), 324)} y="16.5" text-anchor="middle" class="rg-bulle-txt">{hl(nowHHMM())}</text>
+          </>
+        )}
+      </svg>
+    </div>
+  );
+}
+
+/** Vision 1.1 : heure lisible du fil et de la réglette (« 9 h 30 », « 12 h ») ; les textes enregistrés ne changent pas. */
+function hl(t: string): string {
+  return t.replace(/^0(\d)/, '$1').replace(/:00$/, ' h').replace(':', ' h ');
 }
 
 function cap(s: string): string {
@@ -263,7 +328,7 @@ function QuickButtons({ label, onPick }: { label: string; onPick: (k: KindDef) =
       ))}
       <button class="q-large" onClick={() => onPick(APPORTER)}>
         <span class="q-ico"><Icon name={APPORTER.icon} /></span>
-        <span class="q-txt">{APPORTER.l}<small>Demander aux parents</small></span>
+        <span class="q-txt">{APPORTER.l}<small> · Demander aux parents</small></span>
       </button>
     </section>
   );

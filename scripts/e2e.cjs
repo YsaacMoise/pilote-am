@@ -273,7 +273,7 @@ async function run(scheme) {
   await p.getByRole('button', { name: 'A bien mangé' }).click();
   await p.locator('.tl-item', { hasText: 'A bien mangé' }).waitFor();
   assert(true, 'carnet : repas noté');
-  await p.getByRole('button', { name: 'Note libre' }).click();
+  await p.getByRole('button', { name: 'Note', exact: true }).click();
   await p.getByLabel('Ta note').fill('A dessiné un soleil');
   await p.getByRole('button', { name: 'Ajouter la note' }).click();
   await p.locator('.tl-item', { hasText: 'soleil' }).waitFor();
@@ -309,7 +309,7 @@ async function run(scheme) {
   await p.locator('.tl-item', { hasText: 'grand soleil' }).waitFor();
   assert(await toastHas(/Note modifiée/), 'carnet : note modifiée sans la recréer');
   await shot('05-carnet');
-  await p.getByRole('button', { name: 'Envoyer le résumé aux parents' }).click();
+  await p.getByRole('button', { name: 'Envoyer aux parents' }).click();
   assert(await toastHas(/Résumé copié/), 'résumé copié (pas de feuille de partage dans Chromium)');
   const clip = await p.evaluate(() => navigator.clipboard.readText().catch(() => ''));
   if (clip) {
