@@ -175,7 +175,7 @@ export function Today() {
         {day === t && rappel === 'cle' && (
           <Banner tone="info" icon="shield">
             <strong>Garde ta clé de secours</strong>
-            <span>Tes données sont copiées dans ton compte : plus besoin de sauvegarde chaque semaine. Le carnet et ce qui touche à la santé y sont chiffrés : sans ta clé de secours, un nouveau téléphone ne pourra pas les lire.</span>
+            <span>Tes données sont copiées dans ton compte : plus besoin de sauvegarde chaque semaine. Le carnet et la case handicap ou maladie y sont chiffrés : sans ta clé de secours, un nouveau téléphone ne pourra pas les lire.</span>
             <div class="btn-row">
               <a class="btn btn-outline" href="#/compte">Voir ma clé</a>
               <button class="btn btn-ghost" onClick={() => { lsSet(LS.inviteCle, String(Date.now())); setEcartee(Date.now()); }}>Plus tard</button>
@@ -185,8 +185,8 @@ export function Today() {
         {day === t && rappel === 'cle-manquante' && (
           <Banner tone="warn" icon="shield">
             <strong>Entre ta clé de secours</strong>
-            <span>Ce téléphone ne peut pas lire le carnet ni ce qui touche à la santé sans elle.</span>
-            <div class="btn-row"><a class="btn btn-outline" href="#/compte">Entrer ma clé</a></div>
+            <span>Sans elle, ce téléphone ne lit pas le carnet ni la case handicap, et ses nouvelles notes du carnet attendent sur lui sans partir dans ton compte. Entre-la vite, ou fais une sauvegarde dans Fichiers.</span>
+            <div class="btn-row"><a class="btn btn-outline" href="#/compte">Entrer ma clé</a><a class="btn btn-ghost" href="#/sauvegarde">Sauvegarder</a></div>
           </Banner>
         )}
         {day === t && rappel === 'sauvegarde' && (

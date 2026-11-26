@@ -272,7 +272,7 @@ function EntrerCle() {
   return (
     <section class="card stack-sm" aria-labelledby="entrer-cle-t">
       <h2 id="entrer-cle-t" class="row"><Icon name="lock" />Entre ta clé de secours</h2>
-      <p>Ton compte garde le carnet, la case « handicap ou maladie » et le code du lien des parents chiffrés. Ce téléphone ne peut pas les lire sans ta clé de secours (26 lettres et chiffres, par groupes de 4). Tes contrats, journées et montants, eux, sont déjà là.</p>
+      <p>Ton compte garde le carnet, la case « handicap ou maladie » et le code du lien des parents chiffrés. Ce téléphone ne peut pas les lire sans ta clé de secours (26 lettres et chiffres, par groupes de 4). Tes contrats, journées et montants, eux, sont déjà là. Tant que la clé manque, les notes du carnet que tu ajoutes ici restent sur ce téléphone, sans copie dans ton compte.</p>
       <TextInput label="Clé de secours" value={texte} onChange={setTexte} placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XX" />
       {error && <p class="hint warn" role="alert">{error}</p>}
       <button class="btn btn-primary btn-block" disabled={busy || !texte.trim()} onClick={() => void essayer(texte)}>{busy ? 'Vérification…' : 'Ouvrir mes données'}</button>

@@ -35,7 +35,7 @@ export function conditionsAAccepter(s: { onboarded?: boolean; conditionsAcceptee
 }
 
 /** Message affiché une fois aux comptes existants, jusqu'à leur accord. */
-export const MESSAGE_CONDITIONS = 'Les conditions d’utilisation ont changé le 26 novembre 2026 : le carnet et ce qui touche à la santé sont chiffrés de bout en bout avec ta clé de secours, l’accord écrit des parents est noté dans l’app, et le carnet est effacé 5 ans après la fin du dernier contrat de l’enfant.';
+export const MESSAGE_CONDITIONS = 'Les conditions d’utilisation ont changé le 26 novembre 2026 : le carnet de liaison, la case handicap ou maladie et le code du lien des parents sont chiffrés de bout en bout avec ta clé de secours, l’accord écrit des parents est noté dans l’app, et le carnet est effacé 5 ans après la fin du dernier contrat de l’enfant.';
 
 /** Phrase de responsabilité reprise dans l'app et dans le message envoyé au parent (C-120, C-121) */
 /** Pajemploi+ : vérifié sur Légifrance le 06/11/2026 (LFSS 2026, article 101 : « Le I du présent article entre en vigueur le 1er septembre 2027 ») */
@@ -71,7 +71,7 @@ export const TEXTE_PARENTS = `Bonjour,
 
 Pour gérer l'accueil de votre enfant, j'utilise l'application Arvela. J'y note son prénom, votre nom de famille, les horaires, les absences et leur motif (sans aucun diagnostic) et les informations du contrat, pour calculer le salaire à déclarer sur Pajemploi. Arvela est un outil d'aide, indépendant de l'Urssaf : la déclaration Pajemploi fait foi.
 
-Ces données sont enregistrées sur mon téléphone, avec une copie dans mon compte Arvela, hébergée à Paris par Google Firebase. Aucun autre utilisateur de l'application n'y a accès. L'éditeur de l'application peut techniquement accéder à cette copie pour l'entretien du service ; il s'engage à ne pas la consulter sans mon accord. Le carnet de liaison et ce qui touche à la santé de votre enfant y sont chiffrés de bout en bout : seuls mes appareils, et votre lien, peuvent les lire ; l'éditeur ne le peut pas. Aucune information sur votre enfant n'est utilisée pour mesurer l'usage de l'application.
+Ces données sont enregistrées sur mon téléphone, avec une copie dans mon compte Arvela, hébergée à Paris par Google Firebase. Aucun autre utilisateur de l'application n'y a accès. L'éditeur de l'application peut techniquement accéder à cette copie pour l'entretien du service ; il s'engage à ne pas la consulter sans mon accord. Le carnet de liaison et, le cas échéant, la case « handicap ou maladie » y sont chiffrés de bout en bout : seuls mes appareils, et votre lien, peuvent les lire ; l'éditeur ne le peut pas. Le motif « malade » d'une absence reste lisible par l'application, car il sert au calcul du salaire. Aucune information sur votre enfant n'est utilisée pour mesurer l'usage de l'application.
 
 Si vous le souhaitez, je peux vous envoyer un lien privé pour suivre la journée de votre enfant et retrouver la déclaration Pajemploi du mois. Les informations y sont chiffrées : il faut le lien et un code à 4 chiffres, que je vous donnerai de vive voix. Merci de ne pas transférer ce lien.
 
