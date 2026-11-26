@@ -8,9 +8,9 @@ import { PASSWORD_RULE, passwordChecks } from './password';
 import { acceptationConditions } from './legal';
 import { autoCopy, ctxFor, load, logErreur, logUsage, putContract, saveSettings, state, subscribe, toast } from './store';
 import { buildSnapshot } from './partage/snapshot';
-import { newShare, seal } from './partage/crypto';
+import { newShare, open as openShare, seal } from './partage/crypto';
 import { clesLocales, cloudInfo, deviceId, garderCleLocale, oublierClesLocales, LS, lsGet, lsSet, messageRefus, setCloud, type EtatChiffrement } from './cloud-state';
-import { aChiffrer, chiffrer, CHIFFRES, cleDuBloc, codeDeSecours, COFFRE, dechiffrer, estScelle, lireCode, nouveauSecret, ouvrirCle, type Cle } from './sync/coffre';
+import { aChiffrer, chiffrer, CHIFFRES, cleDuBloc, separer, codeDeSecours, COFFRE, dechiffrer, estScelle, lireCode, nouveauSecret, ouvrirCle, type Cle } from './sync/coffre';
 import { errCode, type Backend, type CloudUser } from './sync/backend';
 import { applyRemote, docId, forRemote, needsChoice, nextSince, planMerge, RESUME_MARGIN_MS, stable, type LocalRecord, type MergeMode, type RemoteDoc } from './sync/plan';
 
@@ -243,11 +243,15 @@ export async function retryRejected(): Promise<boolean> {
 let cle: Cle | null = null;
 let cles: Cle[] = [];
 
+const codes = new Map<string, string>(); // empreinte → clé de secours (pour la remettre en tête quand elle est celle du compte)
 async function chargerCles(uid: string): Promise<Cle[]> {
   const out: Cle[] = [];
   for (const code of clesLocales(uid)) {
     const sec = lireCode(code);
-    if (sec) out.push(await ouvrirCle(sec));
+    if (!sec) continue;
+    const c = await ouvrirCle(sec);
+    codes.set(c.id, code);
+    out.push(c);
   }
   return out;
 }
@@ -264,6 +268,9 @@ async function idCoffreLocal(): Promise<string | null> {
 /** Choisit, parmi les clés de ce téléphone, celle du compte ; null si ce téléphone ne l'a pas. */
 function choisirCle(id: string | null): void {
   cle = id ? cles.find((c) => c.id === id) ?? null : null;
+  // La clé du compte passe en tête des clés gardées : c'est elle que l'écran Compte montre (contre-relecture n1).
+  const code = cle ? codes.get(cle.id) : undefined;
+  if (code && user && clesLocales(user.uid)[0] !== code) garderCleLocale(user.uid, code);
   setCloud({ cleManquante: !!id && !cle, cleOk: !!cle });
 }
 
@@ -379,7 +386,17 @@ async function envoyer(b: Backend, uid: string, docs: Array<{ s: db.SyncedStore;
     if (d.v === null || !(CHIFFRES as readonly string[]).includes(d.s)) { ecrire.push(d); continue; }
     const val: unknown = JSON.parse(d.v);
     const out = await chiffrer(d.s, val, cle);
-    if (out === null) { attente.push({ s: d.s, k: d.k }); continue; }
+    if (out === null) {
+      attente.push({ s: d.s, k: d.k });
+      // Contrat sans la clé (contre-relecture N2) : sa partie lisible part tout de suite (paie, avenants…), avec le bloc déjà
+      // chiffré s'il en a un ; seule la partie à chiffrer attend la clé. Une note du carnet attend entière.
+      if (d.s === 'contracts') {
+        const p = separer(d.s, val);
+        const bloc = (val as Record<string, unknown>).sante;
+        if (p) ecrire.push({ ...d, v: stable(bloc ? { ...p.lisible, sante: bloc } : p.lisible) });
+      }
+      continue;
+    }
     ecrire.push(out === val ? d : { ...d, v: stable(out) });
   }
   if (attente.length) db.outboxKeep(attente);
@@ -492,7 +509,7 @@ function noterAppareils(docs: RemoteDoc[]) {
   void recompterAnciens(vus);
 }
 
-async function recompterAnciens(vus = lireVus()) {
+async function recompterAnciens(vus = lireVus(), prevenir = false) {
   const aJour = new Set<string>();
   for (const r of await db.getAll<{ k: string; v?: { format?: number } }>('kv')) {
     if (r.k.startsWith(REPERE) && (r.v?.format ?? 0) >= FORMAT_DONNEES) aJour.add(r.k.slice(REPERE.length));
@@ -500,7 +517,7 @@ async function recompterAnciens(vus = lireVus()) {
   const n = Object.keys(vus).filter((id) => !aJour.has(id)).length;
   const avant = Number(lsGet(LS.anciens) ?? 0);
   lsSet(LS.anciens, n ? String(n) : null);
-  if (n && !avant) toast('Un autre appareil utilise une ancienne version d’Arvela : ouvre l’app dessus et touche « Mettre à jour ».', undefined, 'warn');
+  if (prevenir && n && !avant) toast('Un autre appareil utilise une ancienne version d’Arvela : ouvre l’app dessus et touche « Mettre à jour ».', undefined, 'warn');
 }
 
 // ---------- Copie en direct ----------
@@ -591,7 +608,7 @@ function attach(u: CloudUser): Promise<void> {
     await poserRepere();
     await etablirCoffre(u);
     if (cle) { if (await ouvrirLocal()) await load(); renvoyerAttente(); }
-    void recompterAnciens();
+    void recompterAnciens(lireVus(), true);
     await chiffrerEnLigne(u);
   }).catch((e) => console.warn('coffre', e));
   return renvoi;
@@ -683,7 +700,12 @@ function suivreLien(id: string) {
   if (suivis.has(id) || !be) return;
   suivis.set(id, be.watchShare(id, (d) => {
     const mien = dernierScelle.get(id);
-    if (d && mien && d.v !== mien && cle) { sentShares.delete(id); scheduleShares(1000); }
+    if (!d || !mien || d.v === mien || !cle) return;
+    // Un autre appareil à jour a le secret : son texte s'ouvre, rien à refaire (sinon deux appareils se relanceraient sans
+    // fin : contre-relecture N1). Seul un texte qui ne s'ouvre pas (ancien appareil sans le secret) est refait.
+    const k = state.contracts.find((c) => c.partage?.id === id)?.partage;
+    if (!k?.secret || !k.code) return;
+    void openShare(k.secret, k.code, d).then(() => { dernierScelle.set(id, d.v); }, () => { sentShares.delete(id); scheduleShares(1000); });
   }, () => {}));
 }
 function arreterSuivis() {

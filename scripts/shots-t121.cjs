@@ -14,7 +14,7 @@ const post = (p, body) => fetch(cloud + p, { method: 'POST', headers: { 'content
 const pad = (n) => String(n).padStart(2, '0');
 const now = new Date();
 const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-const week = (start, end) => Object.fromEntries([1, 2, 3, 4, 5, 6, 7].map((d) => [d, [{ start, end }]]));
+const week = (start, end) => Object.fromEntries([1, 2, 3, 4, 5].map((d) => [d, [{ start, end }]]));
 const contrat = {
   id: 'c1', child: 'Lou', family: 'Petit', color: 1, start: '2026-09-01', yearType: 'complete', weeks: 52, weeksOff: [],
   planning: week('08:00', '17:00'), rateNet: 400, majoration: 10, entretienJour: 400, entretienMode: 'jour', repasPrix: 0, repasParJour: 0, repasParents: true,

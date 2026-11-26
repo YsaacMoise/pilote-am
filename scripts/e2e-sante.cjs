@@ -45,7 +45,7 @@ const valeur = (docs, s, k) => JSON.parse(enLigne(docs, s, k).v);
 const pad = (n) => String(n).padStart(2, '0');
 const now = new Date();
 const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-const week = (start, end) => Object.fromEntries([1, 2, 3, 4, 5, 6, 7].map((d) => [d, [{ start, end }]]));
+const week = (start, end) => Object.fromEntries([1, 2, 3, 4, 5].map((d) => [d, [{ start, end }]]));
 const contrat = {
   id: 'c1', child: 'Lou', family: 'Petit', color: 1, start: '2026-09-01', yearType: 'complete', weeks: 52, weeksOff: [],
   planning: week('08:00', '17:00'), rateNet: 400, majoration: 10, entretienJour: 400, entretienMode: 'jour', repasPrix: 0, repasParJour: 0, repasParents: true,
@@ -173,6 +173,13 @@ const lireLocal = (p, s, k) => p.evaluate(async ({ s, k }) => {
   const bJ1 = await lireLocal(bb, 'journal', 'j1');
   const bC1 = await lireLocal(bb, 'contracts', 'c1');
   assert(bJ1.sante && !bJ1.temp && bC1.majoreFiscal === undefined && bC1.rateNet === 400, 'B sans clé : contrats et montants là, carnet et case encore scellés');
+  // Contre-relecture N2 : sans la clé, un changement de paie part quand même (partie lisible), le bloc chiffré reste.
+  await bb.goto(base + '#/contrat/c1');
+  await bb.getByLabel('Taux horaire net').fill('4,10');
+  await bb.getByRole('button', { name: /^Enregistrer/ }).first().click();
+  await attendreQue(async () => valeur(await dump(uid), 'contracts', 'c1').rateNet === 410, 15000, 'taux envoyé sans la clé');
+  const cSansCle = valeur(await dump(uid), 'contracts', 'c1');
+  assert(cSansCle.sante && !('majoreFiscal' in cSansCle) && !('code' in cSansCle.partage), 'B sans clé : le nouveau taux part, la case et le code du lien restent chiffrés');
   await bb.goto(base + '#/compte');
   await bb.getByRole('textbox', { name: 'Clé de secours' }).fill('0000-0000-0000-0000-0000-0000-00');
   await bb.getByRole('button', { name: 'Ouvrir mes données' }).click();

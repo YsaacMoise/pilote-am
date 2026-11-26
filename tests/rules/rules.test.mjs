@@ -59,6 +59,10 @@ const cas = [
   ['24. Valeur non texte : refusée', () => assertFails(setDoc(doc(alice, 'users/alice/data/contracts~num'), { ...bon('num'), v: 42 }))],
   ['25. Horodatage antidaté : refusé', () => assertFails(setDoc(doc(alice, 'users/alice/data/contracts~c3'), { ...bon('c3'), t: Timestamp.fromDate(new Date('2020-01-01')) }))],
   ['26. Identifiant d’appareil de 65 caractères : refusé', () => assertFails(setDoc(doc(alice, 'users/alice/data/contracts~c4'), { ...bon('c4'), d: 'x'.repeat(65) }))],
+  ['26 bis. T-121 : Alice crée son coffre', () => assertSucceeds(setDoc(doc(alice, 'users/alice/data/kv~coffre'), { s: 'kv', k: 'coffre', v: '{"k":"coffre","v":{"id":"a"}}', t: serverTimestamp() }))],
+  ['26 ter. T-121 : Alice remplace son coffre : refusé', () => assertFails(setDoc(doc(alice, 'users/alice/data/kv~coffre'), { s: 'kv', k: 'coffre', v: '{"k":"coffre","v":{"id":"b"}}', t: serverTimestamp() }))],
+  ['26 quater. T-121 : Alice marque son coffre supprimé : refusé', () => assertFails(setDoc(doc(alice, 'users/alice/data/kv~coffre'), { s: 'kv', k: 'coffre', v: null, t: serverTimestamp() }))],
+  ['26 quinquies. T-121 : Alice efface son coffre (suppression du compte)', () => assertSucceeds(deleteDoc(doc(alice, 'users/alice/data/kv~coffre')))],
   ['27. Écriture ailleurs que sous users/{uid}/data : refusée', () => assertFails(setDoc(doc(alice, 'autre/alice'), { a: 1 }))],
   // Lien parent
   ['28. Anonyme lit un lien dont il a l’identifiant', () => assertSucceeds(getDoc(doc(anon, `partages/${P0}`)))],
