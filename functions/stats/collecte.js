@@ -2,17 +2,23 @@
 //
 // Ce module ne fait que des lectures : liste des comptes (Firebase Authentication), requêtes et comptages (Firestore). Aucun
 // appel d'écriture n'y figure (test « aucune écriture » : relevé de la base avant et après, et recherche dans ce fichier).
-// Ce qui est lu, et seulement cela :
-// - comptes : date de création, dates de connexion et de renouvellement de session, adresse confirmée (oui ou non) ;
-// - données des comptes : l'heure serveur `t` des documents écrits dans les 30 derniers jours (champ `t` seul, par projection),
-//   et, pour les contrats, le texte du contrat dont seules les dates de début et de fin sont gardées, en mémoire ;
-// - liens parents : un comptage, et le champ `revoque` des liens des seuls comptes de test.
-// La partie chiffrée (`sante`) n'est jamais ouverte : aucune clé n'existe sur le serveur.
+// Ce que la fonction reçoit, et ce qu'elle en garde :
+// - comptes : la fiche complète de chaque compte (outil d'administration) ; elle n'en garde que l'uid (pour les requêtes), la
+//   date de création, la dernière connexion ou le dernier renouvellement de session, et « adresse confirmée » oui ou non ;
+// - seulement si `donneesConfiees` est vrai (décision du DG, docs/stats.md, section 2) :
+//   - l'heure serveur `t` des documents écrits dans les 30 derniers jours (champ `t` seul, par projection) ;
+//   - le texte entier de chaque contrat, dont elle ne garde que les dates de début et de fin, le temps du calcul ;
+//   - un comptage des liens parents, et le champ `revoque` des liens des seuls comptes de test.
+// Rien n'est écrit, rien n'est gardé après le calcul. La partie chiffrée (`sante`) n'est jamais ouverte : aucune clé n'existe
+// sur le serveur.
 import { Timestamp } from 'firebase-admin/firestore';
 import { JOUR_MS, contratEnCours, datesContrat, dernierPassage, estRepere, jourParis, totauxComptes } from './calcul.js';
 
-/** Taille d'une page pour chercher la dernière écriture d'un compte, repères d'appareil sautés. */
-const PAGE = 10;
+/**
+ * Tailles des pages pour chercher la dernière écriture d'un compte, documents techniques sautés. Chaque document rendu est une
+ * lecture payée : la première page n'en prend qu'un (le cas courant : la dernière écriture est une donnée saisie), puis 4, puis 16.
+ */
+const PAGES = [1, 4, 16];
 /** Comptes traités en même temps. */
 const EN_PARALLELE = 20;
 
@@ -21,12 +27,13 @@ const EN_PARALLELE = 20;
  * Requête sur le seul champ `t` (index simple automatique) : aucun index composé à créer.
  */
 async function derniereEcriture(col, depuis) {
-  const base = col.where('t', '>=', Timestamp.fromMillis(depuis)).orderBy('t', 'desc').select('t').limit(PAGE);
+  const base = col.where('t', '>=', Timestamp.fromMillis(depuis)).orderBy('t', 'desc').select('t');
   let apres = null;
-  for (;;) {
-    const page = await (apres ? base.startAfter(apres) : base).get();
+  for (let i = 0; ; i++) {
+    const taille = PAGES[Math.min(i, PAGES.length - 1)];
+    const page = await (apres ? base.startAfter(apres) : base).limit(taille).get();
     for (const d of page.docs) if (!estRepere(d.id)) return d.get('t').toMillis();
-    if (page.size < PAGE) return null;
+    if (page.size < taille) return null;
     apres = page.docs[page.docs.length - 1];
   }
 }
@@ -58,10 +65,11 @@ async function liensActifs(db, exclus) {
 }
 
 /**
- * Totaux du jour. `auth` : firebase-admin/auth ; `db` : firebase-admin/firestore ; `maintenant` : ms ; `exclus` : Set d'uid.
+ * Totaux du jour. `auth` : firebase-admin/auth ; `db` : firebase-admin/firestore ; `maintenant` : ms ; `exclus` : Set d'uid ;
+ * `donneesConfiees` : vrai pour lire aussi les données confiées par l'AM (sinon la base n'est pas lue du tout).
  * Rend des nombres seulement (et le tableau des semaines), jamais un identifiant.
  */
-export async function collecter({ auth, db, maintenant, exclus }) {
+export async function collecter({ auth, db, maintenant, exclus, donneesConfiees = false }) {
   const comptes = [];
   let nbExclus = 0;
   let page;
@@ -75,7 +83,9 @@ export async function collecter({ auth, db, maintenant, exclus }) {
     page = r.pageToken;
   } while (page);
 
-  const totaux = totauxComptes(comptes, maintenant);
+  const totaux = { ...totauxComptes(comptes, maintenant), comptes_exclus: nbExclus };
+  if (!donneesConfiees) return totaux;
+
   const jour = jourParis(maintenant);
   const depuis7 = maintenant - 7 * JOUR_MS;
   const depuis30 = maintenant - 30 * JOUR_MS;
@@ -100,7 +110,6 @@ export async function collecter({ auth, db, maintenant, exclus }) {
     comptes_avec_contrat: avecContrat,
     contrats_en_cours: enCours,
     liens_parents_actifs: await liensActifs(db, exclus),
-    comptes_exclus: nbExclus,
   };
 }
 

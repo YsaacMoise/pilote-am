@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  CLES_EVENEMENT, CLES_NOMBRES, CLES_PROPRIETES, CLES_SEMAINE, DISTINCT_ID, EVENEMENT, JOUR_MS, SEMAINES, VERSION,
+  CLES_COMPTES, CLES_DONNEES_CONFIEES, CLES_EVENEMENT, CLES_NOMBRES, CLES_SEMAINE, DISTINCT_ID, EVENEMENT, JOUR_MS, SEMAINES, VERSION, clesProprietes,
   ajouterJours, contratEnCours, datesContrat, dernierPassage, estRepere, evenement, jourParis, listeExclus, lundiParis, totauxComptes,
 } from '../calcul.js';
 
@@ -68,8 +68,13 @@ test('totaux des comptes sur un jeu connu', () => {
   for (const s of t.inscrites_par_semaine) assert.deepEqual(Object.keys(s), CLES_SEMAINE);
 });
 
-test('repère d’appareil reconnu, données saisies non', () => {
+test('documents techniques reconnus (repère d’appareil, coffre, copie scellée, clé d’accès), données saisies non', () => {
   assert.equal(estRepere('kv~appareil-1a2b3c'), true);
+  assert.equal(estRepere('kv~coffre'), true);
+  assert.equal(estRepere('kv~sequestre'), true);
+  assert.equal(estRepere('kv~cleacces-AbC_12'), true);
+  assert.equal(estRepere('kv~coffre-2'), false);
+  assert.equal(estRepere(undefined), false);
   assert.equal(estRepere('kv~settings'), false);
   assert.equal(estRepere('days~2026-11-26'), false);
   assert.equal(estRepere('contracts~appareil-1'), false);
@@ -103,13 +108,25 @@ const totauxValides = () => {
   return t;
 };
 
+test('liste blanche, totaux des comptes seuls (réglage par défaut) : les totaux des données confiées ne partent pas', () => {
+  const e = evenement(totauxValides(), 'phc_test', Date.UTC(2026, 10, 26, 4));
+  assert.deepEqual(Object.keys(e.properties), clesProprietes(false));
+  for (const k of CLES_DONNEES_CONFIEES) assert.ok(!(k in e.properties), k);
+  for (const k of CLES_COMPTES) assert.ok(Number.isSafeInteger(e.properties[k]), k);
+  // Absents des totaux, ils n'arrêtent pas l'envoi dans ce réglage.
+  const t = totauxValides();
+  for (const k of CLES_DONNEES_CONFIEES) delete t[k];
+  assert.doesNotThrow(() => evenement(t, 'phc_test', Date.UTC(2026, 10, 26, 4)));
+});
+
 test('liste blanche : l’événement ne contient que les clés listées', () => {
   const now = Date.UTC(2026, 10, 26, 4);
   const t = { ...totauxValides(), uid: 'secret-uid', email: 'am@exemple.fr', prenom: 'Léa', naissance: '1990-01-01' };
   t.inscrites_par_semaine[0].uid = 'secret-uid';
-  const e = evenement(t, 'phc_test', now);
+  const e = evenement(t, 'phc_test', now, true);
   assert.deepEqual(Object.keys(e), CLES_EVENEMENT);
-  assert.deepEqual(Object.keys(e.properties).sort(), [...CLES_PROPRIETES].sort());
+  assert.deepEqual(Object.keys(e.properties), clesProprietes(true));
+  assert.deepEqual([...clesProprietes(true)].sort(), [...CLES_NOMBRES, 'inscrites_par_semaine', 'version', '$process_person_profile', '$geoip_disable'].sort());
   for (const s of e.properties.inscrites_par_semaine) assert.deepEqual(Object.keys(s), CLES_SEMAINE);
   assert.equal(e.event, EVENEMENT);
   assert.equal(e.distinct_id, DISTINCT_ID);
@@ -127,7 +144,10 @@ test('liste blanche : un total absent, négatif ou non entier arrête l’envoi'
   for (const mauvais of [undefined, -1, 1.5, '3', NaN, null]) {
     const t = totauxValides();
     t.actives_7j = mauvais;
-    assert.throws(() => evenement(t, 'phc_test', now), /Total invalide/);
+    assert.throws(() => evenement(t, 'phc_test', now, true), /Total invalide/);
+    const u = totauxValides();
+    u.inscrites_total = mauvais;
+    assert.throws(() => evenement(u, 'phc_test', now), /Total invalide/);
   }
   const t = totauxValides();
   t.inscrites_par_semaine = t.inscrites_par_semaine.slice(1);

@@ -11,18 +11,28 @@ export const SEMAINES = 26;
 
 /** Clés de l'événement envoyé à PostHog, et seulement elles. */
 export const CLES_EVENEMENT = ['api_key', 'event', 'distinct_id', 'properties', 'timestamp'];
-/** Totaux envoyés (nombres entiers). */
-export const CLES_NOMBRES = [
+/** Totaux tirés des seuls comptes (Firebase Authentication ; Arvela en est responsable : registre, A1). Nombres entiers. */
+export const CLES_COMPTES = [
   'inscrites_total', 'nouvelles_1j', 'nouvelles_7j', 'nouvelles_30j',
-  'connectees_7j', 'connectees_30j', 'actives_7j', 'actives_30j',
-  'comptes_avec_contrat', 'contrats_en_cours', 'liens_parents_actifs', 'emails_verifies', 'comptes_exclus',
+  'connectees_7j', 'connectees_30j', 'emails_verifies', 'comptes_exclus',
 ];
 /**
- * Propriétés de l'événement : les totaux, le tableau des semaines, la version, et deux réglages de PostHog (pas des données) :
- * `$process_person_profile: false` (aucune fiche de personne créée pour `arvela-serveur`, comme `person_profiles: 'never'` de
- * l'app) et `$geoip_disable: true` (aucune localisation tirée de l'adresse du serveur, comme l'app).
+ * Totaux tirés des données que l'AM confie à Arvela pour son compte (registre, partie B) : calculés et envoyés seulement si le
+ * paramètre STATS_DONNEES_CONFIEES est vrai (décision du DG, docs/stats.md, section 2). Nombres entiers.
  */
-export const CLES_PROPRIETES = [...CLES_NOMBRES, 'inscrites_par_semaine', 'version', '$process_person_profile', '$geoip_disable'];
+export const CLES_DONNEES_CONFIEES = ['actives_7j', 'actives_30j', 'comptes_avec_contrat', 'contrats_en_cours', 'liens_parents_actifs'];
+/** Tous les totaux possibles. */
+export const CLES_NOMBRES = [...CLES_COMPTES, ...CLES_DONNEES_CONFIEES];
+/**
+ * Réglages de PostHog (pas des données) : `$process_person_profile: false` (aucune fiche de personne créée pour
+ * `arvela-serveur`, comme `person_profiles: 'never'` de l'app) et `$geoip_disable: true` (aucune localisation tirée de
+ * l'adresse du serveur, comme l'app).
+ */
+const CLES_FIXES = ['inscrites_par_semaine', 'version', '$process_person_profile', '$geoip_disable'];
+/** Propriétés de l'événement, selon que les totaux des données confiées sont envoyés ou non. */
+export function clesProprietes(donneesConfiees) {
+  return [...CLES_COMPTES, ...(donneesConfiees ? CLES_DONNEES_CONFIEES : []), ...CLES_FIXES];
+}
 /** Clés d'une ligne du tableau des semaines. */
 export const CLES_SEMAINE = ['lundi', 'nombre'];
 export const EVENEMENT = 'stats_jour';
@@ -102,11 +112,15 @@ export function totauxComptes(comptes, maintenant) {
 }
 
 /**
- * Repère technique écrit chaque jour par chaque appareil à jour (src/cloud.ts, `poserRepere`) : ce n'est pas une donnée saisie.
- * Nom du document : `kv~appareil-<identifiant>` (src/sync/plan.ts, `docId`).
+ * Documents techniques écrits par l'app sans saisie de l'AM : ils ne rendent pas un compte « actif ». Noms : src/sync/plan.ts, `docId`.
+ * - `kv~appareil-<id>` : repère écrit chaque jour par chaque appareil à jour (src/cloud.ts, `poserRepere`) ;
+ * - `kv~coffre` : empreinte de la clé de secours (T-121, src/sync/backend-firebase.ts, `creerCoffre`) ;
+ * - `kv~sequestre` : copie scellée de la clé, écrite par chaque téléphone à l'activation (T-125, src/sync/sequestre.ts) ;
+ * - `kv~cleacces-<id>` : paquet d'une clé d'accès (T-125, src/sync/cleacces.ts, `PREFIXE`).
  */
 export function estRepere(idDocument) {
-  return typeof idDocument === 'string' && idDocument.startsWith('kv~appareil-');
+  if (typeof idDocument !== 'string') return false;
+  return idDocument.startsWith('kv~appareil-') || idDocument.startsWith('kv~cleacces-') || idDocument === 'kv~coffre' || idDocument === 'kv~sequestre';
 }
 
 /**
@@ -136,11 +150,13 @@ const entier = (cle, n) => {
 
 /**
  * Événement PostHog, construit clé par clé. Toute valeur qui n'est pas un entier positif ou nul arrête l'envoi.
- * `totaux` peut contenir d'autres champs : ils ne sont jamais recopiés.
+ * `totaux` peut contenir d'autres champs : ils ne sont jamais recopiés. Sans `donneesConfiees`, les totaux tirés des données
+ * confiées par l'AM ne partent pas, même s'ils sont présents.
  */
-export function evenement(totaux, cleProjet, maintenant) {
+export function evenement(totaux, cleProjet, maintenant, donneesConfiees = false) {
   const properties = {};
-  for (const k of CLES_NOMBRES) properties[k] = entier(k, totaux[k]);
+  for (const k of CLES_COMPTES) properties[k] = entier(k, totaux[k]);
+  if (donneesConfiees) for (const k of CLES_DONNEES_CONFIEES) properties[k] = entier(k, totaux[k]);
   const semaines = totaux.inscrites_par_semaine;
   if (!Array.isArray(semaines) || semaines.length !== SEMAINES) throw new Error('Tableau des semaines invalide');
   properties.inscrites_par_semaine = semaines.map((s) => {
