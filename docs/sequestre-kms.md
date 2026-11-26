@@ -52,7 +52,7 @@ cd functions && npm install && cd ..
 firebase deploy --only functions:sequestre --project arvela-app
 ```
 avec la variable `SEQUESTRE_CLE_KMS=projects/arvela-app/locations/europe-west9/keyRings/arvela/cryptoKeys/sequestre/cryptoKeyVersions/1` (fichier `functions/.env`). Le secret de l'étape 4 doit exister avant ; vérifier après le déploiement que `sequestre@` peut le lire (`gcloud secrets get-iam-policy SEQUESTRE_SMTP_MOT_DE_PASSE --project arvela-app`), sinon lui donner `roles/secretmanager.secretAccessor` sur ce seul secret.
-Publier aussi les règles Firestore (`firebase deploy --only firestore:rules`) : elles ferment `sequestre-demandes`, `sequestre-journal` et `mail` aux clients, et protègent `kv~coffre`.
+Publier aussi les règles Firestore (`firebase deploy --only firestore:rules`) : elles ferment `sequestre-demandes`, `sequestre-journal` et `sequestre-comptes` aux clients (tout ce qu'elles ne nomment pas est fermé), et protègent `kv~coffre`.
 
 ## 6. Ce que garantit le montage
 - La clé privée ne sort jamais du boîtier HSM. Seules les fonctions demandent un déchiffrement, et seulement : pour l'AM connectée avec une adresse confirmée et une connexion de moins d'une heure, sur sa propre copie, 72 heures après sa demande (annulable depuis chacun de ses téléphones), avec un e-mail à chaque demande, annulation et ouverture, et une trace de chaque étape ; si l'adresse du compte change, l'ancienne est prévenue et aucune demande n'est possible pendant 72 heures ; une seule ouverture par demande (transaction).

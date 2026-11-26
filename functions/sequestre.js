@@ -65,12 +65,14 @@ async function mail(to, subject, text) {
   transport ??= nodemailer.createTransport({
     host: 'smtp.mail.ovh.net', port: 465, secure: true,
     auth: { user: SMTP_COMPTE, pass: SMTP_MOT_DE_PASSE.value() },
+    // Abandon rapide si le serveur ne répond pas : la fonction s'arrête à 60 s (contrôle qualité n° 83, R1).
+    connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 15000,
   });
   await transport.sendMail({ from: `Arvela <${SMTP_COMPTE}>`, to, subject, text });
 }
 /** E-mail d'information : un échec est tracé au journal sans bloquer le geste (annulation, ouverture, changement d'adresse). */
 async function mailInfo(uid, to, subject, text) {
-  try { await mail(to, subject, text); } catch { await journal(uid, `e-mail non parti : ${subject}`); }
+  try { await mail(to, subject, text); } catch (e) { await journal(uid, `e-mail non parti : ${subject} (${String(e?.code ?? 'erreur').slice(0, 40)})`); }
 }
 const lireSequestre = async (uid) => {
   const d = await db.doc(`users/${uid}/data/kv~sequestre`).get();
@@ -92,8 +94,8 @@ export const sequestreDemander = onCall(opts, async (req) => {
   try {
     await mail(email, 'Arvela : demande d’ouverture de ta clé de secours',
       `Une demande d’ouverture de ta clé de secours a été faite depuis ton compte. Elle sera possible le ${new Date(pret).toLocaleString('fr-FR', { timeZone: 'Europe/Paris' })}. Si ce n’est pas toi, ouvre Arvela et annule-la, puis change ton mot de passe.`);
-  } catch {
-    await journal(uid, 'demande refusée : e-mail non parti');
+  } catch (e) {
+    await journal(uid, `demande refusée : e-mail non parti (${String(e?.code ?? 'erreur').slice(0, 40)})`);
     throw new HttpsError('unavailable', 'E-mail impossible pour l’instant. Réessaie plus tard.');
   }
   await demandeRef(uid).set({ cree: Date.now(), pret, ouverte: false, annulee: false, email });
