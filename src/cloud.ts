@@ -713,7 +713,7 @@ function attach(u: CloudUser): Promise<void> {
     if (cle) { if (await ouvrirLocal()) await load(); renvoyerAttente(); await scellerSiBesoin(u); }
     // Demande d'ouverture en cours, montrée sur tous les téléphones du compte, avec « Annuler » (relecture T-125, M1).
     // L'adresse du compte est aussi notée là par le serveur, avant toute demande (relecture T-125, R1).
-    if (cloudInfo().sequestre || !cle || (await be?.sequestreClePublique().catch(() => null))) void etatOuverture();
+    if (await be?.sequestreClePublique().catch(() => null)) void etatOuverture();
     void recompterAnciens(lireVus(), true);
     await chiffrerEnLigne(u);
   }).catch((e) => console.warn('coffre', e));
