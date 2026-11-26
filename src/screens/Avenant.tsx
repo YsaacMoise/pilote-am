@@ -15,7 +15,7 @@ import { Banner, Choices, DateInput, EuroInput, NumberInput, Seg, Switch, Topbar
 import { Icon } from '../ui/icons';
 import { PlanDay, WeeksOff, avenantSummary } from './Contrat';
 import { planningComplet } from './contrat-validation';
-import { AIDE_COMPLEMENTAIRES, AIDE_SEMAINES, TITRE_AM_AP } from './textes-contrat';
+import { TITRE_AM_AP } from './textes-contrat';
 import { PlanningVariableSaisie } from './PlanningVariableSaisie';
 import { manquesPV } from '../engine/planningVariable';
 
@@ -139,17 +139,16 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
       <Topbar title={`Avenant · ${c.child}`} back={retour} screen="avenant" />
       <main>
         <section class="card stack">
-          <DateInput label="Date d’effet" hint="En cours de mois, Arvela calcule au prorata. Les jours d’avant gardent les anciennes conditions." value={date} min={c.start}
+          <DateInput label="Date d’effet" value={date} min={c.start}
             onChange={(v) => { setDate(v); setErrors([]); if (!existing && v) { const b = base(v); if (b) setT(pickTerms(b)); } }} />
           <DateInput label="Signé le (facultatif)" value={signe} onChange={setSigne} />
         </section>
         <section class="card stack-sm" aria-labelledby="av-ce">
           <h2 id="av-ce">Ce qui change</h2>
-          <Switch label="Le salaire" hint="Taux horaire, majorations" checked={avec('salaire')} onChange={(v) => cocher('salaire', v)} />
-          <Switch label="Le planning" hint="Jours, horaires, semaines sans accueil, type d’année" checked={avec('planning')} onChange={(v) => cocher('planning', v)} />
-          <Switch label="Les frais" hint="Entretien, repas, kilomètres" checked={avec('frais')} onChange={(v) => cocher('frais', v)} />
-          {c.cdd && <Switch label="La date de fin du CDD" hint="Renouvellement du CDD" checked={avec('fin')} onChange={(v) => cocher('fin', v)} />}
-          <p class="hint">Seules les parties cochées s’ouvrent, remplies avec le contrat en vigueur.</p>
+          <Switch label="Le salaire" checked={avec('salaire')} onChange={(v) => cocher('salaire', v)} />
+          <Switch label="Le planning" hint="Semaines sans accueil comprises" checked={avec('planning')} onChange={(v) => cocher('planning', v)} />
+          <Switch label="Les frais" checked={avec('frais')} onChange={(v) => cocher('frais', v)} />
+          {c.cdd && <Switch label="La date de fin du CDD" checked={avec('fin')} onChange={(v) => cocher('fin', v)} />}
         </section>
         {errors.length > 0 && <p class="err" role="alert">Pour continuer : {errors.map((e) => e.replace(/\.$/, '').replace(/^./, (x) => x.toLowerCase())).join(' ; ')}.</p>}
         <button class="btn btn-primary btn-block btn-lg" onClick={() => { const e = erreursDate(); setErrors(e); if (e.length) { logErreur('avenant_incomplet'); return; } setEtape(2); window.scrollTo(0, 0); }}>Continuer</button>
@@ -171,8 +170,8 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
               {/* T-115 (R3) : brut calculé depuis le net, à la date de l'avenant ; l'AM peut écrire celui de l'avenant. */}
               <BrutSaisie net={t.rateNet} brut={t.rateBrut} date={jour} region={regionDe(c)} set={(v) => set({ rateBrut: v })} ecrit="l’avenant" debut={date} />
               {rates?.minConvNet !== undefined && <p class="hint">{TITRE_AM_AP}</p>}
-              <NumberInput label="Majoration des heures au-delà de 45 h par semaine (%)" hint="10 % au moins." value={t.majoration} min={10} max={100} onChange={(v) => set({ majoration: v ?? 10 })} />
-              <NumberInput label="Majoration des heures complémentaires (%)" hint={AIDE_COMPLEMENTAIRES} value={t.majorationCompl ?? 0} min={0} max={100} onChange={(v) => set({ majorationCompl: v ?? 0 })} />
+              <NumberInput label="Majoration des heures au-delà de 45 h par semaine (%)" value={t.majoration} min={10} max={100} onChange={(v) => set({ majoration: v ?? 10 })} />
+              <NumberInput label="Majoration des heures complémentaires (%)" value={t.majorationCompl ?? 0} min={0} max={100} onChange={(v) => set({ majorationCompl: v ?? 0 })} />
             </fieldset>
           </section>
         )}
@@ -183,16 +182,14 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
               <legend>Le planning</legend>
               <Seg label="Année complète ou incomplète ?" value={t.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : Math.min(t.weeks, 46) || 46 })}
                 options={[{ v: 'complete', l: 'Année complète' }, { v: 'incomplete', l: 'Année incomplète' }]} />
-              <p class="hint">Comme écrit à l’avenant.</p>
-              {t.yearType === 'incomplete' && <NumberInput label="Semaines d’accueil programmées" hint={AIDE_SEMAINES} value={t.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />}
+              {t.yearType === 'incomplete' && <NumberInput label="Semaines d’accueil programmées" hint="Hors congés payés." value={t.weeks} min={1} max={51} onChange={(v) => set({ weeks: v ?? 46 })} />}
               {/* T-122 : semaines sans accueil de l'avenant (lues par payroll.ts, toutesSemainesSansAccueil). */}
               {t.yearType === 'incomplete' && <WeeksOff c={preview} onChange={(w) => set({ weeksOff: w })} />}
               {/* T-104 (cas 3) : l'avenant peut changer les horaires variables, ou passer d'un planning fixe à des horaires variables et inversement. */}
               <Choices label="Avec cet avenant, le planning est-il le même chaque semaine ?" value={t.planningVariable ? 'non' : 'oui'} onChange={(v) => set({ planningVariable: v === 'non' })}
-                options={[{ v: 'oui', l: 'Oui, une semaine type qui se répète' }, { v: 'non', l: 'Non, il change d’une semaine à l’autre', sub: 'Semaines A et B, ou planning remis par les parents.' }]} />
+                options={[{ v: 'oui', l: 'Oui, une semaine type qui se répète' }, { v: 'non', l: 'Non, il change d’une semaine à l’autre' }]} />
               {semaines4751(t.yearType, t.weeks) && <><Banner tone="warn">{NON_GERE_47_51}</Banner><button class="btn btn-secondary" onClick={() => set({ yearType: 'complete', weeks: 52 })}>Passer en année complète (52 semaines)</button></>}
-              {before.yearType === 'incomplete' && t.yearType === 'complete' && <p class="hint">Le contrat passe de l’année incomplète à l’année complète : l’app calcule une régularisation à la date de l’avenant (heures accueillies et pas encore payées), versée avec le salaire de ce mois.</p>}
-              {before.yearType === 'incomplete' && t.yearType === 'incomplete' && <p class="hint">Année incomplète : la régularisation se fait en fin de contrat, pas à l’avenant.</p>}
+              {before.yearType === 'incomplete' && t.yearType === 'complete' && <p class="hint">Régularisation calculée à la date de l’avenant, versée avec le salaire de ce mois.</p>}
               {!t.planningVariable && [1, 2, 3, 4, 5, 6, 7].map((d) => <PlanDay d={d} plages={t.planning[d] ?? []} onChange={(p) => set({ planning: { ...t.planning, [d]: p } as Planning })} />)}
               {!t.planningVariable && <div class="banner info">
                 <span class="b-ico"><Icon name="clock" /></span>
@@ -222,7 +219,7 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
                   <NumberInput label="Repas fournis par jour" value={t.repasParJour} max={4} onChange={(v) => set({ repasParJour: v ?? 0 })} />
                 </div>
               )}
-              <EuroInput label="Indemnité kilométrique, par km" hint="0 si les kilomètres ne sont pas prévus." cents={t.kmTaux} onChange={(v) => set({ kmTaux: v ?? 0 })} />
+              <EuroInput label="Indemnité kilométrique, par km" cents={t.kmTaux} onChange={(v) => set({ kmTaux: v ?? 0 })} />
             </fieldset>
           </section>
         )}
@@ -239,7 +236,6 @@ export function Avenant({ cid, aid }: { cid: string; aid?: string }) {
         <section class="card stack" aria-label="Ce qui change">
           <h2>Ce qui change</h2>
           {summary.length ? summary.map((l) => <p>{l}</p>) : <p class="muted">Rien pour l’instant.</p>}
-          <p class="hint">À partir du {shortDate(date)}.</p>
         </section>
 
         {errors.length > 0 && <Banner tone="warn"><strong>À corriger avant d’enregistrer</strong><ul>{errors.map((e) => <li>{e}</li>)}</ul></Banner>}

@@ -54,21 +54,20 @@ export function ContratCree({ id }: { id: string }) {
       <main>
         <section class="card stack">
           <h2>{Maj(monthLabel(m))}</h2>
-          <p class="hint">Premier mois suivi par Arvela, depuis le {shortDate(c.trackedFrom > `${m}-01` ? c.trackedFrom : `${m}-01`)}.</p>
+          <p class="hint">Suivi depuis le {shortDate(c.trackedFrom > `${m}-01` ? c.trackedFrom : `${m}-01`)}.</p>
           <dl class="kv">
             <dt>Accueil prévu</dt><dd>{prevus.length} jour{prevus.length > 1 ? 's' : ''}, {hoursLabel(minPrevues)}</dd>
             {feries.length > 0 && <><dt>Jour{feries.length > 1 ? 's' : ''} férié{feries.length > 1 ? 's' : ''}</dt><dd>{feries.map((di) => `${Number(di.date.slice(8))} ${MOIS_NOMS[Number(di.date.slice(5, 7)) - 1]}`).join(', ')}</dd></>}
             {!c.accueilOccasionnel && <><dt>Mensualisation</dt><dd>{hoursLabel(Math.round(b.mensuelMin))}, {joursMensualises(termsAt(c, today()))} jours</dd></>}
             {!c.accueilOccasionnel && <><dt>Salaire de base</dt><dd>{euros(b.salaireMens)} net</dd></>}
           </dl>
-          <p class="hint">Les journées suivent le planning : note seulement les écarts dans Aujourd’hui.</p>
           <a class="btn btn-primary btn-block" href={`#/mois/${m}/${c.id}`}>Voir {monthLabel(m)} dans Mois</a>
         </section>
         <h2 class="section-title">Ensuite</h2>
         <div class="list">
-          <ListLink href={`#/enfant/${c.id}/parents`} icon="users" title="Créer le lien des parents" sub={`Ils suivent la journée ${de(c.child)}`} />
-          {avant && <ListLink href={`#/historique/${c.id}`} icon="file" title="Bulletins d’avant Arvela" sub={`Avant le ${shortDate(c.trackedFrom)}`} end={<span class="tag">Facultatif</span>} />}
-          <ListLink href={`#/enfant/${c.id}`} icon={<Gommette name={c.child} color={c.color} />} title={`La fiche ${de(c.child)}`} sub="Contrat, planning, parents, absences, carnet" />
+          <ListLink href={`#/enfant/${c.id}/parents`} icon="users" title="Créer le lien des parents" />
+          {avant && <ListLink href={`#/historique/${c.id}`} icon="file" title="Bulletins d’avant Arvela (facultatif)" sub={`Avant le ${shortDate(c.trackedFrom)}`} />}
+          <ListLink href={`#/enfant/${c.id}`} icon={<Gommette name={c.child} color={c.color} />} title={`La fiche ${de(c.child)}`} />
         </div>
       </main>
     </>
@@ -98,9 +97,9 @@ export function FicheEnfant({ id }: { id: string }) {
           <ListLink href={`#/contrat/${c.id}`} icon="file" title="Le contrat" sub={libelleContrat(c, t)} />
           {!c.accueilOccasionnel && <ListLink href={`#/contrat/${c.id}`} icon="clock" title="Le planning" sub={tc.planningVariable ? 'Horaires qui changent' : `${hoursLabel(weeklyMinutes(tc.planning))} par semaine`} />}
           <ListLink href={`#/enfant/${c.id}/parents`} icon="users" title="Les parents et leur lien" sub={c.partage ? 'Lien actif' : 'Lien pas encore créé'} end={c.partage ? undefined : <span class="tag">À faire</span>} />
-          <ListLink href={`#/enfant/${c.id}/absences`} icon="sun" title="Absences et congés" sub="Les siennes, les tiennes, le compteur" />
+          <ListLink href={`#/enfant/${c.id}/absences`} icon="sun" title="Absences et congés" />
           <ListLink href="#/carnet" icon="book" title="Son carnet" sub={journee ? `${journee} note${journee > 1 ? 's' : ''} aujourd’hui` : 'Aucune note aujourd’hui'} />
-          {avant && <ListLink href={`#/historique/${c.id}`} icon="receipt" title="Bulletins d’avant Arvela" sub={`Avant le ${shortDate(c.trackedFrom)} · ${c.history.length} saisi${c.history.length > 1 ? 's' : ''}`} end={<span class="tag">Facultatif</span>} />}
+          {avant && <ListLink href={`#/historique/${c.id}`} icon="receipt" title="Bulletins d’avant Arvela (facultatif)" sub={`Avant le ${shortDate(c.trackedFrom)} · ${c.history.length} saisi${c.history.length > 1 ? 's' : ''}`} />}
         </div>
         <div class="list">
           <ListLink href={`#/avenant/${c.id}/nouveau`} icon="plus" title="Changer le contrat (avenant)" sub={c.avenants?.length ? `${c.avenants.length} avenant${c.avenants.length > 1 ? 's' : ''} déjà enregistré${c.avenants.length > 1 ? 's' : ''}` : undefined} />
@@ -126,7 +125,7 @@ export function ParentsEnfant({ id }: { id: string }) {
         <section class="card stack">
           <dl class="kv"><dt>Employeur</dt><dd>{c.family ? `Famille ${c.family}` : 'non indiqué'}</dd></dl>
           <TextInput label="E-mail du parent employeur (facultatif)" type="email" inputMode="email" value={email} onChange={setEmail} />
-          <TextInput label="Téléphone du parent employeur (facultatif)" type="tel" inputMode="tel" value={tel} onChange={setTel} hint="Gardés avec le contrat, sur ce téléphone et dans ton compte. Jamais sur la page des parents." />
+          <TextInput label="Téléphone du parent employeur (facultatif)" type="tel" inputMode="tel" value={tel} onChange={setTel} />
           {change && <button class="btn btn-secondary" onClick={async () => {
             const n: Contract = { ...c, parentEmail: email.trim() || undefined, parentTel: tel.trim() || undefined };
             if (!n.parentEmail) delete n.parentEmail;
@@ -169,9 +168,9 @@ export function AbsencesEnfant({ id }: { id: string }) {
               <div><b class="num">{nb(cp.poses)}</b><span>posés, à venir</span></div>
               <div><b class="num">{nb(cp.reste)}</b><span>reste à poser d’ici le {shortDate(cp.dateLimite)}</span></div>
             </div>
-            <a class="btn btn-ghost" href="#/conges">Comment c’est calculé, et tous mes contrats</a>
+            <a class="btn btn-ghost" href="#/conges">Tous mes congés</a>
           </section>
-        ) : <p class="hint">Accueil occasionnel : congés payés de 10 % des salaires, versés à la fin de chaque accueil (convention, article 102.1.2.3).</p>}
+        ) : null}
         <h2 class="section-title">À venir</h2>
         {aVenir.length ? <div class="list">{aVenir}</div> : <p class="hint">Aucune absence prévue.</p>}
         <h2 class="section-title">Passées (3 derniers mois)</h2>

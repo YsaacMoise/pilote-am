@@ -11,7 +11,7 @@ export function SupprimerBrouillon({ b, ecran, apres, bloc = false }: { b: Broui
   if (!confirmer) return <button type="button" class={`btn btn-ghost${bloc ? ' btn-block' : ''}`} onClick={() => setConfirmer(true)}><Icon name="trash" />Supprimer</button>;
   return (
     <div class="stack-sm" role="group" aria-label="Confirmer la suppression">
-      <p class="hint">Supprimer {nom} ? Ses réponses sont effacées de ce téléphone.</p>
+      <p class="hint">Supprimer {nom} ?</p>
       <div class="btn-row">
         <button type="button" class="btn btn-danger" onClick={() => {
           supprimerBrouillon(b.id);

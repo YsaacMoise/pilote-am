@@ -54,24 +54,24 @@ export function CongesDepart({ c, mode = 'enregistrer', onSoldes, reponses, onRe
   const anneeJuin = d.depuis.slice(0, 4);
   return (
     <div class="conges-depart stack">
-      <p>Arvela a calculé tes congés depuis le début du contrat, le {shortDate(c.start)}, sur le planning du contrat.</p>
-      {demanderPris && <NumberInput label={`Jours de congés déjà pris depuis le 1er juin ${anneeJuin}`} hint="Jours ouvrables. 0 si aucun." value={pris} step={1} max={60} onChange={(v) => setPris(v)} />}
+      {demanderPris && <NumberInput label={`Jours de congés déjà pris depuis le 1er juin ${anneeJuin}`} hint="Jours ouvrables." value={pris} step={1} max={60} onChange={(v) => setPris(v)} />}
       {demanderPris && (pris ?? 0) > d.droitsPrec && <p class="hint">Tu indiques {jours(pris ?? 0)} pris pour {jours(d.droitsPrec)} acquis : les jours en plus étaient des congés sans solde, ou pris par avance avec l’accord écrit des parents. Vérifie tes bulletins ; Arvela compte 0 jour restant.</p>}
       <Choices label="Congé sans solde ou absence non rémunérée avant le suivi ?" value={absent}
-        options={[{ v: 'non', l: 'Non' }, { v: 'oui', l: 'Oui', sub: 'Ces jours ne comptent pas pour les congés.' }]}
+        options={[{ v: 'non', l: 'Non' }, { v: 'oui', l: 'Oui' }]}
         onChange={(v) => setAbsent(v)} />
-      {absent === 'oui' && d.precDu && <NumberInput label={`Jours d’accueil non travaillés et non payés du ${shortDate(d.precDu)} au ${shortDate(d.precAu!)}`} hint="Les jours où l’accueil était prévu au contrat. Tes bulletins les indiquent comme absence non rémunérée." value={absPrec} step={1} max={400} onChange={(v) => setAbsPrec(v ?? 0)} />}
+      {absent === 'oui' && d.precDu && <NumberInput label={`Jours d’accueil non travaillés et non payés du ${shortDate(d.precDu)} au ${shortDate(d.precAu!)}`} hint="Les jours où l’accueil était prévu au contrat." value={absPrec} step={1} max={400} onChange={(v) => setAbsPrec(v ?? 0)} />}
       {absent === 'oui' && d.jusqua >= debutCours && <NumberInput label={`Jours d’accueil non travaillés et non payés du ${shortDate(debutCours)} au ${shortDate(d.jusqua)}`} value={absCours} step={1} max={400} onChange={(v) => setAbsCours(v ?? 0)} />}
-      <details class="more" open>
-        <summary>Comment c’est calculé</summary>
-        <dl class="kv">
+      {/* T-122 (textes au strict minimum) : les congés acquis restent visibles, à vérifier ; l'explication est repliée. */}
+      <dl class="kv">
           {d.precDu && <><dt>Acquis du {shortDate(d.precDu)} au {shortDate(d.precAu!)}</dt><dd>{jours(d.droitsPrec)}</dd></>}
           {d.precDu && demanderPris && <><dt>Déjà pris depuis le 1er juin {anneeJuin}</dt><dd>{jours(pris ?? 0)}</dd></>}
           {d.precDu && <><dt>Reste à prendre jusqu’au 31 mai {Number(anneeJuin) + 1}</dt><dd>{jours(d.cpRestants)}</dd></>}
           {d.jusqua >= debutCours && <><dt>Acquis du {shortDate(debutCours)} au {shortDate(d.jusqua)}, à prendre à partir du 1er juin {Number(anneeJuin) + 1}</dt><dd>{jours(d.cpEnCours)}</dd></>}
-        </dl>
-        {!d.precDu && <p>Aucun congé à prendre avant le 1er juin {Number(anneeJuin) + 1} : le contrat a commencé après le 1er juin {anneeJuin}.</p>}
-        <p class="hint">2,5 jours par mois de travail (convention, article 48.1.1.2), décompte le plus favorable en cas d’absence, arrondi au jour supérieur au 31 mai.</p>
+      </dl>
+      {!d.precDu && <p>Aucun congé à prendre avant le 1er juin {Number(anneeJuin) + 1} : le contrat a commencé après le 1er juin {anneeJuin}.</p>}
+      <details class="more">
+        <summary>Comment c’est calculé</summary>
+        <div class="more-body"><p class="hint">2,5 jours par mois de travail (convention, article 48.1.1.2), décompte le plus favorable en cas d’absence, arrondi au jour supérieur au 31 mai.</p></div>
       </details>
       {mode === 'enregistrer' && (
         <button class="btn btn-primary" onClick={async () => { await putContract({ ...c, balances: soldes() }); toast('Congés de départ enregistrés'); }}>C’est juste</button>

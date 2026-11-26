@@ -111,7 +111,6 @@ export function Welcome() {
       <div class="welcome">
         <LockupStacked />
         <h1 class="hero-title">Toi</h1>
-        <p class="hint center">Valable pour tous tes contrats. Modifiable dans Réglages.</p>
         {cloud.verified === false && cloud.email && (
           <p class="hint center" role="status">Un e-mail de confirmation est parti à <strong>{cloud.email}</strong>. Ouvre-le quand tu peux : il protège ton compte si tu oublies ton mot de passe.</p>
         )}

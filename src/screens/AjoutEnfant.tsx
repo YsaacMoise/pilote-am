@@ -19,7 +19,6 @@ import { messagesCdd } from '../engine/cdd';
 import { planningAvecDimanche } from '../engine/nonGeres';
 import { libelleDepartement, lieuDuDepartement } from '../engine/departements';
 import { de } from '../engine/texte';
-import { PAJEMPLOI_PLUS_AIDE } from '../legal';
 import { Banner, Choices, couleurLibre, couleursPrises, DateInput, EuroInput, ListLink, NumberInput, Switch, TextInput, Topbar } from '../ui/kit';
 import { Icon } from '../ui/icons';
 import { AccueilsOccasionnels, brouillon as brouillonSimulateur, WeeksOff } from './Contrat';
@@ -218,7 +217,7 @@ function JoursHoraires({ planning, onChange, errs }: { planning: Planning; onCha
         <Err m={errs.jours} id="err-jours" />
       </div>
       {coches.length === 0
-        ? <p class="hint">Coche les jours : leurs horaires s’ouvrent ici, vides. Une 2e plage par jour est possible.</p>
+        ? null
         : (
           <div class="stack">
             <span class="label">Horaires</span>
@@ -335,13 +334,11 @@ export function AjoutEnfant({ id }: { id?: string }) {
       <>
         <Topbar title={titre} back="#/plus" screen="ajout" />
         <main>
-          <p class="hint">Chaque étape est enregistrée sur ce téléphone : tu reprends où tu t’es arrêtée.</p>
           <div class="list">
             {Array.from({ length: total }, (_, i) => i + 1).map((n) => (
               <ListLink title={`${n}. ${NOMS_ETAPES[n - 1]}`} sub={resumeEtape(n, c, r)} end={<span class="tag">{etatEtape(n)}</span>} />
             ))}
           </div>
-          <p class="hint">Les étapes se font dans l’ordre. Récapitulatif avant la création du contrat.</p>
           <button class="btn btn-primary btn-lg btn-block" onClick={() => setVue('ecran')}>{b.etape >= 7 ? 'Reprendre : le récapitulatif' : `Reprendre : ${NOMS_ETAPES[b.etape - 1].replace(/^L[ae’] ?/, (x) => x.toLowerCase())}`}</button>
           <SupprimerBrouillon b={b} ecran="ajout" bloc apres={() => { location.hash = '#/plus'; }} />
         </main>
@@ -377,13 +374,13 @@ export function AjoutEnfant({ id }: { id?: string }) {
               </>
             )}
             {(familles().length === 0 || r.employeur === 'nouveau') && (
-              <TextInput label="Nom de famille de l’employeur" hint="Tel qu’il figure sur Pajemploi. Regroupe les enfants d’un même employeur." value={c.family} onChange={(v) => set({ family: v })} error={errs.family} />
+              <TextInput label="Nom de famille de l’employeur" hint="Tel qu’il figure sur Pajemploi." value={c.family} onChange={(v) => set({ family: v })} error={errs.family} />
             )}
             <TextInput label="E-mail du parent employeur (facultatif)" type="email" inputMode="email" value={c.parentEmail ?? ''} onChange={(v) => set({ parentEmail: v || undefined })} error={errs.parentEmail} />
             <TextInput label="Téléphone du parent employeur (facultatif)" type="tel" inputMode="tel" value={c.parentTel ?? ''} onChange={(v) => set({ parentTel: v || undefined })} error={errs.parentTel}
-              hint="Gardés avec le contrat, sur ce téléphone et dans ton compte. Jamais sur la page des parents." />
+/>
             {!s.settings.departement && (
-              <DepartementSaisie value={c.departement} error={errs.departement} hint="Demandé une fois : il est aussi enregistré dans ton profil (Réglages) et repris par les contrats suivants."
+              <DepartementSaisie value={c.departement} error={errs.departement}
                 onChange={(d) => set(d ? { departement: d, ...lieuDuDepartement(d) } : { departement: undefined, alsaceMoselle: undefined, mayotte: undefined })} />
             )}
           </section>
@@ -392,12 +389,12 @@ export function AjoutEnfant({ id }: { id?: string }) {
         {ecran === 'contrat' && (
           <section class="card stack">
             <h2>Le contrat</h2>
-            <DateInput label="Date de début du contrat" hint="Premier jour d’accueil, même ancien : ancienneté et congés acquis en dépendent." value={c.start} onChange={(v) => set({ start: v })} error={errs.start} />
+            <DateInput label="Date de début du contrat" hint="Premier jour d’accueil, même ancien." value={c.start} onChange={(v) => set({ start: v })} error={errs.start} />
             <Choices label="Type de contrat" value={c.cdd === undefined ? undefined : c.cdd ? 'cdd' : 'cdi'} onChange={(v) => set({ cdd: v === 'cdd' })}
-              options={[{ v: 'cdi', l: 'CDI' }, { v: 'cdd', l: 'CDD', sub: 'Terme, essai et motif ensuite' }]} error={errs.cdd} />
+              options={[{ v: 'cdi', l: 'CDI' }, { v: 'cdd', l: 'CDD' }]} error={errs.cdd} />
             <Choices label="Accueil" value={c.accueilOccasionnel === undefined ? undefined : c.accueilOccasionnel ? 'occ' : 'reg'}
               onChange={(v) => set(v === 'occ' ? { accueilOccasionnel: true, yearType: 'complete', weeks: 52, planningVariable: false } : { accueilOccasionnel: false, ...(c.accueilOccasionnel ? { yearType: undefined as unknown as Contract['yearType'], planningVariable: undefined } : {}) })}
-              options={[{ v: 'reg', l: 'Régulier' }, { v: 'occ', l: 'Occasionnel', sub: 'Art. 97.2 de la convention' }]} error={errs.accueil} />
+              options={[{ v: 'reg', l: 'Régulier' }, { v: 'occ', l: 'Occasionnel' }]} error={errs.accueil} />
           </section>
         )}
 
@@ -405,17 +402,17 @@ export function AjoutEnfant({ id }: { id?: string }) {
           <section class="card stack">
             <h2>Le CDD</h2>
             <Choices label="Le CDD a-t-il une date de fin précise ?" value={c.cddTermeImprecis === undefined ? undefined : c.cddTermeImprecis ? 'non' : 'oui'} onChange={(v) => set({ cddTermeImprecis: v === 'non' })}
-              options={[{ v: 'oui', l: 'Oui, une date de fin prévue' }, { v: 'non', l: 'Non, jusqu’au retour de la personne remplacée', sub: 'Le contrat donne une durée minimale' }]} error={errs.cddTermeImprecis} />
-            {c.cddTermeImprecis !== undefined && <DateInput label={c.cddTermeImprecis ? 'Fin de la durée minimale' : 'Date de fin prévue'} hint={c.cddTermeImprecis ? 'Le dernier jour de la durée minimale écrite au contrat.' : 'Le dernier jour écrit au contrat. Renouvelé : par un avenant.'} value={c.cddTerme ?? ''} min={c.start} onChange={(v) => set({ cddTerme: v || undefined })} error={errs.cddTerme} />}
-            <DateInput label="Fin de la période d’essai (facultatif)" hint="Le dernier jour de l’essai écrit au contrat." value={c.cddEssaiFin ?? ''} min={c.start} onChange={(v) => set({ cddEssaiFin: v || undefined })} />
+              options={[{ v: 'oui', l: 'Oui, une date de fin prévue' }, { v: 'non', l: 'Non, jusqu’au retour de la personne remplacée' }]} error={errs.cddTermeImprecis} />
+            {c.cddTermeImprecis !== undefined && <DateInput label={c.cddTermeImprecis ? 'Fin de la durée minimale' : 'Date de fin prévue'} value={c.cddTerme ?? ''} min={c.start} onChange={(v) => set({ cddTerme: v || undefined })} error={errs.cddTerme} />}
+            <DateInput label="Fin de la période d’essai (facultatif)" value={c.cddEssaiFin ?? ''} min={c.start} onChange={(v) => set({ cddEssaiFin: v || undefined })} />
             <Choices label="Pourquoi ce CDD ?" value={c.cddMotif} onChange={(v) => set({ cddMotif: v })}
               options={[{ v: 'remplacement', l: 'Pour remplacer une assistante maternelle absente ou qui part' }, { v: 'autre', l: 'Autre raison' }]} error={errs.cddMotif} />
             {c.cddMotif === 'remplacement' && !c.cddTermeImprecis && (
               <>
                 <Choices label="Quel remplacement ?" value={c.cddCasRemplacement} onChange={(v) => set({ cddCasRemplacement: v })} options={[
-                  { v: 'absence', l: 'Elle est absente (congé, maladie…)', sub: '18 mois au plus, renouvellements compris.' },
-                  { v: 'attente_cdi', l: 'J’attends l’arrivée d’une assistante maternelle embauchée en CDI', sub: '9 mois au plus.' },
-                  { v: 'depart_suppression', l: 'Elle part définitivement et son poste ne sera pas repris', sub: '24 mois au plus.' },
+                  { v: 'absence', l: 'Elle est absente (congé, maladie…)' },
+                  { v: 'attente_cdi', l: 'J’attends l’arrivée d’une assistante maternelle embauchée en CDI' },
+                  { v: 'depart_suppression', l: 'Elle part définitivement et son poste ne sera pas repris' },
                 ]} error={errs.cddCasRemplacement} />
               </>
             )}
@@ -427,25 +424,22 @@ export function AjoutEnfant({ id }: { id?: string }) {
           <section class="card stack">
             <Choices label="Année complète ou incomplète ?" value={c.yearType} onChange={(v) => set({ yearType: v, weeks: v === 'complete' ? 52 : c.weeks > 0 && c.weeks <= 46 ? c.weeks : 0, ...(v === 'complete' ? { weeksOff: [] } : {}) })}
               options={[{ v: 'complete', l: 'Année complète' }, { v: 'incomplete', l: 'Année incomplète' }]} error={errs.yearType} />
-            <p class="hint">Comme écrit au contrat.</p>
           </section>
         )}
 
         {ecran === 'incomplete' && (
           <section class="card stack">
             <h2>Année incomplète</h2>
-            <NumberInput label="Semaines d’accueil programmées" hint={c.cdd ? 'Pendant le CDD, sur 12 mois au plus, hors congés payés.' : 'Hors congés payés, 46 au plus.'} value={c.weeks || undefined} min={1} max={46} onChange={(v) => set({ weeks: v ?? 0 })} error={errs.weeks} />
+            <NumberInput label="Semaines d’accueil programmées" hint="Hors congés payés." value={c.weeks || undefined} min={1} max={46} onChange={(v) => set({ weeks: v ?? 0 })} error={errs.weeks} />
             {c.weeks > 0 && c.weeks <= 46 && c.start && <WeeksOff c={c} onChange={(w) => set({ weeksOff: w })} />}
             <Choices label="Versement des congés payés" value={c.cpMode} onChange={(v) => set({ cpMode: v })}
               options={[{ v: 'juin', l: 'En juin' }, { v: 'principale', l: 'Avec le congé principal' }, { v: 'fur', l: 'Au fur et à mesure' }]} error={errs.cpMode} />
-            <p class="hint">Comme écrit au contrat.</p>
           </section>
         )}
 
         {ecran === 'accueils' && (
           <>
             <h2>Accueils prévus au contrat {de(c.child)}</h2>
-            <p class="hint">Dates et horaires écrits au contrat : ils fixent le salaire de chaque accueil.</p>
             <AccueilsOccasionnels c={c} set={set} />
             <Err m={errs.accueils} />
           </>
@@ -456,7 +450,7 @@ export function AjoutEnfant({ id }: { id?: string }) {
             <section class="card stack">
               <h2>Le planning</h2>
               <Choices label="Les horaires sont-ils les mêmes chaque semaine ?" value={c.planningVariable === undefined ? undefined : c.planningVariable ? 'non' : 'oui'} onChange={(v) => set({ planningVariable: v === 'non' })}
-                options={[{ v: 'oui', l: 'Identique chaque semaine' }, { v: 'non', l: 'Variable', sub: 'Cycle écrit au contrat (semaines A et B), ou planning remis par les parents' }]} error={errs.planningVariable} />
+                options={[{ v: 'oui', l: 'Identique chaque semaine' }, { v: 'non', l: 'Variable' }]} error={errs.planningVariable} />
               {c.planningVariable === false && <JoursHoraires planning={c.planning} onChange={(p) => set({ planning: p })} errs={errs} />}
               {c.planningVariable === false && wk > 0 && (
                 <p class="hint" aria-live="polite">
@@ -475,7 +469,7 @@ export function AjoutEnfant({ id }: { id?: string }) {
                 </>
               )}
               {(dureeMoyenneContrat({ ...c, planning: planningRempli(c.planning) }) ?? 0) > SEUIL_ACCORD_MIN && (
-                <Switch label="J’ai donné mon accord écrit pour plus de 48 h par semaine" hint="Code de l’action sociale et des familles, article L423-22 : sans ton accord, pas plus de 48 h par semaine en moyenne sur quatre mois ; avec, pas plus de 2 250 h par an, tous contrats confondus." checked={!!c.accord48h} onChange={(v) => set({ accord48h: v })} />
+                <Switch label="J’ai donné mon accord écrit pour plus de 48 h par semaine" checked={!!c.accord48h} onChange={(v) => set({ accord48h: v })} />
               )}
               <Err m={errs.duree} />
             </section>
@@ -488,15 +482,15 @@ export function AjoutEnfant({ id }: { id?: string }) {
           <section class="card stack">
             <h2>Le salaire</h2>
             <EuroInput label="Taux horaire net" allowEmpty cents={c.rateNet} onChange={(v) => set({ rateNet: v as number })}
-              hint={rates.minConvNet !== undefined ? `Minimum conventionnel : ${euros(rates.minConvNet)} net (${euros(rates.minConvBrut)} brut).` : `Minimum conventionnel : ${euros(rates.minConvBrut)} brut.`} error={errs.rateNet} />
+              hint={rates.minConvNet !== undefined ? `Minimum : ${euros(rates.minConvNet)} net.` : `Minimum : ${euros(rates.minConvBrut)} brut.`} error={errs.rateNet} />
             {(c.rateNet ?? 0) > 0 && <BrutSaisie net={c.rateNet} brut={c.rateBrut} date={today()} region={regionDe(c)} set={(v) => set({ rateBrut: v })} debut={c.start} />}
             {rates.minConvNet !== undefined && <p class="hint">{TITRE_AM_AP}</p>}
             <Choices label="Majorations" value={r.majorations} onChange={(v) => { setR({ majorations: v }); set(v === 'convention' ? { majoration: 10, majorationCompl: undefined } : { majoration: undefined as unknown as number, majorationCompl: undefined }); }}
               options={[{ v: 'convention', l: 'Celles de la convention', sub: '10 % au-delà de 45 h, aucune sur les heures complémentaires' }, { v: 'autres', l: 'D’autres, écrites au contrat' }]} error={errs.majorations} />
             {r.majorations === 'autres' && (
               <>
-                <NumberInput label="Au-delà de 45 h par semaine (%)" hint="10 % au moins." value={c.majoration} min={10} max={100} onChange={(v) => set({ majoration: v as number })} error={errs.majoration} />
-                <NumberInput label="Heures complémentaires (%)" hint="0 si le contrat n’en prévoit pas." value={c.majorationCompl} min={0} max={100} onChange={(v) => set({ majorationCompl: v })} error={errs.majorationCompl} />
+                <NumberInput label="Au-delà de 45 h par semaine (%)" value={c.majoration} min={10} max={100} onChange={(v) => set({ majoration: v as number })} error={errs.majoration} />
+                <NumberInput label="Heures complémentaires (%)" value={c.majorationCompl} min={0} max={100} onChange={(v) => set({ majorationCompl: v })} error={errs.majorationCompl} />
               </>
             )}
           </section>
@@ -509,7 +503,7 @@ export function AjoutEnfant({ id }: { id?: string }) {
             <Err m={errs.entretien} />
             <Choices label="Repas" value={c.repasParents === undefined ? undefined : c.repasParents ? 'parents' : 'am'}
               onChange={(v) => set(v === 'parents' ? { repasParents: true, repasPrix: 0, repasParJour: 0 } : { repasParents: false })}
-              options={[{ v: 'am', l: 'Fournis par moi', sub: 'Payés au prix du contrat' }, { v: 'parents', l: 'Fournis par les parents' }]} error={errs.repas} />
+              options={[{ v: 'am', l: 'Fournis par moi' }, { v: 'parents', l: 'Fournis par les parents' }]} error={errs.repas} />
             {c.repasParents === false && (
               <div class="grid2">
                 <div><EuroInput label="Prix d’un repas" allowEmpty cents={c.repasPrix || undefined} onChange={(v) => set({ repasPrix: v ?? 0 })} error={errs.repasPrix} /></div>
@@ -517,25 +511,23 @@ export function AjoutEnfant({ id }: { id?: string }) {
               </div>
             )}
             <Choices label="Indemnités kilométriques" value={r.km} onChange={(v) => { setR({ km: v }); if (v === 'non') set({ kmTaux: 0, kmCv: undefined, kmElectrique: undefined }); }}
-              options={[{ v: 'oui', l: 'Prévues', sub: 'Tarif par kilomètre et puissance fiscale ensuite' }, { v: 'non', l: 'Non prévues' }]} error={errs.km} />
+              options={[{ v: 'oui', l: 'Prévues' }, { v: 'non', l: 'Non prévues' }]} error={errs.km} />
             {r.km === 'oui' && (
               <>
                 <EuroInput label="Tarif par kilomètre" allowEmpty cents={c.kmTaux || undefined} onChange={(v) => set({ kmTaux: v ?? 0 })} error={errs.kmTaux} />
-                <NumberInput label="Puissance fiscale de ta voiture (CV)" hint="Carte grise, case P.6. Sert au contrôle du tarif (article 57 de la convention)." value={c.kmCv} min={1} max={30} onChange={(v) => set({ kmCv: v || undefined })} />
+                <NumberInput label="Puissance fiscale de ta voiture (CV)" value={c.kmCv} min={1} max={30} onChange={(v) => set({ kmCv: v || undefined })} />
                 <Choices label="Ta voiture est-elle électrique ?" value={c.kmElectrique === undefined ? undefined : c.kmElectrique ? 'oui' : 'non'} onChange={(v) => set({ kmElectrique: v === 'oui' })}
-                  options={[{ v: 'non', l: 'Non' }, { v: 'oui', l: 'Oui, électrique', sub: 'Barème fiscal majoré de 20 %.' }]} />
+                  options={[{ v: 'non', l: 'Non' }, { v: 'oui', l: 'Oui' }]} />
               </>
             )}
             <Choices label="Pajemploi+" value={r.pajemploi} onChange={(v) => setR({ pajemploi: v })}
               options={[{ v: 'oui', l: 'Adhérents' }, { v: 'non', l: 'Non adhérents' }, { v: 'nr', l: 'Non renseigné' }]} />
-            <p class="hint">{PAJEMPLOI_PLUS_AIDE}</p>
           </section>
         )}
 
         {ecran === 'avant1' && (
           <section class="card stack">
             <h2>Congés au début du suivi</h2>
-            <p class="hint">Arvela suit le contrat à partir du {shortDate(curMonthStart)}.</p>
             {departCalculable && !r.cpManuel ? (
               <>
                 <CongesDepart c={{ ...c, planning: planningRempli(c.planning), trackedFrom: suiviDepuis }} mode="formulaire" reponses={r}
@@ -546,8 +538,8 @@ export function AjoutEnfant({ id }: { id?: string }) {
             ) : (
               <>
                 {depart?.aConfirmer && <p class="hint">{depart.aConfirmer}</p>}
-                <NumberInput label="Congés restants de l’an dernier (jours ouvrables)" hint="Acquis avant le dernier 1er juin et pas encore pris" value={c.balances.cpSaisi ? c.balances.cpRestants : undefined} step={0.5} max={60} onChange={(v) => set({ balances: { ...c.balances, cpRestants: v ?? 0, cpSaisi: true } })} />
-                <NumberInput label="Congés en cours d’acquisition (jours ouvrables)" hint="Acquis depuis le 1er juin, avant le suivi par Arvela" value={c.balances.cpSaisi ? c.balances.cpEnCours : undefined} step={0.5} max={30} onChange={(v) => set({ balances: { ...c.balances, cpEnCours: v ?? 0, cpSaisi: true } })} />
+                <NumberInput label="Congés restants de l’an dernier (jours ouvrables)" hint="Acquis avant le 1er juin, pas encore pris." value={c.balances.cpSaisi ? c.balances.cpRestants : undefined} step={0.5} max={60} onChange={(v) => set({ balances: { ...c.balances, cpRestants: v ?? 0, cpSaisi: true } })} />
+                <NumberInput label="Congés en cours d’acquisition (jours ouvrables)" hint="Acquis depuis le 1er juin." value={c.balances.cpSaisi ? c.balances.cpEnCours : undefined} step={0.5} max={30} onChange={(v) => set({ balances: { ...c.balances, cpEnCours: v ?? 0, cpSaisi: true } })} />
                 {soldeCongesInconnu(c) && (
                   <>
                     <p class="hint">{MESSAGE_SOLDE_CONGES}</p>
@@ -564,16 +556,15 @@ export function AjoutEnfant({ id }: { id?: string }) {
         {ecran === 'avant2' && (
           <section class="card stack">
             <h2>Absences déjà retenues</h2>
-            <NumberInput label={`Jours ${de(c.child)} malade, avec certificat, déjà retenus sur ton salaire`} hint="Depuis le début de l’année de contrat en cours. 0 si aucun." value={r.maladie} max={14} onChange={(v) => { setR({ maladie: v }); set({ balances: { ...c.balances, maladieDeduits: v ?? 0, ...(v ? {} : { maladieDeduitsLongue: undefined }) } }); }} error={errs.maladie} />
+            <NumberInput label={`Jours ${de(c.child)} malade, avec certificat, déjà retenus sur ton salaire`} hint="Depuis le début de l’année de contrat en cours." value={r.maladie} max={14} onChange={(v) => { setR({ maladie: v }); set({ balances: { ...c.balances, maladieDeduits: v ?? 0, ...(v ? {} : { maladieDeduitsLongue: undefined }) } }); }} error={errs.maladie} />
             {(r.maladie ?? 0) > 0 && (
               <>
                 <Choices label="Ces jours venaient de :" value={c.balances.maladieDeduitsLongue === undefined ? undefined : c.balances.maladieDeduitsLongue ? 'longue' : 'courtes'}
                   onChange={(v) => set({ balances: { ...c.balances, maladieDeduitsLongue: v === 'longue' } })}
-                  options={[{ v: 'courtes', l: 'Absences courtes', sub: 'Chacune de moins de 14 jours calendaires (5 jours retenus au plus).' }, { v: 'longue', l: 'Une absence de 14 jours calendaires ou plus', sub: 'Article 105 de la convention : comptée à part des 5 jours.' }]} error={errs.maladieLongue} />
+                  options={[{ v: 'courtes', l: 'Des absences de moins de 14 jours calendaires' }, { v: 'longue', l: 'Une absence de 14 jours calendaires ou plus' }]} error={errs.maladieLongue} />
               </>
             )}
-            {c.cdd && <NumberInput label="Jours de congés payés pris pendant le CDD avant le suivi" hint="Jours ouvrables. 0 si aucun. Sert au minimum de tes congés de fin de CDD (code du travail, article L1242-16)." value={c.cddCpPrisAvantSuivi} step={1} max={60} onChange={(v) => set({ cddCpPrisAvantSuivi: v })} />}
-            <p class="hint">Bulletins d’avant Arvela : facultatifs, plus tard, depuis la fiche de l’enfant.</p>
+            {c.cdd && <NumberInput label="Jours de congés payés pris pendant le CDD avant le suivi" hint="Jours ouvrables." value={c.cddCpPrisAvantSuivi} step={1} max={60} onChange={(v) => set({ cddCpPrisAvantSuivi: v })} />}
           </section>
         )}
 
@@ -651,7 +642,6 @@ function Recap({ c, r, total, erreurs, modifier, creer }: { c: Contract; r: Repo
           </Bloc>
         )}
         <button class="btn btn-primary btn-lg btn-block" onClick={creer}>Créer le contrat {de(c.child)}</button>
-        <p class="hint">Jusqu’à sa création, le contrat en cours de saisie reste sur ce téléphone seulement.</p>
       </main>
     </>
   );

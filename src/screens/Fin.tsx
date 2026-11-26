@@ -126,7 +126,6 @@ export function Fin({ id }: { id?: string }) {
       <main>
         {etape === 1 && choixEnfant}
         <p class="eyebrow">{etape} sur 3 · {['Pourquoi', 'La lettre et ses dates', 'Ce qui t’est dû'][etape - 1]}</p>
-        {etape === 1 && <p class="muted">Une simulation pour savoir ce qui t’est dû. L’app ne produit pas les documents officiels (certificat de travail, attestation France Travail, reçu pour solde de tout compte) : c’est au parent employeur de les établir.</p>}
         {etape === 1 && <section class="card">
           <fieldset>
             <legend>Pourquoi</legend>
@@ -144,11 +143,11 @@ export function Fin({ id }: { id?: string }) {
                 ]} />
                 {remiseS === undefined ? null : remiseS === 'recommande' ? (
                   <>
-                    <DateInput label="Date d’envoi de la lettre" hint="Le jour où elle est postée. Il sert à compter ton ancienneté." value={notifS} min={c.start} onChange={changeEnvoi} />
-                    <DateInput label="Date de première présentation de la lettre" hint="Le premier passage du facteur, noté sur l’accusé de réception ou l’avis de passage. Le préavis commence ce jour-là, pas le jour de l’annonce orale." value={presVue} min={envoi} onChange={(v) => setPresentation(v || null)} />
+                    <DateInput label="Date d’envoi de la lettre" hint="Le jour où elle est postée." value={notifS} min={c.start} onChange={changeEnvoi} />
+                    <DateInput label="Date de première présentation de la lettre" hint="Le premier passage du facteur (accusé de réception ou avis de passage)." value={presVue} min={envoi} onChange={(v) => setPresentation(v || null)} />
                   </>
                 ) : (
-                  <DateInput label="Date de remise en main propre" hint="La date écrite sur la décharge. Le préavis commence ce jour-là, pas le jour de l’annonce orale." value={notifS} min={c.start} onChange={changeEnvoi} />
+                  <DateInput label="Date de remise en main propre" hint="La date écrite sur la décharge." value={notifS} min={c.start} onChange={changeEnvoi} />
                 )}
                 <Choices label="Le préavis est-il effectué en entier ?" value={preavisS} onChange={(v) => { setPreavisFait(v); setErrFin([]); }} options={[
                   { v: 'oui', l: 'Oui, effectué ou en cours' },
@@ -167,10 +166,10 @@ export function Fin({ id }: { id?: string }) {
                 )}
               </>
             ) : motif === 'agrement' ? (
-              <DateInput label="Date de la décision du conseil départemental" hint="La date à laquelle le conseil départemental t’a notifié la suspension, la modification ou le retrait de ton agrément. Le contrat s’arrête ce jour-là, sans préavis (convention, article 119.3)." value={notifS} min={c.start} onChange={changeEnvoi} />
+              <DateInput label="Date de la décision du conseil départemental" hint="La date de notification de la décision." value={notifS} min={c.start} onChange={changeEnvoi} />
             ) : avecLettre ? (
               <>
-                <DateInput label="Date de la lettre (envoi ou remise)" hint="Ce motif n’a pas de préavis : le contrat s’arrête à cette date." value={notifS} min={c.start} onChange={changeEnvoi} />
+                <DateInput label="Date de la lettre (envoi ou remise)" value={notifS} min={c.start} onChange={changeEnvoi} />
                 {demanderEssaiAutre && (
                   <Choices label={QUESTION_ESSAI_AUTRE_ENFANT} value={ouiNon(essaiAutre)} onChange={(v) => setEssaiAutre(v === 'oui')} options={[
                     { v: 'oui', l: 'Oui', sub: 'L’essai de ce contrat dure au plus 30 jours (convention, article 95.1).' },
@@ -244,14 +243,14 @@ export function Fin({ id }: { id?: string }) {
         <section class="card stack" aria-labelledby="fin-save">
           <h2 id="fin-save">Enregistrer cette fin de contrat</h2>
           {c.end && !enregistre && <Banner tone="warn">La date de fin enregistrée ({shortDate(c.end)}) ou les réponses enregistrées ne correspondent pas à ce calcul. Tant qu’elles ne concordent pas avec le préavis, l’app ne calcule pas les derniers mois.</Banner>}
-          <p class="hint">Enregistre la date de fin ({shortDate(f.dernierJour)}) et tes réponses sur la lettre et le préavis : le calcul de chaque mois s’en sert. Sans elles, l’app ne calcule pas les derniers mois du contrat.</p>
+          <p class="hint">Sans elle, les derniers mois ne sont pas calculés.</p>
           {enregistre ? <p>Enregistrée.</p> : <button class="btn btn-primary btn-block" onClick={enregistrer}>Enregistrer la fin du contrat</button>}
         </section>
         {/* T-122 (décision 3 du DG) : les bulletins d'avant Arvela, facultatifs, rendent ce calcul plus juste. */}
         {c.trackedFrom > c.start && surBrut && (
           <section class="card stack-sm" aria-labelledby="fin-bul">
-            <h2 id="fin-bul">Bulletins d’avant Arvela</h2>
-            <p class="hint">Facultatifs. Le salaire brut de chaque bulletin entre dans le total des salaires sur lequel se calcule l’indemnité de rupture ; un mois d’avant le {shortDate(c.trackedFrom)} sans bulletin n’y est pas compté.{f.manquants.length ? ` ${f.manquants.length} mois sans bulletin.` : ''}</p>
+            <h2 id="fin-bul">Bulletins d’avant Arvela (facultatifs)</h2>
+            <p class="hint">Le salaire brut de chaque bulletin entre dans le total des salaires sur lequel se calcule l’indemnité de rupture ; un mois d’avant le {shortDate(c.trackedFrom)} sans bulletin n’y est pas compté.{f.manquants.length ? ` ${f.manquants.length} mois sans bulletin.` : ''}</p>
             <a class="btn btn-outline" href={`#/historique/${c.id}`}>Ajouter des bulletins</a>
           </section>
         )}
@@ -297,7 +296,6 @@ function FinCddEcran({ c }: { c: Contract }) {
   const choix = [...FINS_CDD, ...FINS_CDD_NON_GEREES];
   return (
     <>
-      <p class="muted">Une simulation pour savoir ce qui t’est dû. L’app ne produit pas les documents officiels (certificat de travail, attestation France Travail, reçu pour solde de tout compte) : c’est au parent employeur de les établir.</p>
       <section class="card">
         <fieldset>
           <legend>La fin du CDD</legend>
