@@ -133,7 +133,29 @@ export function joursLunette(list: Contract[], month: Month, leaves: { from: str
   return out;
 }
 
-/** Vue d'ensemble du mois : lunette, enfants absents, « À déclarer sur Pajemploi », « Ta paie du mois ». */
+/** Montant qui monte de 0 à sa valeur en 0,8 s après le geste « Voir ma paie » ; rien ne bouge si le téléphone demande un mouvement réduit. */
+function useMontantQuiMonte(total: number): [number, () => void] {
+  const [affiche, setAffiche] = useState(total);
+  const [anim, setAnim] = useState(false);
+  useEffect(() => { if (!anim) setAffiche(total); }, [total, anim]);
+  useEffect(() => {
+    if (!anim) return;
+    let raf = 0;
+    const t0 = performance.now(), duree = 800;
+    const pas = (t: number) => {
+      const k = Math.min(1, (t - t0) / duree);
+      const e = 1 - Math.pow(1 - k, 3);
+      setAffiche(k >= 1 ? total : Math.round(total * e));
+      if (k < 1) raf = requestAnimationFrame(pas); else setAnim(false);
+    };
+    raf = requestAnimationFrame(pas);
+    return () => { cancelAnimationFrame(raf); setAffiche(total); };
+  }, [anim]);
+  const lancer = () => { if (!mouvementReduit()) { setAffiche(0); setAnim(true); } };
+  return [affiche, lancer];
+}
+
+/** Vue d'ensemble du mois : lunette, enfants absents, « À déclarer sur Pajemploi », « Ta paie du mois » (total, puis la paie de chaque contrat). */
 function VueMois({ list, month, paieVue, setPaieVue, onOuvrir, choisi }: { list: Contract[]; month: Month; paieVue: boolean; setPaieVue: (v: boolean) => void; onOuvrir: (id: string) => void; choisi?: string }) {
   const s = useStore();
   const t = today();
@@ -142,6 +164,8 @@ function VueMois({ list, month, paieVue, setPaieVue, onOuvrir, choisi }: { list:
   const calculs = list.map((c) => ({ c, ...calcule(c, month) }));
   const nonCalcules = calculs.filter((x) => !x.ok);
   const total = nonCalcules.length ? 0 : calculs.reduce((n, x) => n + totalAVerser(x.r), 0);
+  const [affiche, lancer] = useMontantQuiMonte(total);
+  const voir = () => { setPaieVue(true); logUsage('paie_vue', 'mois'); lancer(); };
   const rappels = jours.flatMap((j) => j.absents.map((c) => ({ c, d: j.d })));
   // Lunette : semaines séparées par un vide ; on tourne dans le sens des aiguilles d'une montre depuis midi.
   const places: (JourLunette | null)[] = [];
@@ -200,9 +224,16 @@ function VueMois({ list, month, paieVue, setPaieVue, onOuvrir, choisi }: { list:
           <span class="mp-paie-label">Ta paie du mois</span>
           {nonCalcules.length
             ? <span class="mp-paie-non">Non calculé pour {nonCalcules.map((x) => x.c.child).join(', ')}</span>
-            : paieVue ? <b class="mp-total">{euros(total)}</b> : <b class="mp-total mp-cache"><span aria-hidden="true">•••• €</span><span class="sr-only">Montant caché</span></b>}
+            : paieVue ? <b class="mp-total"><span aria-hidden="true">{euros(affiche)}</span><span class="sr-only">{euros(total)}</span></b> : <b class="mp-total mp-cache"><span aria-hidden="true">•••• €</span><span class="sr-only">Montant caché</span></b>}
         </span>
-        {!nonCalcules.length && !paieVue && <button class="btn btn-primary" type="button" onClick={() => { setPaieVue(true); logUsage('paie_vue', 'mois'); }}>Voir ma paie</button>}
+        {!nonCalcules.length && (paieVue
+          ? <button class="btn" type="button" onClick={() => setPaieVue(false)}>Cacher</button>
+          : <button class="btn btn-primary" type="button" onClick={voir}>Voir ma paie</button>)}
+        {!nonCalcules.length && paieVue && calculs.length > 1 && (
+          <ul class="mp-detail" aria-label="Paie de chaque contrat">
+            {calculs.map(({ c, r }) => <li><span class="mp-detail-nom">{c.child}</span><span class="mp-detail-points" aria-hidden="true" /><b>{euros(totalAVerser(r))}</b></li>)}
+          </ul>
+        )}
       </div>
     </section>
   );
