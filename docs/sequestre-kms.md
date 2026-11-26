@@ -45,3 +45,5 @@ Publier aussi les règles Firestore (`firebase deploy --only firestore:rules`) :
 - À la suppression du compte, la fonction `sequestreNettoyage` efface demande, suivi d'adresse et journal du compte.
 - Le contenu scellé porte l'identifiant du compte : copié dans un autre compte, il ne s'ouvre pas.
 - Limite à connaître : quiconque a le contrôle du compte Google Cloud d'Arvela (droits IAM, code des fonctions) peut techniquement faire déchiffrer une copie. C'est pourquoi la double authentification des comptes d'administration (AIPD, mesure 1) est indispensable.
+- Limite : l'adresse du compte n'est suivie qu'à partir de l'activation (premier branchement d'un téléphone à jour après le collage de la clé publique). Si un voleur du mot de passe changeait l'adresse avant, elle serait prise comme la bonne. Activer vite après la fusion réduit cette fenêtre.
+- Déploiement : la fonction de nettoyage `sequestreNettoyage` est de 1re génération, placée en `europe-west9`. Si cette région la refuse, le déploiement échoue de façon visible : la placer dans une autre région de l'Union européenne (par exemple `europe-west1`).
