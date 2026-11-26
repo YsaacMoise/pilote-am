@@ -236,7 +236,7 @@ main {
   padding: calc(var(--safe-t) + 6px) var(--gutter) 6px;
   display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600;
 }
-.demo-banner > span { font-family: var(--font-display); font-size: 13px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; }
+.demo-banner > span { font-family: var(--font-display); font-size: 15px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
 .demo-banner + .app .topbar { padding-top: 8px; }
 /* Envoi refusé par le serveur (C-023) : même place que le bandeau de démonstration, ton d'alerte */
 .sync-banner {
@@ -299,7 +299,7 @@ main {
 .inset { background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 12px 14px; }
 /* Sur-titre en petites capitales (« Réglages » de la maquette) */
 .eyebrow { font-family: var(--font-display); font-size: 15px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); }
-.mono-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); color: var(--ink); font-family: var(--font-display); font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.mono-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); color: var(--ink); font-family: var(--font-display); font-size: 15px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
 .card-flat { background: var(--surface); border-radius: 22px; padding: 18px; border: 1px solid var(--line); }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .stack-sm { display: flex; flex-direction: column; gap: 6px; }
@@ -659,7 +659,7 @@ dialog.sheet[open] { animation: sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 .brand { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding-top: 8px; }
 .brand .logo { width: 104px; height: 104px; }
 .brand-name { font-family: var(--font-display); font-size: 40px; font-weight: 600; line-height: 1; text-transform: uppercase; letter-spacing: 0.25em; margin-right: -0.25em; }
-.brand-url { font-size: 12px; font-weight: 600; letter-spacing: 0.35em; margin-right: -0.35em; color: var(--accent-ink); text-transform: uppercase; }
+.brand-url { font-size: 13px; font-weight: 600; letter-spacing: 0.35em; margin-right: -0.35em; color: var(--accent-ink); text-transform: uppercase; }
 .brand-tagline { font-size: 18px; text-align: center; color: var(--ink-2); text-wrap: balance; }
 .steps { counter-reset: s; display: flex; flex-direction: column; gap: 12px; padding: 0; margin: 0; list-style: none; }
 .steps li { counter-increment: s; display: grid; grid-template-columns: 36px 1fr; gap: 12px; align-items: start; }
@@ -667,7 +667,7 @@ dialog.sheet[open] { animation: sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 .kbd-ico { display: inline-flex; vertical-align: -5px; color: var(--accent-ink); }
 
 .empty { text-align: center; padding: 24px 8px; display: flex; flex-direction: column; gap: 12px; align-items: center; }
-.footer-note { font-size: 14px; color: var(--ink-2); text-align: center; }
+.footer-note { font-size: 15px; color: var(--ink-2); text-align: center; }
 .check-ok { color: var(--ok); }
 .check-warn { color: var(--warn); }
 .check-info { color: var(--accent-ink); }
@@ -695,7 +695,8 @@ dialog.sheet[open] { animation: sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 .pe-brouillons:empty { display: none; }
 .pe-brouillons { margin-top: 8px; }
 /* Tuiles : Simuler (encre), Mes congés (jauge), Compte, Impôts */
-.plus-tuiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.plus-tuiles { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.plus-tuiles > * { min-width: 0; }
 .tuile { display: flex; flex-direction: column; gap: 6px; min-height: 92px; padding: 14px 16px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-decoration: none; }
 .tuile-titre { font-size: 16px; font-weight: 600; }
 .tuile-valeur { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-family: var(--font-display); font-weight: 600; font-size: 20px; line-height: 1.15; }
@@ -725,7 +726,9 @@ dialog.sheet[open] { animation: sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 .fiche-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .fiche-actions .btn { min-height: 52px; }
 .fiche-notes { text-align: center; margin-top: -8px; }
-.topbar .gommette { width: 44px; height: 44px; font-size: 19px; }
+.fiche-tete { display: flex; align-items: center; gap: 14px; margin-top: -4px; }
+.fiche-tete .gommette { width: 64px; height: 64px; font-size: 28px; }
+.fiche-debut { font-size: 15px; color: var(--ink-2); }
 /* Couleur de l'enfant (feuille) */
 .couleurs-feuille { grid-template-columns: repeat(4, 1fr); max-width: none; gap: 14px 8px; }
 .couleur-case { display: flex; flex-direction: column; align-items: center; gap: 4px; }
@@ -825,17 +828,17 @@ h1:focus { outline: none; }
 .site-brand { display: flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; min-height: 44px; }
 .site-brand-text { display: flex; flex-direction: column; }
 .site-brand-name { font-family: var(--font-display); font-size: 23px; font-weight: 600; line-height: 1; text-transform: uppercase; letter-spacing: 0.24em; }
-.site-brand-tag { margin-top: 4px; font-size: 10px; font-weight: 400; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; }
+.site-brand-tag { margin-top: 4px; font-size: 13px; font-weight: 400; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; }
 .site-actions .btn-sm, .site-actions .icon-theme { display: none; }
 .icon-theme { width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); place-items: center; cursor: pointer; }
 @media (min-width: 900px) {
-  .site-brand-tag { font-size: 11px; }
+  .site-brand-tag { font-size: 13px; }
   /* Le symbole couvre toute la hauteur du nom et de l'accroche (alignement optique, comme le logo officiel) */
   .site-brand .logo { width: 52px; height: 52px; }
   .site-actions .btn-sm { display: inline-flex; }
   .site-actions .icon-theme { display: grid; }
 }
-.site-links { display: none; gap: 24px; font-size: 14px; font-weight: 500; }
+.site-links { display: none; gap: 24px; font-size: 15px; font-weight: 500; }
 .site-links a { color: var(--ink-2); text-decoration: none; padding: 10px 0; }
 .site-links a:hover { color: var(--ink); }
 /* Quatre liens (dont les conditions d'utilisation) : moins d'espace entre eux sur les écrans moyens */
@@ -855,16 +858,16 @@ h1:focus { outline: none; }
 /* Titre de page posé dans une carte (page « nouveau mot de passe ») */
 h1.h-card { font-size: 25px; }
 /* Règle du mot de passe, cochée pendant la frappe */
-.pw-rules { display: flex; flex-direction: column; gap: 6px; margin-top: -6px; font-size: 14px; color: var(--ink-2); }
+.pw-rules { display: flex; flex-direction: column; gap: 6px; margin-top: -6px; font-size: 15px; color: var(--ink-2); }
 .pw-rules p { display: flex; align-items: center; gap: 8px; }
 .pw-rules .ok { color: var(--ok); }
 .pw-dot { width: 14px; height: 14px; margin: 1px; border-radius: 50%; border: 1.5px solid currentColor; opacity: 0.6; flex: none; }
 .pw-types { display: flex; gap: 6px; list-style: none; margin: 0 0 0 24px; padding: 0; }
-.pw-types li { font-family: var(--font-num); font-size: 13px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
+.pw-types li { font-family: var(--font-num); font-size: 15px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); }
 .pw-types li.ok { color: var(--ok); background: var(--ok-soft); border-color: var(--ok-line); }
 /* Lien d'action discret (« Me connecter »), zone de toucher de 44 px */
 .btn-link { background: none; border: 0; color: var(--accent-ink); font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; min-height: 44px; padding: 0 4px; cursor: pointer; }
-.hero-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; font-family: var(--font-num); font-size: 12px; letter-spacing: 0.04em; color: var(--ink-2); }
+.hero-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; font-family: var(--font-num); font-size: 15px; letter-spacing: 0.04em; color: var(--ink-2); }
 .hero-meta span + span::before { content: '●'; color: var(--accent); margin-right: 6px; font-size: 9px; vertical-align: 2px; }
 /* Formulaire de compte ouvert à la place des boutons, sans faire défiler la page */
 .hero-form { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 16px; scroll-margin-top: 16px; }
@@ -872,7 +875,7 @@ h1.h-card { font-size: 25px; }
 /* Simulateur : résultat collé en bas pendant la saisie */
 .sim-sticky { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--safe-b) + 12px); z-index: 20; display: flex; align-items: center; gap: 10px; width: calc(100% - 2 * var(--gutter)); max-width: 560px; padding: 12px 16px; border: 0; border-radius: var(--r-md); background: var(--primary); color: var(--primary-ink); font: inherit; cursor: pointer; box-shadow: 0 12px 30px -12px rgb(31 28 26 / 0.5); transition: opacity 0.2s; }
 .sim-sticky.with-tabbar { bottom: calc(var(--tabbar-h) + var(--safe-b) + 12px); }
-.sim-sticky span { flex: 1; text-align: left; font-size: 14px; opacity: 0.85; }
+.sim-sticky span { flex: 1; text-align: left; font-size: 15px; opacity: 0.85; }
 .sim-sticky b { font-family: var(--font-num); font-size: 20px; }
 .sim-sticky.is-hidden { opacity: 0; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .sim-sticky { transition: none; } }
@@ -887,10 +890,10 @@ h1.h-card { font-size: 25px; }
 .site-footer .footer-lockup { display: flex; flex-direction: column; align-items: center; gap: 8px; color: #f5f2ec; }
 .site-footer .footer-lockup .logo { color: #f5f2ec; }
 .site-footer .footer-name { font-family: var(--font-display); font-size: 26px; font-weight: 600; letter-spacing: 0.24em; text-transform: uppercase; line-height: 1; }
-.site-footer .footer-tag { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: #aba399; }
-.site-footer nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 20px; font-size: 14px; }
+.site-footer .footer-tag { font-size: 13px; letter-spacing: 0.2em; text-transform: uppercase; color: #aba399; }
+.site-footer nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 20px; font-size: 15px; }
 .site-footer a, .site-footer .btn-theme { color: #e8e2d8; min-height: 44px; display: inline-flex; align-items: center; gap: 8px; }
-.site-footer .btn-theme { background: none; border: 1px solid #5e574f; border-radius: 999px; padding: 0 16px; font: inherit; font-size: 14px; cursor: pointer; }
+.site-footer .btn-theme { background: none; border: 1px solid #5e574f; border-radius: 999px; padding: 0 16px; font: inherit; font-size: 15px; cursor: pointer; }
 .site-footer .site-footer-url { color: #aba399; }
 
 @media (min-width: 900px) {
@@ -905,7 +908,7 @@ h1.h-card { font-size: 25px; }
 }
 
 /* Horaires prévus en JetBrains Mono (charte : « 08h15 → 17h45 ») */
-.hours { font-family: var(--font-num); font-size: 14px; font-weight: 500; letter-spacing: -0.01em; color: var(--ink); white-space: nowrap; }
+.hours { font-family: var(--font-num); font-size: 15px; font-weight: 500; letter-spacing: -0.01em; color: var(--ink); white-space: nowrap; }
 
 /* Bloc de synthèse à l'encre (charte : « Clôture mensuelle estimée ») */
 .summary { background: var(--primary); color: var(--primary-ink); border-radius: var(--r-md); padding: 18px; }
@@ -916,7 +919,7 @@ h1.h-card { font-size: 25px; }
 
 /* Page d'accueil : actions de l'en-tête, pied de page */
 .site-actions { display: flex; gap: 8px; align-items: center; }
-.site-footer-url { font-family: var(--font-num); font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase; }
+.site-footer-url { font-family: var(--font-num); font-size: 13px; letter-spacing: 0.3em; text-transform: uppercase; }
 .welcome .brand .brand-name { font-size: 32px; }
 
 /* ---------- Guides vidéo (motion design, format téléphone 9:16) ---------- */
@@ -936,7 +939,7 @@ h1.h-card { font-size: 25px; }
 .video-poster .logo { color: #1f1c1a; }
 .video-poster-title { font-family: var(--font-display); font-size: 26px; font-weight: 600; line-height: 1.1; }
 .video-play { width: 60px; height: 60px; border-radius: 50%; background: var(--or); color: #1f1c1a; display: grid; place-items: center; box-shadow: none; }
-.video-duree { font-family: var(--font-num); font-size: 13px; letter-spacing: 0.15em; color: #6b645c; }
+.video-duree { font-family: var(--font-num); font-size: 15px; letter-spacing: 0.15em; color: #6b645c; }
 .video-resume { text-align: center; max-width: 30em; margin: 0 auto; }
 .video-guide > .seg { max-width: 300px; width: 100%; margin: 0 auto; }
 
@@ -998,7 +1001,7 @@ h1.h-card { font-size: 25px; }
 .video-poster.has-img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .video-poster.has-img::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(31 28 26 / 0) 55%, rgb(31 28 26 / 0.55)); }
 .video-poster.has-img .video-play { position: relative; z-index: 1; width: 76px; height: 76px; }
-.video-pill { position: absolute; z-index: 1; left: 50%; bottom: 18px; transform: translateX(-50%); white-space: nowrap; padding: 8px 14px; border-radius: 999px; background: rgb(245 242 236 / 0.95); color: #1f1c1a; font-size: 14px; font-weight: 600; }
+.video-pill { position: absolute; z-index: 1; left: 50%; bottom: 18px; transform: translateX(-50%); white-space: nowrap; padding: 8px 14px; border-radius: 999px; background: rgb(245 242 236 / 0.95); color: #1f1c1a; font-size: 15px; font-weight: 600; }
 /* Téléphone : carte vidéo avec une vraie image de l'app, dans le premier écran */
 .vid-card { display: flex; gap: 14px; align-items: center; width: 100%; padding: 10px; text-align: left; font: inherit; color: var(--ink); cursor: pointer; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); box-shadow: var(--shadow-tab); }
 .vid-card-img { position: relative; flex: none; width: 92px; aspect-ratio: 9 / 16; border-radius: 12px; overflow: hidden; border: 3px solid #1f1c1a; background: #f5f2ec; display: grid; place-items: center; }
@@ -1047,11 +1050,11 @@ h1.h-card { font-size: 25px; }
 .cal-row { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-bottom: 1px dashed var(--line); }
 .cal-row:last-child { border-bottom: 0; }
 .cal-head { display: grid; grid-template-columns: 72px 1fr auto; align-items: center; gap: 10px; }
-.cal-mois { font-size: 14px; }
+.cal-mois { font-size: 15px; }
 .cal-bar { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
 .cal-bar > span { display: block; height: 100%; background: var(--ink); opacity: 0.55; border-radius: 3px; }
 .cal-row.is-event .cal-bar > span { background: var(--accent); opacity: 1; }
-.cal-net { font-family: var(--font-num); font-size: 14px; }
+.cal-net { font-family: var(--font-num); font-size: 15px; }
 .cal-ev { color: var(--accent-ink); font-weight: 600; }
 .decl-line.is-current { background: var(--primary-soft); border-radius: 8px; padding-inline: 8px; }
 
@@ -1063,10 +1066,10 @@ h1.h-card { font-size: 25px; }
   background: radial-gradient(120% 80% at 50% 0%, #fff 0%, #f5f2ec 60%, #ece6dc 100%); color: #1f1c1a; font: inherit;
 }
 .video-affiche .logo { color: #1f1c1a; }
-.video-affiche-eyebrow { font-family: var(--font-num); font-size: 12px; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; color: #7a5e2e; }
+.video-affiche-eyebrow { font-family: var(--font-num); font-size: 13px; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; color: #7a5e2e; }
 .video-affiche-titre { font-family: var(--font-display); font-size: 30px; font-weight: 600; line-height: 1.05; max-width: 11em; }
 .video-affiche .video-play { width: 76px; height: 76px; margin-top: 6px; }
-.video-affiche-son { font-size: 13px; color: #6b645c; }
+.video-affiche-son { font-size: 15px; color: #6b645c; }
 @media (hover: hover) { .video-affiche:hover .video-play { transform: scale(1.06); } }
 .video-play { transition: transform 0.15s; }
 /* Fin d'un passage : la vidéo entière, ou revoir */
@@ -1143,15 +1146,15 @@ h1.h-card { font-size: 25px; }
 
 /* T-118 : calendrier de suivi des congés payés (écran Congés) */
 .cal-cp { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
-.cal-h { font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 4px 0; }
-.cal-d { aspect-ratio: 1; border-radius: 10px; display: grid; place-items: center; font-family: var(--font-num); font-size: 14px; position: relative; }
+.cal-h { font-size: 13px; font-weight: 600; color: var(--ink-2); padding: 4px 0; }
+.cal-d { aspect-ratio: 1; border-radius: 10px; display: grid; place-items: center; font-family: var(--font-num); font-size: 15px; position: relative; }
 .cal-d.vide { visibility: hidden; }
 .cal-d.dimanche { color: var(--ink-2); }
 .cal-d.pris { background: var(--accent); color: #1f1c1a; font-weight: 600; }
 .cal-d.pose { box-shadow: inset 0 0 0 2px var(--accent); color: var(--accent-ink); font-weight: 600; }
 .cal-d.ferie::after { content: ''; position: absolute; bottom: 5px; width: 5px; height: 5px; border-radius: 50%; background: var(--sauge); }
 .cal-d.auj { outline: 2px solid var(--ink); outline-offset: -2px; }
-.cal-legende { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--ink-2); }
+.cal-legende { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 15px; color: var(--ink-2); }
 .cal-legende i { display: inline-block; width: 14px; height: 14px; border-radius: 4px; vertical-align: -2px; margin-right: 6px; }
 .cal-legende .l-pris { background: var(--accent); }
 .cal-legende .l-pose { box-shadow: inset 0 0 0 2px var(--accent); }
@@ -1159,7 +1162,7 @@ h1.h-card { font-size: 25px; }
 .cal-legende .l-ferie { width: 6px; height: 6px; border-radius: 50%; background: var(--sauge); vertical-align: 2px; }
 .cp-table { width: 100%; border-collapse: collapse; font-size: 15px; }
 .cp-table th, .cp-table td { padding: 8px 4px; border-top: 1px solid var(--line); text-align: right; }
-.cp-table thead th { border-top: 0; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.cp-table thead th { border-top: 0; font-size: 15px; font-weight: 600; color: var(--ink-2); }
 .cp-table th:first-child { text-align: left; }
 .cp-table td { font-family: var(--font-num); }
 .cp-table tbody th { font-weight: 600; }
@@ -1168,13 +1171,13 @@ h1.h-card { font-size: 25px; }
 .cp-tuiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .cp-tuiles > div { background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-btn); padding: 12px; display: flex; flex-direction: column; gap: 4px; }
 .cp-tuiles b { font-size: 26px; font-weight: 600; line-height: 1; }
-.cp-tuiles span { font-size: 14px; color: var(--ink-2); line-height: 1.25; }
+.cp-tuiles span { font-size: 15px; color: var(--ink-2); line-height: 1.25; }
 .cp-barres { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; align-items: end; height: 84px; }
 .cp-barres div { border-radius: 4px 4px 0 0; min-height: 2px; }
 .cp-barres .passe { background: var(--sauge); }
 .cp-barres .futur { border: 1.5px dashed var(--line-strong); border-bottom: 0; }
 .cp-barres .avant { background: var(--surface-2); }
-.cp-barres-l { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; font-size: 11px; color: var(--ink-2); text-align: center; }
+.cp-barres-l { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; font-size: 13px; color: var(--ink-2); text-align: center; }
 .ton-mois .tm-arriere { justify-content: center; }
 /* T-118 (ajout du DG du 26/11) : information neutre dans la carte de la paie (plus de pastille orange) */
 .summary-info { display: flex; gap: 8px; align-items: flex-start; font-size: 15px; line-height: 1.4; opacity: 0.9; }
