@@ -163,3 +163,102 @@ describe('T-118 : contrat allégé', () => {
     expect(vide['Département']).toBe('à indiquer');
   });
 });
+
+describe('T-118 : calendrier des congés, acquis mois par mois', async () => {
+  const { acquisFinDeMois, acquisition } = await import('../src/engine/conges');
+  const { compteursCP, joursCalendrier } = await import('../src/engine/compteurs-cp');
+  const cas: [string, Contract, AmLeave[]][] = [
+    ['année complète, toute la période', contract({ start: '2025-01-06', trackedFrom: '2025-01-06' }), []],
+    ['entrée le 01/09', contract({ start: '2025-09-01', trackedFrom: '2025-09-01' }), []],
+    ['arrêt maladie de 3 semaines', contract({ start: '2025-01-06', trackedFrom: '2025-01-06' }), [{ id: 'm', type: 'am_malade', from: '2025-10-06', to: '2025-10-24' }]],
+    ['congé sans solde (décompte le plus favorable)', contract({ start: '2025-01-06', trackedFrom: '2025-01-06' }), [{ id: 's', type: 'sans_solde', from: '2025-11-17', to: '2025-11-19' }]],
+  ];
+  for (const [nom, c, leaves] of cas) {
+    it(`${nom} : le cumul de fin de mois est l’acquisition d’un contrat qui finirait ce jour-là`, () => {
+      const ctx = makeCtx(c, [], leaves, '2026-07-01');
+      const mois = acquisFinDeMois(ctx, 2025);
+      expect(mois).toHaveLength(12);
+      for (const a of mois) {
+        const fin = a.m === '2026-02' ? '2026-02-28' : `${a.m}-${new Date(Number(a.m.slice(0, 4)), Number(a.m.slice(5, 7)), 0).getDate()}`;
+        if (fin < c.start) { expect(a.jours).toBe(0); continue; }
+        const ctxFin = makeCtx({ ...c, end: fin }, [], leaves, '2026-07-01');
+        const acq = acquisition({ ...ctxFin, finControlee: true }, 2025, 0);
+        expect(a.jours).toBe(acq.jours - acq.enfantsBonus);
+      }
+      // Fin de période : même nombre que le compteur de la période (hors enfants)
+      const tout = acquisition(ctx, 2025, 0);
+      expect(mois[11].jours).toBe(tout.jours - tout.enfantsBonus);
+      // Les acquis du mois font le cumul non arrondi
+      expect(mois.reduce((x, a) => x + a.duMois, 0)).toBeCloseTo(mois[11].brut, 9);
+    });
+  }
+  it('suivi commencé en cours de période : le solde de départ n’est pas un acquis du mois', () => {
+    const c = contract({ start: '2024-01-08', trackedFrom: '2025-11-01', balances: { cpRestants: 10, cpEnCours: 12.5, maladieDeduits: 0, cpSaisi: true } });
+    const mois = acquisFinDeMois(makeCtx(c, [], [], '2026-01-15'), 2025);
+    expect(mois.filter((a) => a.avantSuivi).map((a) => a.m)).toEqual(['2025-06', '2025-07', '2025-08', '2025-09', '2025-10']);
+    const nov = mois.find((a) => a.m === '2025-11')!;
+    expect(nov.duMois).toBeCloseTo(2.5, 9);
+    expect(nov.jours).toBe(15);
+  });
+  it('compteurs : reste = droits − pris − posés', () => {
+    const c = contract({ start: '2024-01-08', trackedFrom: '2024-01-08' });
+    const leaves: AmLeave[] = [
+      { id: 'a', type: 'cp', from: '2025-08-04', to: '2025-08-09' },
+      { id: 'b', type: 'cp', from: '2025-12-22', to: '2025-12-27' },
+    ];
+    const x = compteursCP(makeCtx(c, [], leaves, '2025-11-26'), '2025-11-26');
+    expect(x.droits).toBe(30);
+    expect(x.pris).toBe(6);
+    expect(x.poses).toBe(5); // 25 décembre férié
+    expect(x.reste).toBe(19);
+    expect(x.dateLimite).toBe('2026-05-31');
+  });
+  it('calendrier : pris, posé, férié, dimanche', () => {
+    const leaves: AmLeave[] = [{ id: 'b', type: 'cp', from: '2025-12-22', to: '2025-12-27' }];
+    const j = Object.fromEntries(joursCalendrier('2025-12', leaves, '2025-12-23').map((x) => [x.d.slice(8), x.type]));
+    expect(j['22']).toBe('pris');
+    expect(j['23']).toBe('pris');
+    expect(j['24']).toBe('pose');
+    expect(j['25']).toBe('ferie');
+    expect(j['28']).toBe('dimanche');
+    expect(j['29']).toBe('normal');
+  });
+});
+
+describe('T-118 : carte « Ton mois »', async () => {
+  const { resumeTravail, lignesResume, etatDeclaration, dureeTexte } = await import('../src/engine/resume');
+  it('jours, heures, absences du mois', () => {
+    const c = contract();
+    const days = [rec('2026-10-05', { abs: 'malade_certif' }), rec('2026-10-06', { abs: 'parents' }), rec('2026-10-07', { pres: [{ a: '08:00', d: '18:00' }] })];
+    const r = resumeTravail(makeCtx(c, days, [{ id: 'cp', type: 'cp', from: '2026-10-19', to: '2026-10-24' }], '2026-12-01'), '2026-10');
+    // octobre 2026 : 22 jours ouvrés ; 2 absences de l'enfant, 5 jours de congés de l'AM
+    expect(r.jours).toBe(15);
+    expect(r.extraMin).toBe(60);
+    expect(r.minutes).toBe(15 * 540 + 60);
+    expect(r.enfant.map((e) => [e.abs, e.jours])).toEqual([['malade_certif', 1], ['parents', 1]]);
+    expect(r.am).toEqual([{ type: 'cp', jours: 5 }]);
+    const l = lignesResume(r);
+    expect(l[0]).toBe('+ 1 h en plus du planning');
+    expect(l).toContain('1 jour : enfant absent à la demande des parents, payé');
+    expect(l).toContain('5 jours : mes congés payés');
+  });
+  it('mois en cours : compté jusqu’à aujourd’hui', () => {
+    const r = resumeTravail(makeCtx(contract(), [], [], '2026-11-04'), '2026-11');
+    expect(r.jusquau).toBe('2026-11-04');
+    expect(r.jours).toBe(3); // lundi 2 au mercredi 4
+  });
+  it('état de la déclaration, d’après les dates', () => {
+    expect(etatDeclaration('2026-11', '2026-11-26')).toBe('Mois en cours, compté jusqu’au 26/11. Déclaration par le parent du 25/11 au 05/12');
+    expect(etatDeclaration('2026-10', '2026-11-03')).toBe('À déclarer par le parent jusqu’au 05/11');
+    expect(etatDeclaration('2026-09', '2026-11-03')).toBe('Période de déclaration terminée le 05/10');
+    expect(dureeTexte(152 * 60 + 42)).toBe('152 h 42');
+  });
+  it('montant caché d’emblée, montré d’un geste, gardé jusqu’à la sortie de l’écran', () => {
+    const src = readFileSync('src/screens/Mois.tsx', 'utf8');
+    expect(src).toContain('const [paieVue, setPaieVue] = useState(paieToujoursVisible());');
+    expect(src).toContain('Voir ma paie du mois');
+    expect(src).toContain("inert={!vue}");
+    const css = readFileSync('src/styles.css', 'utf8');
+    expect(css).toMatch(/prefers-reduced-motion: reduce\)\s*\{\s*\.ton-mois \.tm-face \{ transition: none; \}/);
+  });
+});

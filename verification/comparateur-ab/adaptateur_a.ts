@@ -238,6 +238,15 @@ function calculer(s: any, ctx: Ctx, k: any): Sorties {
       }
       break;
     }
+    case 'cp_acquis_mois': {
+      // T-118 : calendrier des congés, jours acquis à la fin du mois (acquisFinDeMois). Absent des versions de A d'avant T-118.
+      const f = (CONGES_A as any).acquisFinDeMois;
+      if (!f) { out.acquis_fin_mois = absent('A : version sans calendrier des congés (T-118)'); break; }
+      const a = acquisition(ctx, k.periode, enfants);
+      const m = (f(ctx, k.periode) as { m: string; jours: number }[]).find((x) => x.m === k.mois);
+      out.acquis_fin_mois = a.aConfirmer ? refus(`A : à confirmer (${a.aConfirmer.message})`) : m ? ok(m.jours) : absent('A : mois hors période');
+      break;
+    }
     case 'cp_indemnite': {
       const i = indemnite(ctx, k.periode, enfants);
       out.indemnite_cp = ok(i.montant);

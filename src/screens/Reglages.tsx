@@ -4,6 +4,7 @@ import { mesureActive, setMesure } from '../analytics';
 import { isDemo } from '../db';
 import { NumberInput, Seg, Stepper, Switch, TextInput, Topbar } from '../ui/kit';
 import { getTheme, setTheme, type Theme } from '../theme';
+import { paieToujoursVisible, setPaieToujoursVisible } from '../paie-visible';
 import { cpPeriodStartYear, today } from '../engine/dates';
 import { moinsDe21Ans } from '../engine/conges';
 
@@ -13,6 +14,7 @@ export function Reglages() {
   const s = useStore();
   const [mesure, setM] = useState(mesureActive());
   const [theme, setT] = useState<Theme>(getTheme());
+  const [paie, setPaie] = useState(paieToujoursVisible());
   // Période de congés en cours (du 1er juin au 31 mai) : l'âge se lit au 30 avril de son année de début (C. trav. L3141-8)
   const anneeCP = cpPeriodStartYear(today());
   // T-103 (K2) : kilomètres de l'année civile, tous parents confondus, pour le contrôle du tarif kilométrique (CCN 57).
@@ -48,6 +50,8 @@ export function Reglages() {
             <legend>Apparence</legend>
             <Seg label="Couleurs de l’app" value={theme} options={[{ v: 'light', l: 'Jour' }, { v: 'dark', l: 'Nuit' }, { v: 'auto', l: 'Automatique' }]} onChange={(v) => { setTheme(v); setT(v); }} />
             <p class="hint">Jour par défaut. Automatique suit le réglage de ton téléphone : jour la journée, nuit le soir s’il est réglé ainsi.</p>
+            {/* T-118 : la paie du mois est cachée d'emblée dans l'écran Mois ; ce choix est gardé sur ce téléphone. */}
+            <Switch label="Toujours afficher ma paie" hint="Dans l’écran Mois, la paie s’affiche directement, sans toucher « Voir ma paie du mois ». Gardé sur ce téléphone." checked={paie} onChange={(v) => { setPaieToujoursVisible(v); setPaie(v); }} />
           </fieldset>
         </section>
         <section class="card">
