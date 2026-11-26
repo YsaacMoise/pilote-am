@@ -212,6 +212,8 @@ async function run(scheme) {
   // Contre-relecture T-118 (M2) : même geste quand le téléphone demande moins de mouvement.
   await p.emulateMedia({ reducedMotion: 'reduce' });
   await p.goto(base + '#/plus');
+  // L'app doit avoir affiché Plus avant de revenir sur Mois (contrôle qualité n° 85, R1 : deux changements d'adresse trop rapprochés).
+  await p.getByRole('link', { name: /Réglages/ }).first().waitFor();
   await p.goto(base + '#/mois');
   await p.getByRole('button', { name: 'Voir ma paie du mois' }).click();
   await p.waitForTimeout(150);
