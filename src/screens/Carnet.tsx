@@ -215,7 +215,7 @@ export function Carnet({ cid: cid0 }: { cid?: string } = {}) {
                 <ul class="timeline" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                   {entries.map((e) => (
                     <li class="tl-item">
-                      <span class="tl-time">{hl(e.time)}</span>
+                      <span class="tl-time"><Icon name={defDe(e).icon} size={16} fin />{hl(e.time)}</span>
                       <button
                         class="tl-body ph-no-capture"
                         aria-label={`Modifier la note de ${hh(e.time)}`}
@@ -289,11 +289,15 @@ function Reglette({ c, jour, entries }: { c: Contract; jour: ISODate; entries: J
   const teinte = CHILD_COLORS[c.color % CHILD_COLORS.length];
   const sommeils = entries.filter((e) => e.kind === 'sieste' && e.sommeil);
   const auj = jour === t && now >= debut && now <= fin;
-  const ICONES: Partial<Record<Kind, IconName>> = { repas: 'meal', sieste: 'moon', change: 'couche', soin: 'pansement' };
+  // T-141 (retour du DG du 27/11/2026) : chaque note a son symbole, le même que son bouton du carnet (humeur, note et
+  // « À apporter » n'avaient qu'un point). Deux symboles trop proches s'étagent au lieu de se couvrir.
+  const rangs = rangsSymboles(entries.map((e) => x(minutes(e.time))));
+  const H = (Math.max(0, ...rangs)) * PAS_RANG;
   const label = `Journée ${de(c.child)}, de ${debut / 60} h à ${fin / 60} h : ${entries.map((e) => `${hl(e.time)} ${estApporter(e) ? 'à apporter' : KIND_LABEL[e.kind].toLowerCase()}${e.fin ? ` jusqu’à ${hl(e.fin)}` : ''}`).join(', ')}.${auj ? ` Il est ${hl(nowHHMM())}.` : ''}`;
   return (
     <div class="reglette">
-      <svg viewBox="0 0 350 96" role="img" aria-label={label}>
+      <svg viewBox={`0 0 350 ${96 + H}`} role="img" aria-label={label}>
+        <g transform={`translate(0 ${H})`}>
         {sommeils.map((e) => {
           const a = x(minutes(e.time)), b = x(e.fin ? minutes(e.fin) : jour === t ? now : minutes(e.time));
           return b - a > 1 ? <rect x={a} y="52" width={b - a} height="16" rx="8" class="rg-sommeil" style={{ '--g': teinte } as any} /> : null;
@@ -303,22 +307,42 @@ function Reglette({ c, jour, entries }: { c: Contract; jour: ISODate; entries: J
         <g class="rg-heures" text-anchor="middle">
           {ticks.filter((m) => (m - debut) % pas === 0).map((m) => <text x={Math.min(Math.max(x(m), 14), 334)} y="88">{m / 60} h</text>)}
         </g>
+        {/* Trait « maintenant » sous les points et les symboles, pour ne jamais les couvrir ; sa bulle reste au-dessus. */}
+        {auj && <line x1={x(now)} y1={22 - H} x2={x(now)} y2="70" class="rg-maintenant" />}
         {entries.map((e) => <circle cx={x(minutes(e.time))} cy={Y} r="4.5" class="rg-point" />)}
-        {entries.filter((e) => ICONES[e.kind]).map((e) => (
-          <svg x={x(minutes(e.time)) - 8} y="30" width="16" height="16" class="rg-ico" aria-hidden="true">
-            <Icon name={ICONES[e.kind]!} size={16} fin />
+        {entries.map((e, i) => (
+          <svg x={x(minutes(e.time)) - 8} y={30 - rangs[i] * PAS_RANG} width="16" height="16" class="rg-ico" aria-hidden="true">
+            <rect width="16" height="16" class="rg-ico-fond" />
+            <Icon name={defDe(e).icon} size={16} fin />
           </svg>
         ))}
         {auj && (
           <>
-            <line x1={x(now)} y1="22" x2={x(now)} y2="70" class="rg-maintenant" />
-            <rect x={Math.min(Math.max(x(now) - 26, 0), 298)} y="2" width="52" height="20" rx="10" class="rg-bulle" />
-            <text x={Math.min(Math.max(x(now), 26), 324)} y="16.5" text-anchor="middle" class="rg-bulle-txt">{hl(nowHHMM())}</text>
+            <rect x={Math.min(Math.max(x(now) - 26, 0), 298)} y={2 - H} width="52" height="20" rx="10" class="rg-bulle" />
+            <text x={Math.min(Math.max(x(now), 26), 324)} y={16.5 - H} text-anchor="middle" class="rg-bulle-txt">{hl(nowHHMM())}</text>
           </>
         )}
+        </g>
       </svg>
     </div>
   );
+}
+
+/** Écart vertical entre deux rangées de symboles de la réglette (symbole de 16 + 2 d'air). */
+const PAS_RANG = 18;
+
+/**
+ * T-141 : rangée de chaque symbole de la réglette (0 = juste au-dessus de l'axe). Les positions arrivent dans l'ordre des
+ * heures ; un symbole prend la plus basse rangée où il ne touche pas le précédent (moins de 18 d'écart = chevauchement).
+ */
+export function rangsSymboles(xs: readonly number[]): number[] {
+  const dernier: number[] = [];
+  return xs.map((x) => {
+    let r = 0;
+    while (dernier[r] !== undefined && x - dernier[r] < PAS_RANG) r++;
+    dernier[r] = x;
+    return r;
+  });
 }
 
 /** Vision 1.1 : heure lisible du fil et de la réglette (« 9 h 30 », « 12 h ») ; les textes enregistrés ne changent pas. */
