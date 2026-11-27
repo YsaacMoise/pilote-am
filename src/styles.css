@@ -370,7 +370,7 @@ main {
 .kid-edit { width: 44px; height: 44px; color: var(--ink-2); }
 .kid-absente { align-self: center; color: var(--ink-2); text-decoration: none; }
 .kid-now .kid-absente { margin-top: -6px; }
-/* Lignes des autres enfants : filet entre les lignes, pas de carte */
+/* Lignes des enfants (deux enfants ou plus) : filet entre les lignes, pas de carte */
 .kid-lines { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
 .kid-line { background: transparent; border: 0; border-radius: 0; box-shadow: none; padding: 12px 0; gap: 10px; border-bottom: 1px solid var(--line); }
 .kid-line .gommette { width: 40px; height: 40px; font-size: 17px; }
