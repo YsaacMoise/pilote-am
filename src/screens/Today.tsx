@@ -104,10 +104,12 @@ export function Today() {
   });
   const amToday = s.leaves.find((l) => day >= l.from && day <= l.to);
 
-  // Vision 1.1 (T-126, 9.4) : carte « Maintenant », cadran, puis une ligne par autre enfant. Réglage « Liste » : lignes seules.
+  // Vision 1.1 (T-126, 9.4) : un seul enfant = carte « Maintenant » puis cadran. Plusieurs enfants (retour du 27/11/2026) :
+  // le cadran d'abord, puis une ligne par enfant, toutes au même format et dans l'ordre des anneaux ; aucun enfant n'est
+  // mis à part en haut. Réglage « Liste » : lignes seules.
   const compact = !!s.settings.compact && kids.length > 1;
   const now = nowHHMM();
-  const iNow = !compact && day === t ? indexMaintenant(kids.map((c) => heureAction(c, day, sautesDe(c))), minutes(now)) : -1;
+  const iNow = !compact && day === t && kids.length === 1 ? indexMaintenant(kids.map((c) => heureAction(c, day, sautesDe(c))), minutes(now)) : -1;
   const titre = dayLabel(day).replace(/^./, (x) => x.toUpperCase());
   const ecart = day === t ? undefined : day < t ? `il y a ${daysBetween(day, t)} jour${daysBetween(day, t) > 1 ? 's' : ''}` : `dans ${daysBetween(t, day)} jour${daysBetween(t, day) > 1 ? 's' : ''}`;
 
