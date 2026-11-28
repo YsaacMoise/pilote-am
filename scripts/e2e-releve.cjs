@@ -30,6 +30,7 @@ const base = process.env.BASE || 'http://localhost:4173/';
     await p.getByRole('button', { name: 'Essayer avec des enfants fictifs' }).first().click(); await p.waitForTimeout(1500);
     await p.evaluate(() => { location.hash = '#/mois'; }); await p.waitForTimeout(800);
     const audit = async (nom) => {
+      await require('./e2e-assistant.cjs').finAnimations(p); // T-112 : écran stable avant l'audit
       await p.addScriptTag({ content: axe });
       const r = await p.evaluate(async () => (await axe.run(document, { runOnly: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] })).violations.map((v) => `${v.id} (${v.impact}) ${v.nodes.length}× ${v.nodes[0].target.join(' ')}`));
       defauts += r.length;

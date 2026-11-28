@@ -85,4 +85,15 @@ async function diagnostic(pages, dossier, prefixe) {
   }
 }
 
-module.exports = { continuer, profil, ajouterEnfant, diagnostic, JOURS };
+/**
+ * T-112 : un audit axe se fait sur l'écran stable. Pendant l'apparition d'un message bref (opacité de 0 à 1 en 200 ms), axe
+ * mesurait un contraste faux (constaté sur GitHub, #/compte, « .toast > button »). Attend la fin des animations finies (3 s au plus).
+ */
+async function finAnimations(page) {
+  await page.evaluate(() => Promise.race([
+    Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => {}))),
+    new Promise((r) => setTimeout(r, 3000)),
+  ]));
+}
+
+module.exports = { continuer, profil, ajouterEnfant, diagnostic, finAnimations, JOURS };

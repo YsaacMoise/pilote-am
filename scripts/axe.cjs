@@ -5,6 +5,8 @@ const fs = require('fs');
 const Assistant = require('./e2e-assistant.cjs');
 const base = process.env.BASE || 'http://localhost:4173/pilote-am/';
 const axe = fs.readFileSync(process.env.AXE, 'utf8');
+// T-112 : audit sur l'écran stable (fin des animations, voir e2e-assistant.cjs).
+const { finAnimations } = Assistant;
 (async () => {
   const b = await chromium.launch();
   let total = 0;
@@ -17,6 +19,7 @@ const axe = fs.readFileSync(process.env.AXE, 'utf8');
     await p.goto(base);
     await p.waitForTimeout(300);
     const audit = async (name) => {
+      await finAnimations(p);
       await p.addScriptTag({ content: axe });
       const r = await p.evaluate(async () => (await axe.run(document, { runOnly: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] })).violations.map((v) => `${v.id} (${v.impact}) : ${v.nodes.length} × ${v.nodes.slice(0, 2).map((n) => n.target.join(' ')).join(' | ')}`));
       total += r.length;
@@ -46,6 +49,7 @@ const axe = fs.readFileSync(process.env.AXE, 'utf8');
     const q = await c2.newPage();
     await q.goto(base);
     const audit2 = async (name) => {
+      await finAnimations(q);
       await q.addScriptTag({ content: axe });
       const r = await q.evaluate(async () => (await axe.run(document, { runOnly: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] })).violations.map((v) => `${v.id} (${v.impact}) : ${v.nodes.length} × ${v.nodes.slice(0, 2).map((n) => n.target.join(' ')).join(' | ')}`));
       total += r.length;

@@ -40,6 +40,7 @@ async function phone(b, name) {
 async function axe(p, label) {
   const src = process.env.AXE;
   if (!src) return;
+  await Assistant.finAnimations(p); // T-112 : écran stable avant l'audit
   await p.addScriptTag({ path: src });
   const r = await p.evaluate(async () => (await window.axe.run(document, { runOnly: ['wcag2a', 'wcag2aa'] })).violations.map((v) => `${v.id}: ${v.nodes.length}`));
   assert(r.length === 0, `accessibilité (${label}) : ${r.length ? r.join(', ') : 'aucun défaut'}`);
