@@ -1,8 +1,9 @@
 // Sert dist/ sous /pilote-am/ comme GitHub Pages (pour les tests locaux).
 import http from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
-import { join, extname } from 'node:path';
-const root = new URL('../dist/', import.meta.url).pathname;
+import { join, extname, resolve } from 'node:path';
+// T-112 : DIST=dossier pour servir une autre construction que dist/ (construction d'essai des émulateurs, par exemple).
+const root = process.env.DIST ? resolve(process.env.DIST) + '/' : new URL('../dist/', import.meta.url).pathname;
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.woff2': 'font/woff2', '.svg': 'image/svg+xml' };
 const port = Number(process.argv[2] ?? 4173);
 // CSP=1 : applique la même règle de sécurité (Content-Security-Policy) que firebase.json, pour que les

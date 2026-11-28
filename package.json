@@ -31,7 +31,9 @@
     "@firebase/rules-unit-testing": "6.0.0",
     "@preact/preset-vite": "2.10.6",
     "@types/node": "26.6.6",
+    "axe-core": "4.11.1",
     "firebase-tools": "15.34.2",
+    "playwright": "1.63.0",
     "typescript": "5.9.3",
     "vite": "6.4.5",
     "vitest": "4.1.12"

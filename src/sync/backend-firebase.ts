@@ -2,12 +2,12 @@
 // Chargé à la demande : l'app démarre et marche sans ce module.
 import { initializeApp } from 'firebase/app';
 import {
-  applyActionCode, browserLocalPersistence, confirmPasswordReset, createUserWithEmailAndPassword, deleteUser, EmailAuthProvider, indexedDBLocalPersistence,
+  applyActionCode, browserLocalPersistence, confirmPasswordReset, connectAuthEmulator, createUserWithEmailAndPassword, deleteUser, EmailAuthProvider, indexedDBLocalPersistence,
   initializeAuth, onAuthStateChanged, reauthenticateWithCredential, sendEmailVerification, sendPasswordResetEmail, signInWithEmailAndPassword,
   signOut, verifyPasswordResetCode,
 } from 'firebase/auth';
 import {
-  collection, doc, getDocsFromServer, setDoc, initializeFirestore, onSnapshot, memoryLocalCache, persistentLocalCache, persistentMultipleTabManager,
+  collection, connectFirestoreEmulator, doc, getDocsFromServer, setDoc, initializeFirestore, onSnapshot, memoryLocalCache, persistentLocalCache, persistentMultipleTabManager,
   query, runTransaction, serverTimestamp, Timestamp, waitForPendingWrites, where, writeBatch, type DocumentData,
 } from 'firebase/firestore';
 import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
@@ -16,14 +16,21 @@ import { errCode, type Backend, type CloudUser, type SharedDoc } from './backend
 import { docId, isSyncedStore, type RemoteDoc } from './plan';
 import { deviceId } from '../cloud-state';
 
-const app = initializeApp(firebaseConfig);
+// T-112 : construction d'essai du robot des parcours seulement (scripts/robot-parcours.sh emulateurs). VITE_EMU_AUTH
+// (http://hôte:port) et VITE_EMU_FIRESTORE (hôte:port) branchent la connexion et la base sur les émulateurs Firebase locaux,
+// projet « demo-arvela » (un projet « demo- » ne peut joindre aucune ressource réelle), App Check coupé. Le site publié est
+// construit sans ces variables : ce code disparaît du paquet (vérifié dans dist/ par la T-112).
+const EMU_AUTH = import.meta.env.VITE_EMU_AUTH as string | undefined;
+const EMU_FIRESTORE = import.meta.env.VITE_EMU_FIRESTORE as string | undefined;
+const EMULATEURS = !!(EMU_AUTH && EMU_FIRESTORE);
+const app = initializeApp(EMULATEURS ? { apiKey: 'demo-cle', authDomain: 'demo-arvela.firebaseapp.com', projectId: 'demo-arvela', appId: '1:0:web:0' } : firebaseConfig);
 // App Check (audit, avant phase 2) : prouve à Firebase que les demandes viennent bien de l'app publiée
 // sur arvela.fr, et pas d'un robot qui appellerait directement le service. Démarré avant la connexion
 // et la base pour que leurs premières demandes portent déjà le jeton. Tant que la protection n'est pas
 // rendue obligatoire dans la console, une demande sans jeton passe quand même : rien ne peut bloquer l'app.
 // Durée de vie du jeton réglée à 7 jours dans la console, pour limiter le nombre d'évaluations reCAPTCHA
 // (10 000 gratuites par mois, payantes au-delà).
-if (typeof location !== 'undefined' && appCheckActif(location.hostname)) {
+if (!EMULATEURS && typeof location !== 'undefined' && appCheckActif(location.hostname)) {
   try {
     initializeAppCheck(app, { provider: new ReCaptchaEnterpriseProvider(RECAPTCHA_SITE_KEY), isTokenAutoRefreshEnabled: true });
   } catch {
@@ -32,10 +39,15 @@ if (typeof location !== 'undefined' && appCheckActif(location.hostname)) {
 }
 const auth = initializeAuth(app, { persistence: [indexedDBLocalPersistence, browserLocalPersistence] });
 auth.languageCode = 'fr';
+if (EMULATEURS) connectAuthEmulator(auth, EMU_AUTH!, { disableWarnings: true });
 // Cache persistant : les changements faits hors ligne sont gardés et envoyés au retour du réseau, même après fermeture.
 // Page des parents : rien n'est gardé sur leur appareil (cache en mémoire seulement).
 const pageParents = typeof location !== 'undefined' && location.hash.startsWith('#/p/');
 const fs = initializeFirestore(app, { localCache: pageParents ? memoryLocalCache() : persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+if (EMULATEURS) {
+  const [hote, port] = EMU_FIRESTORE!.split(':');
+  connectFirestoreEmulator(fs, hote, Number(port));
+}
 
 const BATCH = 400;
 
@@ -65,6 +77,8 @@ function rejected(e: unknown, docs: Array<{ s: RemoteDoc['s']; k: string }>) {
 
 /** T-125 : fonctions serveur de la copie scellée (functions/sequestre.js, région europe-west9), chargées à la demande. */
 async function appel(nom: string): Promise<unknown> {
+  // T-112 : la copie scellée (Cloud KMS) n'existe pas sur les émulateurs : réponse « indisponible », sans requête vers l'extérieur.
+  if (EMULATEURS) throw Object.assign(new Error('Copie scellée absente des émulateurs'), { code: 'functions/unavailable' });
   const { getFunctions, httpsCallable } = await import('firebase/functions');
   return (await httpsCallable(getFunctions(app, 'europe-west9'), nom)()).data;
 }

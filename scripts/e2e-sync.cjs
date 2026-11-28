@@ -29,12 +29,18 @@ function assert(cond, msg) {
   console.log('  ok  ' + msg);
 }
 const stats = async () => (await fetch(cloud + '/stats')).json();
+const pages = {};
 
 async function phone(b, name) {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: process.env.SCHEME === 'dark' ? 'dark' : 'light', locale: 'fr-FR', timezoneId: 'Europe/Paris', hasTouch: true, isMobile: true });
   // T-122 : le thème suit le parcours (l'app est en version jour par défaut ; « sombre » = version nuit choisie).
   if (process.env.SCHEME === 'dark') await ctx.addInitScript(() => { try { localStorage.setItem('pam-theme', 'dark'); } catch { /* rien */ } });
+  // T-112 (constat T-137) : horloge fixée à un jeudi 10 h, Paris, comme boutons.cjs. Sans elle, le parcours échouait le
+  // week-end (pas d'accueil prévu, bouton « Imprévu ») et après 17 h 45 (trois choix de départ). L'heure avance ensuite
+  // normalement. Date passée exprès : les jetons de connexion de l'émulateur (heure réelle) restent valides. HEURE=reelle : sans.
+  if (process.env.HEURE !== 'reelle') { await ctx.clock.install({ time: new Date('2026-11-26T10:00:00+01:00') }); await ctx.clock.resume(); }
   const p = await ctx.newPage();
+  pages[name] = p; // T-112 : pour le diagnostic en cas d'échec
   const errors = [];
   p.on('pageerror', (e) => errors.push(e.message));
   if (process.env.DEBUG) {
@@ -60,6 +66,7 @@ async function phone(b, name) {
   await a.goto(base);
   await a.getByRole('button', { name: 'Créer mon compte gratuit' }).click();
   await a.getByRole('heading', { name: 'Crée ton compte' }).waitFor();
+  await Assistant.formulairePret(a);
   await a.getByLabel('Adresse e-mail').fill(email);
   await a.getByLabel('Mot de passe').fill('court');
   await a.getByRole('button', { name: 'Créer mon compte' }).click();
@@ -72,7 +79,7 @@ async function phone(b, name) {
   assert(true, 'compte créé, profil « Toi » tout de suite (l’installation reste dans Plus)');
   await a.shot('01-compte-pret');
   await Assistant.profil(a);
-  await Assistant.ajouterEnfant(a, { prenom: 'Lou', famille: 'Petit', debut: `${new Date().toISOString().slice(0, 7)}-01` });
+  await Assistant.ajouterEnfant(a, { prenom: 'Lou', famille: 'Petit', debut: process.env.HEURE === 'reelle' ? `${new Date().toISOString().slice(0, 7)}-01` : '2026-11-02' });
   if (await a.getByRole('button', { name: 'Enregistrer ce mois' }).isVisible().catch(() => false)) await a.goto(base + '#/');
   await a.goto(base + '#/');
   await a.locator('article.kid', { hasText: 'Lou' }).waitFor();
@@ -91,6 +98,7 @@ async function phone(b, name) {
   const p2 = B.p;
   await p2.goto(base);
   await p2.locator('.hero-login').getByRole('button', { name: 'Me connecter' }).click();
+  await Assistant.formulairePret(p2);
   await p2.getByLabel('Adresse e-mail').fill(email);
   await p2.getByLabel('Mot de passe').fill('mauvais-mot-de-passe');
   await p2.getByRole('button', { name: 'Me connecter' }).click();
@@ -142,7 +150,7 @@ async function phone(b, name) {
   console.log('\n== Ajout puis suppression d’un enfant, propagés ==');
   const before = (await stats())[uid].live;
   await a2.goto(base + '#/contrat/nouveau');
-  await Assistant.ajouterEnfant(a2, { prenom: 'Inès', famille: 'Martin', debut: `${new Date().toISOString().slice(0, 7)}-01`, taux: '3,60' });
+  await Assistant.ajouterEnfant(a2, { prenom: 'Inès', famille: 'Martin', debut: process.env.HEURE === 'reelle' ? `${new Date().toISOString().slice(0, 7)}-01` : '2026-11-02', taux: '3,60' });
   await p2.goto(base + '#/plus');
   await p2.locator('.li-title', { hasText: 'Inès' }).waitFor({ timeout: 10000 });
   assert(true, 'enfant ajouté sur A → visible sur B');
@@ -169,6 +177,7 @@ async function phone(b, name) {
   await a2.waitForTimeout(300);
   await a2.goto(base + '#/compte');
   await a2.getByRole('button', { name: 'J’ai déjà un compte' }).click().catch(() => {});
+  await Assistant.formulairePret(a2);
   await a2.getByLabel('Adresse e-mail').fill(email);
   await a2.getByLabel('Mot de passe').fill(pw);
   await a2.getByRole('button', { name: 'Me connecter' }).click();
@@ -204,6 +213,7 @@ async function phone(b, name) {
   await c.goto(base + '#/compte');
   await c.reload();
   await c.getByRole('button', { name: 'J’ai déjà un compte' }).click();
+  await Assistant.formulairePret(c);
   await c.getByLabel('Adresse e-mail').fill(email);
   await c.getByLabel('Mot de passe').fill(pw);
   await c.getByRole('button', { name: 'Me connecter' }).click();
@@ -239,4 +249,4 @@ async function phone(b, name) {
   assert(errs.length === 0, 'aucune erreur dans la console' + (errs.length ? ' : ' + errs.join(' | ') : ''));
   await b.close();
   console.log('\nParcours compte et synchronisation : tout est bon.');
-})().catch((e) => { console.error(e); process.exit(1); });
+})().catch(async (e) => { console.error(e); await Assistant.diagnostic(pages, out, 'sync'); process.exit(1); });

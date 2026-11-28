@@ -67,4 +67,54 @@ async function ajouterEnfant(p, o) {
   await p.getByRole('heading', { name: new RegExp(`^Contrat (de |d’)${prenom} créé$`) }).waitFor();
 }
 
-module.exports = { continuer, profil, ajouterEnfant, JOURS };
+/**
+ * T-112 (point 3 bis, constat T-117) : en cas d'échec, chaque téléphone dit où il s'est arrêté : adresse, bandeaux
+ * d'alerte (« À compléter avant de créer le contrat » et sa liste…), et une capture pleine page dans `dossier`.
+ */
+async function diagnostic(pages, dossier, prefixe) {
+  const path = require('path');
+  for (const [nom, p] of Object.entries(pages)) {
+    if (!p || p.isClosed()) continue;
+    try {
+      console.error(`  [${nom}] arrêté sur ${p.url().replace(/^https?:\/\/[^/]+/, '')}`);
+      for (const t of await p.locator('.banner.warn, [role=alert]').allInnerTexts()) {
+        if (t.trim()) console.error(`  [${nom}] bandeau : ${t.trim().replace(/\s+/g, ' ').slice(0, 500)}`);
+      }
+      await p.screenshot({ path: path.join(dossier, `${prefixe}-${nom}-echec.png`), fullPage: true });
+    } catch { /* page fermée entre-temps */ }
+  }
+}
+
+/**
+ * T-112 : un audit axe se fait sur l'écran stable. Pendant l'apparition d'un message bref (opacité de 0 à 1 en 200 ms), axe
+ * mesurait un contraste faux (constaté sur GitHub, #/compte, « .toast > button »), même après l'attente des animations :
+ * un message apparu pendant l'audit restait à demi transparent (relecteur T-112, 1 passage sur 4).
+ * Les animations et transitions sont donc coupées pendant les audits : chaque élément est mesuré dans son état final, celui que
+ * voit l'utilisateur. Puis attente des animations encore en cours (3 s au plus) et de deux images.
+ */
+async function finAnimations(page) {
+  await page.evaluate(() => {
+    if (!document.getElementById('e2e-sans-animation')) {
+      const st = document.createElement('style');
+      st.id = 'e2e-sans-animation';
+      st.textContent = '*, *::before, *::after { animation: none !important; transition: none !important; }';
+      document.head.appendChild(st);
+    }
+  });
+  await page.evaluate(() => Promise.race([
+    Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => {}))),
+    new Promise((r) => setTimeout(r, 3000)),
+  ]));
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+}
+
+/**
+ * T-112 (relecteur, 28/11) : à l'ouverture du formulaire de compte, l'app place le curseur dans le champ e-mail à l'image
+ * suivante (Welcome.tsx, requestAnimationFrame). Un robot qui tape avant cette image pouvait voir son mot de passe arriver dans
+ * le champ e-mail (1 passage sur 18 sur GitHub). Attend deux images avant de remplir : le formulaire est alors stable.
+ */
+async function formulairePret(page) {
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+}
+
+module.exports = { continuer, profil, ajouterEnfant, diagnostic, finAnimations, formulairePret, JOURS };

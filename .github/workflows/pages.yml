@@ -58,8 +58,40 @@ jobs:
         run: |
           export JAVA_HOME="${JAVA_HOME_21_X64:-$JAVA_HOME}"; export PATH="$JAVA_HOME/bin:$PATH"
           npx firebase emulators:exec --only firestore --project demo-arvela "node tests/rules/rules.test.mjs"
+  # T-112 : le robot des parcours bloque la publication, comme les règles Firestore et le second moteur.
+  # Niveau A (faux service) et niveau B (émulateurs Firebase, projet demo-arvela) : rien n'est publié si un parcours échoue.
+  parcours:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx playwright install --with-deps --only-shell chromium
+      - name: Parcours, niveau A (rien n'est publié si un parcours échoue)
+        run: bash scripts/robot-parcours.sh faux
+  parcours-firebase:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx playwright install --with-deps --only-shell chromium
+      - name: Parcours, niveau B (rien n'est publié si un parcours échoue)
+        run: bash scripts/robot-parcours.sh emulateurs
   firebase:
-    needs: [build, regles]
+    needs: [build, regles, parcours, parcours-firebase]
     runs-on: ubuntu-latest
     # Publication sans clé stockée (04/11/2026) : GitHub prouve à Google que la demande vient de ce dépôt,
     # Google rend un laissez-passer d'une heure pour le compte github-publication, qui n'a que le droit

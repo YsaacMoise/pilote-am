@@ -14,6 +14,8 @@ const cloud = process.env.CLOUD || 'http://localhost:4180';
 const out = path.join(__dirname, 'out');
 fs.mkdirSync(out, { recursive: true });
 
+const pages = {};
+
 function assert(cond, msg) {
   if (!cond) throw new Error('ÉCHEC : ' + msg);
   console.log('  ok  ' + msg);
@@ -27,6 +29,7 @@ async function phone(b, name) {
   // Un mercredi d'accueil ordinaire, en fin de journée (le carnet a du contenu, le jour a un statut)
   if (process.env.HEURE !== 'reelle') await ctx.clock.setFixedTime(new Date('2026-11-04T16:20:00+01:00'));
   const p = await ctx.newPage();
+  pages[name] = p; // T-112 : pour le diagnostic en cas d'échec
   const errors = [];
   p.on('pageerror', (e) => errors.push(e.message));
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(m.text()); });
@@ -37,6 +40,7 @@ async function phone(b, name) {
 async function axe(p, label) {
   const src = process.env.AXE;
   if (!src) return;
+  await Assistant.finAnimations(p); // T-112 : écran stable avant l'audit
   await p.addScriptTag({ path: src });
   const r = await p.evaluate(async () => (await window.axe.run(document, { runOnly: ['wcag2a', 'wcag2aa'] })).violations.map((v) => `${v.id}: ${v.nodes.length}`));
   assert(r.length === 0, `accessibilité (${label}) : ${r.length ? r.join(', ') : 'aucun défaut'}`);
@@ -52,6 +56,7 @@ async function axe(p, label) {
   console.log('\n== AM : compte, un enfant ==');
   await a.goto(base);
   await a.getByRole('button', { name: 'Créer mon compte gratuit' }).click();
+  await Assistant.formulairePret(a);
   await a.getByLabel('Adresse e-mail').fill('sonia@exemple.fr');
   await a.getByLabel('Mot de passe').fill('Motdepasse-solide');
   await a.getByRole('button', { name: 'Créer mon compte' }).click();
@@ -158,4 +163,4 @@ async function axe(p, label) {
   assert(errs.length === 0, `aucune erreur dans la console${errs.length ? ' : ' + errs.join(' | ') : ''}`);
   await b.close();
   console.log('\nParcours du lien parent : tout est bon.');
-})().catch((e) => { console.error(e); process.exit(1); });
+})().catch(async (e) => { console.error(e); await Assistant.diagnostic(pages, out, 'parent'); process.exit(1); });

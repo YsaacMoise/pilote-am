@@ -63,3 +63,55 @@ jobs:
           # firebase-tools exige Java 21 ; les runners GitHub l'ont préinstallé à côté de Java 17.
           export JAVA_HOME="${JAVA_HOME_21_X64:-$JAVA_HOME}"; export PATH="$JAVA_HOME/bin:$PATH"
           npm run test:emulateurs
+  # T-112 (décision du DG du 26/11/2026) : robot des parcours. Il clique dans l'app comme une utilisatrice (Playwright, Chromium).
+  # Niveau A : les 8 parcours existants sur le faux service en mémoire. Niveau B : le vrai code Firebase et les vraies règles,
+  # sur les émulateurs Auth et Firestore (projet demo-arvela). Aucune requête ne sort de la machine (scripts/e2e-garde.cjs).
+  # Captures et journaux en pièce jointe du passage, 3 jours.
+  parcours:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx playwright install --with-deps --only-shell chromium
+      - name: Parcours, niveau A (faux service)
+        run: bash scripts/robot-parcours.sh faux
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: parcours-captures
+          path: |
+            scripts/out
+            .robot/*.log
+            .robot/*.md
+          retention-days: 3
+          include-hidden-files: true
+  parcours-firebase:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx playwright install --with-deps --only-shell chromium
+      - name: Parcours, niveau B (émulateurs Firebase, projet demo-arvela)
+        run: bash scripts/robot-parcours.sh emulateurs
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: parcours-firebase-captures
+          path: |
+            scripts/out
+            .robot/*.log
+            .robot/*.md
+          retention-days: 3
+          include-hidden-files: true
