@@ -12,3 +12,4 @@ motion/node_modules
 motion/out
 motion/final
 version.txt
+.robot/

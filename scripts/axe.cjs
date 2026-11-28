@@ -2,6 +2,7 @@
 // Site construit avec VITE_FAKE_CLOUD et faux service lancé (scripts/fake-cloud.mjs) : l'audit crée un compte de test local.
 const { chromium } = require('playwright');
 const fs = require('fs');
+const Assistant = require('./e2e-assistant.cjs');
 const base = process.env.BASE || 'http://localhost:4173/pilote-am/';
 const axe = fs.readFileSync(process.env.AXE, 'utf8');
 (async () => {
@@ -9,6 +10,9 @@ const axe = fs.readFileSync(process.env.AXE, 'utf8');
   let total = 0;
   for (const scheme of ['light', 'dark']) {
     const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, colorScheme: scheme, locale: 'fr-FR', isMobile: true, hasTouch: true });
+    // T-112 : horloge fixée (jeudi 26/11/2026, 10 h, Paris) : les écrans du jour ne dépendent plus de l'heure du passage.
+    await ctx.clock.install({ time: new Date('2026-11-26T10:00:00+01:00') });
+    await ctx.clock.resume();
     const p = await ctx.newPage();
     await p.goto(base);
     await p.waitForTimeout(300);
@@ -19,8 +23,11 @@ const axe = fs.readFileSync(process.env.AXE, 'utf8');
       console.log(`[${scheme}] ${name} : ${r.length ? r.join('\n    ') : 'OK'}`);
     };
     await audit('accueil');
-    await p.getByRole('button', { name: 'Découvrir avec des enfants fictifs' }).click();
+    await p.getByRole('button', { name: 'Essayer avec des enfants fictifs' }).first().click();
     await p.waitForTimeout(1000);
+    // T-112 : la démonstration s'ouvre sur la feuille de la vidéo d'accueil ; elle est auditée, puis fermée par « Explorer seule ».
+    const seule = p.getByRole('button', { name: 'Explorer seule' });
+    if (await seule.count()) { await audit('démonstration, feuille d’accueil'); await seule.click(); await p.waitForTimeout(300); }
     for (const s of ['', 'carnet', 'mois', 'plus', 'contrat/demo-leo', 'confidentialite', 'conditions', 'mentions', 'avenant/demo-leo/nouveau', 'historique/demo-leo', 'controle', 'conges', 'fin/demo-leo', 'fiscal', 'sauvegarde', 'pilote', 'reglages', 'regles', 'installer']) {
       await p.evaluate((h) => { location.hash = '#/' + h; }, s);
       await p.waitForTimeout(350);
@@ -29,7 +36,7 @@ const axe = fs.readFileSync(process.env.AXE, 'utf8');
     // une feuille ouverte
     await p.evaluate(() => { location.hash = '#/'; });
     await p.waitForTimeout(300);
-    await p.getByRole('button', { name: /Modifier \(Léo\)/ }).click();
+    await p.getByRole('button', { name: /^Modifier( la journée)? \(Adam\)$/ }).first().click(); // T-112 : l'enfant demo-leo s'appelle Adam
     await p.waitForTimeout(400);
     await audit('feuille journée');
     await ctx.close();
@@ -44,19 +51,21 @@ const axe = fs.readFileSync(process.env.AXE, 'utf8');
       total += r.length;
       console.log(`[${scheme}] ${name} : ${r.length ? r.join('\n    ') : 'OK'}`);
     };
-    await q.getByRole('button', { name: 'J’ai déjà un compte' }).click();
+    // T-112 : libellés de l'accueil depuis la T-122 (« Me connecter », plus d'écran « Ton compte est prêt »).
+    await q.locator('.hero-login').getByRole('button', { name: 'Me connecter' }).click();
     await audit2('accueil, connexion');
     await q.getByRole('button', { name: 'Mot de passe oublié' }).click();
     await audit2('accueil, mot de passe oublié');
     await q.getByRole('button', { name: 'Revenir à la connexion' }).click();
     await q.getByRole('button', { name: 'Créer un compte' }).click();
     await q.getByLabel('Adresse e-mail').fill(`axe-${scheme}-${Date.now()}@exemple.fr`);
-    await q.getByLabel('Mot de passe').fill('motdepasse-solide');
+    await q.getByLabel('Mot de passe').fill('Motdepasse-solide'); // T-112 : règle des 3 types de caractères
     await q.getByRole('button', { name: 'Créer mon compte' }).click();
-    await q.getByRole('heading', { name: 'Ton compte est prêt' }).waitFor();
-    await audit2('accueil, compte prêt');
-    await q.getByRole('button', { name: 'Continuer ici pour l’instant' }).click();
-    await q.getByRole('button', { name: 'Ajouter un enfant que tu accueilles' }).click();
+    await q.getByRole('heading', { name: 'Toi' }).waitFor();
+    await audit2('profil « Toi » après création du compte');
+    await Assistant.profil(q);
+    await q.getByLabel('Prénom de l’enfant').waitFor();
+    await audit2('assistant, nouvel enfant');
     await q.evaluate(() => { location.hash = '#/compte'; });
     await q.waitForTimeout(400);
     await audit2('#/compte');
@@ -64,4 +73,6 @@ const axe = fs.readFileSync(process.env.AXE, 'utf8');
   }
   console.log(total ? `${total} problème(s)` : 'Audit axe : aucun problème WCAG 2.1 AA');
   await b.close();
-})();
+  // T-112 : un problème d'accessibilité met le robot au rouge.
+  if (total) process.exit(1);
+})().catch((e) => { console.error(e); process.exit(1); });

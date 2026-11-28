@@ -6,6 +6,8 @@ const base = process.env.BASE || 'http://localhost:4173/';
 (async () => {
   const b = await chromium.launch();
   let defauts = 0;
+  // T-112 : le robot de publication exige un code de sortie : chaque écart compte comme un échec, pas seulement affiché.
+  const ecarts = [];
   for (const scheme of ['light', 'dark']) {
     const ctx = await b.newContext({ ...devices['iPhone 13'], colorScheme: scheme, locale: 'fr-FR', timezoneId: 'Europe/Paris' });
     // App installée sur iPhone : navigator.standalone, partage de fichiers disponible. Premier partage refusé
@@ -52,8 +54,14 @@ const base = process.env.BASE || 'http://localhost:4173/';
     const parts = await p.evaluate(() => window.__partages);
     const banniere = await p.getByRole('button', { name: 'Partager le relevé' }).count();
     console.log(`[${scheme}] partages :`, JSON.stringify(parts), '; bannière restante :', banniere, '; erreurs :', errs.join(' ') || 'aucune');
+    if (parts.length !== 1 || parts[0].type !== 'application/pdf' || !parts[0].size) ecarts.push(`[${scheme}] partage du PDF absent ou vide`);
+    if (banniere) ecarts.push(`[${scheme}] bannière restée après le partage`);
+    if (errs.length) ecarts.push(`[${scheme}] erreurs de la page : ${errs.join(' | ')}`);
     await ctx.close();
   }
   console.log('total défauts axe :', defauts);
+  if (defauts) ecarts.push(`${defauts} défaut(s) axe`);
   await b.close();
-})();
+  if (ecarts.length) { console.error('ÉCHEC du relevé : ' + ecarts.join(' ; ')); process.exit(1); }
+  console.log('Relevé du mois : tout est bon.');
+})().catch((e) => { console.error(e); process.exit(1); });

@@ -34,6 +34,10 @@ async function phone(b, name) {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: process.env.SCHEME === 'dark' ? 'dark' : 'light', locale: 'fr-FR', timezoneId: 'Europe/Paris', hasTouch: true, isMobile: true });
   // T-122 : le thème suit le parcours (l'app est en version jour par défaut ; « sombre » = version nuit choisie).
   if (process.env.SCHEME === 'dark') await ctx.addInitScript(() => { try { localStorage.setItem('pam-theme', 'dark'); } catch { /* rien */ } });
+  // T-112 (constat T-137) : horloge fixée à un jeudi 10 h, Paris, comme boutons.cjs. Sans elle, le parcours échouait le
+  // week-end (pas d'accueil prévu, bouton « Imprévu ») et après 17 h 45 (trois choix de départ). L'heure avance ensuite
+  // normalement. Date passée exprès : les jetons de connexion de l'émulateur (heure réelle) restent valides. HEURE=reelle : sans.
+  if (process.env.HEURE !== 'reelle') { await ctx.clock.install({ time: new Date('2026-11-26T10:00:00+01:00') }); await ctx.clock.resume(); }
   const p = await ctx.newPage();
   const errors = [];
   p.on('pageerror', (e) => errors.push(e.message));
@@ -72,7 +76,7 @@ async function phone(b, name) {
   assert(true, 'compte créé, profil « Toi » tout de suite (l’installation reste dans Plus)');
   await a.shot('01-compte-pret');
   await Assistant.profil(a);
-  await Assistant.ajouterEnfant(a, { prenom: 'Lou', famille: 'Petit', debut: `${new Date().toISOString().slice(0, 7)}-01` });
+  await Assistant.ajouterEnfant(a, { prenom: 'Lou', famille: 'Petit', debut: process.env.HEURE === 'reelle' ? `${new Date().toISOString().slice(0, 7)}-01` : '2026-11-02' });
   if (await a.getByRole('button', { name: 'Enregistrer ce mois' }).isVisible().catch(() => false)) await a.goto(base + '#/');
   await a.goto(base + '#/');
   await a.locator('article.kid', { hasText: 'Lou' }).waitFor();
@@ -142,7 +146,7 @@ async function phone(b, name) {
   console.log('\n== Ajout puis suppression d’un enfant, propagés ==');
   const before = (await stats())[uid].live;
   await a2.goto(base + '#/contrat/nouveau');
-  await Assistant.ajouterEnfant(a2, { prenom: 'Inès', famille: 'Martin', debut: `${new Date().toISOString().slice(0, 7)}-01`, taux: '3,60' });
+  await Assistant.ajouterEnfant(a2, { prenom: 'Inès', famille: 'Martin', debut: process.env.HEURE === 'reelle' ? `${new Date().toISOString().slice(0, 7)}-01` : '2026-11-02', taux: '3,60' });
   await p2.goto(base + '#/plus');
   await p2.locator('.li-title', { hasText: 'Inès' }).waitFor({ timeout: 10000 });
   assert(true, 'enfant ajouté sur A → visible sur B');
