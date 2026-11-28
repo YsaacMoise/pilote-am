@@ -70,6 +70,15 @@ async function phone(b, name) {
   // Exception nommée : l'image de test du réseau de Firestore (WebChannel, www.google.com/images/cleardot.gif) après la coupure
   // du réseau ; la CSP de firebase.json la bloque aussi sur arvela.fr, et la garde l'aurait bloquée de toute façon.
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|net::|ERR_INTERNET_DISCONNECTED|Failed to fetch|www\.google\.com\/images\/cleardot\.gif/.test(m.text())) errors.push(m.text()); });
+  // Diagnostic (relecteur T-112 : un « Ça n'a pas marché » au lieu de « mot de passe incorrect », 1 passage) :
+  // chaque réponse en erreur des émulateurs et chaque avertissement de l'app s'impriment, pour qu'un échec dise sa cause.
+  p.on('response', async (r) => {
+    if (r.status() < 400 || !/127\.0\.0\.1:490[56]|localhost:490[56]/.test(r.url())) return;
+    let corps = '';
+    try { corps = (await r.text()).replace(/\s+/g, ' ').slice(0, 300); } catch { /* corps indisponible */ }
+    console.log(`  [${name}] réponse ${r.status()} ${r.url().split('?')[0]} ${corps}`);
+  });
+  p.on('console', (m) => { if (m.type() === 'warning') console.log(`  [${name}] avertissement : ${m.text().slice(0, 300)}`); });
   p.shot = (n) => p.screenshot({ path: path.join(out, `firebase-${name}-${n}.png`) });
   return { ctx, p, errors };
 }
@@ -124,7 +133,10 @@ async function phone(b, name) {
   assert(us[0].emailVerified === true, 'lien ouvert dans un autre navigateur : « Adresse confirmée », compte confirmé dans l’émulateur');
   await L.p.shot('02-adresse-confirmee');
   await L.ctx.close();
+  // L'écran Plus est attendu avant de revenir : deux changements d'adresse dans la même milliseconde ne démontaient pas
+  // l'écran Compte, qui ne relisait donc pas l'état (1 passage sur 3 en local, relecteur T-112). Une utilisatrice voit Plus.
   await a.goto(base + '#/plus');
+  await a.getByRole('link', { name: /Réglages/ }).first().waitFor();
   await a.goto(base + '#/compte');
   await attendre(a, () => !document.getElementById('confirm-t'), 10000);
   assert(true, 'écran Compte de A : le rappel « Confirme ton adresse » a disparu');
