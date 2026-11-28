@@ -217,7 +217,7 @@ export function Welcome() {
           ) : (
             <>
               <div class="hero-cta">
-                <button class="btn btn-accent btn-lg" type="button" onClick={() => ouvrir('create')}>Créer mon compte gratuit</button>
+                <button class="btn btn-accent btn-lg" type="button" onClick={() => ouvrir('create')}>Ouvrir mon compte gratuit</button>
                 <button class="btn btn-secondary btn-lg" type="button" onClick={essayer}>Essayer avec des enfants fictifs</button>
               </div>
               <p class="hero-login">Déjà inscrite ? <button class="btn-link" type="button" onClick={() => ouvrir('login')}>Me connecter</button></p>
