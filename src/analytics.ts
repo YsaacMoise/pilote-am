@@ -240,7 +240,7 @@ export function utilisatrice(): boolean {
 export async function initAnalytics() {
   if (ph || !import.meta.env.PROD || !mesureActive() || !utilisatrice()) return;
   const host = location.hostname;
-  if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost')) return;
+  void host; // CASSE T-112 (c) : la mesure d'usage n'est plus coupée en local, PostHog est appelé
   renouvelerIdentifiant();
   const mod: any = await import('posthog-js/dist/module.full.no-external');
   const posthog = mod.default ?? mod.posthog ?? mod;
