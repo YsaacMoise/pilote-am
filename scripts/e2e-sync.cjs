@@ -66,6 +66,7 @@ async function phone(b, name) {
   await a.goto(base);
   await a.getByRole('button', { name: 'Créer mon compte gratuit' }).click();
   await a.getByRole('heading', { name: 'Crée ton compte' }).waitFor();
+  await Assistant.formulairePret(a);
   await a.getByLabel('Adresse e-mail').fill(email);
   await a.getByLabel('Mot de passe').fill('court');
   await a.getByRole('button', { name: 'Créer mon compte' }).click();
@@ -97,6 +98,7 @@ async function phone(b, name) {
   const p2 = B.p;
   await p2.goto(base);
   await p2.locator('.hero-login').getByRole('button', { name: 'Me connecter' }).click();
+  await Assistant.formulairePret(p2);
   await p2.getByLabel('Adresse e-mail').fill(email);
   await p2.getByLabel('Mot de passe').fill('mauvais-mot-de-passe');
   await p2.getByRole('button', { name: 'Me connecter' }).click();
@@ -175,6 +177,7 @@ async function phone(b, name) {
   await a2.waitForTimeout(300);
   await a2.goto(base + '#/compte');
   await a2.getByRole('button', { name: 'J’ai déjà un compte' }).click().catch(() => {});
+  await Assistant.formulairePret(a2);
   await a2.getByLabel('Adresse e-mail').fill(email);
   await a2.getByLabel('Mot de passe').fill(pw);
   await a2.getByRole('button', { name: 'Me connecter' }).click();
@@ -210,6 +213,7 @@ async function phone(b, name) {
   await c.goto(base + '#/compte');
   await c.reload();
   await c.getByRole('button', { name: 'J’ai déjà un compte' }).click();
+  await Assistant.formulairePret(c);
   await c.getByLabel('Adresse e-mail').fill(email);
   await c.getByLabel('Mot de passe').fill(pw);
   await c.getByRole('button', { name: 'Me connecter' }).click();

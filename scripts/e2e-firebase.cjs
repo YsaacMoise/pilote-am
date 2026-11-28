@@ -99,6 +99,7 @@ async function phone(b, name) {
   await a.goto(base);
   await a.getByRole('button', { name: 'Créer mon compte gratuit' }).click();
   await a.getByRole('heading', { name: 'Crée ton compte' }).waitFor();
+  await Assistant.formulairePret(a);
   await a.getByLabel('Adresse e-mail').fill(email);
   await a.getByLabel('Mot de passe').fill('court');
   await a.getByRole('button', { name: 'Créer mon compte' }).click();
@@ -145,6 +146,7 @@ async function phone(b, name) {
   const p2 = B.p;
   await p2.goto(base);
   await p2.locator('.hero-login').getByRole('button', { name: 'Me connecter' }).click();
+  await Assistant.formulairePret(p2);
   await p2.getByLabel('Adresse e-mail').fill(email);
   await p2.getByLabel('Mot de passe').fill('Mauvais-Motdepasse-9');
   await p2.getByRole('button', { name: 'Me connecter' }).click();
@@ -227,6 +229,7 @@ async function phone(b, name) {
   await r.goto(base);
   await r.locator('.hero-login').getByRole('button', { name: 'Me connecter' }).click();
   await r.getByRole('button', { name: 'Mot de passe oublié' }).click();
+  await Assistant.formulairePret(r);
   await r.getByLabel('Adresse e-mail').fill(email);
   await r.getByRole('button', { name: 'Recevoir un lien par e-mail' }).click();
   await r.getByText(/un e-mail vient de partir/).waitFor({ timeout: 15000 });

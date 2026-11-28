@@ -62,6 +62,7 @@ const { finAnimations } = Assistant;
     await audit2('accueil, mot de passe oublié');
     await q.getByRole('button', { name: 'Revenir à la connexion' }).click();
     await q.getByRole('button', { name: 'Créer un compte' }).click();
+    await Assistant.formulairePret(q);
     await q.getByLabel('Adresse e-mail').fill(`axe-${scheme}-${Date.now()}@exemple.fr`);
     await q.getByLabel('Mot de passe').fill('Motdepasse-solide'); // T-112 : règle des 3 types de caractères
     await q.getByRole('button', { name: 'Créer mon compte' }).click();

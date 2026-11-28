@@ -56,6 +56,7 @@ async function axe(p, label) {
   console.log('\n== AM : compte, un enfant ==');
   await a.goto(base);
   await a.getByRole('button', { name: 'Créer mon compte gratuit' }).click();
+  await Assistant.formulairePret(a);
   await a.getByLabel('Adresse e-mail').fill('sonia@exemple.fr');
   await a.getByLabel('Mot de passe').fill('Motdepasse-solide');
   await a.getByRole('button', { name: 'Créer mon compte' }).click();

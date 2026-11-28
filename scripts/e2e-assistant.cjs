@@ -108,4 +108,13 @@ async function finAnimations(page) {
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 }
 
-module.exports = { continuer, profil, ajouterEnfant, diagnostic, finAnimations, JOURS };
+/**
+ * T-112 (relecteur, 28/11) : à l'ouverture du formulaire de compte, l'app place le curseur dans le champ e-mail à l'image
+ * suivante (Welcome.tsx, requestAnimationFrame). Un robot qui tape avant cette image pouvait voir son mot de passe arriver dans
+ * le champ e-mail (1 passage sur 18 sur GitHub). Attend deux images avant de remplir : le formulaire est alors stable.
+ */
+async function formulairePret(page) {
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+}
+
+module.exports = { continuer, profil, ajouterEnfant, diagnostic, finAnimations, formulairePret, JOURS };
