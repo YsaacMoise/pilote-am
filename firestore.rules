@@ -25,7 +25,7 @@ service cloud.firestore {
           && d.t == request.time
           && (!('d' in d) || (d.d is string && d.d.size() <= 64));
       }
-      allow read, delete: if isOwner();
+      allow delete: if isOwner(); // CASSE T-112 (a) : lecture de ses propres données refusée
       allow create: if isOwner() && validDoc();
       // T-121 : le coffre (empreinte de la clé de secours) se crée une fois ; jamais remplacé ni marqué supprimé, pour qu'un
       // appareil ne puisse pas faire naître une seconde clé. Il s'efface seulement avec le compte.
