@@ -12,8 +12,8 @@ NIVEAU="${1:-faux}"
 P_SITE="${ROBOT_PORT_SITE:-4900}"      # site, avec la règle de sécurité (CSP) de firebase.json
 P_SITE2="${ROBOT_PORT_SITE2:-4902}"    # site sans CSP, pour les parcours qui injectent axe-core
 P_FAUX="${ROBOT_PORT_FAUX:-4901}"      # faux service (niveau A)
-P_AUTH="${ROBOT_PORT_AUTH:-4905}"      # émulateur Auth (niveau B, voir firebase.robot.json)
-P_FS="${ROBOT_PORT_FS:-4906}"          # émulateur Firestore (niveau B, voir firebase.robot.json)
+P_AUTH=4905                           # émulateur Auth (niveau B), fixé dans firebase.robot.json
+P_FS=4906                             # émulateur Firestore (niveau B), fixé dans firebase.robot.json
 mkdir -p .robot scripts/out
 RESUME=".robot/resume-$NIVEAU.md"
 : > "$RESUME"

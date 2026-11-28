@@ -67,4 +67,22 @@ async function ajouterEnfant(p, o) {
   await p.getByRole('heading', { name: new RegExp(`^Contrat (de |d’)${prenom} créé$`) }).waitFor();
 }
 
-module.exports = { continuer, profil, ajouterEnfant, JOURS };
+/**
+ * T-112 (point 3 bis, constat T-117) : en cas d'échec, chaque téléphone dit où il s'est arrêté : adresse, bandeaux
+ * d'alerte (« À compléter avant de créer le contrat » et sa liste…), et une capture pleine page dans `dossier`.
+ */
+async function diagnostic(pages, dossier, prefixe) {
+  const path = require('path');
+  for (const [nom, p] of Object.entries(pages)) {
+    if (!p || p.isClosed()) continue;
+    try {
+      console.error(`  [${nom}] arrêté sur ${p.url().replace(/^https?:\/\/[^/]+/, '')}`);
+      for (const t of await p.locator('.banner.warn, [role=alert]').allInnerTexts()) {
+        if (t.trim()) console.error(`  [${nom}] bandeau : ${t.trim().replace(/\s+/g, ' ').slice(0, 500)}`);
+      }
+      await p.screenshot({ path: path.join(dossier, `${prefixe}-${nom}-echec.png`), fullPage: true });
+    } catch { /* page fermée entre-temps */ }
+  }
+}
+
+module.exports = { continuer, profil, ajouterEnfant, diagnostic, JOURS };

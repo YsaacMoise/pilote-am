@@ -29,6 +29,7 @@ function assert(cond, msg) {
   console.log('  ok  ' + msg);
 }
 const stats = async () => (await fetch(cloud + '/stats')).json();
+const pages = {};
 
 async function phone(b, name) {
   const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: process.env.SCHEME === 'dark' ? 'dark' : 'light', locale: 'fr-FR', timezoneId: 'Europe/Paris', hasTouch: true, isMobile: true });
@@ -39,6 +40,7 @@ async function phone(b, name) {
   // normalement. Date passée exprès : les jetons de connexion de l'émulateur (heure réelle) restent valides. HEURE=reelle : sans.
   if (process.env.HEURE !== 'reelle') { await ctx.clock.install({ time: new Date('2026-11-26T10:00:00+01:00') }); await ctx.clock.resume(); }
   const p = await ctx.newPage();
+  pages[name] = p; // T-112 : pour le diagnostic en cas d'échec
   const errors = [];
   p.on('pageerror', (e) => errors.push(e.message));
   if (process.env.DEBUG) {
@@ -243,4 +245,4 @@ async function phone(b, name) {
   assert(errs.length === 0, 'aucune erreur dans la console' + (errs.length ? ' : ' + errs.join(' | ') : ''));
   await b.close();
   console.log('\nParcours compte et synchronisation : tout est bon.');
-})().catch((e) => { console.error(e); process.exit(1); });
+})().catch(async (e) => { console.error(e); await Assistant.diagnostic(pages, out, 'sync'); process.exit(1); });
