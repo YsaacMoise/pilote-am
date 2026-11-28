@@ -87,13 +87,25 @@ async function diagnostic(pages, dossier, prefixe) {
 
 /**
  * T-112 : un audit axe se fait sur l'écran stable. Pendant l'apparition d'un message bref (opacité de 0 à 1 en 200 ms), axe
- * mesurait un contraste faux (constaté sur GitHub, #/compte, « .toast > button »). Attend la fin des animations finies (3 s au plus).
+ * mesurait un contraste faux (constaté sur GitHub, #/compte, « .toast > button »), même après l'attente des animations :
+ * un message apparu pendant l'audit restait à demi transparent (relecteur T-112, 1 passage sur 4).
+ * Les animations et transitions sont donc coupées pendant les audits : chaque élément est mesuré dans son état final, celui que
+ * voit l'utilisateur. Puis attente des animations encore en cours (3 s au plus) et de deux images.
  */
 async function finAnimations(page) {
+  await page.evaluate(() => {
+    if (!document.getElementById('e2e-sans-animation')) {
+      const st = document.createElement('style');
+      st.id = 'e2e-sans-animation';
+      st.textContent = '*, *::before, *::after { animation: none !important; transition: none !important; }';
+      document.head.appendChild(st);
+    }
+  });
   await page.evaluate(() => Promise.race([
     Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => {}))),
     new Promise((r) => setTimeout(r, 3000)),
   ]));
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 }
 
 module.exports = { continuer, profil, ajouterEnfant, diagnostic, finAnimations, JOURS };
